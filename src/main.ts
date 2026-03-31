@@ -9,8 +9,10 @@ const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
 const GROUP_ROOM_INDICATOR_ATTRIBUTE = "data-ra-group-room-indicator";
-const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v1:";
+const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v2:";
 const GROUP_ROOM_STORAGE_BATCH_KEY = `${GROUP_ROOM_STORAGE_PREFIX}batch-date`;
+const BOOKING_CURVE_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}booking-curve:`;
+const GROUP_ROOM_RESULT_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}result:`;
 
 interface BookingCurvePoint {
     date: string;
@@ -167,9 +169,16 @@ function getBookingCurve(stayDate: string, batchDateKey: string): Promise<Bookin
         return cached;
     }
 
+    const persisted = readPersistedBookingCurve(cacheKey);
+    if (persisted !== undefined) {
+        const request = Promise.resolve(persisted);
+        bookingCurveCache.set(cacheKey, request);
+        return request;
+    }
+
     const request = loadBookingCurve(stayDate)
         .then((data) => {
-            persistBookingCurveGroupRoomCounts(stayDate, batchDateKey, data);
+            writePersistedBookingCurve(cacheKey, data);
             return data;
         })
         .catch((error: unknown) => {
@@ -200,10 +209,24 @@ async function loadBookingCurve(stayDate: string): Promise<BookingCurveResponse>
 }
 
 function findGroupRoomCount(data: BookingCurveResponse, stayDate: string): number | null {
-    const point = data.booking_curve?.find((entry) => entry.date === stayDate);
-    const count = point?.group?.this_year_room_sum;
+    let latestMatchedDate = "";
+    let latestMatchedCount: number | null = null;
 
-    return typeof count === "number" ? count : null;
+    for (const point of data.booking_curve ?? []) {
+        const pointDate = point.date;
+        const count = point.group?.this_year_room_sum;
+
+        if (pointDate > stayDate || typeof count !== "number") {
+            continue;
+        }
+
+        if (pointDate >= latestMatchedDate) {
+            latestMatchedDate = pointDate;
+            latestMatchedCount = count;
+        }
+    }
+
+    return latestMatchedCount;
 }
 
 function ensureCalendarObserver(): void {
@@ -326,24 +349,6 @@ function syncCacheBatch(batchDateKey: string): void {
     resetPersistedGroupRoomCache(batchDateKey);
 }
 
-function persistBookingCurveGroupRoomCounts(
-    stayDate: string,
-    batchDateKey: string,
-    data: BookingCurveResponse
-): void {
-    for (const point of data.booking_curve ?? []) {
-        const pointDate = point.date;
-        const groupRoomCount = typeof point.group?.this_year_room_sum === "number"
-            ? point.group.this_year_room_sum
-            : null;
-        const cacheKey = `${batchDateKey}:${stayDate}:${pointDate}`;
-        const request = Promise.resolve(groupRoomCount);
-
-        groupRoomCache.set(cacheKey, request);
-        writePersistedGroupRoomCount(cacheKey, groupRoomCount);
-    }
-}
-
 function resetPersistedGroupRoomCache(batchDateKey: string): void {
     try {
         const previousBatchDateKey = window.localStorage.getItem(GROUP_ROOM_STORAGE_BATCH_KEY);
@@ -374,7 +379,7 @@ function resetPersistedGroupRoomCache(batchDateKey: string): void {
 
 function readPersistedGroupRoomCount(cacheKey: string): number | null | undefined {
     try {
-        const raw = window.localStorage.getItem(`${GROUP_ROOM_STORAGE_PREFIX}${cacheKey}`);
+        const raw = window.localStorage.getItem(`${GROUP_ROOM_RESULT_STORAGE_PREFIX}${cacheKey}`);
         if (raw === null) {
             return undefined;
         }
@@ -395,9 +400,38 @@ function readPersistedGroupRoomCount(cacheKey: string): number | null | undefine
 
 function writePersistedGroupRoomCount(cacheKey: string, groupRoomCount: number | null): void {
     try {
-        window.localStorage.setItem(`${GROUP_ROOM_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(groupRoomCount));
+        window.localStorage.setItem(`${GROUP_ROOM_RESULT_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(groupRoomCount));
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to write persistent group-room cache`, {
+            cacheKey,
+            error
+        });
+    }
+}
+
+function readPersistedBookingCurve(cacheKey: string): BookingCurveResponse | undefined {
+    try {
+        const raw = window.localStorage.getItem(`${BOOKING_CURVE_STORAGE_PREFIX}${cacheKey}`);
+        if (raw === null) {
+            return undefined;
+        }
+
+        return JSON.parse(raw) as BookingCurveResponse;
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to read persistent booking-curve cache`, {
+            cacheKey,
+            error
+        });
+    }
+
+    return undefined;
+}
+
+function writePersistedBookingCurve(cacheKey: string, data: BookingCurveResponse): void {
+    try {
+        window.localStorage.setItem(`${BOOKING_CURVE_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(data));
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to write persistent booking-curve cache`, {
             cacheKey,
             error
         });
