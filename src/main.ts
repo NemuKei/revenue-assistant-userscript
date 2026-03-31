@@ -33,6 +33,7 @@ interface MonthlyCalendarCell {
 }
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
+const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
@@ -140,7 +141,7 @@ function fetchGroupRoomCount(stayDate: string, lookupDate: string, batchDateKey:
         return request;
     }
 
-    const request = loadBookingCurve(stayDate)
+    const request = getBookingCurve(stayDate, batchDateKey)
         .then((data) => findGroupRoomCount(data, lookupDate))
         .then((groupRoomCount) => {
             writePersistedGroupRoomCount(cacheKey, groupRoomCount);
@@ -156,6 +157,27 @@ function fetchGroupRoomCount(stayDate: string, lookupDate: string, batchDateKey:
         });
 
     groupRoomCache.set(cacheKey, request);
+    return request;
+}
+
+function getBookingCurve(stayDate: string, batchDateKey: string): Promise<BookingCurveResponse> {
+    const cacheKey = `${batchDateKey}:${stayDate}`;
+    const cached = bookingCurveCache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const request = loadBookingCurve(stayDate)
+        .then((data) => {
+            persistBookingCurveGroupRoomCounts(stayDate, batchDateKey, data);
+            return data;
+        })
+        .catch((error: unknown) => {
+            bookingCurveCache.delete(cacheKey);
+            throw error;
+        });
+
+    bookingCurveCache.set(cacheKey, request);
     return request;
 }
 
@@ -300,7 +322,26 @@ function syncCacheBatch(batchDateKey: string): void {
 
     activeBatchDateKey = batchDateKey;
     groupRoomCache.clear();
+    bookingCurveCache.clear();
     resetPersistedGroupRoomCache(batchDateKey);
+}
+
+function persistBookingCurveGroupRoomCounts(
+    stayDate: string,
+    batchDateKey: string,
+    data: BookingCurveResponse
+): void {
+    for (const point of data.booking_curve ?? []) {
+        const pointDate = point.date;
+        const groupRoomCount = typeof point.group?.this_year_room_sum === "number"
+            ? point.group.this_year_room_sum
+            : null;
+        const cacheKey = `${batchDateKey}:${stayDate}:${pointDate}`;
+        const request = Promise.resolve(groupRoomCount);
+
+        groupRoomCache.set(cacheKey, request);
+        writePersistedGroupRoomCount(cacheKey, groupRoomCount);
+    }
 }
 
 function resetPersistedGroupRoomCache(batchDateKey: string): void {
