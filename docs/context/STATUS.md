@@ -8,6 +8,8 @@
 - analyze 日付ページの月次カレンダー各セルへ団体室数を追記する PoC を実装済み
 - booking_curve の結果を `最終データ更新` 日付が変わるまで localStorage にキャッシュする構成に更新済み
 - GitHub Pages へ userscript を自動配布する workflow を追加済み
+- npm と GitHub Actions の依存更新を週次で提案する Dependabot 設定を追加済み
+- pull request 用の検証 workflow と CODEOWNERS を追加済み
 
 ## Next Focus
 

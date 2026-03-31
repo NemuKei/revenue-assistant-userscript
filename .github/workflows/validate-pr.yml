@@ -1,0 +1,37 @@
+name: Validate Pull Request
+
+env:
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+    pull_request:
+        branches:
+            - main
+    merge_group:
+
+permissions:
+    contents: read
+
+concurrency:
+    group: validate-pr-${{ github.event.pull_request.number || github.sha }}
+    cancel-in-progress: true
+
+jobs:
+    validate:
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout
+              uses: actions/checkout@v6
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v6
+              with:
+                  node-version: 24
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Validate and build
+              run: npm run check
