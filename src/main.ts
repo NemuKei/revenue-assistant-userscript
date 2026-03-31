@@ -835,9 +835,9 @@ function ensureGroupRoomStyles(): void {
             align-self: flex-end;
             margin-top: 1px;
             color: #1f5fbf;
-            font-size: 9px;
+            font-size: 10px;
             font-weight: 700;
-            line-height: 9px;
+            line-height: 10px;
         }
 
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
