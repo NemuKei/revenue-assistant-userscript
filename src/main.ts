@@ -10,11 +10,15 @@ const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
 const GROUP_ROOM_INDICATOR_ATTRIBUTE = "data-ra-group-room-indicator";
+const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
+const GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE = "data-ra-group-room-toggle-button";
+const GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-group-room-toggle-active";
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE = "data-ra-sales-setting-group-room-item";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
 const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v3:";
 const GROUP_ROOM_STORAGE_BATCH_KEY = `${GROUP_ROOM_STORAGE_PREFIX}batch-date`;
+const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
 const BOOKING_CURVE_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}booking-curve:`;
 const GROUP_ROOM_RESULT_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}result:`;
 
@@ -349,12 +353,19 @@ function queueCalendarSync(): void {
 
 async function syncMonthlyCalendarGroupRooms(referenceDate: string, batchDateKey: string): Promise<void> {
     const cells = collectMonthlyCalendarCells();
+    ensureGroupRoomStyles();
+    ensureGroupRoomToggle(cells.length > 0);
+
     if (cells.length === 0) {
         cleanupMonthlyCalendarGroupRooms();
         return;
     }
 
-    ensureGroupRoomStyles();
+    if (!isGroupRoomCalendarVisible()) {
+        cleanupMonthlyCalendarGroupRooms();
+        return;
+    }
+
     await Promise.all(cells.map(async (cell) => {
         const lookupDate = getLookupDate(cell.stayDate, referenceDate);
         const groupRoomCount = await fetchGroupRoomCount(cell.stayDate, lookupDate, batchDateKey);
@@ -653,6 +664,59 @@ function writePersistedBookingCurve(cacheKey: string, data: BookingCurveResponse
     }
 }
 
+function isGroupRoomCalendarVisible(): boolean {
+    try {
+        return window.localStorage.getItem(GROUP_ROOM_VISIBILITY_STORAGE_KEY) !== "0";
+    } catch {
+        return true;
+    }
+}
+
+function setGroupRoomCalendarVisible(visible: boolean): void {
+    try {
+        window.localStorage.setItem(GROUP_ROOM_VISIBILITY_STORAGE_KEY, visible ? "1" : "0");
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to persist group-room visibility`, {
+            visible,
+            error
+        });
+    }
+}
+
+function ensureGroupRoomToggle(hasCalendar: boolean): void {
+    const existingToggle = document.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`);
+    if (!hasCalendar) {
+        existingToggle?.remove();
+        return;
+    }
+
+    const segmentedControl = document.querySelector<HTMLElement>(`[data-testid="segmented-control"]`);
+    const hostElement = segmentedControl?.parentElement ?? null;
+    if (segmentedControl === null || hostElement === null) {
+        existingToggle?.remove();
+        return;
+    }
+
+    const toggleElement = existingToggle ?? document.createElement("div");
+    toggleElement.setAttribute(GROUP_ROOM_TOGGLE_ATTRIBUTE, "");
+
+    const buttonElement = (existingToggle?.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}]`) ?? document.createElement("button")) as HTMLButtonElement;
+    buttonElement.type = "button";
+    buttonElement.setAttribute(GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE, "");
+    buttonElement.setAttribute(GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE, isGroupRoomCalendarVisible() ? "true" : "false");
+    buttonElement.textContent = isGroupRoomCalendarVisible() ? "団体数 ON" : "団体数 OFF";
+    buttonElement.onclick = () => {
+        setGroupRoomCalendarVisible(!isGroupRoomCalendarVisible());
+        queueCalendarSync();
+    };
+
+    toggleElement.replaceChildren(buttonElement);
+
+    if (toggleElement.parentElement !== hostElement) {
+        hostElement.append(toggleElement);
+    }
+}
+
 function clearSalesSettingGroupRoom(card: SalesSettingCard): void {
     card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`)?.remove();
 }
@@ -838,6 +902,30 @@ function ensureGroupRoomStyles(): void {
             font-size: 10px;
             font-weight: 700;
             line-height: 10px;
+        }
+
+        [${GROUP_ROOM_TOGGLE_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            margin-left: 8px;
+        }
+
+        [${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}] {
+            border: 1px solid #c2d4f4;
+            border-radius: 999px;
+            background: #ffffff;
+            color: #456792;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            padding: 7px 10px;
+        }
+
+        [${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}][${GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE}="true"] {
+            background: #eef4ff;
+            border-color: #8fb2ea;
+            color: #1f5fbf;
         }
 
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
