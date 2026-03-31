@@ -1,0 +1,11 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Chrome: Resume Default Profile",
+            "type": "node-terminal",
+            "request": "launch",
+            "command": "npm run chrome:debug:default-profile:resume"
+        }
+    ]
+}

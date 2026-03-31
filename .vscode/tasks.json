@@ -1,0 +1,22 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Chrome: Resume Default Profile",
+            "detail": "Default プロファイルを前回セッション復元付きで remote debugging 起動",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "chrome:debug:default-profile:resume"
+            ],
+            "isBackground": false,
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "group": "build"
+        }
+    ]
+}
