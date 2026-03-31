@@ -3,13 +3,17 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
     : (GM_info.script?.name ?? "Revenue Assistant Userscript");
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
+const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
 const GROUP_ROOM_INDICATOR_ATTRIBUTE = "data-ra-group-room-indicator";
-const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v2:";
+const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
+const SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE = "data-ra-sales-setting-group-room-item";
+const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
+const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v3:";
 const GROUP_ROOM_STORAGE_BATCH_KEY = `${GROUP_ROOM_STORAGE_PREFIX}batch-date`;
 const BOOKING_CURVE_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}booking-curve:`;
 const GROUP_ROOM_RESULT_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}result:`;
@@ -26,6 +30,12 @@ interface BookingCurveResponse {
     booking_curve?: BookingCurvePoint[];
 }
 
+interface RoomGroup {
+    id: string;
+    name: string;
+    sequence: number;
+}
+
 interface MonthlyCalendarCell {
     stayDate: string;
     anchorElement: HTMLAnchorElement;
@@ -34,8 +44,16 @@ interface MonthlyCalendarCell {
     indicatorElement: HTMLElement | null;
 }
 
+interface SalesSettingCard {
+    roomGroupName: string;
+    cardElement: HTMLElement;
+    detailWrapperElement: HTMLElement | null;
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
+const interactionSyncTimeoutIds: number[] = [];
+let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
@@ -49,6 +67,7 @@ function boot(): void {
     });
 
     installNavigationHooks();
+    installInteractionHooks();
     syncPage();
 }
 
@@ -68,6 +87,34 @@ function installNavigationHooks(): void {
     window.addEventListener("popstate", () => {
         queueMicrotask(syncPage);
     });
+}
+
+function installInteractionHooks(): void {
+    document.addEventListener("click", () => {
+        if (activeAnalyzeDate === null) {
+            return;
+        }
+
+        scheduleInteractionSync();
+    });
+}
+
+function scheduleInteractionSync(): void {
+    queueCalendarSync();
+
+    while (interactionSyncTimeoutIds.length > 0) {
+        const timeoutId = interactionSyncTimeoutIds.pop();
+        if (timeoutId !== undefined) {
+            window.clearTimeout(timeoutId);
+        }
+    }
+
+    for (const delay of [150, 500, 1000]) {
+        const timeoutId = window.setTimeout(() => {
+            queueCalendarSync();
+        }, delay);
+        interactionSyncTimeoutIds.push(timeoutId);
+    }
 }
 
 function syncPage(): void {
@@ -130,7 +177,17 @@ async function logSelectedDateGroupRooms(stayDate: string): Promise<void> {
 }
 
 function fetchGroupRoomCount(stayDate: string, lookupDate: string, batchDateKey: string): Promise<number | null> {
-    const cacheKey = `${batchDateKey}:${stayDate}:${lookupDate}`;
+    return fetchScopedGroupRoomCount(stayDate, lookupDate, batchDateKey);
+}
+
+function fetchScopedGroupRoomCount(
+    stayDate: string,
+    lookupDate: string,
+    batchDateKey: string,
+    rmRoomGroupId?: string
+): Promise<number | null> {
+    const scopeKey = getGroupRoomScopeKey(rmRoomGroupId);
+    const cacheKey = `${batchDateKey}:${scopeKey}:${stayDate}:${lookupDate}`;
     const cached = groupRoomCache.get(cacheKey);
     if (cached !== undefined) {
         return cached;
@@ -143,7 +200,7 @@ function fetchGroupRoomCount(stayDate: string, lookupDate: string, batchDateKey:
         return request;
     }
 
-    const request = getBookingCurve(stayDate, batchDateKey)
+    const request = getBookingCurve(stayDate, batchDateKey, rmRoomGroupId)
         .then((data) => findGroupRoomCount(data, lookupDate))
         .then((groupRoomCount) => {
             writePersistedGroupRoomCount(cacheKey, groupRoomCount);
@@ -151,6 +208,7 @@ function fetchGroupRoomCount(stayDate: string, lookupDate: string, batchDateKey:
         })
         .catch((error: unknown) => {
             console.error(`[${SCRIPT_NAME}] failed to load booking curve`, {
+                rmRoomGroupId,
                 stayDate,
                 lookupDate,
                 error
@@ -162,8 +220,13 @@ function fetchGroupRoomCount(stayDate: string, lookupDate: string, batchDateKey:
     return request;
 }
 
-function getBookingCurve(stayDate: string, batchDateKey: string): Promise<BookingCurveResponse> {
-    const cacheKey = `${batchDateKey}:${stayDate}`;
+function getGroupRoomScopeKey(rmRoomGroupId?: string): string {
+    return rmRoomGroupId === undefined ? "hotel" : `room-group:${rmRoomGroupId}`;
+}
+
+function getBookingCurve(stayDate: string, batchDateKey: string, rmRoomGroupId?: string): Promise<BookingCurveResponse> {
+    const scopeKey = getGroupRoomScopeKey(rmRoomGroupId);
+    const cacheKey = `${batchDateKey}:${scopeKey}:${stayDate}`;
     const cached = bookingCurveCache.get(cacheKey);
     if (cached !== undefined) {
         return cached;
@@ -176,7 +239,7 @@ function getBookingCurve(stayDate: string, batchDateKey: string): Promise<Bookin
         return request;
     }
 
-    const request = loadBookingCurve(stayDate)
+    const request = loadBookingCurve(stayDate, rmRoomGroupId)
         .then((data) => {
             writePersistedBookingCurve(cacheKey, data);
             return data;
@@ -190,9 +253,13 @@ function getBookingCurve(stayDate: string, batchDateKey: string): Promise<Bookin
     return request;
 }
 
-async function loadBookingCurve(stayDate: string): Promise<BookingCurveResponse> {
+async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promise<BookingCurveResponse> {
     const url = new URL(BOOKING_CURVE_ENDPOINT, window.location.origin);
     url.searchParams.set("date", stayDate);
+
+    if (rmRoomGroupId !== undefined) {
+        url.searchParams.set("rm_room_group_id", rmRoomGroupId);
+    }
 
     const response = await fetch(url.toString(), {
         credentials: "include",
@@ -257,19 +324,22 @@ function queueCalendarSync(): void {
     calendarSyncQueued = true;
     window.requestAnimationFrame(() => {
         calendarSyncQueued = false;
-        void syncMonthlyCalendarGroupRooms();
+        const analysisDate = activeAnalyzeDate;
+        if (analysisDate === null) {
+            return;
+        }
+
+        const batchDateKey = getCurrentBatchDateKey();
+        syncCacheBatch(batchDateKey);
+
+        void Promise.all([
+            syncMonthlyCalendarGroupRooms(analysisDate, batchDateKey),
+            syncSalesSettingGroupRooms(analysisDate, batchDateKey)
+        ]);
     });
 }
 
-async function syncMonthlyCalendarGroupRooms(): Promise<void> {
-    const analysisDate = activeAnalyzeDate;
-    if (analysisDate === null) {
-        return;
-    }
-
-    const batchDateKey = getCurrentBatchDateKey();
-    syncCacheBatch(batchDateKey);
-
+async function syncMonthlyCalendarGroupRooms(analysisDate: string, batchDateKey: string): Promise<void> {
     const cells = collectMonthlyCalendarCells();
     if (cells.length === 0) {
         return;
@@ -285,6 +355,51 @@ async function syncMonthlyCalendarGroupRooms(): Promise<void> {
         }
 
         renderGroupRoomCount(cell, groupRoomCount);
+    }));
+}
+
+async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: string): Promise<void> {
+    const cards = collectSalesSettingCards();
+    if (cards.length === 0) {
+        return;
+    }
+
+    ensureGroupRoomStyles();
+
+    const roomGroups = await getRoomGroups()
+        .catch((error: unknown) => {
+            console.error(`[${SCRIPT_NAME}] failed to load room groups`, {
+                error
+            });
+            return [] as RoomGroup[];
+        });
+    const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
+    const previousDay = shiftDate(analysisDate, -1);
+    const previousWeek = shiftDate(analysisDate, -7);
+
+    await Promise.all(cards.map(async (card) => {
+        const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
+        if (rmRoomGroupId === undefined) {
+            clearSalesSettingGroupRoom(card);
+            return;
+        }
+
+        const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount] = await Promise.all([
+            fetchScopedGroupRoomCount(analysisDate, analysisDate, batchDateKey, rmRoomGroupId),
+            fetchScopedGroupRoomCount(analysisDate, previousDay, batchDateKey, rmRoomGroupId),
+            fetchScopedGroupRoomCount(analysisDate, previousWeek, batchDateKey, rmRoomGroupId)
+        ]);
+
+        if (!card.cardElement.isConnected) {
+            return;
+        }
+
+        renderSalesSettingGroupRoom(
+            card,
+            currentGroupRoomCount,
+            previousDayGroupRoomCount,
+            previousWeekGroupRoomCount
+        );
     }));
 }
 
@@ -313,8 +428,72 @@ function collectMonthlyCalendarCells(): MonthlyCalendarCell[] {
         });
 }
 
+function collectSalesSettingCards(): SalesSettingCard[] {
+    return Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="suggestions-heading"]`))
+        .flatMap((headingElement) => {
+            const roomTypeElement = headingElement.querySelector<HTMLElement>(`[data-testid="suggestions-room-type-name"]`);
+            const cardElement = headingElement.parentElement;
+
+            if (roomTypeElement === null || cardElement === null) {
+                return [];
+            }
+
+            const roomGroupName = roomTypeElement.textContent?.trim() ?? "";
+            if (roomGroupName === "") {
+                return [];
+            }
+
+            return [{
+                roomGroupName,
+                cardElement,
+                detailWrapperElement: cardElement.querySelector<HTMLElement>(`[data-testid="suggestions-detail-wrapper"]`)
+            }];
+        });
+}
+
 function getLookupDate(stayDate: string, analysisDate: string): string {
     return stayDate < analysisDate ? stayDate : analysisDate;
+}
+
+function shiftDate(date: string, offsetDays: number): string {
+    const year = Number(date.slice(0, 4));
+    const month = Number(date.slice(4, 6));
+    const day = Number(date.slice(6, 8));
+    const value = new Date(Date.UTC(year, month - 1, day));
+    value.setUTCDate(value.getUTCDate() + offsetDays);
+
+    return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
+}
+
+function getRoomGroups(): Promise<RoomGroup[]> {
+    if (roomGroupListPromise !== null) {
+        return roomGroupListPromise;
+    }
+
+    const request = loadRoomGroups()
+        .then((roomGroups) => roomGroups.slice().sort((left, right) => left.sequence - right.sequence))
+        .catch((error: unknown) => {
+            roomGroupListPromise = null;
+            throw error;
+        });
+
+    roomGroupListPromise = request;
+    return request;
+}
+
+async function loadRoomGroups(): Promise<RoomGroup[]> {
+    const response = await fetch(new URL(ROOM_GROUPS_ENDPOINT, window.location.origin).toString(), {
+        credentials: "include",
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`room group request failed: ${response.status}`);
+    }
+
+    return (await response.json()) as RoomGroup[];
 }
 
 function getCurrentBatchDateKey(): string {
@@ -438,6 +617,106 @@ function writePersistedBookingCurve(cacheKey: string, data: BookingCurveResponse
     }
 }
 
+function clearSalesSettingGroupRoom(card: SalesSettingCard): void {
+    card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`)?.remove();
+}
+
+function renderSalesSettingGroupRoom(
+    card: SalesSettingCard,
+    currentGroupRoomCount: number | null,
+    previousDayGroupRoomCount: number | null,
+    previousWeekGroupRoomCount: number | null
+): void {
+    const existingRow = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`);
+
+    if (
+        currentGroupRoomCount === null
+        && previousDayGroupRoomCount === null
+        && previousWeekGroupRoomCount === null
+    ) {
+        existingRow?.remove();
+        return;
+    }
+
+    const rowElement = existingRow ?? document.createElement("div");
+    rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE, "");
+    rowElement.replaceChildren(
+        createSalesSettingGroupRoomItem("団体室数", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
+        createSalesSettingGroupRoomItem(
+            "1日前差分",
+            formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
+            getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount)
+        ),
+        createSalesSettingGroupRoomItem(
+            "7日前差分",
+            formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
+            getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount)
+        )
+    );
+
+    if (existingRow !== null) {
+        return;
+    }
+
+    if (card.detailWrapperElement !== null) {
+        card.cardElement.insertBefore(rowElement, card.detailWrapperElement);
+        return;
+    }
+
+    card.cardElement.append(rowElement);
+}
+
+function createSalesSettingGroupRoomItem(label: string, value: string, tone: string): HTMLSpanElement {
+    const itemElement = document.createElement("span");
+    itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE, "");
+    itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, tone);
+    itemElement.textContent = `${label} ${value}`;
+    return itemElement;
+}
+
+function formatGroupRoomMetricValue(value: number | null): string {
+    if (value === null) {
+        return "-";
+    }
+
+    return `${formatGroupRoomNumber(value)}室`;
+}
+
+function formatGroupRoomDelta(currentValue: number | null, previousValue: number | null): string {
+    const delta = getGroupRoomDelta(currentValue, previousValue);
+    if (delta === null) {
+        return "-";
+    }
+
+    const prefix = delta > 0 ? "+" : "";
+    return `${prefix}${formatGroupRoomNumber(delta)}室`;
+}
+
+function getGroupRoomDeltaTone(currentValue: number | null, previousValue: number | null): string {
+    const delta = getGroupRoomDelta(currentValue, previousValue);
+    if (delta === null || delta === 0) {
+        return "neutral";
+    }
+
+    return delta > 0 ? "positive" : "negative";
+}
+
+function getGroupRoomDelta(currentValue: number | null, previousValue: number | null): number | null {
+    if (currentValue === null || previousValue === null) {
+        return null;
+    }
+
+    return currentValue - previousValue;
+}
+
+function formatGroupRoomNumber(value: number): string {
+    if (Number.isInteger(value)) {
+        return String(value);
+    }
+
+    return value.toFixed(1).replace(/\.0$/, "");
+}
+
 function renderGroupRoomCount(cell: MonthlyCalendarCell, groupRoomCount: number | null): void {
     const existingBadge = cell.containerElement.querySelector<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`);
 
@@ -499,6 +778,34 @@ function ensureGroupRoomStyles(): void {
             font-size: 9px;
             font-weight: 700;
             line-height: 9px;
+        }
+
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 4px 0 10px;
+            color: #50627a;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+
+        [${SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            border-radius: 999px;
+            background: #eef4ff;
+            padding: 2px 8px;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE}="positive"] {
+            color: #0c7a43;
+        }
+
+        [${SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE}="negative"] {
+            color: #b54646;
         }
 
         [${GROUP_ROOM_INDICATOR_ATTRIBUTE}] {
