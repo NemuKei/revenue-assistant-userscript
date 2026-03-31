@@ -53,6 +53,7 @@ interface SalesSettingCard {
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const interactionSyncTimeoutIds: number[] = [];
+const salesSettingPrefetchKeys = new Set<string>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
@@ -102,18 +103,22 @@ function installInteractionHooks(): void {
 function scheduleInteractionSync(): void {
     queueCalendarSync();
 
+    clearInteractionSyncTimeouts();
+
+    for (const delay of [120, 300, 700, 1500, 3000]) {
+        const timeoutId = window.setTimeout(() => {
+            queueCalendarSync();
+        }, delay);
+        interactionSyncTimeoutIds.push(timeoutId);
+    }
+}
+
+function clearInteractionSyncTimeouts(): void {
     while (interactionSyncTimeoutIds.length > 0) {
         const timeoutId = interactionSyncTimeoutIds.pop();
         if (timeoutId !== undefined) {
             window.clearTimeout(timeoutId);
         }
-    }
-
-    for (const delay of [150, 500, 1000]) {
-        const timeoutId = window.setTimeout(() => {
-            queueCalendarSync();
-        }, delay);
-        interactionSyncTimeoutIds.push(timeoutId);
     }
 }
 
@@ -123,7 +128,9 @@ function syncPage(): void {
 
     if (selectedDate === null) {
         activeAnalyzeDate = null;
+        clearInteractionSyncTimeouts();
         disconnectCalendarObserver();
+        cleanupAnalyzeEnhancements();
 
         if (nextHref !== activeHref) {
             activeHref = nextHref;
@@ -306,6 +313,8 @@ function ensureCalendarObserver(): void {
         queueCalendarSync();
     });
     calendarObserver.observe(root, {
+        attributes: true,
+        attributeFilter: ["class", "style", "hidden", "aria-selected"],
         childList: true,
         subtree: true
     });
@@ -331,6 +340,7 @@ function queueCalendarSync(): void {
 
         const batchDateKey = getCurrentBatchDateKey();
         syncCacheBatch(batchDateKey);
+        prefetchSalesSettingGroupRooms(analysisDate, batchDateKey);
 
         void Promise.all([
             syncMonthlyCalendarGroupRooms(analysisDate, batchDateKey),
@@ -496,6 +506,32 @@ async function loadRoomGroups(): Promise<RoomGroup[]> {
     return (await response.json()) as RoomGroup[];
 }
 
+function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: string): void {
+    const prefetchKey = `${batchDateKey}:${analysisDate}`;
+    if (salesSettingPrefetchKeys.has(prefetchKey)) {
+        return;
+    }
+
+    salesSettingPrefetchKeys.add(prefetchKey);
+
+    const previousDay = shiftDate(analysisDate, -1);
+    const previousWeek = shiftDate(analysisDate, -7);
+    void getRoomGroups()
+        .then((roomGroups) => Promise.all(roomGroups.flatMap((roomGroup) => [
+            fetchScopedGroupRoomCount(analysisDate, analysisDate, batchDateKey, roomGroup.id),
+            fetchScopedGroupRoomCount(analysisDate, previousDay, batchDateKey, roomGroup.id),
+            fetchScopedGroupRoomCount(analysisDate, previousWeek, batchDateKey, roomGroup.id)
+        ])))
+        .catch((error: unknown) => {
+            salesSettingPrefetchKeys.delete(prefetchKey);
+            console.warn(`[${SCRIPT_NAME}] failed to prefetch sales-setting group rooms`, {
+                analysisDate,
+                batchDateKey,
+                error
+            });
+        });
+}
+
 function getCurrentBatchDateKey(): string {
     const text = document.body.innerText;
     const match = /最終データ更新[:：]\s*(\d{4})年(\d{1,2})月(\d{1,2})日/.exec(text);
@@ -523,6 +559,7 @@ function syncCacheBatch(batchDateKey: string): void {
     }
 
     activeBatchDateKey = batchDateKey;
+    salesSettingPrefetchKeys.clear();
     groupRoomCache.clear();
     bookingCurveCache.clear();
     resetPersistedGroupRoomCache(batchDateKey);
@@ -739,6 +776,40 @@ function renderGroupRoomCount(cell: MonthlyCalendarCell, groupRoomCount: number 
     if (existingBadge === null) {
         cell.containerElement.append(badgeElement);
     }
+}
+
+function cleanupAnalyzeEnhancements(): void {
+    cleanupMonthlyCalendarGroupRooms();
+    cleanupSalesSettingGroupRooms();
+    removeGroupRoomStyles();
+}
+
+function cleanupMonthlyCalendarGroupRooms(): void {
+    for (const badgeElement of Array.from(document.querySelectorAll<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`))) {
+        badgeElement.remove();
+    }
+
+    for (const containerElement of Array.from(document.querySelectorAll<HTMLElement>(`[${GROUP_ROOM_LAYOUT_ATTRIBUTE}]`))) {
+        containerElement.removeAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE);
+    }
+
+    for (const roomElement of Array.from(document.querySelectorAll<HTMLElement>(`[${GROUP_ROOM_ROOM_ATTRIBUTE}]`))) {
+        roomElement.removeAttribute(GROUP_ROOM_ROOM_ATTRIBUTE);
+    }
+
+    for (const indicatorElement of Array.from(document.querySelectorAll<HTMLElement>(`[${GROUP_ROOM_INDICATOR_ATTRIBUTE}]`))) {
+        indicatorElement.removeAttribute(GROUP_ROOM_INDICATOR_ATTRIBUTE);
+    }
+}
+
+function cleanupSalesSettingGroupRooms(): void {
+    for (const rowElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`))) {
+        rowElement.remove();
+    }
+}
+
+function removeGroupRoomStyles(): void {
+    document.getElementById(GROUP_ROOM_STYLE_ID)?.remove();
 }
 
 function ensureGroupRoomStyles(): void {
