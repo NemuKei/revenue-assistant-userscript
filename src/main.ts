@@ -92,7 +92,10 @@ function installNavigationHooks(): void {
 
 function installInteractionHooks(): void {
     document.addEventListener("click", () => {
-        if (activeAnalyzeDate === null) {
+        if (
+            activeAnalyzeDate === null
+            && document.querySelector(`[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`) === null
+        ) {
             return;
         }
 
@@ -126,11 +129,12 @@ function syncPage(): void {
     const nextHref = window.location.href;
     const selectedDate = getAnalyzeDate(window.location.pathname);
 
+    activeAnalyzeDate = selectedDate;
+    ensureCalendarObserver();
+    queueCalendarSync();
+
     if (selectedDate === null) {
-        activeAnalyzeDate = null;
         clearInteractionSyncTimeouts();
-        disconnectCalendarObserver();
-        cleanupAnalyzeEnhancements();
 
         if (nextHref !== activeHref) {
             activeHref = nextHref;
@@ -141,10 +145,6 @@ function syncPage(): void {
 
         return;
     }
-
-    activeAnalyzeDate = selectedDate;
-    ensureCalendarObserver();
-    queueCalendarSync();
 
     if (nextHref === activeHref) {
         return;
@@ -320,11 +320,6 @@ function ensureCalendarObserver(): void {
     });
 }
 
-function disconnectCalendarObserver(): void {
-    calendarObserver?.disconnect();
-    calendarObserver = null;
-}
-
 function queueCalendarSync(): void {
     if (calendarSyncQueued) {
         return;
@@ -333,31 +328,35 @@ function queueCalendarSync(): void {
     calendarSyncQueued = true;
     window.requestAnimationFrame(() => {
         calendarSyncQueued = false;
-        const analysisDate = activeAnalyzeDate;
-        if (analysisDate === null) {
-            return;
+        const batchDateKey = getCurrentBatchDateKey();
+        const referenceDate = activeAnalyzeDate ?? batchDateKey;
+        syncCacheBatch(batchDateKey);
+
+        if (activeAnalyzeDate !== null) {
+            prefetchSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey);
+        } else {
+            cleanupSalesSettingGroupRooms();
         }
 
-        const batchDateKey = getCurrentBatchDateKey();
-        syncCacheBatch(batchDateKey);
-        prefetchSalesSettingGroupRooms(analysisDate, batchDateKey);
-
         void Promise.all([
-            syncMonthlyCalendarGroupRooms(analysisDate, batchDateKey),
-            syncSalesSettingGroupRooms(analysisDate, batchDateKey)
+            syncMonthlyCalendarGroupRooms(referenceDate, batchDateKey),
+            activeAnalyzeDate === null
+                ? Promise.resolve()
+                : syncSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey)
         ]);
     });
 }
 
-async function syncMonthlyCalendarGroupRooms(analysisDate: string, batchDateKey: string): Promise<void> {
+async function syncMonthlyCalendarGroupRooms(referenceDate: string, batchDateKey: string): Promise<void> {
     const cells = collectMonthlyCalendarCells();
     if (cells.length === 0) {
+        cleanupMonthlyCalendarGroupRooms();
         return;
     }
 
     ensureGroupRoomStyles();
     await Promise.all(cells.map(async (cell) => {
-        const lookupDate = getLookupDate(cell.stayDate, analysisDate);
+        const lookupDate = getLookupDate(cell.stayDate, referenceDate);
         const groupRoomCount = await fetchGroupRoomCount(cell.stayDate, lookupDate, batchDateKey);
 
         if (!cell.anchorElement.isConnected) {
@@ -778,12 +777,6 @@ function renderGroupRoomCount(cell: MonthlyCalendarCell, groupRoomCount: number 
     }
 }
 
-function cleanupAnalyzeEnhancements(): void {
-    cleanupMonthlyCalendarGroupRooms();
-    cleanupSalesSettingGroupRooms();
-    removeGroupRoomStyles();
-}
-
 function cleanupMonthlyCalendarGroupRooms(): void {
     for (const badgeElement of Array.from(document.querySelectorAll<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`))) {
         badgeElement.remove();
@@ -806,10 +799,6 @@ function cleanupSalesSettingGroupRooms(): void {
     for (const rowElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`))) {
         rowElement.remove();
     }
-}
-
-function removeGroupRoomStyles(): void {
-    document.getElementById(GROUP_ROOM_STYLE_ID)?.remove();
 }
 
 function ensureGroupRoomStyles(): void {
