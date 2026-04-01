@@ -691,30 +691,56 @@ function ensureGroupRoomToggle(hasCalendar: boolean): void {
     }
 
     const segmentedControl = document.querySelector<HTMLElement>(`[data-testid="segmented-control"]`);
-    const hostElement = segmentedControl?.parentElement ?? null;
-    if (segmentedControl === null || hostElement === null) {
+    const toolbarElement = segmentedControl?.parentElement?.parentElement ?? null;
+    if (segmentedControl === null || toolbarElement === null) {
         existingToggle?.remove();
         return;
     }
+
+    const actionButton = Array.from(toolbarElement.querySelectorAll<HTMLButtonElement>("button"))
+        .find((buttonElement) => (buttonElement.textContent ?? "").includes("販売設定を一括反映"));
+    const insertionAnchor = actionButton?.parentElement ?? null;
 
     const toggleElement = existingToggle ?? document.createElement("div");
     toggleElement.setAttribute(GROUP_ROOM_TOGGLE_ATTRIBUTE, "");
 
     const buttonElement = (existingToggle?.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}]`) ?? document.createElement("button")) as HTMLButtonElement;
     buttonElement.type = "button";
-    buttonElement.setAttribute(GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE, "");
-    buttonElement.setAttribute(GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE, isGroupRoomCalendarVisible() ? "true" : "false");
-    buttonElement.textContent = isGroupRoomCalendarVisible() ? "団体数 ON" : "団体数 OFF";
-    buttonElement.onclick = () => {
-        setGroupRoomCalendarVisible(!isGroupRoomCalendarVisible());
+    updateGroupRoomToggleButton(buttonElement, isGroupRoomCalendarVisible());
+    buttonElement.onclick = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+
+        const nextVisible = !isGroupRoomCalendarVisible();
+        setGroupRoomCalendarVisible(nextVisible);
+        updateGroupRoomToggleButton(buttonElement, nextVisible);
+
+        if (!nextVisible) {
+            cleanupMonthlyCalendarGroupRooms();
+        }
+
         queueCalendarSync();
     };
 
     toggleElement.replaceChildren(buttonElement);
 
-    if (toggleElement.parentElement !== hostElement) {
-        hostElement.append(toggleElement);
+    if (toggleElement.parentElement !== toolbarElement) {
+        toggleElement.remove();
     }
+
+    if (toggleElement.parentElement === null) {
+        if (insertionAnchor !== null) {
+            toolbarElement.insertBefore(toggleElement, insertionAnchor);
+        } else {
+            toolbarElement.append(toggleElement);
+        }
+    }
+}
+
+function updateGroupRoomToggleButton(buttonElement: HTMLButtonElement, visible: boolean): void {
+    buttonElement.setAttribute(GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE, "");
+    buttonElement.setAttribute(GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE, visible ? "true" : "false");
+    buttonElement.textContent = visible ? "団体数 表示中" : "団体数 非表示";
 }
 
 function clearSalesSettingGroupRoom(card: SalesSettingCard): void {
@@ -907,7 +933,9 @@ function ensureGroupRoomStyles(): void {
         [${GROUP_ROOM_TOGGLE_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
-            margin-left: 8px;
+            align-self: center;
+            margin: 0 16px 0 20px;
+            margin-right: auto;
         }
 
         [${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}] {
