@@ -95,7 +95,27 @@ function installNavigationHooks(): void {
 }
 
 function installInteractionHooks(): void {
-    document.addEventListener("click", () => {
+    document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (target instanceof Element) {
+            const toggleButton = target.closest<HTMLButtonElement>(`[${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}]`);
+            if (toggleButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const nextVisible = !isGroupRoomCalendarVisible();
+                setGroupRoomCalendarVisible(nextVisible);
+                updateGroupRoomToggleButton(toggleButton, nextVisible);
+
+                if (!nextVisible) {
+                    cleanupMonthlyCalendarGroupRooms();
+                }
+
+                queueCalendarSync();
+                return;
+            }
+        }
+
         if (
             activeAnalyzeDate === null
             && document.querySelector(`[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`) === null
@@ -585,7 +605,12 @@ function resetPersistedGroupRoomCache(batchDateKey: string): void {
         const keysToRemove: string[] = [];
         for (let index = 0; index < window.localStorage.length; index += 1) {
             const key = window.localStorage.key(index);
-            if (key !== null && key.startsWith(GROUP_ROOM_STORAGE_PREFIX) && key !== GROUP_ROOM_STORAGE_BATCH_KEY) {
+            if (
+                key !== null
+                && key.startsWith(GROUP_ROOM_STORAGE_PREFIX)
+                && key !== GROUP_ROOM_STORAGE_BATCH_KEY
+                && key !== GROUP_ROOM_VISIBILITY_STORAGE_KEY
+            ) {
                 keysToRemove.push(key);
             }
         }
@@ -707,20 +732,6 @@ function ensureGroupRoomToggle(hasCalendar: boolean): void {
     const buttonElement = (existingToggle?.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}]`) ?? document.createElement("button")) as HTMLButtonElement;
     buttonElement.type = "button";
     updateGroupRoomToggleButton(buttonElement, isGroupRoomCalendarVisible());
-    buttonElement.onclick = (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-
-        const nextVisible = !isGroupRoomCalendarVisible();
-        setGroupRoomCalendarVisible(nextVisible);
-        updateGroupRoomToggleButton(buttonElement, nextVisible);
-
-        if (!nextVisible) {
-            cleanupMonthlyCalendarGroupRooms();
-        }
-
-        queueCalendarSync();
-    };
 
     toggleElement.replaceChildren(buttonElement);
 
@@ -936,6 +947,9 @@ function ensureGroupRoomStyles(): void {
             align-self: center;
             margin: 0 16px 0 20px;
             margin-right: auto;
+            pointer-events: auto;
+            position: relative;
+            z-index: 2;
         }
 
         [${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}] {
@@ -948,6 +962,9 @@ function ensureGroupRoomStyles(): void {
             font-weight: 700;
             line-height: 1;
             padding: 7px 10px;
+            pointer-events: auto;
+            position: relative;
+            z-index: 2;
         }
 
         [${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}][${GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE}="true"] {
