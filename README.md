@@ -59,6 +59,9 @@ npm run check
 
 `userscript.config.mjs` が userscript metadata の正本です。配布物と Tampermonkey への投入物は `dist/*.user.js` を正とします。
 
+公開 userscript URL:
+[https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js](https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js)
+
 GitHub Pages 配布を使う場合は、`GITHUB_PAGES_BASE_URL` をビルド時に渡すと `updateURL` と `downloadURL` が自動で入ります。
 
 `main` への push では `.github/workflows/publish-userscript.yml` が動き、GitHub Pages へ userscript を自動配布します。GitHub Actions 上の build では `GITHUB_RUN_NUMBER` を userscript version に付与するため、公開物は push ごとに Tampermonkey の自動更新対象になります。

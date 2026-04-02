@@ -776,7 +776,9 @@ function ensureGroupRoomToggle(hasCalendar: boolean): void {
     buttonElement.type = "button";
     updateGroupRoomToggleButton(buttonElement, isGroupRoomCalendarVisible());
 
-    toggleElement.replaceChildren(buttonElement);
+    if (buttonElement.parentElement !== toggleElement || toggleElement.childElementCount !== 1) {
+        toggleElement.replaceChildren(buttonElement);
+    }
 
     if (toggleElement.parentElement !== toolbarElement) {
         toggleElement.remove();
@@ -792,9 +794,19 @@ function ensureGroupRoomToggle(hasCalendar: boolean): void {
 }
 
 function updateGroupRoomToggleButton(buttonElement: HTMLButtonElement, visible: boolean): void {
-    buttonElement.setAttribute(GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE, "");
-    buttonElement.setAttribute(GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE, visible ? "true" : "false");
-    buttonElement.textContent = visible ? "団体数 表示中" : "団体数 非表示";
+    if (!buttonElement.hasAttribute(GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE)) {
+        buttonElement.setAttribute(GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE, "");
+    }
+
+    const nextActive = visible ? "true" : "false";
+    if (buttonElement.getAttribute(GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE) !== nextActive) {
+        buttonElement.setAttribute(GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE, nextActive);
+    }
+
+    const nextLabel = visible ? "団体数 表示中" : "団体数 非表示";
+    if (buttonElement.textContent !== nextLabel) {
+        buttonElement.textContent = nextLabel;
+    }
 }
 
 function clearSalesSettingGroupRoom(card: SalesSettingCard): void {
