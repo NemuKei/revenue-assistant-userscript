@@ -3,6 +3,7 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
     : (GM_info.script?.name ?? "Revenue Assistant Userscript");
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
+const SUGGEST_OUTPUT_DETAILS_ENDPOINT = "/api/v3/suggest/output/details";
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
@@ -16,6 +17,9 @@ const GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-group-room-toggle-active";
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE = "data-ra-sales-setting-group-room-item";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
+const SALES_SETTING_ROOM_DELTA_ATTRIBUTE = "data-ra-sales-setting-room-delta";
+const SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE = "data-ra-sales-setting-room-delta-item";
+const SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-room-delta-signature";
 const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v3:";
 const GROUP_ROOM_STORAGE_BATCH_KEY = `${GROUP_ROOM_STORAGE_PREFIX}batch-date`;
 const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
@@ -32,6 +36,13 @@ interface BookingCurvePoint {
 interface BookingCurveResponse {
     stay_date: string;
     booking_curve?: BookingCurvePoint[];
+}
+
+interface SuggestOutputDetail {
+    rm_room_group_name?: string;
+    current?: {
+        landing_num_room?: number;
+    };
 }
 
 interface RoomGroup {
@@ -51,13 +62,17 @@ interface MonthlyCalendarCell {
 interface SalesSettingCard {
     roomGroupName: string;
     cardElement: HTMLElement;
+    headingElement: HTMLElement;
+    roomCountSummaryElement: HTMLElement | null;
     detailWrapperElement: HTMLElement | null;
 }
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
+const salesSettingDetailCache = new Map<string, Promise<Map<string, number | null>>>();
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
+const salesSettingDetailPrefetchKeys = new Set<string>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
@@ -365,12 +380,17 @@ function queueCalendarSync(): void {
 
         if (activeAnalyzeDate !== null) {
             prefetchSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey);
+            prefetchSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey);
         } else {
             cleanupSalesSettingGroupRooms();
+            cleanupSalesSettingRoomDeltas();
         }
 
         void Promise.all([
             syncMonthlyCalendarGroupRooms(referenceDate, batchDateKey),
+            activeAnalyzeDate === null
+                ? Promise.resolve()
+                : syncSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey),
             activeAnalyzeDate === null
                 ? Promise.resolve()
                 : syncSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey)
@@ -482,6 +502,43 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
     }));
 }
 
+async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: string): Promise<void> {
+    const cards = collectSalesSettingCards();
+    if (cards.length === 0) {
+        return;
+    }
+
+    ensureGroupRoomStyles();
+
+    const previousDay = shiftDate(analysisDate, -1);
+    const previousWeek = shiftDate(analysisDate, -7);
+    const [currentMetrics, previousDayMetrics, previousWeekMetrics] = await Promise.all([
+        fetchSalesSettingDetails(analysisDate, batchDateKey),
+        fetchSalesSettingDetails(previousDay, batchDateKey),
+        fetchSalesSettingDetails(previousWeek, batchDateKey)
+    ]).catch((error: unknown) => {
+        console.error(`[${SCRIPT_NAME}] failed to load sales-setting room deltas`, {
+            analysisDate,
+            batchDateKey,
+            error
+        });
+
+        return [new Map(), new Map(), new Map()] as [Map<string, number | null>, Map<string, number | null>, Map<string, number | null>];
+    });
+
+    for (const card of cards) {
+        const currentValue = currentMetrics.get(card.roomGroupName) ?? null;
+        const previousDayValue = previousDayMetrics.get(card.roomGroupName) ?? null;
+        const previousWeekValue = previousWeekMetrics.get(card.roomGroupName) ?? null;
+
+        if (!card.cardElement.isConnected) {
+            continue;
+        }
+
+        renderSalesSettingRoomDelta(card, currentValue, previousDayValue, previousWeekValue);
+    }
+}
+
 function collectMonthlyCalendarCells(): MonthlyCalendarCell[] {
     return Array.from(document.querySelectorAll<HTMLAnchorElement>(`[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`))
         .flatMap((anchorElement) => {
@@ -512,6 +569,9 @@ function collectSalesSettingCards(): SalesSettingCard[] {
         .flatMap((headingElement) => {
             const roomTypeElement = headingElement.querySelector<HTMLElement>(`[data-testid="suggestions-room-type-name"]`);
             const cardElement = headingElement.parentElement;
+            const roomCountSummaryElement = headingElement
+                .querySelector<HTMLElement>(`[data-testid="suggestions-room-full-number"]`)
+                ?.parentElement ?? null;
 
             if (roomTypeElement === null || cardElement === null) {
                 return [];
@@ -525,6 +585,8 @@ function collectSalesSettingCards(): SalesSettingCard[] {
             return [{
                 roomGroupName,
                 cardElement,
+                headingElement,
+                roomCountSummaryElement,
                 detailWrapperElement: cardElement.querySelector<HTMLElement>(`[data-testid="suggestions-detail-wrapper"]`)
             }];
         });
@@ -542,6 +604,59 @@ function shiftDate(date: string, offsetDays: number): string {
     value.setUTCDate(value.getUTCDate() + offsetDays);
 
     return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
+}
+
+function fetchSalesSettingDetails(date: string, batchDateKey: string): Promise<Map<string, number | null>> {
+    const cacheKey = `${batchDateKey}:${date}`;
+    const cached = salesSettingDetailCache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const request = loadSalesSettingDetails(date)
+        .catch((error: unknown) => {
+            salesSettingDetailCache.delete(cacheKey);
+            throw error;
+        });
+
+    salesSettingDetailCache.set(cacheKey, request);
+    return request;
+}
+
+async function loadSalesSettingDetails(date: string): Promise<Map<string, number | null>> {
+    const url = new URL(SUGGEST_OUTPUT_DETAILS_ENDPOINT, window.location.origin);
+    url.searchParams.set("from", date);
+    url.searchParams.set("to", date);
+
+    const response = await fetch(url.toString(), {
+        credentials: "include",
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`suggest output details request failed: ${response.status}`);
+    }
+
+    const details = (await response.json()) as SuggestOutputDetail[];
+    const metricByRoomGroupName = new Map<string, number | null>();
+
+    for (const detail of details) {
+        const roomGroupName = detail.rm_room_group_name?.trim();
+        if (roomGroupName === undefined || roomGroupName === "") {
+            continue;
+        }
+
+        metricByRoomGroupName.set(
+            roomGroupName,
+            typeof detail.current?.landing_num_room === "number"
+                ? detail.current.landing_num_room
+                : null
+        );
+    }
+
+    return metricByRoomGroupName;
 }
 
 function getRoomGroups(): Promise<RoomGroup[]> {
@@ -601,6 +716,30 @@ function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: stri
         });
 }
 
+function prefetchSalesSettingRoomDeltas(analysisDate: string, batchDateKey: string): void {
+    const prefetchKey = `${batchDateKey}:${analysisDate}`;
+    if (salesSettingDetailPrefetchKeys.has(prefetchKey)) {
+        return;
+    }
+
+    salesSettingDetailPrefetchKeys.add(prefetchKey);
+
+    const previousDay = shiftDate(analysisDate, -1);
+    const previousWeek = shiftDate(analysisDate, -7);
+    void Promise.all([
+        fetchSalesSettingDetails(analysisDate, batchDateKey),
+        fetchSalesSettingDetails(previousDay, batchDateKey),
+        fetchSalesSettingDetails(previousWeek, batchDateKey)
+    ]).catch((error: unknown) => {
+        salesSettingDetailPrefetchKeys.delete(prefetchKey);
+        console.warn(`[${SCRIPT_NAME}] failed to prefetch sales-setting room deltas`, {
+            analysisDate,
+            batchDateKey,
+            error
+        });
+    });
+}
+
 function getCurrentBatchDateKey(): string {
     const text = document.body.innerText;
     const match = /最終データ更新[:：]\s*(\d{4})年(\d{1,2})月(\d{1,2})日/.exec(text);
@@ -629,8 +768,10 @@ function syncCacheBatch(batchDateKey: string): void {
 
     activeBatchDateKey = batchDateKey;
     salesSettingPrefetchKeys.clear();
+    salesSettingDetailPrefetchKeys.clear();
     groupRoomCache.clear();
     bookingCurveCache.clear();
+    salesSettingDetailCache.clear();
     resetPersistedGroupRoomCache(batchDateKey);
 }
 
@@ -858,9 +999,64 @@ function renderSalesSettingGroupRoom(
     card.cardElement.append(rowElement);
 }
 
+function renderSalesSettingRoomDelta(
+    card: SalesSettingCard,
+    currentValue: number | null,
+    previousDayValue: number | null,
+    previousWeekValue: number | null
+): void {
+    const existingContainer = card.headingElement.querySelector<HTMLElement>(`[${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}]`);
+
+    if (currentValue === null && previousDayValue === null && previousWeekValue === null) {
+        existingContainer?.remove();
+        return;
+    }
+
+    const items = [{
+        label: "1日前",
+        value: formatSalesSettingRoomDelta(currentValue, previousDayValue),
+        tone: getMetricDeltaTone(currentValue, previousDayValue)
+    }, {
+        label: "7日前",
+        value: formatSalesSettingRoomDelta(currentValue, previousWeekValue),
+        tone: getMetricDeltaTone(currentValue, previousWeekValue)
+    }];
+    const signature = items.map((item) => `${item.label}:${item.value}:${item.tone}`).join("|");
+
+    if (existingContainer?.getAttribute(SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE) === signature) {
+        return;
+    }
+
+    const containerElement = existingContainer ?? document.createElement("span");
+    containerElement.setAttribute(SALES_SETTING_ROOM_DELTA_ATTRIBUTE, "");
+    containerElement.setAttribute(SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE, signature);
+    containerElement.replaceChildren(
+        ...items.map((item) => createSalesSettingRoomDeltaItem(item.label, item.value, item.tone))
+    );
+
+    if (existingContainer !== null) {
+        return;
+    }
+
+    if (card.roomCountSummaryElement !== null) {
+        card.roomCountSummaryElement.insertAdjacentElement("afterend", containerElement);
+        return;
+    }
+
+    card.headingElement.append(containerElement);
+}
+
 function createSalesSettingGroupRoomItem(label: string, value: string, tone: string): HTMLSpanElement {
     const itemElement = document.createElement("span");
     itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE, "");
+    itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, tone);
+    itemElement.textContent = `${label} ${value}`;
+    return itemElement;
+}
+
+function createSalesSettingRoomDeltaItem(label: string, value: string, tone: string): HTMLSpanElement {
+    const itemElement = document.createElement("span");
+    itemElement.setAttribute(SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE, "");
     itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, tone);
     itemElement.textContent = `${label} ${value}`;
     return itemElement;
@@ -875,7 +1071,7 @@ function formatGroupRoomMetricValue(value: number | null): string {
 }
 
 function formatGroupRoomDelta(currentValue: number | null, previousValue: number | null): string {
-    const delta = getGroupRoomDelta(currentValue, previousValue);
+    const delta = getMetricDelta(currentValue, previousValue);
     if (delta === null) {
         return "-";
     }
@@ -884,8 +1080,22 @@ function formatGroupRoomDelta(currentValue: number | null, previousValue: number
     return `${prefix}${formatGroupRoomNumber(delta)}室`;
 }
 
+function formatSalesSettingRoomDelta(currentValue: number | null, previousValue: number | null): string {
+    const delta = getMetricDelta(currentValue, previousValue);
+    if (delta === null) {
+        return "-";
+    }
+
+    const prefix = delta > 0 ? "+" : "";
+    return `${prefix}${formatGroupRoomNumber(delta)}`;
+}
+
 function getGroupRoomDeltaTone(currentValue: number | null, previousValue: number | null): string {
-    const delta = getGroupRoomDelta(currentValue, previousValue);
+    return getMetricDeltaTone(currentValue, previousValue);
+}
+
+function getMetricDeltaTone(currentValue: number | null, previousValue: number | null): string {
+    const delta = getMetricDelta(currentValue, previousValue);
     if (delta === null || delta === 0) {
         return "neutral";
     }
@@ -893,7 +1103,7 @@ function getGroupRoomDeltaTone(currentValue: number | null, previousValue: numbe
     return delta > 0 ? "positive" : "negative";
 }
 
-function getGroupRoomDelta(currentValue: number | null, previousValue: number | null): number | null {
+function getMetricDelta(currentValue: number | null, previousValue: number | null): number | null {
     if (currentValue === null || previousValue === null) {
         return null;
     }
@@ -954,6 +1164,12 @@ function cleanupMonthlyCalendarGroupRooms(): void {
 function cleanupSalesSettingGroupRooms(): void {
     for (const rowElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`))) {
         rowElement.remove();
+    }
+}
+
+function cleanupSalesSettingRoomDeltas(): void {
+    for (const deltaElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}]`))) {
+        deltaElement.remove();
     }
 }
 
@@ -1045,6 +1261,22 @@ function ensureGroupRoomStyles(): void {
             border-radius: 999px;
             background: #eef4ff;
             padding: 2px 8px;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}] {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-left: 10px;
+            vertical-align: middle;
+        }
+
+        [${SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE}] {
+            color: #50627a;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.4;
             white-space: nowrap;
         }
 
