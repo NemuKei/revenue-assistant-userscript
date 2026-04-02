@@ -3,7 +3,6 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
     : (GM_info.script?.name ?? "Revenue Assistant Userscript");
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
-const SUGGEST_OUTPUT_DETAILS_ENDPOINT = "/api/v3/suggest/output/details";
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
@@ -28,21 +27,22 @@ const GROUP_ROOM_RESULT_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}result:`;
 
 interface BookingCurvePoint {
     date: string;
+    all?: {
+        this_year_room_sum?: number;
+    };
+    transient?: {
+        this_year_room_sum?: number;
+    };
     group?: {
         this_year_room_sum?: number;
     };
 }
 
+type BookingCurveCountScope = "all" | "transient" | "group";
+
 interface BookingCurveResponse {
     stay_date: string;
     booking_curve?: BookingCurvePoint[];
-}
-
-interface SuggestOutputDetail {
-    rm_room_group_name?: string;
-    current?: {
-        landing_num_room?: number;
-    };
 }
 
 interface RoomGroup {
@@ -69,10 +69,8 @@ interface SalesSettingCard {
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
-const salesSettingDetailCache = new Map<string, Promise<Map<string, number | null>>>();
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
-const salesSettingDetailPrefetchKeys = new Set<string>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
@@ -230,17 +228,18 @@ async function logSelectedDateGroupRooms(stayDate: string): Promise<void> {
 }
 
 function fetchGroupRoomCount(stayDate: string, lookupDate: string, batchDateKey: string): Promise<number | null> {
-    return fetchScopedGroupRoomCount(stayDate, lookupDate, batchDateKey);
+    return fetchScopedBookingCurveCount(stayDate, lookupDate, batchDateKey, "group");
 }
 
-function fetchScopedGroupRoomCount(
+function fetchScopedBookingCurveCount(
     stayDate: string,
     lookupDate: string,
     batchDateKey: string,
+    countScope: BookingCurveCountScope,
     rmRoomGroupId?: string
 ): Promise<number | null> {
     const scopeKey = getGroupRoomScopeKey(rmRoomGroupId);
-    const cacheKey = `${batchDateKey}:${scopeKey}:${stayDate}:${lookupDate}`;
+    const cacheKey = `${batchDateKey}:${scopeKey}:${countScope}:${stayDate}:${lookupDate}`;
     const cached = groupRoomCache.get(cacheKey);
     if (cached !== undefined) {
         return cached;
@@ -254,13 +253,14 @@ function fetchScopedGroupRoomCount(
     }
 
     const request = getBookingCurve(stayDate, batchDateKey, rmRoomGroupId)
-        .then((data) => findGroupRoomCount(data, lookupDate))
-        .then((groupRoomCount) => {
-            writePersistedGroupRoomCount(cacheKey, groupRoomCount);
-            return groupRoomCount;
+        .then((data) => findBookingCurveCount(data, lookupDate, countScope))
+        .then((roomCount) => {
+            writePersistedGroupRoomCount(cacheKey, roomCount);
+            return roomCount;
         })
         .catch((error: unknown) => {
             console.error(`[${SCRIPT_NAME}] failed to load booking curve`, {
+                countScope,
                 rmRoomGroupId,
                 stayDate,
                 lookupDate,
@@ -328,15 +328,15 @@ async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promi
     return (await response.json()) as BookingCurveResponse;
 }
 
-function findGroupRoomCount(data: BookingCurveResponse, stayDate: string): number | null {
+function findBookingCurveCount(data: BookingCurveResponse, lookupDate: string, countScope: BookingCurveCountScope): number | null {
     let latestMatchedDate = "";
     let latestMatchedCount: number | null = null;
 
     for (const point of data.booking_curve ?? []) {
         const pointDate = point.date;
-        const count = point.group?.this_year_room_sum;
+        const count = point[countScope]?.this_year_room_sum;
 
-        if (pointDate > stayDate || typeof count !== "number") {
+        if (pointDate > lookupDate || typeof count !== "number") {
             continue;
         }
 
@@ -473,8 +473,6 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             return [] as RoomGroup[];
         });
     const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
-    const previousDay = shiftDate(analysisDate, -1);
-    const previousWeek = shiftDate(analysisDate, -7);
 
     await Promise.all(cards.map(async (card) => {
         const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
@@ -483,10 +481,12 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             return;
         }
 
+        const previousDay = shiftDate(batchDateKey, -1);
+        const previousWeek = shiftDate(batchDateKey, -7);
         const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount] = await Promise.all([
-            fetchScopedGroupRoomCount(analysisDate, analysisDate, batchDateKey, rmRoomGroupId),
-            fetchScopedGroupRoomCount(analysisDate, previousDay, batchDateKey, rmRoomGroupId),
-            fetchScopedGroupRoomCount(analysisDate, previousWeek, batchDateKey, rmRoomGroupId)
+            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", rmRoomGroupId)
         ]);
 
         if (!card.cardElement.isConnected) {
@@ -510,33 +510,37 @@ async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: st
 
     ensureGroupRoomStyles();
 
-    const previousDay = shiftDate(analysisDate, -1);
-    const previousWeek = shiftDate(analysisDate, -7);
-    const [currentMetrics, previousDayMetrics, previousWeekMetrics] = await Promise.all([
-        fetchSalesSettingDetails(analysisDate, batchDateKey),
-        fetchSalesSettingDetails(previousDay, batchDateKey),
-        fetchSalesSettingDetails(previousWeek, batchDateKey)
-    ]).catch((error: unknown) => {
-        console.error(`[${SCRIPT_NAME}] failed to load sales-setting room deltas`, {
-            analysisDate,
-            batchDateKey,
-            error
+    const roomGroups = await getRoomGroups()
+        .catch((error: unknown) => {
+            console.error(`[${SCRIPT_NAME}] failed to load room groups`, {
+                error
+            });
+            return [] as RoomGroup[];
         });
+    const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
 
-        return [new Map(), new Map(), new Map()] as [Map<string, number | null>, Map<string, number | null>, Map<string, number | null>];
-    });
+    const previousDay = shiftDate(batchDateKey, -1);
+    const previousWeek = shiftDate(batchDateKey, -7);
 
-    for (const card of cards) {
-        const currentValue = currentMetrics.get(card.roomGroupName) ?? null;
-        const previousDayValue = previousDayMetrics.get(card.roomGroupName) ?? null;
-        const previousWeekValue = previousWeekMetrics.get(card.roomGroupName) ?? null;
+    await Promise.all(cards.map(async (card) => {
+        const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
+        if (rmRoomGroupId === undefined) {
+            card.headingElement.querySelector<HTMLElement>(`[${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}]`)?.remove();
+            return;
+        }
+
+        const [currentValue, previousDayValue, previousWeekValue] = await Promise.all([
+            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "all", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "all", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", rmRoomGroupId)
+        ]);
 
         if (!card.cardElement.isConnected) {
-            continue;
+            return;
         }
 
         renderSalesSettingRoomDelta(card, currentValue, previousDayValue, previousWeekValue);
-    }
+    }));
 }
 
 function collectMonthlyCalendarCells(): MonthlyCalendarCell[] {
@@ -606,59 +610,6 @@ function shiftDate(date: string, offsetDays: number): string {
     return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
 }
 
-function fetchSalesSettingDetails(date: string, batchDateKey: string): Promise<Map<string, number | null>> {
-    const cacheKey = `${batchDateKey}:${date}`;
-    const cached = salesSettingDetailCache.get(cacheKey);
-    if (cached !== undefined) {
-        return cached;
-    }
-
-    const request = loadSalesSettingDetails(date)
-        .catch((error: unknown) => {
-            salesSettingDetailCache.delete(cacheKey);
-            throw error;
-        });
-
-    salesSettingDetailCache.set(cacheKey, request);
-    return request;
-}
-
-async function loadSalesSettingDetails(date: string): Promise<Map<string, number | null>> {
-    const url = new URL(SUGGEST_OUTPUT_DETAILS_ENDPOINT, window.location.origin);
-    url.searchParams.set("from", date);
-    url.searchParams.set("to", date);
-
-    const response = await fetch(url.toString(), {
-        credentials: "include",
-        headers: {
-            "X-Requested-With": "XMLHttpRequest"
-        }
-    });
-
-    if (!response.ok) {
-        throw new Error(`suggest output details request failed: ${response.status}`);
-    }
-
-    const details = (await response.json()) as SuggestOutputDetail[];
-    const metricByRoomGroupName = new Map<string, number | null>();
-
-    for (const detail of details) {
-        const roomGroupName = detail.rm_room_group_name?.trim();
-        if (roomGroupName === undefined || roomGroupName === "") {
-            continue;
-        }
-
-        metricByRoomGroupName.set(
-            roomGroupName,
-            typeof detail.current?.landing_num_room === "number"
-                ? detail.current.landing_num_room
-                : null
-        );
-    }
-
-    return metricByRoomGroupName;
-}
-
 function getRoomGroups(): Promise<RoomGroup[]> {
     if (roomGroupListPromise !== null) {
         return roomGroupListPromise;
@@ -698,13 +649,13 @@ function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: stri
 
     salesSettingPrefetchKeys.add(prefetchKey);
 
-    const previousDay = shiftDate(analysisDate, -1);
-    const previousWeek = shiftDate(analysisDate, -7);
+    const previousDay = shiftDate(batchDateKey, -1);
+    const previousWeek = shiftDate(batchDateKey, -7);
     void getRoomGroups()
         .then((roomGroups) => Promise.all(roomGroups.flatMap((roomGroup) => [
-            fetchScopedGroupRoomCount(analysisDate, analysisDate, batchDateKey, roomGroup.id),
-            fetchScopedGroupRoomCount(analysisDate, previousDay, batchDateKey, roomGroup.id),
-            fetchScopedGroupRoomCount(analysisDate, previousWeek, batchDateKey, roomGroup.id)
+            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", roomGroup.id),
+            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", roomGroup.id),
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", roomGroup.id)
         ])))
         .catch((error: unknown) => {
             salesSettingPrefetchKeys.delete(prefetchKey);
@@ -718,26 +669,28 @@ function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: stri
 
 function prefetchSalesSettingRoomDeltas(analysisDate: string, batchDateKey: string): void {
     const prefetchKey = `${batchDateKey}:${analysisDate}`;
-    if (salesSettingDetailPrefetchKeys.has(prefetchKey)) {
+    if (salesSettingPrefetchKeys.has(`${prefetchKey}:room-delta`)) {
         return;
     }
 
-    salesSettingDetailPrefetchKeys.add(prefetchKey);
+    salesSettingPrefetchKeys.add(`${prefetchKey}:room-delta`);
 
-    const previousDay = shiftDate(analysisDate, -1);
-    const previousWeek = shiftDate(analysisDate, -7);
-    void Promise.all([
-        fetchSalesSettingDetails(analysisDate, batchDateKey),
-        fetchSalesSettingDetails(previousDay, batchDateKey),
-        fetchSalesSettingDetails(previousWeek, batchDateKey)
-    ]).catch((error: unknown) => {
-        salesSettingDetailPrefetchKeys.delete(prefetchKey);
-        console.warn(`[${SCRIPT_NAME}] failed to prefetch sales-setting room deltas`, {
-            analysisDate,
-            batchDateKey,
-            error
+    const previousDay = shiftDate(batchDateKey, -1);
+    const previousWeek = shiftDate(batchDateKey, -7);
+    void getRoomGroups()
+        .then((roomGroups) => Promise.all(roomGroups.flatMap((roomGroup) => [
+            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "all", roomGroup.id),
+            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "all", roomGroup.id),
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", roomGroup.id)
+        ])))
+        .catch((error: unknown) => {
+            salesSettingPrefetchKeys.delete(`${prefetchKey}:room-delta`);
+            console.warn(`[${SCRIPT_NAME}] failed to prefetch sales-setting room deltas`, {
+                analysisDate,
+                batchDateKey,
+                error
+            });
         });
-    });
 }
 
 function getCurrentBatchDateKey(): string {
@@ -768,10 +721,8 @@ function syncCacheBatch(batchDateKey: string): void {
 
     activeBatchDateKey = batchDateKey;
     salesSettingPrefetchKeys.clear();
-    salesSettingDetailPrefetchKeys.clear();
     groupRoomCache.clear();
     bookingCurveCache.clear();
-    salesSettingDetailCache.clear();
     resetPersistedGroupRoomCache(batchDateKey);
 }
 
