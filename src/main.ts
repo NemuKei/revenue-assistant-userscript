@@ -109,8 +109,15 @@ function installInteractionHooks(): void {
 
                 if (!nextVisible) {
                     cleanupMonthlyCalendarGroupRooms();
+                    clearInteractionSyncTimeouts();
+                    calendarSyncQueued = false;
+                    return;
                 }
 
+                const batchDateKey = getCurrentBatchDateKey();
+                const referenceDate = activeAnalyzeDate ?? batchDateKey;
+                syncCacheBatch(batchDateKey);
+                renderCachedMonthlyCalendarGroupRooms(referenceDate, batchDateKey);
                 queueCalendarSync();
                 return;
             }
@@ -386,6 +393,8 @@ async function syncMonthlyCalendarGroupRooms(referenceDate: string, batchDateKey
         return;
     }
 
+    renderCachedMonthlyCalendarGroupRooms(referenceDate, batchDateKey, cells);
+
     await Promise.all(cells.map(async (cell) => {
         const lookupDate = getLookupDate(cell.stayDate, referenceDate);
         const groupRoomCount = await fetchGroupRoomCount(cell.stayDate, lookupDate, batchDateKey);
@@ -396,6 +405,36 @@ async function syncMonthlyCalendarGroupRooms(referenceDate: string, batchDateKey
 
         renderGroupRoomCount(cell, groupRoomCount);
     }));
+}
+
+function renderCachedMonthlyCalendarGroupRooms(
+    referenceDate: string,
+    batchDateKey: string,
+    cells: MonthlyCalendarCell[] = collectMonthlyCalendarCells()
+): void {
+    if (cells.length === 0 || !isGroupRoomCalendarVisible()) {
+        return;
+    }
+
+    for (const cell of cells) {
+        const lookupDate = getLookupDate(cell.stayDate, referenceDate);
+        const cacheKey = getGroupRoomResultCacheKey(batchDateKey, cell.stayDate, lookupDate);
+        const persisted = readPersistedGroupRoomCount(cacheKey);
+
+        if (persisted !== undefined) {
+            renderGroupRoomCount(cell, persisted);
+            continue;
+        }
+
+        const inMemory = groupRoomCache.get(cacheKey);
+        if (inMemory !== undefined) {
+            void inMemory.then((groupRoomCount) => {
+                if (cell.anchorElement.isConnected) {
+                    renderGroupRoomCount(cell, groupRoomCount);
+                }
+            });
+        }
+    }
 }
 
 async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: string): Promise<void> {
@@ -626,6 +665,10 @@ function resetPersistedGroupRoomCache(batchDateKey: string): void {
             error
         });
     }
+}
+
+function getGroupRoomResultCacheKey(batchDateKey: string, stayDate: string, lookupDate: string, rmRoomGroupId?: string): string {
+    return `${batchDateKey}:${getGroupRoomScopeKey(rmRoomGroupId)}:${stayDate}:${lookupDate}`;
 }
 
 function readPersistedGroupRoomCount(cacheKey: string): number | null | undefined {
