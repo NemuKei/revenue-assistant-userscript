@@ -481,11 +481,12 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             return;
         }
 
-        const { previousDay, previousWeek } = getRevenueAssistantComparisonDates(batchDateKey);
-        const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount] = await Promise.all([
+        const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
+        const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount, previousMonthGroupRoomCount] = await Promise.all([
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", rmRoomGroupId),
             fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", rmRoomGroupId),
-            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", rmRoomGroupId)
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group", rmRoomGroupId)
         ]);
 
         if (!card.cardElement.isConnected) {
@@ -496,7 +497,8 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             card,
             currentGroupRoomCount,
             previousDayGroupRoomCount,
-            previousWeekGroupRoomCount
+            previousWeekGroupRoomCount,
+            previousMonthGroupRoomCount
         );
     }));
 }
@@ -517,7 +519,7 @@ async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: st
             return [] as RoomGroup[];
         });
     const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
-    const { previousDay, previousWeek } = getRevenueAssistantComparisonDates(batchDateKey);
+    const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
 
     await Promise.all(cards.map(async (card) => {
         const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
@@ -526,17 +528,18 @@ async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: st
             return;
         }
 
-        const [currentValue, previousDayValue, previousWeekValue] = await Promise.all([
+        const [currentValue, previousDayValue, previousWeekValue, previousMonthValue] = await Promise.all([
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "all", rmRoomGroupId),
             fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "all", rmRoomGroupId),
-            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", rmRoomGroupId)
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "all", rmRoomGroupId)
         ]);
 
         if (!card.cardElement.isConnected) {
             return;
         }
 
-        renderSalesSettingRoomDelta(card, currentValue, previousDayValue, previousWeekValue);
+        renderSalesSettingRoomDelta(card, currentValue, previousDayValue, previousWeekValue, previousMonthValue);
     }));
 }
 
@@ -607,10 +610,11 @@ function shiftDate(date: string, offsetDays: number): string {
     return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
 }
 
-function getRevenueAssistantComparisonDates(batchDateKey: string): { previousDay: string; previousWeek: string } {
+function getRevenueAssistantComparisonDates(batchDateKey: string): { previousDay: string; previousWeek: string; previousMonth: string } {
     return {
         previousDay: shiftDate(batchDateKey, -2),
-        previousWeek: shiftDate(batchDateKey, -8)
+        previousWeek: shiftDate(batchDateKey, -8),
+        previousMonth: shiftDate(batchDateKey, -31)
     };
 }
 
@@ -653,12 +657,13 @@ function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: stri
 
     salesSettingPrefetchKeys.add(prefetchKey);
 
-    const { previousDay, previousWeek } = getRevenueAssistantComparisonDates(batchDateKey);
+    const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
     void getRoomGroups()
         .then((roomGroups) => Promise.all(roomGroups.flatMap((roomGroup) => [
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", roomGroup.id),
             fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", roomGroup.id),
-            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", roomGroup.id)
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", roomGroup.id),
+            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group", roomGroup.id)
         ])))
         .catch((error: unknown) => {
             salesSettingPrefetchKeys.delete(prefetchKey);
@@ -678,12 +683,13 @@ function prefetchSalesSettingRoomDeltas(analysisDate: string, batchDateKey: stri
 
     salesSettingPrefetchKeys.add(`${prefetchKey}:room-delta`);
 
-    const { previousDay, previousWeek } = getRevenueAssistantComparisonDates(batchDateKey);
+    const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
     void getRoomGroups()
         .then((roomGroups) => Promise.all(roomGroups.flatMap((roomGroup) => [
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "all", roomGroup.id),
             fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "all", roomGroup.id),
-            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", roomGroup.id)
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", roomGroup.id),
+            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "all", roomGroup.id)
         ])))
         .catch((error: unknown) => {
             salesSettingPrefetchKeys.delete(`${prefetchKey}:room-delta`);
@@ -911,7 +917,8 @@ function renderSalesSettingGroupRoom(
     card: SalesSettingCard,
     currentGroupRoomCount: number | null,
     previousDayGroupRoomCount: number | null,
-    previousWeekGroupRoomCount: number | null
+    previousWeekGroupRoomCount: number | null,
+    previousMonthGroupRoomCount: number | null
 ): void {
     const existingRow = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`);
 
@@ -919,6 +926,7 @@ function renderSalesSettingGroupRoom(
         currentGroupRoomCount === null
         && previousDayGroupRoomCount === null
         && previousWeekGroupRoomCount === null
+        && previousMonthGroupRoomCount === null
     ) {
         existingRow?.remove();
         return;
@@ -937,6 +945,11 @@ function renderSalesSettingGroupRoom(
             "7日前差分",
             formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
             getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount)
+        ),
+        createSalesSettingGroupRoomItem(
+            "30日前差分",
+            formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
+            getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
         )
     );
 
@@ -956,11 +969,12 @@ function renderSalesSettingRoomDelta(
     card: SalesSettingCard,
     currentValue: number | null,
     previousDayValue: number | null,
-    previousWeekValue: number | null
+    previousWeekValue: number | null,
+    previousMonthValue: number | null
 ): void {
     const existingContainer = card.headingElement.querySelector<HTMLElement>(`[${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}]`);
 
-    if (currentValue === null && previousDayValue === null && previousWeekValue === null) {
+    if (currentValue === null && previousDayValue === null && previousWeekValue === null && previousMonthValue === null) {
         existingContainer?.remove();
         return;
     }
@@ -973,6 +987,10 @@ function renderSalesSettingRoomDelta(
         label: "7日前",
         value: formatSalesSettingRoomDelta(currentValue, previousWeekValue),
         tone: getMetricDeltaTone(currentValue, previousWeekValue)
+    }, {
+        label: "30日前",
+        value: formatSalesSettingRoomDelta(currentValue, previousMonthValue),
+        tone: getMetricDeltaTone(currentValue, previousMonthValue)
     }];
     const signature = items.map((item) => `${item.label}:${item.value}:${item.tone}`).join("|");
 
@@ -1220,8 +1238,10 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}] {
             display: inline-flex;
             flex-wrap: wrap;
-            gap: 8px;
+            column-gap: 8px;
+            row-gap: 2px;
             margin-left: 10px;
+            max-width: 100%;
             vertical-align: middle;
         }
 
