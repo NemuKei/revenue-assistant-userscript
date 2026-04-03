@@ -481,8 +481,7 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             return;
         }
 
-        const previousDay = shiftDate(batchDateKey, -1);
-        const previousWeek = shiftDate(batchDateKey, -7);
+        const { previousDay, previousWeek } = getRevenueAssistantComparisonDates(batchDateKey);
         const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount] = await Promise.all([
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", rmRoomGroupId),
             fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", rmRoomGroupId),
@@ -518,9 +517,7 @@ async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: st
             return [] as RoomGroup[];
         });
     const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
-
-    const previousDay = shiftDate(batchDateKey, -1);
-    const previousWeek = shiftDate(batchDateKey, -7);
+    const { previousDay, previousWeek } = getRevenueAssistantComparisonDates(batchDateKey);
 
     await Promise.all(cards.map(async (card) => {
         const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
@@ -610,6 +607,13 @@ function shiftDate(date: string, offsetDays: number): string {
     return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
 }
 
+function getRevenueAssistantComparisonDates(batchDateKey: string): { previousDay: string; previousWeek: string } {
+    return {
+        previousDay: shiftDate(batchDateKey, -2),
+        previousWeek: shiftDate(batchDateKey, -8)
+    };
+}
+
 function getRoomGroups(): Promise<RoomGroup[]> {
     if (roomGroupListPromise !== null) {
         return roomGroupListPromise;
@@ -649,8 +653,7 @@ function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: stri
 
     salesSettingPrefetchKeys.add(prefetchKey);
 
-    const previousDay = shiftDate(batchDateKey, -1);
-    const previousWeek = shiftDate(batchDateKey, -7);
+    const { previousDay, previousWeek } = getRevenueAssistantComparisonDates(batchDateKey);
     void getRoomGroups()
         .then((roomGroups) => Promise.all(roomGroups.flatMap((roomGroup) => [
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", roomGroup.id),
@@ -675,8 +678,7 @@ function prefetchSalesSettingRoomDeltas(analysisDate: string, batchDateKey: stri
 
     salesSettingPrefetchKeys.add(`${prefetchKey}:room-delta`);
 
-    const previousDay = shiftDate(batchDateKey, -1);
-    const previousWeek = shiftDate(batchDateKey, -7);
+    const { previousDay, previousWeek } = getRevenueAssistantComparisonDates(batchDateKey);
     void getRoomGroups()
         .then((roomGroups) => Promise.all(roomGroups.flatMap((roomGroup) => [
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "all", roomGroup.id),
