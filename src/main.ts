@@ -30,6 +30,8 @@ const GROUP_ROOM_STORAGE_BATCH_KEY = `${GROUP_ROOM_STORAGE_PREFIX}batch-date`;
 const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
 const BOOKING_CURVE_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}booking-curve:`;
 const GROUP_ROOM_RESULT_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}result:`;
+const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
+const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
 
 interface BookingCurvePoint {
     date: string;
@@ -78,6 +80,12 @@ interface SalesSettingRoomCapacity {
     maxValue: number;
 }
 
+interface SyncContext {
+    version: number;
+    analysisDate: string | null;
+    batchDateKey: string;
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const interactionSyncTimeoutIds: number[] = [];
@@ -88,6 +96,10 @@ let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
 let calendarObserver: MutationObserver | null = null;
 let calendarSyncQueued = false;
+let syncVersion = 0;
+let consistencyCheckTimeoutId: number | null = null;
+let consistencyCheckLastTriggeredAt = 0;
+let consistencyCheckRunVersion = 0;
 
 function boot(): void {
     console.info(`[${SCRIPT_NAME}] initialized`, {
@@ -97,7 +109,24 @@ function boot(): void {
 
     installNavigationHooks();
     installInteractionHooks();
+    installLifecycleConsistencyHooks();
     syncPage();
+}
+
+function installLifecycleConsistencyHooks(): void {
+    window.addEventListener("pageshow", () => {
+        scheduleConsistencyCheck("pageshow");
+    });
+
+    window.addEventListener("focus", () => {
+        scheduleConsistencyCheck("focus");
+    });
+
+    document.addEventListener("visibilitychange", () => {
+        if (document.visibilityState === "visible") {
+            scheduleConsistencyCheck("visibility");
+        }
+    });
 }
 
 function installNavigationHooks(): void {
@@ -139,9 +168,8 @@ function installInteractionHooks(): void {
                 }
 
                 const batchDateKey = getCurrentBatchDateKey();
-                const referenceDate = activeAnalyzeDate ?? batchDateKey;
                 syncCacheBatch(batchDateKey);
-                renderCachedMonthlyCalendarGroupRooms(referenceDate, batchDateKey);
+                renderCachedMonthlyCalendarGroupRooms(batchDateKey);
                 queueCalendarSync();
                 return;
             }
@@ -190,6 +218,7 @@ function syncPage(): void {
 
     if (selectedDate === null) {
         clearInteractionSyncTimeouts();
+        clearConsistencyCheckTimeout();
 
         if (nextHref !== activeHref) {
             activeHref = nextHref;
@@ -206,7 +235,150 @@ function syncPage(): void {
     }
 
     activeHref = nextHref;
+    scheduleConsistencyCheck("route");
     void logSelectedDateGroupRooms(selectedDate);
+}
+
+function scheduleConsistencyCheck(reason: string): void {
+    if (activeAnalyzeDate === null) {
+        return;
+    }
+
+    const now = Date.now();
+    if (
+        (reason === "focus" || reason === "visibility")
+        && now - consistencyCheckLastTriggeredAt < CONSISTENCY_CHECK_MIN_INTERVAL_MS
+    ) {
+        return;
+    }
+
+    consistencyCheckLastTriggeredAt = now;
+    clearConsistencyCheckTimeout();
+    consistencyCheckTimeoutId = window.setTimeout(() => {
+        consistencyCheckTimeoutId = null;
+        void verifyAnalyzePageConsistency(reason);
+    }, CONSISTENCY_CHECK_DEBOUNCE_MS);
+}
+
+function clearConsistencyCheckTimeout(): void {
+    if (consistencyCheckTimeoutId !== null) {
+        window.clearTimeout(consistencyCheckTimeoutId);
+        consistencyCheckTimeoutId = null;
+    }
+}
+
+async function verifyAnalyzePageConsistency(reason: string): Promise<void> {
+    const analysisDate = activeAnalyzeDate;
+    if (analysisDate === null) {
+        return;
+    }
+
+    const batchDateKey = getCurrentBatchDateKey();
+    const runVersion = ++consistencyCheckRunVersion;
+    const isStale = (): boolean => {
+        return runVersion !== consistencyCheckRunVersion
+            || activeAnalyzeDate !== analysisDate;
+    };
+
+    const freshOverallData = await loadBookingCurve(analysisDate)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] consistency check skipped: failed to load overall booking curve`, {
+                analysisDate,
+                batchDateKey,
+                reason,
+                error
+            });
+            return null;
+        });
+    if (freshOverallData === null || isStale()) {
+        return;
+    }
+
+    const cachedSelectedGroup = await fetchGroupRoomCount(analysisDate, analysisDate, batchDateKey);
+    if (isStale()) {
+        return;
+    }
+
+    const freshSelectedGroup = findBookingCurveCount(freshOverallData, analysisDate, "group");
+    const freshCurrentOverallGroup = findBookingCurveCount(freshOverallData, batchDateKey, "group");
+    const cachedCurrentOverallGroup = await fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group");
+    if (isStale()) {
+        return;
+    }
+
+    let shouldInvalidate = !isSameMetricValue(cachedSelectedGroup, freshSelectedGroup)
+        || !isSameMetricValue(cachedCurrentOverallGroup, freshCurrentOverallGroup);
+
+    const cards = collectSalesSettingCards();
+    if (!shouldInvalidate && cards.length > 0) {
+        const roomGroups = await getRoomGroups()
+            .catch((error: unknown) => {
+                console.warn(`[${SCRIPT_NAME}] consistency check skipped: failed to load room groups`, {
+                    analysisDate,
+                    batchDateKey,
+                    reason,
+                    error
+                });
+                return [] as RoomGroup[];
+            });
+        if (isStale()) {
+            return;
+        }
+
+        const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
+        const roomGroupChecks = await Promise.all(cards.map(async (card) => {
+            const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
+            if (rmRoomGroupId === undefined) {
+                return {
+                    roomGroupName: card.roomGroupName,
+                    freshCurrentValue: null,
+                    cachedCurrentValue: null
+                };
+            }
+
+            const [freshData, cachedCurrentValue] = await Promise.all([
+                loadBookingCurve(analysisDate, rmRoomGroupId),
+                fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", rmRoomGroupId)
+            ]);
+            const freshCurrentValue = findBookingCurveCount(freshData, batchDateKey, "group");
+
+            return {
+                roomGroupName: card.roomGroupName,
+                freshCurrentValue,
+                cachedCurrentValue
+            };
+        }));
+        if (isStale()) {
+            return;
+        }
+
+        shouldInvalidate = roomGroupChecks.some((check) => !isSameMetricValue(check.freshCurrentValue, check.cachedCurrentValue));
+        if (!shouldInvalidate && freshCurrentOverallGroup !== null) {
+            shouldInvalidate = roomGroupChecks.some((check) => {
+                return check.freshCurrentValue !== null && check.freshCurrentValue > freshCurrentOverallGroup;
+            });
+        }
+    }
+
+    if (!shouldInvalidate) {
+        return;
+    }
+
+    console.warn(`[${SCRIPT_NAME}] consistency check invalidated cache`, {
+        analysisDate,
+        batchDateKey,
+        reason,
+        cachedSelectedGroup,
+        freshSelectedGroup,
+        cachedCurrentOverallGroup,
+        freshCurrentOverallGroup
+    });
+    invalidateGroupRoomCaches(batchDateKey);
+    queueCalendarSync();
+}
+
+function isSameMetricValue(left: number | null, right: number | null): boolean {
+    return left === right;
 }
 
 function getAnalyzeDate(pathname: string): string | null {
@@ -386,8 +558,8 @@ function queueCalendarSync(): void {
     window.requestAnimationFrame(() => {
         calendarSyncQueued = false;
         const batchDateKey = getCurrentBatchDateKey();
-        const referenceDate = activeAnalyzeDate ?? batchDateKey;
         syncCacheBatch(batchDateKey);
+        const syncContext = createSyncContext(batchDateKey);
 
         if (activeAnalyzeDate !== null) {
             prefetchSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey);
@@ -399,21 +571,37 @@ function queueCalendarSync(): void {
         }
 
         void Promise.all([
-            syncMonthlyCalendarGroupRooms(referenceDate, batchDateKey),
+            syncMonthlyCalendarGroupRooms(batchDateKey),
             activeAnalyzeDate === null
                 ? Promise.resolve()
-                : syncSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey),
+                : syncSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey, syncContext),
             activeAnalyzeDate === null
                 ? Promise.resolve()
-                : syncSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey),
+                : syncSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey, syncContext),
             activeAnalyzeDate === null
                 ? Promise.resolve()
-                : syncSalesSettingOverallSummary(activeAnalyzeDate, batchDateKey)
+                : syncSalesSettingOverallSummary(activeAnalyzeDate, batchDateKey, syncContext)
         ]);
     });
 }
 
-async function syncMonthlyCalendarGroupRooms(referenceDate: string, batchDateKey: string): Promise<void> {
+function createSyncContext(batchDateKey: string): SyncContext {
+    syncVersion += 1;
+
+    return {
+        version: syncVersion,
+        analysisDate: activeAnalyzeDate,
+        batchDateKey
+    };
+}
+
+function isSyncContextStale(syncContext: SyncContext): boolean {
+    return syncContext.version !== syncVersion
+        || syncContext.analysisDate !== activeAnalyzeDate
+        || syncContext.batchDateKey !== activeBatchDateKey;
+}
+
+async function syncMonthlyCalendarGroupRooms(batchDateKey: string): Promise<void> {
     const cells = collectMonthlyCalendarCells();
     ensureGroupRoomStyles();
     ensureGroupRoomToggle(cells.length > 0);
@@ -428,7 +616,7 @@ async function syncMonthlyCalendarGroupRooms(referenceDate: string, batchDateKey
         return;
     }
 
-    renderCachedMonthlyCalendarGroupRooms(referenceDate, batchDateKey, cells);
+    renderCachedMonthlyCalendarGroupRooms(batchDateKey, cells);
 
     await Promise.all(cells.map(async (cell) => {
         const lookupDate = getLookupDate(cell.stayDate);
@@ -443,7 +631,6 @@ async function syncMonthlyCalendarGroupRooms(referenceDate: string, batchDateKey
 }
 
 function renderCachedMonthlyCalendarGroupRooms(
-    referenceDate: string,
     batchDateKey: string,
     cells: MonthlyCalendarCell[] = collectMonthlyCalendarCells()
 ): void {
@@ -472,7 +659,7 @@ function renderCachedMonthlyCalendarGroupRooms(
     }
 }
 
-async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: string): Promise<void> {
+async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: string, syncContext: SyncContext): Promise<void> {
     const cards = collectSalesSettingCards();
     if (cards.length === 0) {
         return;
@@ -487,16 +674,31 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             });
             return [] as RoomGroup[];
         });
-    const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
 
-    await Promise.all(cards.map(async (card) => {
+    const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
+    const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
+    const currentOverallGroupRoomCount = await fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group");
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
+
+    const metrics = await Promise.all(cards.map(async (card) => {
         const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
         if (rmRoomGroupId === undefined) {
-            clearSalesSettingGroupRoom(card);
-            return;
+            return {
+                card,
+                roomGroupName: card.roomGroupName,
+                currentGroupRoomCount: null,
+                previousDayGroupRoomCount: null,
+                previousWeekGroupRoomCount: null,
+                previousMonthGroupRoomCount: null,
+                missingRoomGroup: true
+            };
         }
 
-        const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
         const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount, previousMonthGroupRoomCount] = await Promise.all([
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", rmRoomGroupId),
             fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", rmRoomGroupId),
@@ -504,21 +706,60 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group", rmRoomGroupId)
         ]);
 
-        if (!card.cardElement.isConnected) {
-            return;
-        }
-
-        renderSalesSettingGroupRoom(
+        return {
             card,
+            roomGroupName: card.roomGroupName,
             currentGroupRoomCount,
             previousDayGroupRoomCount,
             previousWeekGroupRoomCount,
-            previousMonthGroupRoomCount
-        );
+            previousMonthGroupRoomCount,
+            missingRoomGroup: false
+        };
     }));
+
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
+
+    const inconsistentRoomGroupNames = getInconsistentSalesSettingGroupNames(
+        metrics.map((metric) => ({
+            roomGroupName: metric.roomGroupName,
+            currentValue: metric.currentGroupRoomCount
+        })),
+        currentOverallGroupRoomCount
+    );
+    if (inconsistentRoomGroupNames.length > 0) {
+        console.warn(`[${SCRIPT_NAME}] inconsistent sales-setting group counts`, {
+            analysisDate,
+            batchDateKey,
+            currentOverallGroupRoomCount,
+            inconsistentRoomGroupNames
+        });
+        cleanupSalesSettingGroupRooms();
+        return;
+    }
+
+    for (const metric of metrics) {
+        if (metric.missingRoomGroup) {
+            clearSalesSettingGroupRoom(metric.card);
+            continue;
+        }
+
+        if (!metric.card.cardElement.isConnected) {
+            continue;
+        }
+
+        renderSalesSettingGroupRoom(
+            metric.card,
+            metric.currentGroupRoomCount,
+            metric.previousDayGroupRoomCount,
+            metric.previousWeekGroupRoomCount,
+            metric.previousMonthGroupRoomCount
+        );
+    }
 }
 
-async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: string): Promise<void> {
+async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: string, syncContext: SyncContext): Promise<void> {
     const cards = collectSalesSettingCards();
     if (cards.length === 0) {
         return;
@@ -533,6 +774,10 @@ async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: st
             });
             return [] as RoomGroup[];
         });
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
+
     const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
     const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
 
@@ -550,6 +795,10 @@ async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: st
             fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "all", rmRoomGroupId)
         ]);
 
+        if (isSyncContextStale(syncContext)) {
+            return;
+        }
+
         if (!card.cardElement.isConnected) {
             return;
         }
@@ -558,7 +807,7 @@ async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: st
     }));
 }
 
-async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey: string): Promise<void> {
+async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey: string, syncContext: SyncContext): Promise<void> {
     const cards = collectSalesSettingCards();
     if (cards.length === 0) {
         cleanupSalesSettingOverallSummary();
@@ -575,6 +824,10 @@ async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey
             });
             return [] as RoomGroup[];
         });
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
+
     const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
     const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
 
@@ -603,6 +856,28 @@ async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey
             previousMonthValue
         };
     }));
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
+
+    const currentRoomGroupMetrics = await Promise.all(cards.map(async (card) => {
+        const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
+        if (rmRoomGroupId === undefined) {
+            return {
+                roomGroupName: card.roomGroupName,
+                currentValue: null
+            };
+        }
+
+        const currentValue = await fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", rmRoomGroupId);
+        return {
+            roomGroupName: card.roomGroupName,
+            currentValue
+        };
+    }));
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
 
     const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount, previousMonthGroupRoomCount] = await Promise.all([
         fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group"),
@@ -610,10 +885,23 @@ async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey
         fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group"),
         fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group")
     ]);
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
 
     const firstCard = cards[0];
     if (firstCard === undefined || !firstCard.cardElement.isConnected) {
         return;
+    }
+
+    const showGroupMetrics = getInconsistentSalesSettingGroupNames(currentRoomGroupMetrics, currentGroupRoomCount).length === 0;
+    if (!showGroupMetrics) {
+        console.warn(`[${SCRIPT_NAME}] skipped overall group summary because room-group counts were inconsistent`, {
+            analysisDate,
+            batchDateKey,
+            currentGroupRoomCount,
+            currentRoomGroupMetrics
+        });
     }
 
     renderSalesSettingOverallSummary(
@@ -626,7 +914,8 @@ async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey
         currentGroupRoomCount,
         previousDayGroupRoomCount,
         previousWeekGroupRoomCount,
-        previousMonthGroupRoomCount
+        previousMonthGroupRoomCount,
+        showGroupMetrics
     );
 }
 
@@ -862,6 +1151,38 @@ function resetPersistedGroupRoomCache(batchDateKey: string): void {
     }
 }
 
+function invalidateGroupRoomCaches(batchDateKey: string): void {
+    salesSettingPrefetchKeys.clear();
+    groupRoomCache.clear();
+    bookingCurveCache.clear();
+
+    try {
+        const keysToRemove: string[] = [];
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+            const key = window.localStorage.key(index);
+            if (
+                key !== null
+                && key.startsWith(GROUP_ROOM_STORAGE_PREFIX)
+                && key !== GROUP_ROOM_STORAGE_BATCH_KEY
+                && key !== GROUP_ROOM_VISIBILITY_STORAGE_KEY
+            ) {
+                keysToRemove.push(key);
+            }
+        }
+
+        for (const key of keysToRemove) {
+            window.localStorage.removeItem(key);
+        }
+
+        window.localStorage.setItem(GROUP_ROOM_STORAGE_BATCH_KEY, batchDateKey);
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to invalidate group-room cache`, {
+            batchDateKey,
+            error
+        });
+    }
+}
+
 function getGroupRoomResultCacheKey(batchDateKey: string, stayDate: string, lookupDate: string, rmRoomGroupId?: string): string {
     return `${batchDateKey}:${getGroupRoomScopeKey(rmRoomGroupId)}:${stayDate}:${lookupDate}`;
 }
@@ -1012,6 +1333,19 @@ function cleanupSalesSettingOverallSummary(): void {
     document.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`)?.remove();
 }
 
+function getInconsistentSalesSettingGroupNames(
+    metrics: Array<{ roomGroupName: string; currentValue: number | null }>,
+    overallCurrentValue: number | null
+): string[] {
+    if (overallCurrentValue === null) {
+        return [];
+    }
+
+    return metrics
+        .filter((metric) => metric.currentValue !== null && metric.currentValue > overallCurrentValue)
+        .map((metric) => metric.roomGroupName);
+}
+
 function renderSalesSettingOverallSummary(
     firstCard: SalesSettingCard,
     totalCapacity: SalesSettingRoomCapacity | null,
@@ -1022,7 +1356,8 @@ function renderSalesSettingOverallSummary(
     currentGroupRoomCount: number | null,
     previousDayGroupRoomCount: number | null,
     previousWeekGroupRoomCount: number | null,
-    previousMonthGroupRoomCount: number | null
+    previousMonthGroupRoomCount: number | null,
+    showGroupMetrics = true
 ): void {
     const parentElement = firstCard.cardElement.parentElement;
     if (parentElement === null) {
@@ -1034,7 +1369,9 @@ function renderSalesSettingOverallSummary(
     const signature = [
         totalCapacity === null ? "sales:-" : `sales:${totalCapacity.currentValue}/${totalCapacity.maxValue}`,
         `room:${currentRoomValue}:${previousDayRoomValue}:${previousWeekRoomValue}:${previousMonthRoomValue}`,
-        `group:${currentGroupRoomCount}:${previousDayGroupRoomCount}:${previousWeekGroupRoomCount}:${previousMonthGroupRoomCount}`
+        showGroupMetrics
+            ? `group:${currentGroupRoomCount}:${previousDayGroupRoomCount}:${previousWeekGroupRoomCount}:${previousMonthGroupRoomCount}`
+            : "group:hidden"
     ].join("|");
 
     if (existingContainer?.getAttribute(SALES_SETTING_OVERALL_SUMMARY_SIGNATURE_ATTRIBUTE) !== signature) {
@@ -1078,28 +1415,32 @@ function renderSalesSettingOverallSummary(
 
         salesRowElement.replaceChildren(titleElement, metricElement, deltaContainerElement);
 
-        const groupRowElement = document.createElement("div");
-        groupRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
-        groupRowElement.replaceChildren(
-            createSalesSettingGroupRoomItem("団体室数", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
-            createSalesSettingGroupRoomItem(
-                "1日前差分",
-                formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
-                getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount)
-            ),
-            createSalesSettingGroupRoomItem(
-                "7日前差分",
-                formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
-                getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount)
-            ),
-            createSalesSettingGroupRoomItem(
-                "30日前差分",
-                formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
-                getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
-            )
-        );
+        if (showGroupMetrics) {
+            const groupRowElement = document.createElement("div");
+            groupRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
+            groupRowElement.replaceChildren(
+                createSalesSettingGroupRoomItem("団体室数", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
+                createSalesSettingGroupRoomItem(
+                    "1日前差分",
+                    formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
+                    getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount)
+                ),
+                createSalesSettingGroupRoomItem(
+                    "7日前差分",
+                    formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
+                    getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount)
+                ),
+                createSalesSettingGroupRoomItem(
+                    "30日前差分",
+                    formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
+                    getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
+                )
+            );
 
-        containerElement.replaceChildren(salesRowElement, groupRowElement);
+            containerElement.replaceChildren(salesRowElement, groupRowElement);
+        } else {
+            containerElement.replaceChildren(salesRowElement);
+        }
     }
 
     if (containerElement !== null && containerElement.nextElementSibling !== firstCard.cardElement) {
