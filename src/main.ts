@@ -431,7 +431,7 @@ async function syncMonthlyCalendarGroupRooms(referenceDate: string, batchDateKey
     renderCachedMonthlyCalendarGroupRooms(referenceDate, batchDateKey, cells);
 
     await Promise.all(cells.map(async (cell) => {
-        const lookupDate = getLookupDate(cell.stayDate, referenceDate);
+        const lookupDate = getLookupDate(cell.stayDate);
         const groupRoomCount = await fetchGroupRoomCount(cell.stayDate, lookupDate, batchDateKey);
 
         if (!cell.anchorElement.isConnected) {
@@ -452,7 +452,7 @@ function renderCachedMonthlyCalendarGroupRooms(
     }
 
     for (const cell of cells) {
-        const lookupDate = getLookupDate(cell.stayDate, referenceDate);
+        const lookupDate = getLookupDate(cell.stayDate);
         const cacheKey = getGroupRoomResultCacheKey(batchDateKey, cell.stayDate, lookupDate);
         const persisted = readPersistedGroupRoomCount(cacheKey);
 
@@ -683,8 +683,8 @@ function collectSalesSettingCards(): SalesSettingCard[] {
         });
 }
 
-function getLookupDate(stayDate: string, analysisDate: string): string {
-    return stayDate < analysisDate ? stayDate : analysisDate;
+function getLookupDate(stayDate: string): string {
+    return stayDate;
 }
 
 function shiftDate(date: string, offsetDays: number): string {
