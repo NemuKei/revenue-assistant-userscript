@@ -1030,6 +1030,7 @@ function renderSalesSettingOverallSummary(
     }
 
     const existingContainer = parentElement.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`);
+    const containerElement = existingContainer ?? document.createElement("section");
     const signature = [
         totalCapacity === null ? "sales:-" : `sales:${totalCapacity.currentValue}/${totalCapacity.maxValue}`,
         `room:${currentRoomValue}:${previousDayRoomValue}:${previousWeekRoomValue}:${previousMonthRoomValue}`,
@@ -1037,7 +1038,6 @@ function renderSalesSettingOverallSummary(
     ].join("|");
 
     if (existingContainer?.getAttribute(SALES_SETTING_OVERALL_SUMMARY_SIGNATURE_ATTRIBUTE) !== signature) {
-        const containerElement = existingContainer ?? document.createElement("section");
         containerElement.setAttribute(SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE, "");
         containerElement.setAttribute(SALES_SETTING_OVERALL_SUMMARY_SIGNATURE_ATTRIBUTE, signature);
 
@@ -1102,7 +1102,6 @@ function renderSalesSettingOverallSummary(
         containerElement.replaceChildren(salesRowElement, groupRowElement);
     }
 
-    const containerElement = existingContainer ?? parentElement.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`);
     if (containerElement !== null && containerElement.nextElementSibling !== firstCard.cardElement) {
         parentElement.insertBefore(containerElement, firstCard.cardElement);
     }
