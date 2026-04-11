@@ -2,133 +2,98 @@
 
 ## Purpose
 
-analyze 画面で、団体数 PoC を日次の意思決定補助へ広げる。
+analyze 日付ページで、団体室数の把握と販売設定の差分確認を 1 画面で行えるようにする。
 
-現時点の PoC は月次カレンダーへの団体室数表示までに留まるため、次段では次の 4 系統を追加候補として扱う。
+この仕様は、現在の実装済み範囲と、残っている拡張候補の境界を定義する。
 
-- 1日前増減 / 7日前増減に対する団体系表示
-- 販売設定タブでの室タイプ別差分表示
-- 販売設定タブでの室タイプ別団体系表示
-- 販売設定タブ内への競合価格表の埋め込み
+## Target Screen
 
-## Implementation Status
+- パス: `/analyze/YYYY-MM-DD`
+- 前提: レベニューアシスタントは single-page application（ページ全体を再読み込みせずに画面を書き換える方式）として再描画される
+- 要求: 初回表示だけでなく、画面内遷移、タブ切替、再描画、フォーカス復帰でも表示が壊れないこと
 
-- 販売設定タブの室タイプ別 1日前差分 / 7日前差分 / 30日前差分は実装済み
-- 販売設定タブの室タイプ別団体室数と 1日前差分 / 7日前差分 / 30日前差分は実装済み
-- 販売設定タブ最上段の全体サマリーは実装済み
-- 全体サマリーは 2 行構成で、1 行目は全体の `販売室数 : current / max`、2 行目は全体の団体室数と差分を表示する
-- 全体の `販売室数 : current / max` は、販売設定タブに描画済みの室タイプ別表示を合算して生成する
-- 販売設定タブの販売室数差分は、現状 `/api/v4/booking_curve` の `all.this_year_room_sum` を室タイプ別に引いて計算している
-
-## Current Findings
+## Data Sources
 
 ### Calendar / Group Data
 
-- `/api/v4/booking_curve?date=YYYYMMDD` で、stay_date 単位の booking curve が取れる
-- `booking_curve[].group.this_year_room_sum` でホテル全体の団体室数が取れる
-- 当日点が `null` の stay_date があるため、表示時は `date <= stay_date` の最新非 null 値へフォールバックが必要
-- `/api/v4/booking_curve?date=YYYYMMDD&rm_room_group_id=<id>` で、室タイプ別の booking curve が同じ schema で取れる
-- 室タイプ切替は `setCurrentRmRoomGroupId` と同時に上記 endpoint を再取得しており、`booking_curve[].group.this_year_room_sum` から室タイプ別の団体室数も取得できる
-- `/api/v1/booking_curve/rm_room_groups` で室タイプ一覧と `rm_room_group_id` が取れるため、室タイプ別団体系は既存 API の組み合わせで実装可能
+- `/api/v4/booking_curve?date=YYYYMMDD`
+  - ホテル全体の booking curve を取得する
+  - `booking_curve[].group.this_year_room_sum` からホテル全体の団体室数を取る
+- `/api/v4/booking_curve?date=YYYYMMDD&rm_room_group_id=<id>`
+  - 室タイプ別の booking curve を取得する
+  - `booking_curve[].group.this_year_room_sum` から室タイプ別の団体室数を取る
+- `/api/v1/booking_curve/rm_room_groups`
+  - 室タイプ一覧と `rm_room_group_id` を取得する
+- 当日点が `null` の stay_date があるため、表示時は `date <= stay_date` の最新非 null 値へフォールバックする
+
+### Sales Setting Data
+
+- `/api/v3/suggest/output/details?from=YYYYMMDD&to=YYYYMMDD`
+  - 室タイプ別の販売室数 current setting を取得する
+  - 各要素には `rm_room_group_id`、`rm_room_group_name`、`current.landing_num_room`、`max_num_room` が含まれる
+
+### Facility Identity
+
+- `/api/v2/yad/info`
+  - 施設識別子を取得する
+  - キャッシュキーを施設単位で分離するときに使う
+
+## Delivered Behavior
+
+### Monthly Calendar
+
+- 各日付セルへ団体室数を表示する
+- 団体室数表示の visible / hidden を切り替えるトグルを提供する
+- React 再描画や月送り後でも、対象セルへ再同期する
 
 ### Sales Setting Tab
 
-- analyze 画面の販売設定タブは、室タイプ別に `販売室数 : current / max` を表示している
-- `/api/v3/suggest/output/details?from=YYYYMMDD&to=YYYYMMDD` で、室タイプ別の current setting が配列で取得できる
-- 各要素には `rm_room_group_id`, `rm_room_group_name`, `current.landing_num_room`, `max_num_room` が含まれる
-- 同じ endpoint を `date-1`, `date-7` で引き直せば、`rm_room_group_id` join で室タイプ別の 1日前増減 / 7日前増減は計算できる見込み
+- 室タイプ別の販売室数に対して `1日前差分 / 7日前差分 / 30日前差分` を表示する
+- 室タイプ別の団体室数に対して `1日前差分 / 7日前差分 / 30日前差分` を表示する
+- 最上段に全体販売室数サマリーと全体団体室数サマリーを 2 行で表示する
+- 全体販売室数サマリーは、販売設定タブ上に描画済みの室タイプ別表示を合算して生成する
+- 販売設定タブの販売室数差分は、現状 `/api/v4/booking_curve` の `all.this_year_room_sum` を室タイプ別に引いて計算している
 
-### Competitor Prices
+## キャッシュと同期のルール
 
-- `/api/v5/competitor_prices` で、自館と競合のプラン価格表が取得できる
-- `own.plans[]` と `competitors[].plans[]` には `jalan_facility_room_type`, `num_guests`, `meal_type`, `price`, `price_diff` が含まれる
-- analyze 画面の競合価格タブに相当するデータ源として流用できる見込み
+### キャッシュ範囲
 
-### Unknowns
+- group 系キャッシュは `最終データ更新` 日付が変わるまで再利用してよい
+- ただしキャッシュキーは施設単位でも分離し、異なる施設間で再利用しない
+- 室タイプ別 booking curve キャッシュは `rm_room_group_id` を含め、ホテル全体キャッシュと分離する
 
-- `/api/v4/booking_curve` を室タイプ数 x 比較日数ぶん呼ぶため、date / rm_room_group_id 単位のキャッシュ戦略が必要
-- 販売設定タブへ何列まで増やしても既存レイアウトを崩さないかは実装時に再確認が必要
-- 団体系差分を販売室数差分と同列で出すか、補助行に分けるかは表示密度の判断が必要
+### Sync Timing
 
-## Proposed Scope
+- 初回起動時に同期する
+- analyze 日付ページへの画面内遷移時に再同期する
+- `visibilitychange` と `focus` の復帰時に整合チェックを行う
+- 整合チェックで group 系表示とキャッシュの不整合を検知した場合は、group 系キャッシュを破棄して再同期する
 
-### Phase 1: Group Delta On Calendar
+## Non-Functional Requirements
 
-目的:
-1日前増減 / 7日前増減の文脈でも、ホテル全体の団体増減を見えるようにする。
+- single-page application の再描画に追従できること
+- 同一日付、同一施設、同一 `最終データ更新` 日付では無駄な再取得を増やさないこと
+- カレンダーと販売設定タブの既存レイアウトを壊さないこと
 
-候補仕様:
+## Remaining Candidate Scope
 
-- 既存の `団N` を維持しつつ、差分モード時は別行または小さい補助表示で `団 +N`, `団 -N` を出す
-- 差分は booking curve の group room sum を使って計算する
-- 1日前増減は `selected curve date` と `curve date - 1 day` の差分
-- 7日前増減は `selected curve date` と `curve date - 7 day` の差分
+### Candidate 1: Sales Setting Delta Data Source
 
-受け入れ条件:
+- 販売設定タブの販売室数差分を、現在の `booking_curve` ベースのまま維持するか、`/api/v3/suggest/output/details` ベースへ寄せるかを判断する
+- 判断では、計算の意味、レスポンス整合性、取得回数、保守性を比較する
 
-- analyze 日付ページのカレンダーで、差分表示モード時に団体系差分が表示される
-- 当日点が null でも、直前の非 null 値で表示が途切れない
+### Candidate 2: Performance Tuning
 
-### Phase 2: Room Type Deltas On Sales Setting
+- 月送り時と販売設定タブ再描画時の体感速度を改善する
+- 比較対象は request 並列数、先読み取得の単位、キャッシュ再利用単位とする
 
-目的:
-販売設定タブの室タイプ別販売室数の横に、1日前増減 / 7日前増減を追加する。
+### Candidate 3: Competitor Price Table
 
-候補仕様:
-
-- 表示例: `シングル 販売室数 : 60 / 61  前日比 -1  7日前比 +2`
-- 比較元データは `/api/v3/suggest/output/details` を date, date-1, date-7 で取得し、`rm_room_group_id` で join する
-- 差分対象は `current.landing_num_room`
-
-受け入れ条件:
-
-- 販売設定タブの各室タイプ行で current, 1日前差分, 7日前差分が並んで表示される
-- 室タイプ順は既存 UI を崩さない
-
-### Phase 3: Room Type Group Counts On Sales Setting
-
-目的:
-販売設定タブの室タイプ別販売室数の横に、団体の室タイプ別販売室数と 1日前増減 / 7日前増減を追加する。
-
-現時点の判断:
-
-- データ源は `/api/v1/booking_curve/rm_room_groups` と `/api/v4/booking_curve?date=...&rm_room_group_id=...` の組み合わせで確保できる
-- date, date-1, date-7 の各 stay_date に対して室タイプ別 booking curve を取得し、`group.this_year_room_sum` を `rm_room_group_id` 単位で並べれば差分計算できる
-- 実装時は日単位キャッシュに `rm_room_group_id` を含め、ホテル全体 cache と干渉しないよう分離する
-
-受け入れ条件:
-
-- 販売設定タブの各室タイプ行で、団体室数と 1日前差分 / 7日前差分が表示される
-- 室タイプ別 booking curve 取得が既存キャッシュ戦略と干渉せず、同日再描画で無駄な再取得を増やさない
-
-### Phase 4: Competitor Price Table In Sales Setting
-
-目的:
-販売設定タブの余白に、室タイプ比較のための競合価格表を埋め込む。
-
-候補仕様:
-
-- 右側または下段の余白に簡易テーブルを表示する
-- 初期表示は `own + competitors` の最安値比較に絞る
-- 1室人数と meal type は analyze 画面の既定条件に合わせる
-- 詳細版は後続に回し、初期段階では表幅と可読性を優先する
-
-受け入れ条件:
-
-- 販売設定タブを壊さずに競合価格の比較表が表示される
-- モバイル幅ではなくデスクトップ前提の analyze 画面で破綻しない
+- `/api/v5/competitor_prices` を使った競合価格表を販売設定タブへ埋め込むか判断する
+- 実装する場合は、表示位置、比較単位、列数、既存タブとの役割分担を先に仕様化する
 
 ## Open Questions
 
-1. `7日前増減` は現行 UI のどこでトグルされるか。常設表示か、絞り込み条件かを実画面で再確認する
-2. 団体系差分は、既存の差分数値の隣に出すか、団体数の下に別行で出すか
-3. 販売設定タブの室タイプ行へ追加する情報量は、1行追記で収まるか、2段化が必要か
-4. 室タイプ別 booking curve を複数日・複数室タイプで引く際の request 数をどう抑えるか
-5. 競合価格表は analyze 既存の競合価格タブを要約表示するのか、それとも別表として再構成するのか
-
-## Recommended Delivery Order
-
-1. カレンダーの団体系 1日前増減 / 7日前増減
-2. 販売設定タブの室タイプ別 1日前増減 / 7日前増減
-3. 販売設定タブの室タイプ別団体数と差分表示
-4. 競合価格表の埋め込み
+1. 販売設定タブの販売室数差分は、現状の `booking_curve` 由来値で十分か
+2. 月送りやタブ切替時の request 数をどこまで減らすべきか
+3. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
