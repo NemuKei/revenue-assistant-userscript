@@ -4,6 +4,7 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
+const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
@@ -25,11 +26,8 @@ const SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE = "data-ra-sales-setting-overall
 const SALES_SETTING_ROOM_DELTA_ATTRIBUTE = "data-ra-sales-setting-room-delta";
 const SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE = "data-ra-sales-setting-room-delta-item";
 const SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-room-delta-signature";
-const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v3:";
-const GROUP_ROOM_STORAGE_BATCH_KEY = `${GROUP_ROOM_STORAGE_PREFIX}batch-date`;
+const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v4:";
 const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
-const BOOKING_CURVE_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}booking-curve:`;
-const GROUP_ROOM_RESULT_STORAGE_PREFIX = `${GROUP_ROOM_STORAGE_PREFIX}result:`;
 const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
 const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
 
@@ -51,6 +49,11 @@ type BookingCurveCountScope = "all" | "transient" | "group";
 interface BookingCurveResponse {
     stay_date: string;
     booking_curve?: BookingCurvePoint[];
+}
+
+interface YadInfoResponse {
+    yad_no?: string;
+    name?: string;
 }
 
 interface RoomGroup {
@@ -84,6 +87,7 @@ interface SyncContext {
     version: number;
     analysisDate: string | null;
     batchDateKey: string;
+    facilityCacheKey: string;
 }
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
@@ -94,12 +98,16 @@ let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
+let activeFacilityCacheKey: string | null = null;
 let calendarObserver: MutationObserver | null = null;
 let calendarSyncQueued = false;
 let syncVersion = 0;
 let consistencyCheckTimeoutId: number | null = null;
 let consistencyCheckLastTriggeredAt = 0;
 let consistencyCheckRunVersion = 0;
+let resolvedFacilityCacheKey: string | null = null;
+let resolvedFacilityLabel: string | null = null;
+let facilityCacheKeyPromise: Promise<string> | null = null;
 
 function boot(): void {
     console.info(`[${SCRIPT_NAME}] initialized`, {
@@ -167,9 +175,6 @@ function installInteractionHooks(): void {
                     return;
                 }
 
-                const batchDateKey = getCurrentBatchDateKey();
-                syncCacheBatch(batchDateKey);
-                renderCachedMonthlyCalendarGroupRooms(batchDateKey);
                 queueCalendarSync();
                 return;
             }
@@ -393,7 +398,8 @@ function getAnalyzeDate(pathname: string): string | null {
 
 async function logSelectedDateGroupRooms(stayDate: string): Promise<void> {
     const batchDateKey = getCurrentBatchDateKey();
-    syncCacheBatch(batchDateKey);
+    const facilityCacheKey = await resolveCurrentFacilityCacheKey();
+    syncCacheBatch(batchDateKey, facilityCacheKey);
 
     const groupRoomCount = await fetchGroupRoomCount(stayDate, stayDate, batchDateKey);
 
@@ -421,39 +427,47 @@ function fetchScopedBookingCurveCount(
     countScope: BookingCurveCountScope,
     rmRoomGroupId?: string
 ): Promise<number | null> {
-    const scopeKey = getGroupRoomScopeKey(rmRoomGroupId);
-    const cacheKey = `${batchDateKey}:${scopeKey}:${countScope}:${stayDate}:${lookupDate}`;
-    const cached = groupRoomCache.get(cacheKey);
-    if (cached !== undefined) {
-        return cached;
-    }
+    return resolveCurrentFacilityCacheKey().then((facilityCacheKey) => {
+        const cacheKey = getGroupRoomResultCacheKey(
+            facilityCacheKey,
+            batchDateKey,
+            stayDate,
+            lookupDate,
+            countScope,
+            rmRoomGroupId
+        );
+        const cached = groupRoomCache.get(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
 
-    const persisted = readPersistedGroupRoomCount(cacheKey);
-    if (persisted !== undefined) {
-        const request = Promise.resolve(persisted);
+        const persisted = readPersistedGroupRoomCount(facilityCacheKey, cacheKey);
+        if (persisted !== undefined) {
+            const request = Promise.resolve(persisted);
+            groupRoomCache.set(cacheKey, request);
+            return request;
+        }
+
+        const request = getBookingCurve(stayDate, batchDateKey, rmRoomGroupId)
+            .then((data) => findBookingCurveCount(data, lookupDate, countScope))
+            .then((roomCount) => {
+                writePersistedGroupRoomCount(facilityCacheKey, cacheKey, roomCount);
+                return roomCount;
+            })
+            .catch((error: unknown) => {
+                console.error(`[${SCRIPT_NAME}] failed to load booking curve`, {
+                    countScope,
+                    rmRoomGroupId,
+                    stayDate,
+                    lookupDate,
+                    error
+                });
+                return null;
+            });
+
         groupRoomCache.set(cacheKey, request);
         return request;
-    }
-
-    const request = getBookingCurve(stayDate, batchDateKey, rmRoomGroupId)
-        .then((data) => findBookingCurveCount(data, lookupDate, countScope))
-        .then((roomCount) => {
-            writePersistedGroupRoomCount(cacheKey, roomCount);
-            return roomCount;
-        })
-        .catch((error: unknown) => {
-            console.error(`[${SCRIPT_NAME}] failed to load booking curve`, {
-                countScope,
-                rmRoomGroupId,
-                stayDate,
-                lookupDate,
-                error
-            });
-            return null;
-        });
-
-    groupRoomCache.set(cacheKey, request);
-    return request;
+    });
 }
 
 function getGroupRoomScopeKey(rmRoomGroupId?: string): string {
@@ -461,32 +475,34 @@ function getGroupRoomScopeKey(rmRoomGroupId?: string): string {
 }
 
 function getBookingCurve(stayDate: string, batchDateKey: string, rmRoomGroupId?: string): Promise<BookingCurveResponse> {
-    const scopeKey = getGroupRoomScopeKey(rmRoomGroupId);
-    const cacheKey = `${batchDateKey}:${scopeKey}:${stayDate}`;
-    const cached = bookingCurveCache.get(cacheKey);
-    if (cached !== undefined) {
-        return cached;
-    }
+    return resolveCurrentFacilityCacheKey().then((facilityCacheKey) => {
+        const scopeKey = getGroupRoomScopeKey(rmRoomGroupId);
+        const cacheKey = `${facilityCacheKey}:${batchDateKey}:${scopeKey}:${stayDate}`;
+        const cached = bookingCurveCache.get(cacheKey);
+        if (cached !== undefined) {
+            return cached;
+        }
 
-    const persisted = readPersistedBookingCurve(cacheKey);
-    if (persisted !== undefined) {
-        const request = Promise.resolve(persisted);
+        const persisted = readPersistedBookingCurve(facilityCacheKey, cacheKey);
+        if (persisted !== undefined) {
+            const request = Promise.resolve(persisted);
+            bookingCurveCache.set(cacheKey, request);
+            return request;
+        }
+
+        const request = loadBookingCurve(stayDate, rmRoomGroupId)
+            .then((data) => {
+                writePersistedBookingCurve(facilityCacheKey, cacheKey, data);
+                return data;
+            })
+            .catch((error: unknown) => {
+                bookingCurveCache.delete(cacheKey);
+                throw error;
+            });
+
         bookingCurveCache.set(cacheKey, request);
         return request;
-    }
-
-    const request = loadBookingCurve(stayDate, rmRoomGroupId)
-        .then((data) => {
-            writePersistedBookingCurve(cacheKey, data);
-            return data;
-        })
-        .catch((error: unknown) => {
-            bookingCurveCache.delete(cacheKey);
-            throw error;
-        });
-
-    bookingCurveCache.set(cacheKey, request);
-    return request;
+    });
 }
 
 async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promise<BookingCurveResponse> {
@@ -556,49 +572,56 @@ function queueCalendarSync(): void {
 
     calendarSyncQueued = true;
     window.requestAnimationFrame(() => {
-        calendarSyncQueued = false;
-        const batchDateKey = getCurrentBatchDateKey();
-        syncCacheBatch(batchDateKey);
-        const syncContext = createSyncContext(batchDateKey);
-
-        if (activeAnalyzeDate !== null) {
-            prefetchSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey);
-            prefetchSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey);
-        } else {
-            cleanupSalesSettingOverallSummary();
-            cleanupSalesSettingGroupRooms();
-            cleanupSalesSettingRoomDeltas();
-        }
-
-        void Promise.all([
-            syncMonthlyCalendarGroupRooms(batchDateKey),
-            activeAnalyzeDate === null
-                ? Promise.resolve()
-                : syncSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey, syncContext),
-            activeAnalyzeDate === null
-                ? Promise.resolve()
-                : syncSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey, syncContext),
-            activeAnalyzeDate === null
-                ? Promise.resolve()
-                : syncSalesSettingOverallSummary(activeAnalyzeDate, batchDateKey, syncContext)
-        ]);
+        void runCalendarSync();
     });
 }
 
-function createSyncContext(batchDateKey: string): SyncContext {
+async function runCalendarSync(): Promise<void> {
+    calendarSyncQueued = false;
+    const batchDateKey = getCurrentBatchDateKey();
+    const facilityCacheKey = await resolveCurrentFacilityCacheKey();
+    syncCacheBatch(batchDateKey, facilityCacheKey);
+    const syncContext = createSyncContext(batchDateKey, facilityCacheKey);
+
+    if (activeAnalyzeDate !== null) {
+        prefetchSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey);
+        prefetchSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey);
+    } else {
+        cleanupSalesSettingOverallSummary();
+        cleanupSalesSettingGroupRooms();
+        cleanupSalesSettingRoomDeltas();
+    }
+
+    await Promise.all([
+        syncMonthlyCalendarGroupRooms(batchDateKey),
+        activeAnalyzeDate === null
+            ? Promise.resolve()
+            : syncSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey, syncContext),
+        activeAnalyzeDate === null
+            ? Promise.resolve()
+            : syncSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey, syncContext),
+        activeAnalyzeDate === null
+            ? Promise.resolve()
+            : syncSalesSettingOverallSummary(activeAnalyzeDate, batchDateKey, syncContext)
+    ]);
+}
+
+function createSyncContext(batchDateKey: string, facilityCacheKey: string): SyncContext {
     syncVersion += 1;
 
     return {
         version: syncVersion,
         analysisDate: activeAnalyzeDate,
-        batchDateKey
+        batchDateKey,
+        facilityCacheKey
     };
 }
 
 function isSyncContextStale(syncContext: SyncContext): boolean {
     return syncContext.version !== syncVersion
         || syncContext.analysisDate !== activeAnalyzeDate
-        || syncContext.batchDateKey !== activeBatchDateKey;
+        || syncContext.batchDateKey !== activeBatchDateKey
+        || syncContext.facilityCacheKey !== activeFacilityCacheKey;
 }
 
 async function syncMonthlyCalendarGroupRooms(batchDateKey: string): Promise<void> {
@@ -634,14 +657,15 @@ function renderCachedMonthlyCalendarGroupRooms(
     batchDateKey: string,
     cells: MonthlyCalendarCell[] = collectMonthlyCalendarCells()
 ): void {
-    if (cells.length === 0 || !isGroupRoomCalendarVisible()) {
+    const facilityCacheKey = activeFacilityCacheKey;
+    if (cells.length === 0 || !isGroupRoomCalendarVisible() || facilityCacheKey === null) {
         return;
     }
 
     for (const cell of cells) {
         const lookupDate = getLookupDate(cell.stayDate);
-        const cacheKey = getGroupRoomResultCacheKey(batchDateKey, cell.stayDate, lookupDate);
-        const persisted = readPersistedGroupRoomCount(cacheKey);
+        const cacheKey = getGroupRoomResultCacheKey(facilityCacheKey, batchDateKey, cell.stayDate, lookupDate);
+        const persisted = readPersistedGroupRoomCount(facilityCacheKey, cacheKey);
 
         if (persisted !== undefined) {
             renderGroupRoomCount(cell, persisted);
@@ -1106,21 +1130,24 @@ function getCurrentBatchDateKey(): string {
     return `${year}${month}${day}`;
 }
 
-function syncCacheBatch(batchDateKey: string): void {
-    if (activeBatchDateKey === batchDateKey) {
+function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
+    if (activeBatchDateKey === batchDateKey && activeFacilityCacheKey === facilityCacheKey) {
         return;
     }
 
     activeBatchDateKey = batchDateKey;
+    activeFacilityCacheKey = facilityCacheKey;
     salesSettingPrefetchKeys.clear();
     groupRoomCache.clear();
     bookingCurveCache.clear();
-    resetPersistedGroupRoomCache(batchDateKey);
+    resetPersistedGroupRoomCache(batchDateKey, facilityCacheKey);
 }
 
-function resetPersistedGroupRoomCache(batchDateKey: string): void {
+function resetPersistedGroupRoomCache(batchDateKey: string, facilityCacheKey: string): void {
     try {
-        const previousBatchDateKey = window.localStorage.getItem(GROUP_ROOM_STORAGE_BATCH_KEY);
+        const storageBatchKey = getGroupRoomStorageBatchKey(facilityCacheKey);
+        const storagePrefix = getGroupRoomStorageFacilityPrefix(facilityCacheKey);
+        const previousBatchDateKey = window.localStorage.getItem(storageBatchKey);
         if (previousBatchDateKey === batchDateKey) {
             return;
         }
@@ -1130,8 +1157,8 @@ function resetPersistedGroupRoomCache(batchDateKey: string): void {
             const key = window.localStorage.key(index);
             if (
                 key !== null
-                && key.startsWith(GROUP_ROOM_STORAGE_PREFIX)
-                && key !== GROUP_ROOM_STORAGE_BATCH_KEY
+                && key.startsWith(storagePrefix)
+                && key !== storageBatchKey
                 && key !== GROUP_ROOM_VISIBILITY_STORAGE_KEY
             ) {
                 keysToRemove.push(key);
@@ -1142,10 +1169,11 @@ function resetPersistedGroupRoomCache(batchDateKey: string): void {
             window.localStorage.removeItem(key);
         }
 
-        window.localStorage.setItem(GROUP_ROOM_STORAGE_BATCH_KEY, batchDateKey);
+        window.localStorage.setItem(storageBatchKey, batchDateKey);
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to reset persistent group-room cache`, {
             batchDateKey,
+            facilityCacheKey,
             error
         });
     }
@@ -1156,14 +1184,21 @@ function invalidateGroupRoomCaches(batchDateKey: string): void {
     groupRoomCache.clear();
     bookingCurveCache.clear();
 
+    const facilityCacheKey = activeFacilityCacheKey;
+    if (facilityCacheKey === null) {
+        return;
+    }
+
     try {
+        const storageBatchKey = getGroupRoomStorageBatchKey(facilityCacheKey);
+        const storagePrefix = getGroupRoomStorageFacilityPrefix(facilityCacheKey);
         const keysToRemove: string[] = [];
         for (let index = 0; index < window.localStorage.length; index += 1) {
             const key = window.localStorage.key(index);
             if (
                 key !== null
-                && key.startsWith(GROUP_ROOM_STORAGE_PREFIX)
-                && key !== GROUP_ROOM_STORAGE_BATCH_KEY
+                && key.startsWith(storagePrefix)
+                && key !== storageBatchKey
                 && key !== GROUP_ROOM_VISIBILITY_STORAGE_KEY
             ) {
                 keysToRemove.push(key);
@@ -1174,22 +1209,30 @@ function invalidateGroupRoomCaches(batchDateKey: string): void {
             window.localStorage.removeItem(key);
         }
 
-        window.localStorage.setItem(GROUP_ROOM_STORAGE_BATCH_KEY, batchDateKey);
+        window.localStorage.setItem(storageBatchKey, batchDateKey);
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to invalidate group-room cache`, {
             batchDateKey,
+            facilityCacheKey,
             error
         });
     }
 }
 
-function getGroupRoomResultCacheKey(batchDateKey: string, stayDate: string, lookupDate: string, rmRoomGroupId?: string): string {
-    return `${batchDateKey}:${getGroupRoomScopeKey(rmRoomGroupId)}:${stayDate}:${lookupDate}`;
+function getGroupRoomResultCacheKey(
+    facilityCacheKey: string,
+    batchDateKey: string,
+    stayDate: string,
+    lookupDate: string,
+    countScope = "group",
+    rmRoomGroupId?: string
+): string {
+    return `${facilityCacheKey}:${batchDateKey}:${getGroupRoomScopeKey(rmRoomGroupId)}:${countScope}:${stayDate}:${lookupDate}`;
 }
 
-function readPersistedGroupRoomCount(cacheKey: string): number | null | undefined {
+function readPersistedGroupRoomCount(facilityCacheKey: string, cacheKey: string): number | null | undefined {
     try {
-        const raw = window.localStorage.getItem(`${GROUP_ROOM_RESULT_STORAGE_PREFIX}${cacheKey}`);
+        const raw = window.localStorage.getItem(`${getGroupRoomResultStoragePrefix(facilityCacheKey)}${cacheKey}`);
         if (raw === null) {
             return undefined;
         }
@@ -1208,9 +1251,9 @@ function readPersistedGroupRoomCount(cacheKey: string): number | null | undefine
     return undefined;
 }
 
-function writePersistedGroupRoomCount(cacheKey: string, groupRoomCount: number | null): void {
+function writePersistedGroupRoomCount(facilityCacheKey: string, cacheKey: string, groupRoomCount: number | null): void {
     try {
-        window.localStorage.setItem(`${GROUP_ROOM_RESULT_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(groupRoomCount));
+        window.localStorage.setItem(`${getGroupRoomResultStoragePrefix(facilityCacheKey)}${cacheKey}`, JSON.stringify(groupRoomCount));
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to write persistent group-room cache`, {
             cacheKey,
@@ -1219,9 +1262,9 @@ function writePersistedGroupRoomCount(cacheKey: string, groupRoomCount: number |
     }
 }
 
-function readPersistedBookingCurve(cacheKey: string): BookingCurveResponse | undefined {
+function readPersistedBookingCurve(facilityCacheKey: string, cacheKey: string): BookingCurveResponse | undefined {
     try {
-        const raw = window.localStorage.getItem(`${BOOKING_CURVE_STORAGE_PREFIX}${cacheKey}`);
+        const raw = window.localStorage.getItem(`${getBookingCurveStoragePrefix(facilityCacheKey)}${cacheKey}`);
         if (raw === null) {
             return undefined;
         }
@@ -1237,15 +1280,105 @@ function readPersistedBookingCurve(cacheKey: string): BookingCurveResponse | und
     return undefined;
 }
 
-function writePersistedBookingCurve(cacheKey: string, data: BookingCurveResponse): void {
+function writePersistedBookingCurve(facilityCacheKey: string, cacheKey: string, data: BookingCurveResponse): void {
     try {
-        window.localStorage.setItem(`${BOOKING_CURVE_STORAGE_PREFIX}${cacheKey}`, JSON.stringify(data));
+        window.localStorage.setItem(`${getBookingCurveStoragePrefix(facilityCacheKey)}${cacheKey}`, JSON.stringify(data));
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to write persistent booking-curve cache`, {
             cacheKey,
             error
         });
     }
+}
+
+function getGroupRoomStorageFacilityPrefix(facilityCacheKey: string): string {
+    return `${GROUP_ROOM_STORAGE_PREFIX}${facilityCacheKey}:`;
+}
+
+function getGroupRoomStorageBatchKey(facilityCacheKey: string): string {
+    return `${getGroupRoomStorageFacilityPrefix(facilityCacheKey)}batch-date`;
+}
+
+function getBookingCurveStoragePrefix(facilityCacheKey: string): string {
+    return `${getGroupRoomStorageFacilityPrefix(facilityCacheKey)}booking-curve:`;
+}
+
+function getGroupRoomResultStoragePrefix(facilityCacheKey: string): string {
+    return `${getGroupRoomStorageFacilityPrefix(facilityCacheKey)}result:`;
+}
+
+async function resolveCurrentFacilityCacheKey(): Promise<string> {
+    const facilityLabel = getCurrentFacilityLabel();
+    if (resolvedFacilityCacheKey !== null && resolvedFacilityLabel === facilityLabel) {
+        return resolvedFacilityCacheKey;
+    }
+
+    if (facilityCacheKeyPromise !== null) {
+        return facilityCacheKeyPromise;
+    }
+
+    facilityCacheKeyPromise = loadCurrentFacilityCacheKey(facilityLabel)
+        .then((facilityCacheKey) => {
+            resolvedFacilityCacheKey = facilityCacheKey;
+            resolvedFacilityLabel = facilityLabel;
+            return facilityCacheKey;
+        })
+        .finally(() => {
+            facilityCacheKeyPromise = null;
+        });
+
+    return facilityCacheKeyPromise;
+}
+
+async function loadCurrentFacilityCacheKey(facilityLabel: string | null): Promise<string> {
+    try {
+        const response = await fetch(new URL(YAD_INFO_ENDPOINT, window.location.origin).toString(), {
+            credentials: "include",
+            headers: {
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        });
+
+        if (response.ok) {
+            const data = (await response.json()) as YadInfoResponse;
+            if (typeof data.yad_no === "string" && data.yad_no.length > 0) {
+                return `yad:${data.yad_no}`;
+            }
+
+            if (typeof data.name === "string" && data.name.trim().length > 0) {
+                return `name:${encodeURIComponent(data.name.trim())}`;
+            }
+        }
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to resolve facility cache key`, {
+            error
+        });
+    }
+
+    if (facilityLabel !== null && facilityLabel.length > 0) {
+        return `name:${encodeURIComponent(facilityLabel)}`;
+    }
+
+    return "unknown";
+}
+
+function getCurrentFacilityLabel(): string | null {
+    const selectors = [
+        "header button span",
+        "header button",
+        "header h1",
+        "header [role='button'] span",
+        "header [role='button']"
+    ];
+
+    for (const selector of selectors) {
+        const text = document.querySelector<HTMLElement>(selector)?.textContent?.trim();
+        if (text !== undefined && text.length > 0) {
+            return text;
+        }
+    }
+
+    return null;
 }
 
 function isGroupRoomCalendarVisible(): boolean {
