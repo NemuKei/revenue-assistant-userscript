@@ -2390,14 +2390,14 @@ function ensureGroupRoomStyles(): void {
             padding-left: 8px;
             border-left: 3px solid #1f5fbf;
             color: #243447;
-            font-size: 14px;
+            font-size: 15px;
             font-weight: 700;
             line-height: 1.35;
         }
 
         [${SALES_SETTING_OVERALL_METRIC_ATTRIBUTE}] {
             color: #243447;
-            font-size: 13px;
+            font-size: 14px;
             font-weight: 700;
             line-height: 1.4;
             white-space: nowrap;
@@ -2426,7 +2426,7 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE}] {
             color: #243447;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 700;
             line-height: 1.35;
         }
@@ -2452,14 +2452,14 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] th {
             color: #50627a;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
             line-height: 1.35;
         }
 
         [${SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE}] {
             color: #243447;
-            font-size: 11px;
+            font-size: 12px;
             font-weight: 600;
             line-height: 1.4;
         }
