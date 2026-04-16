@@ -761,6 +761,10 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             return {
                 card,
                 roomGroupName: card.roomGroupName,
+                currentIndividualRoomCount: null,
+                previousDayIndividualRoomCount: null,
+                previousWeekIndividualRoomCount: null,
+                previousMonthIndividualRoomCount: null,
                 currentGroupRoomCount: null,
                 previousDayGroupRoomCount: null,
                 previousWeekGroupRoomCount: null,
@@ -769,7 +773,28 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             };
         }
 
-        const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount, previousMonthGroupRoomCount] = await Promise.all([
+        const [
+            currentTransientRoomCount,
+            previousDayTransientRoomCount,
+            previousWeekTransientRoomCount,
+            previousMonthTransientRoomCount,
+            currentAllRoomCount,
+            previousDayAllRoomCount,
+            previousWeekAllRoomCount,
+            previousMonthAllRoomCount,
+            currentGroupRoomCount,
+            previousDayGroupRoomCount,
+            previousWeekGroupRoomCount,
+            previousMonthGroupRoomCount
+        ] = await Promise.all([
+            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "transient", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "transient", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "transient", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "transient", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "all", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "all", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", rmRoomGroupId),
+            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "all", rmRoomGroupId),
             fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", rmRoomGroupId),
             fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", rmRoomGroupId),
             fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", rmRoomGroupId),
@@ -779,6 +804,10 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
         return {
             card,
             roomGroupName: card.roomGroupName,
+            currentIndividualRoomCount: resolveSalesSettingPrivateRoomCount(currentTransientRoomCount, currentAllRoomCount, currentGroupRoomCount),
+            previousDayIndividualRoomCount: resolveSalesSettingPrivateRoomCount(previousDayTransientRoomCount, previousDayAllRoomCount, previousDayGroupRoomCount),
+            previousWeekIndividualRoomCount: resolveSalesSettingPrivateRoomCount(previousWeekTransientRoomCount, previousWeekAllRoomCount, previousWeekGroupRoomCount),
+            previousMonthIndividualRoomCount: resolveSalesSettingPrivateRoomCount(previousMonthTransientRoomCount, previousMonthAllRoomCount, previousMonthGroupRoomCount),
             currentGroupRoomCount,
             previousDayGroupRoomCount,
             previousWeekGroupRoomCount,
@@ -821,6 +850,10 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
 
         renderSalesSettingGroupRoom(
             metric.card,
+            metric.currentIndividualRoomCount,
+            metric.previousDayIndividualRoomCount,
+            metric.previousWeekIndividualRoomCount,
+            metric.previousMonthIndividualRoomCount,
             metric.currentGroupRoomCount,
             metric.previousDayGroupRoomCount,
             metric.previousWeekGroupRoomCount,
@@ -949,7 +982,20 @@ async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey
         return;
     }
 
-    const [currentGroupRoomCount, previousDayGroupRoomCount, previousWeekGroupRoomCount, previousMonthGroupRoomCount] = await Promise.all([
+    const [
+        currentTransientRoomCount,
+        previousDayTransientRoomCount,
+        previousWeekTransientRoomCount,
+        previousMonthTransientRoomCount,
+        currentGroupRoomCount,
+        previousDayGroupRoomCount,
+        previousWeekGroupRoomCount,
+        previousMonthGroupRoomCount
+    ] = await Promise.all([
+        fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "transient"),
+        fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "transient"),
+        fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "transient"),
+        fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "transient"),
         fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group"),
         fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group"),
         fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group"),
@@ -981,6 +1027,10 @@ async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey
         sumMetricValues(roomDeltaMetrics.map((metric) => metric.previousDayValue)),
         sumMetricValues(roomDeltaMetrics.map((metric) => metric.previousWeekValue)),
         sumMetricValues(roomDeltaMetrics.map((metric) => metric.previousMonthValue)),
+        resolveSalesSettingPrivateRoomCount(currentTransientRoomCount, sumMetricValues(roomDeltaMetrics.map((metric) => metric.currentValue)), currentGroupRoomCount),
+        resolveSalesSettingPrivateRoomCount(previousDayTransientRoomCount, sumMetricValues(roomDeltaMetrics.map((metric) => metric.previousDayValue)), previousDayGroupRoomCount),
+        resolveSalesSettingPrivateRoomCount(previousWeekTransientRoomCount, sumMetricValues(roomDeltaMetrics.map((metric) => metric.previousWeekValue)), previousWeekGroupRoomCount),
+        resolveSalesSettingPrivateRoomCount(previousMonthTransientRoomCount, sumMetricValues(roomDeltaMetrics.map((metric) => metric.previousMonthValue)), previousMonthGroupRoomCount),
         currentGroupRoomCount,
         previousDayGroupRoomCount,
         previousWeekGroupRoomCount,
@@ -1158,11 +1208,19 @@ function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: stri
             fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group"),
             fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group"),
             fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group"),
+            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "transient"),
+            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "transient"),
+            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "transient"),
+            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "transient"),
             ...roomGroups.flatMap((roomGroup) => [
                 fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", roomGroup.id),
                 fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", roomGroup.id),
                 fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group", roomGroup.id)
+                fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group", roomGroup.id),
+                fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "transient", roomGroup.id),
+                fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "transient", roomGroup.id),
+                fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "transient", roomGroup.id),
+                fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "transient", roomGroup.id)
             ])
         ]))
         .catch((error: unknown) => {
@@ -1628,6 +1686,10 @@ function renderSalesSettingOverallSummary(
     previousDayRoomValue: number | null,
     previousWeekRoomValue: number | null,
     previousMonthRoomValue: number | null,
+    currentIndividualRoomCount: number | null,
+    previousDayIndividualRoomCount: number | null,
+    previousWeekIndividualRoomCount: number | null,
+    previousMonthIndividualRoomCount: number | null,
     currentGroupRoomCount: number | null,
     previousDayGroupRoomCount: number | null,
     previousWeekGroupRoomCount: number | null,
@@ -1644,6 +1706,9 @@ function renderSalesSettingOverallSummary(
     const signature = [
         totalCapacity === null ? "sales:-" : `sales:${totalCapacity.currentValue}/${totalCapacity.maxValue}`,
         `room:${currentRoomValue}:${previousDayRoomValue}:${previousWeekRoomValue}:${previousMonthRoomValue}`,
+        showGroupMetrics
+            ? `individual:${currentIndividualRoomCount}:${previousDayIndividualRoomCount}:${previousWeekIndividualRoomCount}:${previousMonthIndividualRoomCount}`
+            : "individual:hidden",
         showGroupMetrics
             ? `group:${currentGroupRoomCount}:${previousDayGroupRoomCount}:${previousWeekGroupRoomCount}:${previousMonthGroupRoomCount}`
             : "group:hidden"
@@ -1691,28 +1756,29 @@ function renderSalesSettingOverallSummary(
         salesRowElement.replaceChildren(titleElement, metricElement, deltaContainerElement);
 
         if (showGroupMetrics) {
-            const groupRowElement = document.createElement("div");
-            groupRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
-            groupRowElement.replaceChildren(
-                createSalesSettingGroupRoomItem("団体室数：", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
-                createSalesSettingGroupRoomItem(
-                    "1日前",
-                    formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
-                    getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount)
-                ),
-                createSalesSettingGroupRoomItem(
-                    "7日前",
-                    formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
-                    getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount)
-                ),
-                createSalesSettingGroupRoomItem(
-                    "30日前",
-                    formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
-                    getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
+            const individualRowElement = document.createElement("div");
+            individualRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
+            individualRowElement.replaceChildren(
+                ...createSalesSettingGroupMetricRowItems(
+                    "個人室数：",
+                    currentIndividualRoomCount,
+                    previousDayIndividualRoomCount,
+                    previousWeekIndividualRoomCount,
+                    previousMonthIndividualRoomCount
                 )
             );
 
-            containerElement.replaceChildren(salesRowElement, groupRowElement);
+            const groupRowElement = document.createElement("div");
+            groupRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
+            groupRowElement.replaceChildren(...createSalesSettingGroupMetricRowItems(
+                "団体室数：",
+                currentGroupRoomCount,
+                previousDayGroupRoomCount,
+                previousWeekGroupRoomCount,
+                previousMonthGroupRoomCount
+            ));
+
+            containerElement.replaceChildren(salesRowElement, individualRowElement, groupRowElement);
         } else {
             containerElement.replaceChildren(salesRowElement);
         }
@@ -1801,6 +1867,10 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
 
 function renderSalesSettingGroupRoom(
     card: SalesSettingCard,
+    currentIndividualRoomCount: number | null,
+    previousDayIndividualRoomCount: number | null,
+    previousWeekIndividualRoomCount: number | null,
+    previousMonthIndividualRoomCount: number | null,
     currentGroupRoomCount: number | null,
     previousDayGroupRoomCount: number | null,
     previousWeekGroupRoomCount: number | null,
@@ -1809,6 +1879,11 @@ function renderSalesSettingGroupRoom(
     const existingRow = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`);
 
     if (
+        currentIndividualRoomCount === null
+        && previousDayIndividualRoomCount === null
+        && previousWeekIndividualRoomCount === null
+        && previousMonthIndividualRoomCount === null
+        &&
         currentGroupRoomCount === null
         && previousDayGroupRoomCount === null
         && previousWeekGroupRoomCount === null
@@ -1819,6 +1894,10 @@ function renderSalesSettingGroupRoom(
     }
 
     const signature = [
+        currentIndividualRoomCount,
+        previousDayIndividualRoomCount,
+        previousWeekIndividualRoomCount,
+        previousMonthIndividualRoomCount,
         currentGroupRoomCount,
         previousDayGroupRoomCount,
         previousWeekGroupRoomCount,
@@ -1831,24 +1910,27 @@ function renderSalesSettingGroupRoom(
     const rowElement = existingRow ?? document.createElement("div");
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE, "");
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE, signature);
-    rowElement.replaceChildren(
-        createSalesSettingGroupRoomItem("団体室数：", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
-        createSalesSettingGroupRoomItem(
-            "1日前",
-            formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
-            getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount)
-        ),
-        createSalesSettingGroupRoomItem(
-            "7日前",
-            formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
-            getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount)
-        ),
-        createSalesSettingGroupRoomItem(
-            "30日前",
-            formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
-            getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
-        )
-    );
+    const individualRowElement = document.createElement("div");
+    individualRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
+    individualRowElement.replaceChildren(...createSalesSettingGroupMetricRowItems(
+        "個人室数：",
+        currentIndividualRoomCount,
+        previousDayIndividualRoomCount,
+        previousWeekIndividualRoomCount,
+        previousMonthIndividualRoomCount
+    ));
+
+    const groupRowElement = document.createElement("div");
+    groupRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
+    groupRowElement.replaceChildren(...createSalesSettingGroupMetricRowItems(
+        "団体室数：",
+        currentGroupRoomCount,
+        previousDayGroupRoomCount,
+        previousWeekGroupRoomCount,
+        previousMonthGroupRoomCount
+    ));
+
+    rowElement.replaceChildren(individualRowElement, groupRowElement);
 
     if (existingRow !== null) {
         return;
@@ -1953,6 +2035,21 @@ function createSalesSettingGroupRoomItem(label: string, value: string, tone: str
     return itemElement;
 }
 
+function createSalesSettingGroupMetricRowItems(
+    label: string,
+    currentValue: number | null,
+    previousDayValue: number | null,
+    previousWeekValue: number | null,
+    previousMonthValue: number | null
+): HTMLSpanElement[] {
+    return [
+        createSalesSettingGroupRoomItem(label, formatGroupRoomMetricValue(currentValue), "neutral"),
+        createSalesSettingGroupRoomItem("1日前", formatGroupRoomDelta(currentValue, previousDayValue), getGroupRoomDeltaTone(currentValue, previousDayValue)),
+        createSalesSettingGroupRoomItem("7日前", formatGroupRoomDelta(currentValue, previousWeekValue), getGroupRoomDeltaTone(currentValue, previousWeekValue)),
+        createSalesSettingGroupRoomItem("30日前", formatGroupRoomDelta(currentValue, previousMonthValue), getGroupRoomDeltaTone(currentValue, previousMonthValue))
+    ];
+}
+
 function createSalesSettingRoomDeltaItem(label: string, value: string, tone: string): HTMLSpanElement {
     const itemElement = document.createElement("span");
     itemElement.setAttribute(SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE, "");
@@ -1967,6 +2064,22 @@ function formatGroupRoomMetricValue(value: number | null): string {
     }
 
     return `${formatGroupRoomNumber(value)}室`;
+}
+
+function resolveSalesSettingPrivateRoomCount(
+    transientValue: number | null,
+    totalValue: number | null,
+    groupValue: number | null
+): number | null {
+    if (transientValue !== null) {
+        return transientValue;
+    }
+
+    if (totalValue === null || groupValue === null) {
+        return null;
+    }
+
+    return totalValue - groupValue;
 }
 
 function formatGroupRoomDelta(currentValue: number | null, previousValue: number | null): string {
