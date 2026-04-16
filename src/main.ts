@@ -765,6 +765,10 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             return {
                 card,
                 roomGroupName: card.roomGroupName,
+                currentOverallRoomCount: null,
+                previousDayOverallRoomCount: null,
+                previousWeekOverallRoomCount: null,
+                previousMonthOverallRoomCount: null,
                 currentIndividualRoomCount: null,
                 previousDayIndividualRoomCount: null,
                 previousWeekIndividualRoomCount: null,
@@ -808,6 +812,10 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
         return {
             card,
             roomGroupName: card.roomGroupName,
+            currentOverallRoomCount: currentAllRoomCount,
+            previousDayOverallRoomCount: previousDayAllRoomCount,
+            previousWeekOverallRoomCount: previousWeekAllRoomCount,
+            previousMonthOverallRoomCount: previousMonthAllRoomCount,
             currentIndividualRoomCount: resolveSalesSettingPrivateRoomCount(currentTransientRoomCount, currentAllRoomCount, currentGroupRoomCount),
             previousDayIndividualRoomCount: resolveSalesSettingPrivateRoomCount(previousDayTransientRoomCount, previousDayAllRoomCount, previousDayGroupRoomCount),
             previousWeekIndividualRoomCount: resolveSalesSettingPrivateRoomCount(previousWeekTransientRoomCount, previousWeekAllRoomCount, previousWeekGroupRoomCount),
@@ -854,6 +862,10 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
 
         renderSalesSettingGroupRoom(
             metric.card,
+            metric.currentOverallRoomCount,
+            metric.previousDayOverallRoomCount,
+            metric.previousWeekOverallRoomCount,
+            metric.previousMonthOverallRoomCount,
             metric.currentIndividualRoomCount,
             metric.previousDayIndividualRoomCount,
             metric.previousWeekIndividualRoomCount,
@@ -1873,6 +1885,10 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
 
 function renderSalesSettingGroupRoom(
     card: SalesSettingCard,
+    currentOverallRoomCount: number | null,
+    previousDayOverallRoomCount: number | null,
+    previousWeekOverallRoomCount: number | null,
+    previousMonthOverallRoomCount: number | null,
     currentIndividualRoomCount: number | null,
     previousDayIndividualRoomCount: number | null,
     previousWeekIndividualRoomCount: number | null,
@@ -1885,6 +1901,11 @@ function renderSalesSettingGroupRoom(
     const existingRow = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`);
 
     if (
+        currentOverallRoomCount === null
+        && previousDayOverallRoomCount === null
+        && previousWeekOverallRoomCount === null
+        && previousMonthOverallRoomCount === null
+        &&
         currentIndividualRoomCount === null
         && previousDayIndividualRoomCount === null
         && previousWeekIndividualRoomCount === null
@@ -1900,6 +1921,10 @@ function renderSalesSettingGroupRoom(
     }
 
     const signature = [
+        currentOverallRoomCount,
+        previousDayOverallRoomCount,
+        previousWeekOverallRoomCount,
+        previousMonthOverallRoomCount,
         currentIndividualRoomCount,
         previousDayIndividualRoomCount,
         previousWeekIndividualRoomCount,
@@ -1916,8 +1941,30 @@ function renderSalesSettingGroupRoom(
     const rowElement = existingRow ?? document.createElement("table");
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE, "");
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE, signature);
+
+    const headElement = document.createElement("thead");
+    const headerRowElement = document.createElement("tr");
+    for (const label of ["区分", "室数", "1日前", "7日前", "30日前"]) {
+        const headerCellElement = document.createElement("th");
+        headerCellElement.scope = "col";
+        headerCellElement.textContent = label;
+        headerRowElement.append(headerCellElement);
+    }
+    headElement.append(headerRowElement);
+
     const bodyElement = document.createElement("tbody");
     bodyElement.append(
+        createSalesSettingOverallSummaryRow(
+            "全体",
+            formatCompactMetricValue(currentOverallRoomCount),
+            formatCompactMetricDelta(currentOverallRoomCount, previousDayOverallRoomCount),
+            formatCompactMetricDelta(currentOverallRoomCount, previousWeekOverallRoomCount),
+            formatCompactMetricDelta(currentOverallRoomCount, previousMonthOverallRoomCount),
+            getGroupRoomDeltaTone(currentOverallRoomCount, previousDayOverallRoomCount),
+            getGroupRoomDeltaTone(currentOverallRoomCount, previousWeekOverallRoomCount),
+            getGroupRoomDeltaTone(currentOverallRoomCount, previousMonthOverallRoomCount),
+            true
+        ),
         createSalesSettingOverallSummaryRow(
             "個人",
             formatCompactMetricValue(currentIndividualRoomCount),
@@ -1940,7 +1987,7 @@ function renderSalesSettingGroupRoom(
         )
     );
 
-    rowElement.replaceChildren(bodyElement);
+    rowElement.replaceChildren(headElement, bodyElement);
 
     if (existingRow !== null) {
         return;
@@ -2509,9 +2556,20 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] thead th {
+            color: #50627a;
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.35;
+        }
+
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] th:last-child,
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] td:last-child {
             padding-right: 0;
+        }
+
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] [${SALES_SETTING_OVERALL_ROW_ATTRIBUTE}][${SALES_SETTING_OVERALL_EMPHASIS_ATTRIBUTE}="true"] {
+            color: #243447;
         }
 
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] [${SALES_SETTING_OVERALL_LABEL_ATTRIBUTE}] {
