@@ -2462,8 +2462,8 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
             display: flex;
-            flex-wrap: wrap;
-            column-gap: 10px;
+            flex-direction: column;
+            align-items: flex-start;
             row-gap: 2px;
             margin: 4px 0 10px;
             color: #50627a;
