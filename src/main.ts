@@ -30,8 +30,6 @@ const SALES_SETTING_OVERALL_LABEL_ATTRIBUTE = "data-ra-sales-setting-overall-lab
 const SALES_SETTING_OVERALL_VALUE_ATTRIBUTE = "data-ra-sales-setting-overall-value";
 const SALES_SETTING_OVERALL_EMPHASIS_ATTRIBUTE = "data-ra-sales-setting-overall-emphasis";
 const SALES_SETTING_ROOM_DELTA_ATTRIBUTE = "data-ra-sales-setting-room-delta";
-const SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE = "data-ra-sales-setting-room-delta-item";
-const SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-room-delta-signature";
 const SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE = "data-ra-sales-setting-rank-overview";
 const SALES_SETTING_RANK_OVERVIEW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-signature";
 const SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-title";
@@ -629,7 +627,7 @@ async function runCalendarSync(): Promise<void> {
 
     if (activeAnalyzeDate !== null) {
         prefetchSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey);
-        prefetchSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey);
+        cleanupSalesSettingRoomDeltas();
     } else {
         cleanupSalesSettingOverallSummary();
         cleanupSalesSettingRankOverview();
@@ -640,9 +638,6 @@ async function runCalendarSync(): Promise<void> {
 
     await Promise.all([
         syncMonthlyCalendarGroupRooms(batchDateKey),
-        activeAnalyzeDate === null
-            ? Promise.resolve()
-            : syncSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey, syncContext),
         activeAnalyzeDate === null
             ? Promise.resolve()
             : syncSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey, syncContext),
@@ -876,54 +871,6 @@ async function syncSalesSettingGroupRooms(analysisDate: string, batchDateKey: st
             metric.previousMonthGroupRoomCount
         );
     }
-}
-
-async function syncSalesSettingRoomDeltas(analysisDate: string, batchDateKey: string, syncContext: SyncContext): Promise<void> {
-    const cards = collectSalesSettingCards();
-    if (cards.length === 0) {
-        return;
-    }
-
-    ensureGroupRoomStyles();
-
-    const roomGroups = await getRoomGroups()
-        .catch((error: unknown) => {
-            console.error(`[${SCRIPT_NAME}] failed to load room groups`, {
-                error
-            });
-            return [] as RoomGroup[];
-        });
-    if (isSyncContextStale(syncContext)) {
-        return;
-    }
-
-    const roomGroupIdByName = new Map(roomGroups.map((roomGroup) => [roomGroup.name, roomGroup.id]));
-    const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
-
-    await Promise.all(cards.map(async (card) => {
-        const rmRoomGroupId = roomGroupIdByName.get(card.roomGroupName);
-        if (rmRoomGroupId === undefined) {
-            card.headingElement.querySelector<HTMLElement>(`[${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}]`)?.remove();
-            return;
-        }
-
-        const [currentValue, previousDayValue, previousWeekValue, previousMonthValue] = await Promise.all([
-            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "all", rmRoomGroupId),
-            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "all", rmRoomGroupId),
-            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", rmRoomGroupId),
-            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "all", rmRoomGroupId)
-        ]);
-
-        if (isSyncContextStale(syncContext)) {
-            return;
-        }
-
-        if (!card.cardElement.isConnected) {
-            return;
-        }
-
-        renderSalesSettingRoomDelta(card, currentValue, previousDayValue, previousWeekValue, previousMonthValue);
-    }));
 }
 
 async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey: string, syncContext: SyncContext): Promise<void> {
@@ -1242,34 +1189,6 @@ function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: stri
         .catch((error: unknown) => {
             salesSettingPrefetchKeys.delete(prefetchKey);
             console.warn(`[${SCRIPT_NAME}] failed to prefetch sales-setting group rooms`, {
-                analysisDate,
-                batchDateKey,
-                error
-            });
-        });
-}
-
-function prefetchSalesSettingRoomDeltas(analysisDate: string, batchDateKey: string): void {
-    const prefetchKey = `${batchDateKey}:${analysisDate}`;
-    if (salesSettingPrefetchKeys.has(`${prefetchKey}:room-delta`)) {
-        return;
-    }
-
-    salesSettingPrefetchKeys.add(`${prefetchKey}:room-delta`);
-
-    const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
-    void getRoomGroups()
-        .then((roomGroups) => Promise.all([
-            ...roomGroups.flatMap((roomGroup) => [
-                fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "all", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "all", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "all", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "all", roomGroup.id)
-            ])
-        ]))
-        .catch((error: unknown) => {
-            salesSettingPrefetchKeys.delete(`${prefetchKey}:room-delta`);
-            console.warn(`[${SCRIPT_NAME}] failed to prefetch sales-setting room deltas`, {
                 analysisDate,
                 batchDateKey,
                 error
@@ -1764,9 +1683,9 @@ function renderSalesSettingOverallSummary(
         bodyElement.append(createSalesSettingOverallSummaryRow(
             "全体",
             formatCompactMetricValue(currentRoomValue),
-            formatSalesSettingRoomDelta(currentRoomValue, previousDayRoomValue),
-            formatSalesSettingRoomDelta(currentRoomValue, previousWeekRoomValue),
-            formatSalesSettingRoomDelta(currentRoomValue, previousMonthRoomValue),
+            formatCompactMetricDelta(currentRoomValue, previousDayRoomValue),
+            formatCompactMetricDelta(currentRoomValue, previousWeekRoomValue),
+            formatCompactMetricDelta(currentRoomValue, previousMonthRoomValue),
             getMetricDeltaTone(currentRoomValue, previousDayRoomValue),
             getMetricDeltaTone(currentRoomValue, previousWeekRoomValue),
             getMetricDeltaTone(currentRoomValue, previousMonthRoomValue),
@@ -2001,58 +1920,6 @@ function renderSalesSettingGroupRoom(
     card.cardElement.append(rowElement);
 }
 
-function renderSalesSettingRoomDelta(
-    card: SalesSettingCard,
-    currentValue: number | null,
-    previousDayValue: number | null,
-    previousWeekValue: number | null,
-    previousMonthValue: number | null
-): void {
-    const existingContainer = card.headingElement.querySelector<HTMLElement>(`[${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}]`);
-
-    if (currentValue === null && previousDayValue === null && previousWeekValue === null && previousMonthValue === null) {
-        existingContainer?.remove();
-        return;
-    }
-
-    const items = [{
-        label: "1日前",
-        value: formatSalesSettingRoomDelta(currentValue, previousDayValue),
-        tone: getMetricDeltaTone(currentValue, previousDayValue)
-    }, {
-        label: "7日前",
-        value: formatSalesSettingRoomDelta(currentValue, previousWeekValue),
-        tone: getMetricDeltaTone(currentValue, previousWeekValue)
-    }, {
-        label: "30日前",
-        value: formatSalesSettingRoomDelta(currentValue, previousMonthValue),
-        tone: getMetricDeltaTone(currentValue, previousMonthValue)
-    }];
-    const signature = items.map((item) => `${item.label}:${item.value}:${item.tone}`).join("|");
-
-    if (existingContainer?.getAttribute(SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE) === signature) {
-        return;
-    }
-
-    const containerElement = existingContainer ?? document.createElement("span");
-    containerElement.setAttribute(SALES_SETTING_ROOM_DELTA_ATTRIBUTE, "");
-    containerElement.setAttribute(SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE, signature);
-    containerElement.replaceChildren(
-        ...items.map((item) => createSalesSettingRoomDeltaItem(item.label, item.value, item.tone))
-    );
-
-    if (existingContainer !== null) {
-        return;
-    }
-
-    if (card.roomCountSummaryElement !== null) {
-        card.roomCountSummaryElement.insertAdjacentElement("afterend", containerElement);
-        return;
-    }
-
-    card.headingElement.append(containerElement);
-}
-
 function renderSalesSettingRankDetail(card: SalesSettingCard, summary: SalesSettingRankSummary | null): void {
     const latestReflectionContainer = card.latestReflectionElement?.parentElement;
     const existingDetail = latestReflectionContainer?.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`) ?? null;
@@ -2129,14 +1996,6 @@ function createSalesSettingOverallSummaryRow(
     return rowElement;
 }
 
-function createSalesSettingRoomDeltaItem(label: string, value: string, tone: string): HTMLSpanElement {
-    const itemElement = document.createElement("span");
-    itemElement.setAttribute(SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE, "");
-    itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, tone);
-    itemElement.textContent = `${label} ${value}`;
-    return itemElement;
-}
-
 function formatCompactMetricValue(value: number | null): string {
     if (value === null) {
         return "-";
@@ -2162,16 +2021,6 @@ function resolveSalesSettingPrivateRoomCount(
 }
 
 function formatCompactMetricDelta(currentValue: number | null, previousValue: number | null): string {
-    const delta = getMetricDelta(currentValue, previousValue);
-    if (delta === null) {
-        return "-";
-    }
-
-    const prefix = delta > 0 ? "+" : "";
-    return `${prefix}${formatGroupRoomNumber(delta)}`;
-}
-
-function formatSalesSettingRoomDelta(currentValue: number | null, previousValue: number | null): string {
     const delta = getMetricDelta(currentValue, previousValue);
     if (delta === null) {
         return "-";
@@ -2797,24 +2646,6 @@ function ensureGroupRoomStyles(): void {
             [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] td {
                 padding-right: 10px;
             }
-        }
-
-        [${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}] {
-            display: inline-flex;
-            flex-wrap: wrap;
-            column-gap: 8px;
-            row-gap: 2px;
-            margin-left: 10px;
-            max-width: 100%;
-            vertical-align: middle;
-        }
-
-        [${SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE}] {
-            color: #50627a;
-            font-size: 13px;
-            font-weight: 700;
-            line-height: 1.4;
-            white-space: nowrap;
         }
 
         [${SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE}="positive"] {
