@@ -2556,6 +2556,10 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] tr > :not(:first-child) {
+            text-align: right;
+        }
+
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] thead th {
             color: #50627a;
             font-size: 14px;
@@ -2580,7 +2584,6 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] [${SALES_SETTING_OVERALL_VALUE_ATTRIBUTE}] {
-            color: #50627a;
             font-size: 13px;
             font-weight: 700;
             line-height: 1.4;
@@ -2611,6 +2614,10 @@ function ensureGroupRoomStyles(): void {
             text-align: left;
             vertical-align: top;
             white-space: nowrap;
+        }
+
+        [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] tr > :not(:first-child) {
+            text-align: right;
         }
 
         [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] th:last-child,
