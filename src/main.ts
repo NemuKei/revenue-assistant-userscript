@@ -1694,19 +1694,19 @@ function renderSalesSettingOverallSummary(
             const groupRowElement = document.createElement("div");
             groupRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
             groupRowElement.replaceChildren(
-                createSalesSettingGroupRoomItem("団体室数", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
+                createSalesSettingGroupRoomItem("団体室数：", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
                 createSalesSettingGroupRoomItem(
-                    "1日前差分",
+                    "1日前",
                     formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
                     getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount)
                 ),
                 createSalesSettingGroupRoomItem(
-                    "7日前差分",
+                    "7日前",
                     formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
                     getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount)
                 ),
                 createSalesSettingGroupRoomItem(
-                    "30日前差分",
+                    "30日前",
                     formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
                     getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
                 )
@@ -1832,19 +1832,19 @@ function renderSalesSettingGroupRoom(
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE, "");
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE, signature);
     rowElement.replaceChildren(
-        createSalesSettingGroupRoomItem("団体室数", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
+        createSalesSettingGroupRoomItem("団体室数：", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
         createSalesSettingGroupRoomItem(
-            "1日前差分",
+            "1日前",
             formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
             getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount)
         ),
         createSalesSettingGroupRoomItem(
-            "7日前差分",
+            "7日前",
             formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
             getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount)
         ),
         createSalesSettingGroupRoomItem(
-            "30日前差分",
+            "30日前",
             formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
             getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
         )
@@ -1949,7 +1949,7 @@ function createSalesSettingGroupRoomItem(label: string, value: string, tone: str
     const itemElement = document.createElement("span");
     itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE, "");
     itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, tone);
-    itemElement.textContent = `${label} ${value}`;
+    itemElement.textContent = label.endsWith("：") ? `${label}${value}` : `${label} ${value}`;
     return itemElement;
 }
 
@@ -2350,20 +2350,19 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            column-gap: 10px;
+            row-gap: 2px;
             margin: 4px 0 10px;
             color: #50627a;
             font-size: 11px;
-            font-weight: 600;
+            font-weight: 700;
             line-height: 1.4;
+            user-select: text;
+            -webkit-user-select: text;
         }
 
         [${SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE}] {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            background: #eef4ff;
-            padding: 2px 8px;
+            display: inline;
             white-space: nowrap;
         }
 
@@ -2408,11 +2407,14 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE}] {
             display: flex;
             flex-wrap: wrap;
-            gap: 6px;
+            column-gap: 10px;
+            row-gap: 2px;
             color: #50627a;
             font-size: 11px;
-            font-weight: 600;
+            font-weight: 700;
             line-height: 1.4;
+            user-select: text;
+            -webkit-user-select: text;
         }
 
         [${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}] {
