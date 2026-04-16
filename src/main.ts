@@ -2352,11 +2352,11 @@ function ensureGroupRoomStyles(): void {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin: 0 0 12px;
-            padding: 10px 12px;
-            border: 1px solid #d9e5f7;
-            border-radius: 10px;
-            background: linear-gradient(180deg, #f8fbff 0%, #ffffff 100%);
+            margin: 0 0 10px;
+            padding: 0;
+            border: none;
+            border-radius: 0;
+            background: transparent;
         }
 
         [${SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE}] {
@@ -2397,12 +2397,12 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}] {
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 4px;
             margin: 0 0 12px;
-            padding: 10px 12px;
-            border: 1px solid #e3e8ef;
-            border-radius: 10px;
-            background: #ffffff;
+            padding: 0;
+            border: none;
+            border-radius: 0;
+            background: transparent;
         }
 
         [${SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE}] {

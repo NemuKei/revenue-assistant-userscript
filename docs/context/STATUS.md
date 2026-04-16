@@ -32,10 +32,13 @@
 ## Remaining Task Triage
 
 Now:
+
 - 販売設定タブの販売室数差分のデータ源を確定する
 
 Next:
+
 - 月送りと販売設定タブ再描画時の request 数を減らす
 
 After Next:
+
 - 競合価格表の導入要否を決める
