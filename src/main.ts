@@ -4,6 +4,7 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
+const SUGGEST_DETAILS_ENDPOINT = "/api/v3/suggest/output/details";
 const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
@@ -27,6 +28,15 @@ const SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE = "data-ra-sales-setting-overall
 const SALES_SETTING_ROOM_DELTA_ATTRIBUTE = "data-ra-sales-setting-room-delta";
 const SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE = "data-ra-sales-setting-room-delta-item";
 const SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-room-delta-signature";
+const SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE = "data-ra-sales-setting-rank-overview";
+const SALES_SETTING_RANK_OVERVIEW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-signature";
+const SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-title";
+const SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE = "data-ra-sales-setting-rank-overview-row";
+const SALES_SETTING_RANK_OVERVIEW_ROOM_ATTRIBUTE = "data-ra-sales-setting-rank-overview-room";
+const SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE = "data-ra-sales-setting-rank-overview-meta";
+const SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-value";
+const SALES_SETTING_RANK_DETAIL_ATTRIBUTE = "data-ra-sales-setting-rank-detail";
+const SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-rank-detail-signature";
 const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v4:";
 const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
 const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
@@ -75,6 +85,7 @@ interface SalesSettingCard {
     roomGroupName: string;
     cardElement: HTMLElement;
     headingElement: HTMLElement;
+    latestReflectionElement: HTMLElement | null;
     roomCountSummaryElement: HTMLElement | null;
     detailWrapperElement: HTMLElement | null;
 }
@@ -82,6 +93,40 @@ interface SalesSettingCard {
 interface SalesSettingRoomCapacity {
     currentValue: number;
     maxValue: number;
+}
+
+interface SuggestOutputDetailCurrent {
+    price_rank?: string;
+    price_rank_name?: string;
+    price_rank_code?: string;
+}
+
+interface SuggestOutputDetailSuggest {
+    priority?: number;
+    price_rank?: string;
+    price_rank_name?: string;
+    price_rank_code?: string;
+    price_rank_effect?: string;
+}
+
+interface SuggestOutputDetail {
+    latest_reflection_at?: string | null;
+    rm_room_group_id?: string;
+    rm_room_group_name?: string;
+    rm_room_group_odr?: number;
+    current?: SuggestOutputDetailCurrent;
+    suggests?: SuggestOutputDetailSuggest[];
+}
+
+interface SalesSettingRankSummary {
+    roomGroupId: string;
+    roomGroupName: string;
+    displayOrder: number;
+    latestReflectionAt: string | null;
+    latestReflectionDaysAgo: number | null;
+    currentRankName: string | null;
+    suggestedRankName: string | null;
+    suggestionEffect: string | null;
 }
 
 interface SyncContext {
@@ -93,6 +138,7 @@ interface SyncContext {
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
+const suggestOutputDetailsCache = new Map<string, Promise<SuggestOutputDetail[]>>();
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
@@ -589,6 +635,8 @@ async function runCalendarSync(): Promise<void> {
         prefetchSalesSettingRoomDeltas(activeAnalyzeDate, batchDateKey);
     } else {
         cleanupSalesSettingOverallSummary();
+        cleanupSalesSettingRankOverview();
+        cleanupSalesSettingRankDetails();
         cleanupSalesSettingGroupRooms();
         cleanupSalesSettingRoomDeltas();
     }
@@ -605,6 +653,10 @@ async function runCalendarSync(): Promise<void> {
             ? Promise.resolve()
             : syncSalesSettingOverallSummary(activeAnalyzeDate, batchDateKey, syncContext)
     ]);
+
+    if (activeAnalyzeDate !== null) {
+        await syncSalesSettingRankInsights(activeAnalyzeDate, syncContext);
+    }
 }
 
 function createSyncContext(batchDateKey: string, facilityCacheKey: string): SyncContext {
@@ -944,6 +996,53 @@ async function syncSalesSettingOverallSummary(analysisDate: string, batchDateKey
     );
 }
 
+async function syncSalesSettingRankInsights(analysisDate: string, syncContext: SyncContext): Promise<void> {
+    const cards = collectSalesSettingCards();
+    if (cards.length === 0) {
+        cleanupSalesSettingRankOverview();
+        cleanupSalesSettingRankDetails();
+        return;
+    }
+
+    ensureGroupRoomStyles();
+
+    const details = await getSuggestOutputDetails(analysisDate)
+        .catch((error: unknown) => {
+            console.error(`[${SCRIPT_NAME}] failed to load suggest details`, {
+                analysisDate,
+                error
+            });
+            return [] as SuggestOutputDetail[];
+        });
+    if (isSyncContextStale(syncContext)) {
+        return;
+    }
+
+    const summaries = buildSalesSettingRankSummaries(details)
+        .filter((summary) => summary.currentRankName !== null || summary.suggestedRankName !== null);
+    const summaryByRoomGroupName = new Map(summaries.map((summary) => [summary.roomGroupName, summary]));
+
+    const firstCard = cards[0];
+    if (firstCard === undefined || !firstCard.cardElement.isConnected) {
+        return;
+    }
+
+    renderSalesSettingRankOverview(
+        firstCard,
+        cards
+            .map((card) => summaryByRoomGroupName.get(card.roomGroupName))
+            .filter((summary): summary is SalesSettingRankSummary => summary !== undefined)
+    );
+
+    for (const card of cards) {
+        if (!card.cardElement.isConnected) {
+            continue;
+        }
+
+        renderSalesSettingRankDetail(card, summaryByRoomGroupName.get(card.roomGroupName) ?? null);
+    }
+}
+
 function collectMonthlyCalendarCells(): MonthlyCalendarCell[] {
     return Array.from(document.querySelectorAll<HTMLAnchorElement>(`[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`))
         .flatMap((anchorElement) => {
@@ -973,6 +1072,7 @@ function collectSalesSettingCards(): SalesSettingCard[] {
     return Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="suggestions-heading"]`))
         .flatMap((headingElement) => {
             const roomTypeElement = headingElement.querySelector<HTMLElement>(`[data-testid="suggestions-room-type-name"]`);
+            const latestReflectionElement = headingElement.querySelector<HTMLElement>(`[data-testid="suggestions-latest-reflection-at"]`);
             const cardElement = headingElement.parentElement;
             const roomCountSummaryElement = headingElement
                 .querySelector<HTMLElement>(`[data-testid="suggestions-room-full-number"]`)
@@ -991,6 +1091,7 @@ function collectSalesSettingCards(): SalesSettingCard[] {
                 roomGroupName,
                 cardElement,
                 headingElement,
+                latestReflectionElement,
                 roomCountSummaryElement,
                 detailWrapperElement: cardElement.querySelector<HTMLElement>(`[data-testid="suggestions-detail-wrapper"]`)
             }];
@@ -1110,6 +1211,42 @@ function prefetchSalesSettingRoomDeltas(analysisDate: string, batchDateKey: stri
         });
 }
 
+function getSuggestOutputDetails(analysisDate: string): Promise<SuggestOutputDetail[]> {
+    const cached = suggestOutputDetailsCache.get(analysisDate);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const request = loadSuggestOutputDetails(analysisDate)
+        .catch((error: unknown) => {
+            suggestOutputDetailsCache.delete(analysisDate);
+            throw error;
+        });
+    suggestOutputDetailsCache.set(analysisDate, request);
+
+    return request;
+}
+
+async function loadSuggestOutputDetails(analysisDate: string): Promise<SuggestOutputDetail[]> {
+    const url = new URL(SUGGEST_DETAILS_ENDPOINT, window.location.origin);
+    url.searchParams.set("from", analysisDate);
+    url.searchParams.set("to", analysisDate);
+
+    const response = await fetch(url.toString(), {
+        credentials: "include",
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`suggest details request failed: ${response.status}`);
+    }
+
+    const payload = (await response.json()) as SuggestOutputDetail[];
+    return payload.slice().sort((left, right) => (left.rm_room_group_odr ?? 0) - (right.rm_room_group_odr ?? 0));
+}
+
 function getCurrentBatchDateKey(): string {
     const text = document.body.innerText;
     const match = /最終データ更新[:：]\s*(\d{4})年(\d{1,2})月(\d{1,2})日/.exec(text);
@@ -1141,6 +1278,7 @@ function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
     salesSettingPrefetchKeys.clear();
     groupRoomCache.clear();
     bookingCurveCache.clear();
+    suggestOutputDetailsCache.clear();
     resetPersistedGroupRoomCache(batchDateKey, facilityCacheKey);
 }
 
@@ -1467,6 +1605,16 @@ function cleanupSalesSettingOverallSummary(): void {
     document.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`)?.remove();
 }
 
+function cleanupSalesSettingRankOverview(): void {
+    document.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`)?.remove();
+}
+
+function cleanupSalesSettingRankDetails(): void {
+    for (const detailElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`))) {
+        detailElement.remove();
+    }
+}
+
 function getInconsistentSalesSettingGroupNames(
     metrics: Array<{ roomGroupName: string; currentValue: number | null }>,
     overallCurrentValue: number | null
@@ -1579,6 +1727,64 @@ function renderSalesSettingOverallSummary(
 
     if (containerElement !== null && containerElement.nextElementSibling !== firstCard.cardElement) {
         parentElement.insertBefore(containerElement, firstCard.cardElement);
+    }
+}
+
+function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: SalesSettingRankSummary[]): void {
+    const parentElement = firstCard.cardElement.parentElement;
+    if (parentElement === null) {
+        return;
+    }
+
+    const existingContainer = parentElement.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`);
+    if (summaries.length === 0) {
+        existingContainer?.remove();
+        return;
+    }
+
+    const orderedSummaries = summaries.slice().sort(compareSalesSettingRankSummaries);
+    const signature = orderedSummaries
+        .map((summary) => `${summary.roomGroupName}:${summary.latestReflectionDaysAgo}:${summary.currentRankName}:${summary.suggestedRankName}:${summary.suggestionEffect}`)
+        .join("|");
+    const containerElement = existingContainer ?? document.createElement("section");
+
+    if (existingContainer?.getAttribute(SALES_SETTING_RANK_OVERVIEW_SIGNATURE_ATTRIBUTE) !== signature) {
+        containerElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE, "");
+        containerElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_SIGNATURE_ATTRIBUTE, signature);
+
+        const titleElement = document.createElement("div");
+        titleElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE, "");
+        titleElement.textContent = "ランク俯瞰";
+
+        containerElement.replaceChildren(
+            titleElement,
+            ...orderedSummaries.map((summary) => {
+                const rowElement = document.createElement("div");
+                rowElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE, "");
+                rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getSalesSettingRankTone(summary));
+
+                const roomElement = document.createElement("span");
+                roomElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ROOM_ATTRIBUTE, "");
+                roomElement.textContent = summary.roomGroupName;
+
+                const metaElement = document.createElement("span");
+                metaElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE, "");
+                metaElement.textContent = `最終変更 ${formatSalesSettingDaysAgo(summary.latestReflectionDaysAgo)}`;
+
+                const valueElement = document.createElement("span");
+                valueElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE, "");
+                valueElement.textContent = `現状->提案 ${formatSalesSettingRankTransition(summary.currentRankName, summary.suggestedRankName)}`;
+
+                rowElement.replaceChildren(roomElement, metaElement, valueElement);
+                return rowElement;
+            })
+        );
+    }
+
+    const overallSummaryElement = parentElement.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`);
+    const insertionAnchor = overallSummaryElement?.nextSibling ?? firstCard.cardElement;
+    if (containerElement !== insertionAnchor?.previousSibling) {
+        parentElement.insertBefore(containerElement, insertionAnchor);
     }
 }
 
@@ -1695,6 +1901,37 @@ function renderSalesSettingRoomDelta(
     }
 
     card.headingElement.append(containerElement);
+}
+
+function renderSalesSettingRankDetail(card: SalesSettingCard, summary: SalesSettingRankSummary | null): void {
+    const latestReflectionContainer = card.latestReflectionElement?.parentElement;
+    const existingDetail = latestReflectionContainer?.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`) ?? null;
+    const detailText = getSalesSettingRankDetailText(summary);
+
+    if (latestReflectionContainer == null || detailText === null) {
+        existingDetail?.remove();
+        return;
+    }
+
+    if (summary === null) {
+        existingDetail?.remove();
+        return;
+    }
+
+    const signature = `${summary.currentRankName}:${summary.suggestedRankName}:${summary.suggestionEffect}`;
+    if (existingDetail?.getAttribute(SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE) === signature) {
+        return;
+    }
+
+    const detailElement = existingDetail ?? document.createElement("div");
+    detailElement.setAttribute(SALES_SETTING_RANK_DETAIL_ATTRIBUTE, "");
+    detailElement.setAttribute(SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE, signature);
+    detailElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getSalesSettingRankTone(summary));
+    detailElement.textContent = detailText;
+
+    if (existingDetail === null) {
+        latestReflectionContainer.append(detailElement);
+    }
 }
 
 function createSalesSettingGroupRoomItem(label: string, value: string, tone: string): HTMLSpanElement {
@@ -1821,6 +2058,127 @@ function formatSalesSettingCapacity(capacity: SalesSettingRoomCapacity | null): 
     }
 
     return `${formatGroupRoomNumber(capacity.currentValue)} / ${formatGroupRoomNumber(capacity.maxValue)}`;
+}
+
+function buildSalesSettingRankSummaries(details: SuggestOutputDetail[]): SalesSettingRankSummary[] {
+    return details.flatMap((detail) => {
+        const roomGroupId = detail.rm_room_group_id;
+        const roomGroupName = detail.rm_room_group_name;
+        if (roomGroupId === undefined || roomGroupName === undefined) {
+            return [];
+        }
+
+        const firstSuggest = getTopPrioritySuggest(detail.suggests ?? []);
+        return [{
+            roomGroupId,
+            roomGroupName,
+            displayOrder: detail.rm_room_group_odr ?? 0,
+            latestReflectionAt: detail.latest_reflection_at ?? null,
+            latestReflectionDaysAgo: getDaysAgo(detail.latest_reflection_at ?? null),
+            currentRankName: getPriceRankName(detail.current),
+            suggestedRankName: getPriceRankName(firstSuggest),
+            suggestionEffect: firstSuggest?.price_rank_effect ?? null
+        }];
+    });
+}
+
+function getTopPrioritySuggest(suggests: SuggestOutputDetailSuggest[]): SuggestOutputDetailSuggest | null {
+    const sorted = suggests
+        .filter((suggest) => getPriceRankName(suggest) !== null)
+        .slice()
+        .sort((left, right) => (left.priority ?? Number.MAX_SAFE_INTEGER) - (right.priority ?? Number.MAX_SAFE_INTEGER));
+
+    return sorted[0] ?? null;
+}
+
+function getPriceRankName(value: SuggestOutputDetailCurrent | SuggestOutputDetailSuggest | null | undefined): string | null {
+    return value?.price_rank_name ?? value?.price_rank ?? null;
+}
+
+function getDaysAgo(value: string | null): number | null {
+    if (value === null) {
+        return null;
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return null;
+    }
+
+    const currentDate = new Date();
+    const currentDay = new Date(currentDate.getFullYear(), currentDate.getMonth(), currentDate.getDate());
+    const targetDay = new Date(date.getFullYear(), date.getMonth(), date.getDate());
+    const diffDays = Math.round((currentDay.getTime() - targetDay.getTime()) / 86400000);
+
+    return diffDays < 0 ? 0 : diffDays;
+}
+
+function formatSalesSettingDaysAgo(value: number | null): string {
+    if (value === null) {
+        return "-";
+    }
+
+    return `${value}日前`;
+}
+
+function formatSalesSettingRankTransition(currentRankName: string | null, suggestedRankName: string | null): string {
+    if (currentRankName === null && suggestedRankName === null) {
+        return "-";
+    }
+
+    if (currentRankName === null) {
+        return suggestedRankName ?? "-";
+    }
+
+    if (suggestedRankName === null || suggestedRankName === currentRankName) {
+        return currentRankName;
+    }
+
+    return `${currentRankName} -> ${suggestedRankName}`;
+}
+
+function getSalesSettingRankTone(summary: SalesSettingRankSummary): string {
+    if (summary.suggestionEffect === "up") {
+        return "positive";
+    }
+
+    if (summary.suggestionEffect === "down") {
+        return "negative";
+    }
+
+    return "neutral";
+}
+
+function getSalesSettingRankDetailText(summary: SalesSettingRankSummary | null): string | null {
+    if (summary === null) {
+        return null;
+    }
+
+    const value = formatSalesSettingRankTransition(summary.currentRankName, summary.suggestedRankName);
+    if (value === "-") {
+        return null;
+    }
+
+    return `現状->提案 ${value}`;
+}
+
+function compareSalesSettingRankSummaries(left: SalesSettingRankSummary, right: SalesSettingRankSummary): number {
+    if (left.latestReflectionDaysAgo === null && right.latestReflectionDaysAgo !== null) {
+        return 1;
+    }
+
+    if (left.latestReflectionDaysAgo !== null && right.latestReflectionDaysAgo === null) {
+        return -1;
+    }
+
+    if (left.latestReflectionDaysAgo !== null && right.latestReflectionDaysAgo !== null) {
+        const diff = left.latestReflectionDaysAgo - right.latestReflectionDaysAgo;
+        if (diff !== 0) {
+            return diff;
+        }
+    }
+
+    return left.displayOrder - right.displayOrder;
 }
 
 function formatGroupRoomNumber(value: number): string {
@@ -2051,6 +2409,72 @@ function ensureGroupRoomStyles(): void {
             font-size: 11px;
             font-weight: 600;
             line-height: 1.4;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}] {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            margin: 0 0 12px;
+            padding: 10px 12px;
+            border: 1px solid #e3e8ef;
+            border-radius: 10px;
+            background: #ffffff;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE}] {
+            color: #243447;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE}] {
+            display: grid;
+            grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 1fr);
+            gap: 8px;
+            align-items: center;
+            color: #50627a;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_ROOM_ATTRIBUTE}] {
+            min-width: 0;
+            color: #243447;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE}] {
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE}] {
+            justify-self: end;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}] {
+            margin-top: 2px;
+            color: #50627a;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.4;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 900px) {
+            [${SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE}] {
+                grid-template-columns: minmax(0, 1fr) auto;
+            }
+
+            [${SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE}] {
+                grid-column: 1 / -1;
+                justify-self: start;
+            }
         }
 
         [${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}] {
