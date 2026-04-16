@@ -25,6 +25,11 @@ const SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE = "data-ra-sales-setting-overall
 const SALES_SETTING_OVERALL_TITLE_ATTRIBUTE = "data-ra-sales-setting-overall-title";
 const SALES_SETTING_OVERALL_METRIC_ATTRIBUTE = "data-ra-sales-setting-overall-metric";
 const SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE = "data-ra-sales-setting-overall-group-row";
+const SALES_SETTING_OVERALL_TABLE_ATTRIBUTE = "data-ra-sales-setting-overall-table";
+const SALES_SETTING_OVERALL_ROW_ATTRIBUTE = "data-ra-sales-setting-overall-row";
+const SALES_SETTING_OVERALL_LABEL_ATTRIBUTE = "data-ra-sales-setting-overall-label";
+const SALES_SETTING_OVERALL_VALUE_ATTRIBUTE = "data-ra-sales-setting-overall-value";
+const SALES_SETTING_OVERALL_EMPHASIS_ATTRIBUTE = "data-ra-sales-setting-overall-emphasis";
 const SALES_SETTING_ROOM_DELTA_ATTRIBUTE = "data-ra-sales-setting-room-delta";
 const SALES_SETTING_ROOM_DELTA_ITEM_ATTRIBUTE = "data-ra-sales-setting-room-delta-item";
 const SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-room-delta-signature";
@@ -1718,70 +1723,59 @@ function renderSalesSettingOverallSummary(
         containerElement.setAttribute(SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE, "");
         containerElement.setAttribute(SALES_SETTING_OVERALL_SUMMARY_SIGNATURE_ATTRIBUTE, signature);
 
-        const salesRowElement = document.createElement("div");
-        salesRowElement.setAttribute(SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE, "");
+        const tableElement = document.createElement("table");
+        tableElement.setAttribute(SALES_SETTING_OVERALL_TABLE_ATTRIBUTE, "");
 
-        const titleElement = document.createElement("span");
-        titleElement.setAttribute(SALES_SETTING_OVERALL_TITLE_ATTRIBUTE, "");
-        titleElement.textContent = "全体";
+        const headElement = document.createElement("thead");
+        const headerRowElement = document.createElement("tr");
+        for (const label of ["区分", "室数", "1日前", "7日前", "30日前"]) {
+            const headerCellElement = document.createElement("th");
+            headerCellElement.scope = "col";
+            headerCellElement.textContent = label;
+            headerRowElement.append(headerCellElement);
+        }
+        headElement.append(headerRowElement);
 
-        const metricElement = document.createElement("span");
-        metricElement.setAttribute(SALES_SETTING_OVERALL_METRIC_ATTRIBUTE, "");
-        metricElement.textContent = `販売室数 : ${formatSalesSettingCapacity(totalCapacity)}`;
-
-        const deltaContainerElement = document.createElement("span");
-        deltaContainerElement.setAttribute(SALES_SETTING_ROOM_DELTA_ATTRIBUTE, "");
-        deltaContainerElement.setAttribute(
-            SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE,
-            `overall-room:${currentRoomValue}:${previousDayRoomValue}:${previousWeekRoomValue}:${previousMonthRoomValue}`
-        );
-        deltaContainerElement.replaceChildren(
-            createSalesSettingRoomDeltaItem(
-                "1日前",
-                formatSalesSettingRoomDelta(currentRoomValue, previousDayRoomValue),
-                getMetricDeltaTone(currentRoomValue, previousDayRoomValue)
-            ),
-            createSalesSettingRoomDeltaItem(
-                "7日前",
-                formatSalesSettingRoomDelta(currentRoomValue, previousWeekRoomValue),
-                getMetricDeltaTone(currentRoomValue, previousWeekRoomValue)
-            ),
-            createSalesSettingRoomDeltaItem(
-                "30日前",
-                formatSalesSettingRoomDelta(currentRoomValue, previousMonthRoomValue),
-                getMetricDeltaTone(currentRoomValue, previousMonthRoomValue)
-            )
-        );
-
-        salesRowElement.replaceChildren(titleElement, metricElement, deltaContainerElement);
+        const bodyElement = document.createElement("tbody");
+        bodyElement.append(createSalesSettingOverallSummaryRow(
+            "全体",
+            formatSalesSettingCapacity(totalCapacity),
+            formatSalesSettingRoomDelta(currentRoomValue, previousDayRoomValue),
+            formatSalesSettingRoomDelta(currentRoomValue, previousWeekRoomValue),
+            formatSalesSettingRoomDelta(currentRoomValue, previousMonthRoomValue),
+            getMetricDeltaTone(currentRoomValue, previousDayRoomValue),
+            getMetricDeltaTone(currentRoomValue, previousWeekRoomValue),
+            getMetricDeltaTone(currentRoomValue, previousMonthRoomValue),
+            true
+        ));
 
         if (showGroupMetrics) {
-            const individualRowElement = document.createElement("div");
-            individualRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
-            individualRowElement.replaceChildren(
-                ...createSalesSettingGroupMetricRowItems(
-                    "個人室数：",
-                    currentIndividualRoomCount,
-                    previousDayIndividualRoomCount,
-                    previousWeekIndividualRoomCount,
-                    previousMonthIndividualRoomCount
+            bodyElement.append(
+                createSalesSettingOverallSummaryRow(
+                    "個人",
+                    formatGroupRoomMetricValue(currentIndividualRoomCount),
+                    formatGroupRoomDelta(currentIndividualRoomCount, previousDayIndividualRoomCount),
+                    formatGroupRoomDelta(currentIndividualRoomCount, previousWeekIndividualRoomCount),
+                    formatGroupRoomDelta(currentIndividualRoomCount, previousMonthIndividualRoomCount),
+                    getGroupRoomDeltaTone(currentIndividualRoomCount, previousDayIndividualRoomCount),
+                    getGroupRoomDeltaTone(currentIndividualRoomCount, previousWeekIndividualRoomCount),
+                    getGroupRoomDeltaTone(currentIndividualRoomCount, previousMonthIndividualRoomCount)
+                ),
+                createSalesSettingOverallSummaryRow(
+                    "団体",
+                    formatGroupRoomMetricValue(currentGroupRoomCount),
+                    formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
+                    formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
+                    formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
+                    getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount),
+                    getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount),
+                    getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
                 )
             );
-
-            const groupRowElement = document.createElement("div");
-            groupRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
-            groupRowElement.replaceChildren(...createSalesSettingGroupMetricRowItems(
-                "団体室数：",
-                currentGroupRoomCount,
-                previousDayGroupRoomCount,
-                previousWeekGroupRoomCount,
-                previousMonthGroupRoomCount
-            ));
-
-            containerElement.replaceChildren(salesRowElement, individualRowElement, groupRowElement);
-        } else {
-            containerElement.replaceChildren(salesRowElement);
         }
+
+        tableElement.replaceChildren(headElement, bodyElement);
+        containerElement.replaceChildren(tableElement);
     }
 
     if (containerElement !== null && containerElement.nextElementSibling !== firstCard.cardElement) {
@@ -2048,6 +2042,51 @@ function createSalesSettingGroupMetricRowItems(
         createSalesSettingGroupRoomItem("7日前", formatGroupRoomDelta(currentValue, previousWeekValue), getGroupRoomDeltaTone(currentValue, previousWeekValue)),
         createSalesSettingGroupRoomItem("30日前", formatGroupRoomDelta(currentValue, previousMonthValue), getGroupRoomDeltaTone(currentValue, previousMonthValue))
     ];
+}
+
+function createSalesSettingOverallSummaryRow(
+    label: string,
+    roomValue: string,
+    previousDayValue: string,
+    previousWeekValue: string,
+    previousMonthValue: string,
+    previousDayTone: string,
+    previousWeekTone: string,
+    previousMonthTone: string,
+    emphasize = false
+): HTMLTableRowElement {
+    const rowElement = document.createElement("tr");
+    rowElement.setAttribute(SALES_SETTING_OVERALL_ROW_ATTRIBUTE, "");
+    if (emphasize) {
+        rowElement.setAttribute(SALES_SETTING_OVERALL_EMPHASIS_ATTRIBUTE, "true");
+    }
+
+    const labelElement = document.createElement("th");
+    labelElement.scope = "row";
+    labelElement.setAttribute(SALES_SETTING_OVERALL_LABEL_ATTRIBUTE, "");
+    labelElement.textContent = label;
+
+    const roomElement = document.createElement("td");
+    roomElement.setAttribute(SALES_SETTING_OVERALL_VALUE_ATTRIBUTE, "");
+    roomElement.textContent = roomValue;
+
+    const previousDayElement = document.createElement("td");
+    previousDayElement.setAttribute(SALES_SETTING_OVERALL_VALUE_ATTRIBUTE, "");
+    previousDayElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, previousDayTone);
+    previousDayElement.textContent = previousDayValue;
+
+    const previousWeekElement = document.createElement("td");
+    previousWeekElement.setAttribute(SALES_SETTING_OVERALL_VALUE_ATTRIBUTE, "");
+    previousWeekElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, previousWeekTone);
+    previousWeekElement.textContent = previousWeekValue;
+
+    const previousMonthElement = document.createElement("td");
+    previousMonthElement.setAttribute(SALES_SETTING_OVERALL_VALUE_ATTRIBUTE, "");
+    previousMonthElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, previousMonthTone);
+    previousMonthElement.textContent = previousMonthValue;
+
+    rowElement.replaceChildren(labelElement, roomElement, previousDayElement, previousWeekElement, previousMonthElement);
+    return rowElement;
 }
 
 function createSalesSettingRoomDeltaItem(label: string, value: string, tone: string): HTMLSpanElement {
@@ -2492,6 +2531,57 @@ function ensureGroupRoomStyles(): void {
             -webkit-user-select: text;
         }
 
+        [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] {
+            width: fit-content;
+            max-width: 100%;
+            border-collapse: collapse;
+        }
+
+        [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] th,
+        [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] td {
+            padding: 1px 16px 1px 0;
+            text-align: left;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] th:last-child,
+        [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] td:last-child {
+            padding-right: 0;
+        }
+
+        [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] thead th {
+            color: #50627a;
+            font-size: 14px;
+            font-weight: 600;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_OVERALL_ROW_ATTRIBUTE}] {
+            color: #50627a;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
+        [${SALES_SETTING_OVERALL_LABEL_ATTRIBUTE}] {
+            color: #243447;
+            font-weight: 700;
+        }
+
+        [${SALES_SETTING_OVERALL_VALUE_ATTRIBUTE}] {
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_OVERALL_ROW_ATTRIBUTE}][${SALES_SETTING_OVERALL_EMPHASIS_ATTRIBUTE}="true"] {
+            color: #243447;
+        }
+
+        [${SALES_SETTING_OVERALL_ROW_ATTRIBUTE}][${SALES_SETTING_OVERALL_EMPHASIS_ATTRIBUTE}="true"] [${SALES_SETTING_OVERALL_LABEL_ATTRIBUTE}] {
+            padding-left: 8px;
+            border-left: 3px solid #1f5fbf;
+        }
+
         [${SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE}] {
             display: flex;
             flex-wrap: wrap;
@@ -2611,6 +2701,15 @@ function ensureGroupRoomStyles(): void {
         }
 
         @media (max-width: 900px) {
+            [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] {
+                width: 100%;
+            }
+
+            [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] th,
+            [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] td {
+                padding-right: 10px;
+            }
+
             [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] {
                 width: 100%;
             }
