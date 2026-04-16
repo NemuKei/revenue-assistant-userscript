@@ -17,7 +17,6 @@ const GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE = "data-ra-group-room-toggle-button";
 const GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-group-room-toggle-active";
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
-const SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE = "data-ra-sales-setting-group-room-item";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
 const SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE = "data-ra-sales-setting-overall-summary";
 const SALES_SETTING_OVERALL_SUMMARY_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-overall-summary-signature";
@@ -1752,7 +1751,7 @@ function renderSalesSettingOverallSummary(
         const bodyElement = document.createElement("tbody");
         bodyElement.append(createSalesSettingOverallSummaryRow(
             "全体",
-            formatSalesSettingCapacity(totalCapacity),
+            formatCompactMetricValue(currentRoomValue),
             formatSalesSettingRoomDelta(currentRoomValue, previousDayRoomValue),
             formatSalesSettingRoomDelta(currentRoomValue, previousWeekRoomValue),
             formatSalesSettingRoomDelta(currentRoomValue, previousMonthRoomValue),
@@ -1766,20 +1765,20 @@ function renderSalesSettingOverallSummary(
             bodyElement.append(
                 createSalesSettingOverallSummaryRow(
                     "個人",
-                    formatGroupRoomMetricValue(currentIndividualRoomCount),
-                    formatGroupRoomDelta(currentIndividualRoomCount, previousDayIndividualRoomCount),
-                    formatGroupRoomDelta(currentIndividualRoomCount, previousWeekIndividualRoomCount),
-                    formatGroupRoomDelta(currentIndividualRoomCount, previousMonthIndividualRoomCount),
+                    formatCompactMetricValue(currentIndividualRoomCount),
+                    formatCompactMetricDelta(currentIndividualRoomCount, previousDayIndividualRoomCount),
+                    formatCompactMetricDelta(currentIndividualRoomCount, previousWeekIndividualRoomCount),
+                    formatCompactMetricDelta(currentIndividualRoomCount, previousMonthIndividualRoomCount),
                     getGroupRoomDeltaTone(currentIndividualRoomCount, previousDayIndividualRoomCount),
                     getGroupRoomDeltaTone(currentIndividualRoomCount, previousWeekIndividualRoomCount),
                     getGroupRoomDeltaTone(currentIndividualRoomCount, previousMonthIndividualRoomCount)
                 ),
                 createSalesSettingOverallSummaryRow(
                     "団体",
-                    formatGroupRoomMetricValue(currentGroupRoomCount),
-                    formatGroupRoomDelta(currentGroupRoomCount, previousDayGroupRoomCount),
-                    formatGroupRoomDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
-                    formatGroupRoomDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
+                    formatCompactMetricValue(currentGroupRoomCount),
+                    formatCompactMetricDelta(currentGroupRoomCount, previousDayGroupRoomCount),
+                    formatCompactMetricDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
+                    formatCompactMetricDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
                     getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount),
                     getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount),
                     getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
@@ -1914,30 +1913,34 @@ function renderSalesSettingGroupRoom(
         return;
     }
 
-    const rowElement = existingRow ?? document.createElement("div");
+    const rowElement = existingRow ?? document.createElement("table");
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE, "");
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE, signature);
-    const individualRowElement = document.createElement("div");
-    individualRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
-    individualRowElement.replaceChildren(...createSalesSettingGroupMetricRowItems(
-        "個人室数：",
-        currentIndividualRoomCount,
-        previousDayIndividualRoomCount,
-        previousWeekIndividualRoomCount,
-        previousMonthIndividualRoomCount
-    ));
+    const bodyElement = document.createElement("tbody");
+    bodyElement.append(
+        createSalesSettingOverallSummaryRow(
+            "個人",
+            formatCompactMetricValue(currentIndividualRoomCount),
+            formatCompactMetricDelta(currentIndividualRoomCount, previousDayIndividualRoomCount),
+            formatCompactMetricDelta(currentIndividualRoomCount, previousWeekIndividualRoomCount),
+            formatCompactMetricDelta(currentIndividualRoomCount, previousMonthIndividualRoomCount),
+            getGroupRoomDeltaTone(currentIndividualRoomCount, previousDayIndividualRoomCount),
+            getGroupRoomDeltaTone(currentIndividualRoomCount, previousWeekIndividualRoomCount),
+            getGroupRoomDeltaTone(currentIndividualRoomCount, previousMonthIndividualRoomCount)
+        ),
+        createSalesSettingOverallSummaryRow(
+            "団体",
+            formatCompactMetricValue(currentGroupRoomCount),
+            formatCompactMetricDelta(currentGroupRoomCount, previousDayGroupRoomCount),
+            formatCompactMetricDelta(currentGroupRoomCount, previousWeekGroupRoomCount),
+            formatCompactMetricDelta(currentGroupRoomCount, previousMonthGroupRoomCount),
+            getGroupRoomDeltaTone(currentGroupRoomCount, previousDayGroupRoomCount),
+            getGroupRoomDeltaTone(currentGroupRoomCount, previousWeekGroupRoomCount),
+            getGroupRoomDeltaTone(currentGroupRoomCount, previousMonthGroupRoomCount)
+        )
+    );
 
-    const groupRowElement = document.createElement("div");
-    groupRowElement.setAttribute(SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE, "");
-    groupRowElement.replaceChildren(...createSalesSettingGroupMetricRowItems(
-        "団体室数：",
-        currentGroupRoomCount,
-        previousDayGroupRoomCount,
-        previousWeekGroupRoomCount,
-        previousMonthGroupRoomCount
-    ));
-
-    rowElement.replaceChildren(individualRowElement, groupRowElement);
+    rowElement.replaceChildren(bodyElement);
 
     if (existingRow !== null) {
         return;
@@ -2034,29 +2037,6 @@ function renderSalesSettingRankDetail(card: SalesSettingCard, summary: SalesSett
     }
 }
 
-function createSalesSettingGroupRoomItem(label: string, value: string, tone: string): HTMLSpanElement {
-    const itemElement = document.createElement("span");
-    itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE, "");
-    itemElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, tone);
-    itemElement.textContent = label.endsWith("：") ? `${label}${value}` : `${label} ${value}`;
-    return itemElement;
-}
-
-function createSalesSettingGroupMetricRowItems(
-    label: string,
-    currentValue: number | null,
-    previousDayValue: number | null,
-    previousWeekValue: number | null,
-    previousMonthValue: number | null
-): HTMLSpanElement[] {
-    return [
-        createSalesSettingGroupRoomItem(label, formatGroupRoomMetricValue(currentValue), "neutral"),
-        createSalesSettingGroupRoomItem("1日前", formatGroupRoomDelta(currentValue, previousDayValue), getGroupRoomDeltaTone(currentValue, previousDayValue)),
-        createSalesSettingGroupRoomItem("7日前", formatGroupRoomDelta(currentValue, previousWeekValue), getGroupRoomDeltaTone(currentValue, previousWeekValue)),
-        createSalesSettingGroupRoomItem("30日前", formatGroupRoomDelta(currentValue, previousMonthValue), getGroupRoomDeltaTone(currentValue, previousMonthValue))
-    ];
-}
-
 function createSalesSettingOverallSummaryRow(
     label: string,
     roomValue: string,
@@ -2110,12 +2090,12 @@ function createSalesSettingRoomDeltaItem(label: string, value: string, tone: str
     return itemElement;
 }
 
-function formatGroupRoomMetricValue(value: number | null): string {
+function formatCompactMetricValue(value: number | null): string {
     if (value === null) {
         return "-";
     }
 
-    return `${formatGroupRoomNumber(value)}室`;
+    return formatGroupRoomNumber(value);
 }
 
 function resolveSalesSettingPrivateRoomCount(
@@ -2134,14 +2114,14 @@ function resolveSalesSettingPrivateRoomCount(
     return totalValue - groupValue;
 }
 
-function formatGroupRoomDelta(currentValue: number | null, previousValue: number | null): string {
+function formatCompactMetricDelta(currentValue: number | null, previousValue: number | null): string {
     const delta = getMetricDelta(currentValue, previousValue);
     if (delta === null) {
         return "-";
     }
 
     const prefix = delta > 0 ? "+" : "";
-    return `${prefix}${formatGroupRoomNumber(delta)}室`;
+    return `${prefix}${formatGroupRoomNumber(delta)}`;
 }
 
 function formatSalesSettingRoomDelta(currentValue: number | null, previousValue: number | null): string {
@@ -2513,22 +2493,39 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            row-gap: 2px;
+            width: fit-content;
+            max-width: 100%;
+            border-collapse: collapse;
             margin: 4px 0 10px;
-            color: #50627a;
-            font-size: 13px;
-            font-weight: 700;
-            line-height: 1.4;
             user-select: text;
             -webkit-user-select: text;
         }
 
-        [${SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE}] {
-            display: inline;
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] th,
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] td {
+            padding: 1px 16px 1px 0;
+            text-align: left;
+            vertical-align: top;
             white-space: nowrap;
+        }
+
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] th:last-child,
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] td:last-child {
+            padding-right: 0;
+        }
+
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] [${SALES_SETTING_OVERALL_LABEL_ATTRIBUTE}] {
+            color: #243447;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
+        [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] [${SALES_SETTING_OVERALL_VALUE_ATTRIBUTE}] {
+            color: #50627a;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.4;
         }
 
         [${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}] {
@@ -2588,11 +2585,6 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_OVERALL_ROW_ATTRIBUTE}][${SALES_SETTING_OVERALL_EMPHASIS_ATTRIBUTE}="true"] {
             color: #243447;
-        }
-
-        [${SALES_SETTING_OVERALL_ROW_ATTRIBUTE}][${SALES_SETTING_OVERALL_EMPHASIS_ATTRIBUTE}="true"] [${SALES_SETTING_OVERALL_LABEL_ATTRIBUTE}] {
-            padding-left: 8px;
-            border-left: 3px solid #1f5fbf;
         }
 
         [${SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE}] {
@@ -2714,6 +2706,15 @@ function ensureGroupRoomStyles(): void {
         }
 
         @media (max-width: 900px) {
+            [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
+                width: 100%;
+            }
+
+            [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] th,
+            [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] td {
+                padding-right: 10px;
+            }
+
             [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] {
                 width: 100%;
             }
