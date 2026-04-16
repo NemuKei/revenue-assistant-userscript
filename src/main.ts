@@ -31,6 +31,7 @@ const SALES_SETTING_ROOM_DELTA_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-room
 const SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE = "data-ra-sales-setting-rank-overview";
 const SALES_SETTING_RANK_OVERVIEW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-signature";
 const SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-title";
+const SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-table";
 const SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE = "data-ra-sales-setting-rank-overview-row";
 const SALES_SETTING_RANK_OVERVIEW_ROOM_ATTRIBUTE = "data-ra-sales-setting-rank-overview-room";
 const SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE = "data-ra-sales-setting-rank-overview-meta";
@@ -1748,28 +1749,46 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
         titleElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE, "");
         titleElement.textContent = "ランク変更履歴";
 
+        const tableElement = document.createElement("table");
+        tableElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE, "");
+
+        const headElement = document.createElement("thead");
+        const headerRowElement = document.createElement("tr");
+        for (const label of ["部屋タイプ", "最終変更", "ランク"]) {
+            const headerCellElement = document.createElement("th");
+            headerCellElement.scope = "col";
+            headerCellElement.textContent = label;
+            headerRowElement.append(headerCellElement);
+        }
+        headElement.append(headerRowElement);
+
+        const bodyElement = document.createElement("tbody");
+        for (const summary of orderedSummaries) {
+            const rowElement = document.createElement("tr");
+            rowElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE, "");
+            rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getSalesSettingRankTone());
+
+            const roomElement = document.createElement("td");
+            roomElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ROOM_ATTRIBUTE, "");
+            roomElement.textContent = summary.roomGroupName;
+
+            const metaElement = document.createElement("td");
+            metaElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE, "");
+            metaElement.textContent = formatSalesSettingDaysAgo(summary.latestReflectionDaysAgo);
+
+            const valueElement = document.createElement("td");
+            valueElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE, "");
+            valueElement.textContent = formatSalesSettingRankTransition(summary.beforeRankName, summary.afterRankName);
+
+            rowElement.replaceChildren(roomElement, metaElement, valueElement);
+            bodyElement.append(rowElement);
+        }
+
+        tableElement.replaceChildren(headElement, bodyElement);
+
         containerElement.replaceChildren(
             titleElement,
-            ...orderedSummaries.map((summary) => {
-                const rowElement = document.createElement("div");
-                rowElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE, "");
-                rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getSalesSettingRankTone());
-
-                const roomElement = document.createElement("span");
-                roomElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ROOM_ATTRIBUTE, "");
-                roomElement.textContent = summary.roomGroupName;
-
-                const metaElement = document.createElement("span");
-                metaElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE, "");
-                metaElement.textContent = `最終変更 ${formatSalesSettingDaysAgo(summary.latestReflectionDaysAgo)}`;
-
-                const valueElement = document.createElement("span");
-                valueElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE, "");
-                valueElement.textContent = `ランク：${formatSalesSettingRankTransition(summary.beforeRankName, summary.afterRankName)}`;
-
-                rowElement.replaceChildren(roomElement, metaElement, valueElement);
-                return rowElement;
-            })
+            tableElement
         );
     }
 
@@ -2352,7 +2371,7 @@ function ensureGroupRoomStyles(): void {
             display: flex;
             flex-direction: column;
             gap: 8px;
-            margin: 0 0 10px;
+            margin: 8px 0 10px;
             padding: 0;
             border: none;
             border-radius: 0;
@@ -2371,14 +2390,14 @@ function ensureGroupRoomStyles(): void {
             padding-left: 8px;
             border-left: 3px solid #1f5fbf;
             color: #243447;
-            font-size: 16px;
+            font-size: 14px;
             font-weight: 700;
-            line-height: 1.2;
+            line-height: 1.35;
         }
 
         [${SALES_SETTING_OVERALL_METRIC_ATTRIBUTE}] {
             color: #243447;
-            font-size: 14px;
+            font-size: 13px;
             font-weight: 700;
             line-height: 1.4;
             white-space: nowrap;
@@ -2407,21 +2426,41 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE}] {
             color: #243447;
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 700;
-            line-height: 1.4;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] {
+            width: fit-content;
+            max-width: 100%;
+            border-collapse: collapse;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] th,
+        [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] td {
+            padding: 1px 14px 1px 0;
+            text-align: left;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] th:last-child,
+        [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] td:last-child {
+            padding-right: 0;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] th {
+            color: #50627a;
+            font-size: 11px;
+            font-weight: 600;
+            line-height: 1.35;
         }
 
         [${SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE}] {
-            display: grid;
-            grid-template-columns: minmax(72px, max-content) max-content max-content;
-            justify-content: start;
-            column-gap: 10px;
-            row-gap: 2px;
-            align-items: center;
-            color: #50627a;
+            color: #243447;
             font-size: 11px;
-            font-weight: 700;
+            font-weight: 600;
             line-height: 1.4;
         }
 
@@ -2453,13 +2492,13 @@ function ensureGroupRoomStyles(): void {
         }
 
         @media (max-width: 900px) {
-            [${SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE}] {
-                grid-template-columns: minmax(0, 1fr) auto;
+            [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] {
+                width: 100%;
             }
 
-            [${SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE}] {
-                grid-column: 1 / -1;
-                justify-self: start;
+            [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] th,
+            [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] td {
+                padding-right: 10px;
             }
         }
 
