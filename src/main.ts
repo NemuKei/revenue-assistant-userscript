@@ -1723,6 +1723,19 @@ function renderSalesSettingOverallSummary(
         containerElement.setAttribute(SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE, "");
         containerElement.setAttribute(SALES_SETTING_OVERALL_SUMMARY_SIGNATURE_ATTRIBUTE, signature);
 
+        const salesRowElement = document.createElement("div");
+        salesRowElement.setAttribute(SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE, "");
+
+        const titleElement = document.createElement("span");
+        titleElement.setAttribute(SALES_SETTING_OVERALL_TITLE_ATTRIBUTE, "");
+        titleElement.textContent = "全体";
+
+        const metricElement = document.createElement("span");
+        metricElement.setAttribute(SALES_SETTING_OVERALL_METRIC_ATTRIBUTE, "");
+        metricElement.textContent = `販売室数 : ${formatSalesSettingCapacity(totalCapacity)}`;
+
+        salesRowElement.replaceChildren(titleElement, metricElement);
+
         const tableElement = document.createElement("table");
         tableElement.setAttribute(SALES_SETTING_OVERALL_TABLE_ATTRIBUTE, "");
 
@@ -1775,7 +1788,7 @@ function renderSalesSettingOverallSummary(
         }
 
         tableElement.replaceChildren(headElement, bodyElement);
-        containerElement.replaceChildren(tableElement);
+        containerElement.replaceChildren(salesRowElement, tableElement);
     }
 
     if (containerElement !== null && containerElement.nextElementSibling !== firstCard.cardElement) {
