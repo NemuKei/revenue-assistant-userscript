@@ -1746,7 +1746,7 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
 
         const titleElement = document.createElement("div");
         titleElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE, "");
-        titleElement.textContent = "ランク変更俯瞰";
+        titleElement.textContent = "ランク変更履歴";
 
         containerElement.replaceChildren(
             titleElement,
@@ -2143,21 +2143,6 @@ function getSalesSettingRankDetailText(summary: SalesSettingRankSummary | null):
 }
 
 function compareSalesSettingRankSummaries(left: SalesSettingRankSummary, right: SalesSettingRankSummary): number {
-    if (left.latestReflectionDaysAgo === null && right.latestReflectionDaysAgo !== null) {
-        return 1;
-    }
-
-    if (left.latestReflectionDaysAgo !== null && right.latestReflectionDaysAgo === null) {
-        return -1;
-    }
-
-    if (left.latestReflectionDaysAgo !== null && right.latestReflectionDaysAgo !== null) {
-        const diff = left.latestReflectionDaysAgo - right.latestReflectionDaysAgo;
-        if (diff !== 0) {
-            return diff;
-        }
-    }
-
     return left.displayOrder - right.displayOrder;
 }
 
@@ -2429,8 +2414,10 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE}] {
             display: grid;
-            grid-template-columns: minmax(0, 1.2fr) auto minmax(0, 1fr);
-            gap: 8px;
+            grid-template-columns: minmax(72px, max-content) max-content max-content;
+            justify-content: start;
+            column-gap: 10px;
+            row-gap: 2px;
             align-items: center;
             color: #50627a;
             font-size: 11px;
@@ -2447,11 +2434,12 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE}] {
+            color: #50627a;
             white-space: nowrap;
         }
 
         [${SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE}] {
-            justify-self: end;
+            color: #243447;
             white-space: nowrap;
         }
 
