@@ -2376,6 +2376,8 @@ function ensureGroupRoomStyles(): void {
             border: none;
             border-radius: 0;
             background: transparent;
+            user-select: text;
+            -webkit-user-select: text;
         }
 
         [${SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE}] {
@@ -2390,7 +2392,7 @@ function ensureGroupRoomStyles(): void {
             padding-left: 8px;
             border-left: 3px solid #1f5fbf;
             color: #243447;
-            font-size: 15px;
+            font-size: 16px;
             font-weight: 700;
             line-height: 1.35;
         }
@@ -2422,6 +2424,8 @@ function ensureGroupRoomStyles(): void {
             border: none;
             border-radius: 0;
             background: transparent;
+            user-select: text;
+            -webkit-user-select: text;
         }
 
         [${SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE}] {
