@@ -4,7 +4,7 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
-const SUGGEST_DETAILS_ENDPOINT = "/api/v3/suggest/output/details";
+const LINCOLN_SUGGEST_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
@@ -95,38 +95,30 @@ interface SalesSettingRoomCapacity {
     maxValue: number;
 }
 
-interface SuggestOutputDetailCurrent {
-    price_rank?: string;
-    price_rank_name?: string;
-    price_rank_code?: string;
-}
-
-interface SuggestOutputDetailSuggest {
-    priority?: number;
-    price_rank?: string;
-    price_rank_name?: string;
-    price_rank_code?: string;
-    price_rank_effect?: string;
-}
-
-interface SuggestOutputDetail {
-    latest_reflection_at?: string | null;
+interface LincolnSuggestStatus {
+    date?: string;
+    suggest_calc_datetime?: string | null;
+    reflection_type?: string | null;
+    reflector_name?: string | null;
     rm_room_group_id?: string;
     rm_room_group_name?: string;
-    rm_room_group_odr?: number;
-    current?: SuggestOutputDetailCurrent;
-    suggests?: SuggestOutputDetailSuggest[];
+    accepted_at?: string | null;
+    completed_at?: string | null;
+    before_price_rank_name?: string | null;
+    after_price_rank_name?: string | null;
+}
+
+interface LincolnSuggestStatusResponse {
+    suggest_statuses?: LincolnSuggestStatus[];
 }
 
 interface SalesSettingRankSummary {
-    roomGroupId: string;
     roomGroupName: string;
     displayOrder: number;
     latestReflectionAt: string | null;
     latestReflectionDaysAgo: number | null;
-    currentRankName: string | null;
-    suggestedRankName: string | null;
-    suggestionEffect: string | null;
+    beforeRankName: string | null;
+    afterRankName: string | null;
 }
 
 interface SyncContext {
@@ -138,7 +130,7 @@ interface SyncContext {
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
-const suggestOutputDetailsCache = new Map<string, Promise<SuggestOutputDetail[]>>();
+const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
@@ -1006,20 +998,19 @@ async function syncSalesSettingRankInsights(analysisDate: string, syncContext: S
 
     ensureGroupRoomStyles();
 
-    const details = await getSuggestOutputDetails(analysisDate)
+    const statuses = await getLincolnSuggestStatuses(analysisDate)
         .catch((error: unknown) => {
-            console.error(`[${SCRIPT_NAME}] failed to load suggest details`, {
+            console.error(`[${SCRIPT_NAME}] failed to load lincoln suggest statuses`, {
                 analysisDate,
                 error
             });
-            return [] as SuggestOutputDetail[];
+            return [] as LincolnSuggestStatus[];
         });
     if (isSyncContextStale(syncContext)) {
         return;
     }
 
-    const summaries = buildSalesSettingRankSummaries(details)
-        .filter((summary) => summary.currentRankName !== null || summary.suggestedRankName !== null);
+    const summaries = buildSalesSettingRankSummaries(cards, statuses);
     const summaryByRoomGroupName = new Map(summaries.map((summary) => [summary.roomGroupName, summary]));
 
     const firstCard = cards[0];
@@ -1211,24 +1202,25 @@ function prefetchSalesSettingRoomDeltas(analysisDate: string, batchDateKey: stri
         });
 }
 
-function getSuggestOutputDetails(analysisDate: string): Promise<SuggestOutputDetail[]> {
-    const cached = suggestOutputDetailsCache.get(analysisDate);
+function getLincolnSuggestStatuses(analysisDate: string): Promise<LincolnSuggestStatus[]> {
+    const cached = lincolnSuggestStatusCache.get(analysisDate);
     if (cached !== undefined) {
         return cached;
     }
 
-    const request = loadSuggestOutputDetails(analysisDate)
+    const request = loadLincolnSuggestStatuses(analysisDate)
         .catch((error: unknown) => {
-            suggestOutputDetailsCache.delete(analysisDate);
+            lincolnSuggestStatusCache.delete(analysisDate);
             throw error;
         });
-    suggestOutputDetailsCache.set(analysisDate, request);
+    lincolnSuggestStatusCache.set(analysisDate, request);
 
     return request;
 }
 
-async function loadSuggestOutputDetails(analysisDate: string): Promise<SuggestOutputDetail[]> {
-    const url = new URL(SUGGEST_DETAILS_ENDPOINT, window.location.origin);
+async function loadLincolnSuggestStatuses(analysisDate: string): Promise<LincolnSuggestStatus[]> {
+    const url = new URL(LINCOLN_SUGGEST_STATUS_ENDPOINT, window.location.origin);
+    url.searchParams.set("filter_type", "stay_date");
     url.searchParams.set("from", analysisDate);
     url.searchParams.set("to", analysisDate);
 
@@ -1240,11 +1232,11 @@ async function loadSuggestOutputDetails(analysisDate: string): Promise<SuggestOu
     });
 
     if (!response.ok) {
-        throw new Error(`suggest details request failed: ${response.status}`);
+        throw new Error(`lincoln suggest status request failed: ${response.status}`);
     }
 
-    const payload = (await response.json()) as SuggestOutputDetail[];
-    return payload.slice().sort((left, right) => (left.rm_room_group_odr ?? 0) - (right.rm_room_group_odr ?? 0));
+    const payload = (await response.json()) as LincolnSuggestStatusResponse;
+    return (payload.suggest_statuses ?? []).filter((status) => status.date === analysisDate);
 }
 
 function getCurrentBatchDateKey(): string {
@@ -1278,7 +1270,7 @@ function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
     salesSettingPrefetchKeys.clear();
     groupRoomCache.clear();
     bookingCurveCache.clear();
-    suggestOutputDetailsCache.clear();
+    lincolnSuggestStatusCache.clear();
     resetPersistedGroupRoomCache(batchDateKey, facilityCacheKey);
 }
 
@@ -1744,7 +1736,7 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
 
     const orderedSummaries = summaries.slice().sort(compareSalesSettingRankSummaries);
     const signature = orderedSummaries
-        .map((summary) => `${summary.roomGroupName}:${summary.latestReflectionDaysAgo}:${summary.currentRankName}:${summary.suggestedRankName}:${summary.suggestionEffect}`)
+        .map((summary) => `${summary.roomGroupName}:${summary.latestReflectionAt}:${summary.beforeRankName}:${summary.afterRankName}`)
         .join("|");
     const containerElement = existingContainer ?? document.createElement("section");
 
@@ -1754,14 +1746,14 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
 
         const titleElement = document.createElement("div");
         titleElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_TITLE_ATTRIBUTE, "");
-        titleElement.textContent = "ランク俯瞰";
+        titleElement.textContent = "ランク変更俯瞰";
 
         containerElement.replaceChildren(
             titleElement,
             ...orderedSummaries.map((summary) => {
                 const rowElement = document.createElement("div");
                 rowElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE, "");
-                rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getSalesSettingRankTone(summary));
+                rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getSalesSettingRankTone());
 
                 const roomElement = document.createElement("span");
                 roomElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_ROOM_ATTRIBUTE, "");
@@ -1773,7 +1765,7 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
 
                 const valueElement = document.createElement("span");
                 valueElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE, "");
-                valueElement.textContent = `現状->提案 ${formatSalesSettingRankTransition(summary.currentRankName, summary.suggestedRankName)}`;
+                valueElement.textContent = `ランク：${formatSalesSettingRankTransition(summary.beforeRankName, summary.afterRankName)}`;
 
                 rowElement.replaceChildren(roomElement, metaElement, valueElement);
                 return rowElement;
@@ -1918,7 +1910,7 @@ function renderSalesSettingRankDetail(card: SalesSettingCard, summary: SalesSett
         return;
     }
 
-    const signature = `${summary.currentRankName}:${summary.suggestedRankName}:${summary.suggestionEffect}`;
+    const signature = `${summary.latestReflectionAt}:${summary.beforeRankName}:${summary.afterRankName}`;
     if (existingDetail?.getAttribute(SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE) === signature) {
         return;
     }
@@ -1926,7 +1918,7 @@ function renderSalesSettingRankDetail(card: SalesSettingCard, summary: SalesSett
     const detailElement = existingDetail ?? document.createElement("div");
     detailElement.setAttribute(SALES_SETTING_RANK_DETAIL_ATTRIBUTE, "");
     detailElement.setAttribute(SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE, signature);
-    detailElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getSalesSettingRankTone(summary));
+    detailElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getSalesSettingRankTone());
     detailElement.textContent = detailText;
 
     if (existingDetail === null) {
@@ -2060,39 +2052,35 @@ function formatSalesSettingCapacity(capacity: SalesSettingRoomCapacity | null): 
     return `${formatGroupRoomNumber(capacity.currentValue)} / ${formatGroupRoomNumber(capacity.maxValue)}`;
 }
 
-function buildSalesSettingRankSummaries(details: SuggestOutputDetail[]): SalesSettingRankSummary[] {
-    return details.flatMap((detail) => {
-        const roomGroupId = detail.rm_room_group_id;
-        const roomGroupName = detail.rm_room_group_name;
-        if (roomGroupId === undefined || roomGroupName === undefined) {
+function buildSalesSettingRankSummaries(cards: SalesSettingCard[], statuses: LincolnSuggestStatus[]): SalesSettingRankSummary[] {
+    const latestStatusByRoomGroupName = new Map<string, LincolnSuggestStatus>();
+    for (const status of statuses.slice().sort(compareLincolnSuggestStatuses)) {
+        const roomGroupName = status.rm_room_group_name?.trim();
+        if (roomGroupName === undefined || roomGroupName === "") {
+            continue;
+        }
+
+        if (!latestStatusByRoomGroupName.has(roomGroupName)) {
+            latestStatusByRoomGroupName.set(roomGroupName, status);
+        }
+    }
+
+    return cards.flatMap((card, index) => {
+        const status = latestStatusByRoomGroupName.get(card.roomGroupName);
+        if (status === undefined) {
             return [];
         }
 
-        const firstSuggest = getTopPrioritySuggest(detail.suggests ?? []);
+        const latestReflectionAt = getLincolnSuggestStatusTimestamp(status);
         return [{
-            roomGroupId,
-            roomGroupName,
-            displayOrder: detail.rm_room_group_odr ?? 0,
-            latestReflectionAt: detail.latest_reflection_at ?? null,
-            latestReflectionDaysAgo: getDaysAgo(detail.latest_reflection_at ?? null),
-            currentRankName: getPriceRankName(detail.current),
-            suggestedRankName: getPriceRankName(firstSuggest),
-            suggestionEffect: firstSuggest?.price_rank_effect ?? null
+            roomGroupName: card.roomGroupName,
+            displayOrder: index,
+            latestReflectionAt,
+            latestReflectionDaysAgo: getDaysAgo(latestReflectionAt),
+            beforeRankName: status.before_price_rank_name ?? null,
+            afterRankName: status.after_price_rank_name ?? null
         }];
     });
-}
-
-function getTopPrioritySuggest(suggests: SuggestOutputDetailSuggest[]): SuggestOutputDetailSuggest | null {
-    const sorted = suggests
-        .filter((suggest) => getPriceRankName(suggest) !== null)
-        .slice()
-        .sort((left, right) => (left.priority ?? Number.MAX_SAFE_INTEGER) - (right.priority ?? Number.MAX_SAFE_INTEGER));
-
-    return sorted[0] ?? null;
-}
-
-function getPriceRankName(value: SuggestOutputDetailCurrent | SuggestOutputDetailSuggest | null | undefined): string | null {
-    return value?.price_rank_name ?? value?.price_rank ?? null;
 }
 
 function getDaysAgo(value: string | null): number | null {
@@ -2121,31 +2109,23 @@ function formatSalesSettingDaysAgo(value: number | null): string {
     return `${value}日前`;
 }
 
-function formatSalesSettingRankTransition(currentRankName: string | null, suggestedRankName: string | null): string {
-    if (currentRankName === null && suggestedRankName === null) {
+function formatSalesSettingRankTransition(beforeRankName: string | null, afterRankName: string | null): string {
+    if (beforeRankName === null && afterRankName === null) {
         return "-";
     }
 
-    if (currentRankName === null) {
-        return suggestedRankName ?? "-";
+    if (beforeRankName === null) {
+        return afterRankName ?? "-";
     }
 
-    if (suggestedRankName === null || suggestedRankName === currentRankName) {
-        return currentRankName;
+    if (afterRankName === null || afterRankName === beforeRankName) {
+        return beforeRankName;
     }
 
-    return `${currentRankName} -> ${suggestedRankName}`;
+    return `${beforeRankName}→${afterRankName}`;
 }
 
-function getSalesSettingRankTone(summary: SalesSettingRankSummary): string {
-    if (summary.suggestionEffect === "up") {
-        return "positive";
-    }
-
-    if (summary.suggestionEffect === "down") {
-        return "negative";
-    }
-
+function getSalesSettingRankTone(): string {
     return "neutral";
 }
 
@@ -2154,12 +2134,12 @@ function getSalesSettingRankDetailText(summary: SalesSettingRankSummary | null):
         return null;
     }
 
-    const value = formatSalesSettingRankTransition(summary.currentRankName, summary.suggestedRankName);
+    const value = formatSalesSettingRankTransition(summary.beforeRankName, summary.afterRankName);
     if (value === "-") {
         return null;
     }
 
-    return `現状->提案 ${value}`;
+    return `ランク：${value}`;
 }
 
 function compareSalesSettingRankSummaries(left: SalesSettingRankSummary, right: SalesSettingRankSummary): number {
@@ -2179,6 +2159,24 @@ function compareSalesSettingRankSummaries(left: SalesSettingRankSummary, right: 
     }
 
     return left.displayOrder - right.displayOrder;
+}
+
+function compareLincolnSuggestStatuses(left: LincolnSuggestStatus, right: LincolnSuggestStatus): number {
+    return getLincolnSuggestStatusSortValue(right) - getLincolnSuggestStatusSortValue(left);
+}
+
+function getLincolnSuggestStatusTimestamp(status: LincolnSuggestStatus): string | null {
+    return status.accepted_at ?? status.completed_at ?? status.suggest_calc_datetime ?? null;
+}
+
+function getLincolnSuggestStatusSortValue(status: LincolnSuggestStatus): number {
+    const timestamp = getLincolnSuggestStatusTimestamp(status);
+    if (timestamp === null) {
+        return 0;
+    }
+
+    const value = Date.parse(timestamp);
+    return Number.isNaN(value) ? 0 : value;
 }
 
 function formatGroupRoomNumber(value: number): string {

@@ -28,9 +28,9 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 
 ### Sales Setting Data
 
-- `/api/v3/suggest/output/details?from=YYYYMMDD&to=YYYYMMDD`
-  - 室タイプ別の販売室数 current setting を取得する
-  - 各要素には `rm_room_group_id`、`rm_room_group_name`、`current.landing_num_room`、`max_num_room`、`latest_reflection_at`、`current.price_rank_name`、`suggests[].price_rank_name` が含まれる
+- `/api/v3/lincoln/suggest/status?filter_type=stay_date&from=YYYYMMDD&to=YYYYMMDD`
+  - 対象 stay_date の反映済み販売設定履歴を取得する
+  - 各要素には `rm_room_group_id`、`rm_room_group_name`、`accepted_at`、`before_price_rank_name`、`after_price_rank_name`、`reflector_name` が含まれる
 
 ### Facility Identity
 
@@ -51,8 +51,8 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 室タイプ別の販売室数に対して `1日前差分 / 7日前差分 / 30日前差分` を表示する
 - 室タイプ別の団体室数に対して `1日前差分 / 7日前差分 / 30日前差分` を表示する
 - 最上段に全体販売室数サマリーと全体団体室数サマリーを 2 行で表示する
-- 全体サマリーの下に、室タイプ別の `最終変更 何日前 / 現状 -> 提案ランク` を俯瞰できる rank overview を表示する
-- 各室タイプカードの `最終変更履歴` の下に、`現状 -> 提案ランク` を 1 行で表示する
+- 全体サマリーの下に、室タイプ別の `最終変更 何日前 / ランク A→B` を俯瞰できる rank overview を表示する
+- 各室タイプカードの `最終変更履歴` の下に、`ランク：A→B` を 1 行で表示する
 - 全体販売室数サマリーは、販売設定タブ上に描画済みの室タイプ別表示を合算して生成する
 - 販売設定タブの販売室数差分は、現状 `/api/v4/booking_curve` の `all.this_year_room_sum` を室タイプ別に引いて計算している
 
