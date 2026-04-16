@@ -15,6 +15,7 @@ const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
 const GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE = "data-ra-group-room-toggle-button";
 const GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-group-room-toggle-active";
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
+const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
 const SALES_SETTING_GROUP_ROOM_ITEM_ATTRIBUTE = "data-ra-sales-setting-group-room-item";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
 const SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE = "data-ra-sales-setting-overall-summary";
@@ -1600,8 +1601,19 @@ function renderSalesSettingGroupRoom(
         return;
     }
 
+    const signature = [
+        currentGroupRoomCount,
+        previousDayGroupRoomCount,
+        previousWeekGroupRoomCount,
+        previousMonthGroupRoomCount
+    ].join(":");
+    if (existingRow?.getAttribute(SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE) === signature) {
+        return;
+    }
+
     const rowElement = existingRow ?? document.createElement("div");
     rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE, "");
+    rowElement.setAttribute(SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE, signature);
     rowElement.replaceChildren(
         createSalesSettingGroupRoomItem("団体室数", formatGroupRoomMetricValue(currentGroupRoomCount), "neutral"),
         createSalesSettingGroupRoomItem(
@@ -1823,20 +1835,51 @@ function renderGroupRoomCount(cell: MonthlyCalendarCell, groupRoomCount: number 
     const existingBadge = cell.containerElement.querySelector<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`);
 
     if (groupRoomCount === null) {
+        if (
+            existingBadge === null
+            && !cell.containerElement.hasAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE)
+            && !cell.roomElement.hasAttribute(GROUP_ROOM_ROOM_ATTRIBUTE)
+            && (cell.indicatorElement === null || !cell.indicatorElement.hasAttribute(GROUP_ROOM_INDICATOR_ATTRIBUTE))
+        ) {
+            return;
+        }
+
         existingBadge?.remove();
-        cell.containerElement.removeAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE);
-        cell.roomElement.removeAttribute(GROUP_ROOM_ROOM_ATTRIBUTE);
-        cell.indicatorElement?.removeAttribute(GROUP_ROOM_INDICATOR_ATTRIBUTE);
+        if (cell.containerElement.hasAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE)) {
+            cell.containerElement.removeAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE);
+        }
+        if (cell.roomElement.hasAttribute(GROUP_ROOM_ROOM_ATTRIBUTE)) {
+            cell.roomElement.removeAttribute(GROUP_ROOM_ROOM_ATTRIBUTE);
+        }
+        if (cell.indicatorElement?.hasAttribute(GROUP_ROOM_INDICATOR_ATTRIBUTE)) {
+            cell.indicatorElement.removeAttribute(GROUP_ROOM_INDICATOR_ATTRIBUTE);
+        }
         return;
     }
 
-    cell.containerElement.setAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE, "");
-    cell.roomElement.setAttribute(GROUP_ROOM_ROOM_ATTRIBUTE, "");
-    cell.indicatorElement?.setAttribute(GROUP_ROOM_INDICATOR_ATTRIBUTE, "");
+    const nextLabel = `団${groupRoomCount}`;
+    const hasLayout = cell.containerElement.hasAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE);
+    const hasRoomMarker = cell.roomElement.hasAttribute(GROUP_ROOM_ROOM_ATTRIBUTE);
+    const hasIndicatorMarker = cell.indicatorElement === null || cell.indicatorElement.hasAttribute(GROUP_ROOM_INDICATOR_ATTRIBUTE);
+    if (existingBadge?.textContent === nextLabel && hasLayout && hasRoomMarker && hasIndicatorMarker) {
+        return;
+    }
+
+    if (!hasLayout) {
+        cell.containerElement.setAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE, "");
+    }
+    if (!hasRoomMarker) {
+        cell.roomElement.setAttribute(GROUP_ROOM_ROOM_ATTRIBUTE, "");
+    }
+    if (cell.indicatorElement !== null && !hasIndicatorMarker) {
+        cell.indicatorElement.setAttribute(GROUP_ROOM_INDICATOR_ATTRIBUTE, "");
+    }
 
     const badgeElement = existingBadge ?? document.createElement("div");
     badgeElement.setAttribute(GROUP_ROOM_BADGE_ATTRIBUTE, "");
-    badgeElement.textContent = `団${groupRoomCount}`;
+    if (badgeElement.textContent !== nextLabel) {
+        badgeElement.textContent = nextLabel;
+    }
 
     if (existingBadge === null) {
         cell.containerElement.append(badgeElement);
