@@ -53,9 +53,20 @@ const SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE = "data-ra-sales-setting-bookin
 const SALES_SETTING_BOOKING_CURVE_PANEL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel";
 const SALES_SETTING_BOOKING_CURVE_PANEL_TITLE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel-title";
 const SALES_SETTING_BOOKING_CURVE_PANEL_METRIC_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel-metric";
+const SALES_SETTING_BOOKING_CURVE_CANVAS_ATTRIBUTE = "data-ra-sales-setting-booking-curve-canvas";
 const SALES_SETTING_BOOKING_CURVE_PANEL_SVG_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel-svg";
+const SALES_SETTING_BOOKING_CURVE_TOOLTIP_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip";
+const SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip-active";
+const SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip-title";
+const SALES_SETTING_BOOKING_CURVE_TOOLTIP_VALUE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip-value";
+const SALES_SETTING_BOOKING_CURVE_TOOLTIP_META_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip-meta";
 const SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-axis-label";
 const SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_VISIBLE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-axis-label-visible";
+const SALES_SETTING_BOOKING_CURVE_Y_AXIS_LABEL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-y-axis-label";
+const SALES_SETTING_BOOKING_CURVE_Y_AXIS_LINE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-y-axis-line";
+const SALES_SETTING_BOOKING_CURVE_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-active-guide";
+const SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE = "data-ra-sales-setting-booking-curve-active-point";
+const SALES_SETTING_BOOKING_CURVE_HITBOX_ATTRIBUTE = "data-ra-sales-setting-booking-curve-hitbox";
 const SALES_SETTING_BOOKING_CURVE_TICKS = [
     360, 330, 300, 270, 240, 210,
     180, 165, 150, 135, 120, 105,
@@ -157,6 +168,14 @@ interface SyncContext {
 }
 
 type SalesSettingBookingCurveTick = typeof SALES_SETTING_BOOKING_CURVE_TICKS[number];
+
+interface SalesSettingBookingCurveSample {
+    tick: SalesSettingBookingCurveTick;
+    value: number;
+    occupancyRate: number;
+    x: number;
+    y: number;
+}
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
@@ -1695,7 +1714,114 @@ function buildSalesSettingDummyCurveSeries(
     });
 }
 
+function getSalesSettingBookingCurveYAxisRatios(maxValue: number): number[] {
+    if (maxValue <= 8) {
+        return [0, 0.5, 1];
+    }
+
+    return [0, 0.25, 0.5, 0.75, 1];
+}
+
+function formatSalesSettingBookingCurveOccupancyRate(rate: number): string {
+    const roundedRate = Math.round(rate * 10) / 10;
+    const label = Number.isInteger(roundedRate) ? String(roundedRate) : roundedRate.toFixed(1);
+    return `${label}%`;
+}
+
+function buildSalesSettingBookingCurveSamples(
+    maxValue: number,
+    currentValue: number | null,
+    variant: "overall" | "individual",
+    plotWidth: number,
+    plotHeight: number,
+    paddingLeft: number,
+    paddingTop: number
+): SalesSettingBookingCurveSample[] {
+    const safeMaxValue = Math.max(1, maxValue);
+    const series = buildSalesSettingDummyCurveSeries(safeMaxValue, currentValue, variant);
+
+    return series.map((value, index) => {
+        const x = paddingLeft + ((plotWidth * index) / Math.max(1, series.length - 1));
+        const y = paddingTop + ((1 - (value / safeMaxValue)) * plotHeight);
+        const occupancyRate = (value / safeMaxValue) * 100;
+
+        return {
+            tick: SALES_SETTING_BOOKING_CURVE_TICKS[index] ?? "ACT",
+            value,
+            occupancyRate,
+            x,
+            y
+        };
+    });
+}
+
+function createSalesSettingBookingCurveTooltip(): HTMLDivElement {
+    const tooltipElement = document.createElement("div");
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ATTRIBUTE, "");
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "false");
+
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE, "");
+
+    const valueElement = document.createElement("div");
+    valueElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_VALUE_ATTRIBUTE, "");
+
+    const metaElement = document.createElement("div");
+    metaElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_META_ATTRIBUTE, "");
+
+    tooltipElement.replaceChildren(titleElement, valueElement, metaElement);
+    return tooltipElement;
+}
+
+function hideSalesSettingBookingCurveTooltip(
+    tooltipElement: HTMLElement,
+    guideLineElement: SVGLineElement,
+    pointElement: SVGCircleElement
+): void {
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "false");
+    guideLineElement.setAttribute("visibility", "hidden");
+    pointElement.setAttribute("visibility", "hidden");
+}
+
+function showSalesSettingBookingCurveTooltip(
+    tooltipElement: HTMLElement,
+    guideLineElement: SVGLineElement,
+    pointElement: SVGCircleElement,
+    sample: SalesSettingBookingCurveSample,
+    width: number,
+    height: number,
+    paddingBottom: number,
+    maxValue: number
+): void {
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "true");
+    tooltipElement.style.left = `${Math.max(48, Math.min(width - 48, sample.x))}px`;
+
+    const titleElement = tooltipElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE}]`);
+    const valueElement = tooltipElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOOLTIP_VALUE_ATTRIBUTE}]`);
+    const metaElement = tooltipElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOOLTIP_META_ATTRIBUTE}]`);
+    if (titleElement !== null) {
+        titleElement.textContent = `${getSalesSettingBookingCurveLabel(sample.tick)}時点`;
+    }
+    if (valueElement !== null) {
+        valueElement.textContent = `${formatGroupRoomNumber(sample.value)}室`;
+    }
+    if (metaElement !== null) {
+        metaElement.textContent = `稼働率 ${formatSalesSettingBookingCurveOccupancyRate(sample.occupancyRate)} / 上限 ${formatGroupRoomNumber(maxValue)}室`;
+    }
+
+    guideLineElement.setAttribute("visibility", "visible");
+    guideLineElement.setAttribute("x1", sample.x.toFixed(2));
+    guideLineElement.setAttribute("x2", sample.x.toFixed(2));
+    guideLineElement.setAttribute("y1", "10");
+    guideLineElement.setAttribute("y2", String(height - paddingBottom));
+
+    pointElement.setAttribute("visibility", "visible");
+    pointElement.setAttribute("cx", sample.x.toFixed(2));
+    pointElement.setAttribute("cy", sample.y.toFixed(2));
+}
+
 function createSalesSettingBookingCurveSvg(
+    tooltipElement: HTMLElement,
     maxValue: number,
     currentValue: number | null,
     variant: "overall" | "individual"
@@ -1709,18 +1835,27 @@ function createSalesSettingBookingCurveSvg(
 
     const width = 420;
     const height = 164;
-    const paddingLeft = 10;
+    const paddingLeft = 38;
     const paddingRight = 10;
     const paddingTop = 14;
     const paddingBottom = 28;
     const plotWidth = width - paddingLeft - paddingRight;
     const plotHeight = height - paddingTop - paddingBottom;
     const safeMaxValue = Math.max(1, maxValue);
-    const series = buildSalesSettingDummyCurveSeries(safeMaxValue, currentValue, variant);
+    const samples = buildSalesSettingBookingCurveSamples(
+        safeMaxValue,
+        currentValue,
+        variant,
+        plotWidth,
+        plotHeight,
+        paddingLeft,
+        paddingTop
+    );
 
-    for (const ratio of [0, 0.25, 0.5, 0.75, 1]) {
+    for (const ratio of getSalesSettingBookingCurveYAxisRatios(safeMaxValue)) {
         const y = paddingTop + ((1 - ratio) * plotHeight);
         const lineElement = document.createElementNS(svgNamespace, "line");
+        lineElement.setAttribute(SALES_SETTING_BOOKING_CURVE_Y_AXIS_LINE_ATTRIBUTE, "");
         lineElement.setAttribute("x1", String(paddingLeft));
         lineElement.setAttribute("x2", String(width - paddingRight));
         lineElement.setAttribute("y1", y.toFixed(2));
@@ -1728,15 +1863,17 @@ function createSalesSettingBookingCurveSvg(
         lineElement.setAttribute("stroke", ratio === 0 ? "#cfd8e7" : "#e7edf7");
         lineElement.setAttribute("stroke-width", "1");
         svgElement.append(lineElement);
+
+        const labelElement = document.createElementNS(svgNamespace, "text");
+        labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_Y_AXIS_LABEL_ATTRIBUTE, "");
+        labelElement.setAttribute("x", String(paddingLeft - 6));
+        labelElement.setAttribute("y", String(y + 3));
+        labelElement.setAttribute("text-anchor", "end");
+        labelElement.textContent = formatGroupRoomNumber(Math.round((safeMaxValue * ratio) * 10) / 10);
+        svgElement.append(labelElement);
     }
 
-    const points = series.map((value, index) => {
-        const x = paddingLeft + ((plotWidth * index) / Math.max(1, series.length - 1));
-        const y = paddingTop + ((1 - (value / safeMaxValue)) * plotHeight);
-        return { x, y };
-    });
-
-    const linePath = points
+    const linePath = samples
         .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
         .join(" ");
     const areaElement = document.createElementNS(svgNamespace, "path");
@@ -1753,15 +1890,24 @@ function createSalesSettingBookingCurveSvg(
     pathElement.setAttribute("stroke-linecap", "round");
     svgElement.append(pathElement);
 
-    points.forEach((point, index) => {
-        const tick = SALES_SETTING_BOOKING_CURVE_TICKS[index];
-        if (tick === undefined) {
-            return;
-        }
+    const guideLineElement = document.createElementNS(svgNamespace, "line");
+    guideLineElement.setAttribute(SALES_SETTING_BOOKING_CURVE_ACTIVE_GUIDE_ATTRIBUTE, "");
+    guideLineElement.setAttribute("visibility", "hidden");
+    svgElement.append(guideLineElement);
+
+    const pointElement = document.createElementNS(svgNamespace, "circle");
+    pointElement.setAttribute(SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE, "");
+    pointElement.setAttribute("r", "4.5");
+    pointElement.setAttribute("stroke", variant === "overall" ? "#1f5fbf" : "#2f8f5b");
+    pointElement.setAttribute("visibility", "hidden");
+    svgElement.append(pointElement);
+
+    samples.forEach((sample, index) => {
+        const tick = sample.tick;
 
         const tickLineElement = document.createElementNS(svgNamespace, "line");
-        tickLineElement.setAttribute("x1", point.x.toFixed(2));
-        tickLineElement.setAttribute("x2", point.x.toFixed(2));
+        tickLineElement.setAttribute("x1", sample.x.toFixed(2));
+        tickLineElement.setAttribute("x2", sample.x.toFixed(2));
         tickLineElement.setAttribute("y1", String(height - paddingBottom));
         tickLineElement.setAttribute("y2", String((height - paddingBottom) + (shouldShowSalesSettingBookingCurveAxisLabel(tick) ? 6 : 4)));
         tickLineElement.setAttribute("stroke", "#9fb0c8");
@@ -1772,12 +1918,57 @@ function createSalesSettingBookingCurveSvg(
             const labelElement = document.createElementNS(svgNamespace, "text");
             labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE, "");
             labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_VISIBLE_ATTRIBUTE, "true");
-            labelElement.setAttribute("x", point.x.toFixed(2));
+            labelElement.setAttribute("x", sample.x.toFixed(2));
             labelElement.setAttribute("y", String(height - 6));
             labelElement.setAttribute("text-anchor", tick === 360 ? "start" : tick === "ACT" ? "end" : "middle");
             labelElement.textContent = getSalesSettingBookingCurveLabel(tick);
             svgElement.append(labelElement);
         }
+
+        const previousSample = index > 0 ? samples[index - 1] : undefined;
+        const nextSample = index < samples.length - 1 ? samples[index + 1] : undefined;
+        const leftEdge = previousSample === undefined ? paddingLeft : (previousSample.x + sample.x) / 2;
+        const rightEdge = nextSample === undefined ? width - paddingRight : (sample.x + nextSample.x) / 2;
+        const hitboxElement = document.createElementNS(svgNamespace, "rect");
+        hitboxElement.setAttribute(SALES_SETTING_BOOKING_CURVE_HITBOX_ATTRIBUTE, "");
+        hitboxElement.setAttribute("x", leftEdge.toFixed(2));
+        hitboxElement.setAttribute("y", String(paddingTop));
+        hitboxElement.setAttribute("width", Math.max(1, rightEdge - leftEdge).toFixed(2));
+        hitboxElement.setAttribute("height", String(plotHeight));
+        hitboxElement.setAttribute("tabindex", "0");
+        hitboxElement.setAttribute("role", "button");
+        hitboxElement.setAttribute("aria-label", `${getSalesSettingBookingCurveLabel(tick)}時点 ${formatGroupRoomNumber(sample.value)}室`);
+        hitboxElement.addEventListener("mouseenter", () => {
+            showSalesSettingBookingCurveTooltip(
+                tooltipElement,
+                guideLineElement,
+                pointElement,
+                sample,
+                width,
+                height,
+                paddingBottom,
+                safeMaxValue
+            );
+        });
+        hitboxElement.addEventListener("focus", () => {
+            showSalesSettingBookingCurveTooltip(
+                tooltipElement,
+                guideLineElement,
+                pointElement,
+                sample,
+                width,
+                height,
+                paddingBottom,
+                safeMaxValue
+            );
+        });
+        hitboxElement.addEventListener("mouseleave", () => {
+            hideSalesSettingBookingCurveTooltip(tooltipElement, guideLineElement, pointElement);
+        });
+        hitboxElement.addEventListener("blur", () => {
+            hideSalesSettingBookingCurveTooltip(tooltipElement, guideLineElement, pointElement);
+        });
+        svgElement.append(hitboxElement);
     });
 
     return svgElement;
@@ -1800,10 +1991,17 @@ function createSalesSettingBookingCurvePanel(
     metricElement.setAttribute(SALES_SETTING_BOOKING_CURVE_PANEL_METRIC_ATTRIBUTE, "");
     metricElement.textContent = `室数 ${formatCompactMetricValue(currentValue)} / ${formatGroupRoomNumber(maxValue)}`;
 
+    const canvasElement = document.createElement("div");
+    canvasElement.setAttribute(SALES_SETTING_BOOKING_CURVE_CANVAS_ATTRIBUTE, "");
+
+    const tooltipElement = createSalesSettingBookingCurveTooltip();
+    const svgElement = createSalesSettingBookingCurveSvg(tooltipElement, maxValue, currentValue, variant);
+    canvasElement.replaceChildren(tooltipElement, svgElement);
+
     panelElement.replaceChildren(
         titleElement,
         metricElement,
-        createSalesSettingBookingCurveSvg(maxValue, currentValue, variant)
+        canvasElement
     );
 
     return panelElement;
@@ -2991,6 +3189,10 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.35;
         }
 
+        [${SALES_SETTING_BOOKING_CURVE_CANVAS_ATTRIBUTE}] {
+            position: relative;
+        }
+
         [${SALES_SETTING_BOOKING_CURVE_PANEL_SVG_ATTRIBUTE}] {
             display: block;
             width: 100%;
@@ -2998,11 +3200,81 @@ function ensureGroupRoomStyles(): void {
             overflow: visible;
         }
 
+        [${SALES_SETTING_BOOKING_CURVE_TOOLTIP_ATTRIBUTE}] {
+            position: absolute;
+            top: 10px;
+            left: 50%;
+            transform: translateX(-50%);
+            min-width: 104px;
+            max-width: min(180px, calc(100% - 8px));
+            padding: 7px 9px;
+            border: 1px solid #d7e0ef;
+            border-radius: 10px;
+            background: rgba(255, 255, 255, 0.96);
+            box-shadow: 0 8px 24px rgba(80, 98, 122, 0.12);
+            color: #243447;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 120ms ease;
+            z-index: 1;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_TOOLTIP_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE}="true"] {
+            opacity: 1;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE}] {
+            color: #58708f;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_TOOLTIP_VALUE_ATTRIBUTE}] {
+            margin-top: 2px;
+            color: #243447;
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.25;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_TOOLTIP_META_ATTRIBUTE}] {
+            margin-top: 2px;
+            color: #6d7f98;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.25;
+        }
+
         [${SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE}] {
             fill: #70839c;
             font-size: 9px;
             font-weight: 700;
             line-height: 1;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_Y_AXIS_LABEL_ATTRIBUTE}] {
+            fill: #8a9cb4;
+            font-size: 9px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_ACTIVE_GUIDE_ATTRIBUTE}] {
+            stroke: rgba(95, 118, 148, 0.42);
+            stroke-width: 1.5;
+            stroke-dasharray: 4 4;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE}] {
+            fill: #ffffff;
+            stroke: #1f5fbf;
+            stroke-width: 2.5;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_HITBOX_ATTRIBUTE}] {
+            fill: transparent;
+            cursor: crosshair;
         }
 
         [${SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE}] {
