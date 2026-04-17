@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-04-16
+最終更新: 2026-04-17
 
 ## Done
 
@@ -26,19 +26,23 @@
 ## Next
 
 1. 販売設定タブの販売室数差分を `booking_curve` ベースのまま維持するか、販売設定系 endpoint ベースへ寄せるかを判断する
-2. 並列数制限、先読み取得の単位、月送り時の再同期方法を見直し、体感速度を改善する
-3. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
+2. 販売設定タブの各室タイプカードへ、`室数` のみ・`全体 / 個人 / 団体` 切替あり・baseline なしの booking curve を段階導入する
+3. 室タイプ別 booking curve の LT 軸を bucket 集約表示で定義し、`ACT` を `0日前` と分離した tick 仕様で実装する
+4. 並列数制限、先読み取得の単位、月送り時の再同期方法を見直し、体感速度を改善する
+5. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
+6. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
 
 ## Remaining Task Triage
 
 Now:
 
 - 販売設定タブの販売室数差分のデータ源を確定する
+- 室タイプ別 booking curve の Phase 1 仕様を実装粒度まで固める
 
 Next:
 
-- 月送りと販売設定タブ再描画時の request 数を減らす
+- 室タイプ別 booking curve の LT bucket 表示と `ACT` 分離を実装する
 
 After Next:
 
-- 競合価格表の導入要否を決める
+- baseline と競合価格表の導入要否を決める

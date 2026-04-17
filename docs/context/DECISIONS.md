@@ -8,3 +8,6 @@
 - D-20260331-002 | 初回実装は UI 装飾より、`booking_curve` 取得、キャッシュ、再同期の土台を優先する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260411-001 | 個別リポジトリ側の文書構成は `repo-template-codex` の現行 `AGENTS.md` / `STATUS.md` / `DECISIONS.md` 形式へ寄せ、リポジトリ固有ルールは `Local Extension` と `docs/spec_*.md` に残す | status: applied | spec_link: AGENTS.md
 - D-20260411-002 | 団体室数系キャッシュは `最終データ更新` 日付だけでなく施設単位でも分離し、起動時、ページ復帰時、フォーカス復帰時の整合チェックで異常を検知したら group 系キャッシュを破棄して再同期する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260417-001 | 販売設定タブ内の室タイプ別 booking curve はフェーズ分割とし、Phase 1 は `室数` のみ、`全体 / 個人 / 団体` 切替あり、baseline なしで進める | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260417-002 | 室タイプ別 booking curve の LT 圧縮は bucket 集約とし、代表値は平均ではなく各 bucket の最後の日を使い、`ACT` は `0日前` と分離して扱う | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260417-003 | Phase 1 では `localStorage` へ booking curve 生 JSON を persistent 保存せず、必要なら最小系列のみを保持し、`IndexedDB` は baseline 導入以降に再判断する | status: applied | spec_link: docs/spec_001_analyze_expansion.md

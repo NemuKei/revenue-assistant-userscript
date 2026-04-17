@@ -56,6 +56,38 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 全体販売室数サマリーは、販売設定タブ上に描画済みの室タイプ別表示を合算して生成する
 - 販売設定タブの販売室数差分は、現状 `/api/v4/booking_curve` の `all.this_year_room_sum` を室タイプ別に引いて計算している
 
+### Candidate: Room-Type Booking Curve
+
+- 対象は analyze 日付ページの `販売設定` タブ内にある各室タイプカードとする
+- 実装はフェーズ分割とし、初期実装では `室数` グラフだけを扱う
+
+#### Phase 1
+
+- 各室タイプカードへ、同じ室タイプの booking curve を 1 枚ずつ表示する
+- 表示対象の系列は `全体 / 個人 / 団体` とし、`/api/v4/booking_curve` の `all / transient / group` を切り替えて使う
+- baseline は初期実装では入れない
+- 生データ保存は日次のまま維持し、圧縮するのは表示だけとする
+- `0日前` とは別に `ACT` を独立した tick として扱う。値が存在しない stay_date では `ACT` は空でよい
+- LT 圧縮は bucket 集約とし、各 bucket の代表値は平均ではなく `bucket の最後の日` の値を使う
+- 仕様上の LT tick は次を正とする
+  - `ACT`
+  - `0-14日`: 1日単位
+  - `15-30日`: 2日単位の bucket 終端 `16, 18, 20, 22, 24, 26, 28, 30`
+  - `31-60日`: 5日単位の bucket 終端 `35, 40, 45, 50, 55, 60`
+  - `61-90日`: 10日単位の bucket 終端 `70, 80, 90`
+  - `91-180日`: 15日単位の bucket 終端 `105, 120, 135, 150, 165, 180`
+  - `181-360日`: 30日単位の bucket 終端 `210, 240, 270, 300, 330, 360`
+- 実画面での左右の向きは、既存のレベニューアシスタントの booking curve 表示に合わせる
+- Phase 1 では `localStorage` へ booking curve の生 JSON を persistent 保存しない
+- persistent cache が必要なら、`date / all / transient / group` だけの最小系列へ圧縮した payload を優先する
+- `IndexedDB` は Phase 1 では前提にしない
+
+#### Phase 2
+
+- `同月同曜日` の reference curve を baseline として重ねる
+- baseline 用の履歴系列を複数本持つ必要が出た場合に、`IndexedDB` 導入を再判断する
+- baseline は `rm-booking-curve-lab` の `comparison_curves` と同様に、描画用の別系列として扱う
+
 ## キャッシュと同期のルール
 
 ### キャッシュ範囲
@@ -94,8 +126,17 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - `/api/v5/competitor_prices` を使った競合価格表を販売設定タブへ埋め込むか判断する
 - 実装する場合は、表示位置、比較単位、列数、既存タブとの役割分担を先に仕様化する
 
+### Candidate 4: Room-Type Booking Curve
+
+- 販売設定タブ内の各室タイプカードへ booking curve を段階導入する
+- 初期実装では `室数` のみ、`全体 / 個人 / 団体` 切替あり、baseline なしとする
+- LT 軸は日次生データを bucket 集約表示へ圧縮し、代表値は各 bucket の最後の日を使う
+- `ACT` は `0日前` と分離して扱う
+- Phase 2 で `同月同曜日` baseline と `IndexedDB` 導入要否を再判断する
+
 ## Open Questions
 
 1. 販売設定タブの販売室数差分は、現状の `booking_curve` 由来値で十分か
 2. 月送りやタブ切替時の request 数をどこまで減らすべきか
 3. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
+4. 室タイプ別 booking curve の初期表示は、カード常時表示とするか、開閉式にするか
