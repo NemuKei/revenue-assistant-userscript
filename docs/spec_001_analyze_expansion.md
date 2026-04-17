@@ -98,7 +98,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - rank 変更履歴 marker の x 座標は、反映日時を宿泊日から引いた LT 日数を圧縮済み LT 軸へ補間して置く
 - rank 変更履歴 marker の y 座標は、同日の `booking_curve` 値を panel ごとに解決して使う
 - tooltip は point 詳細と rank 変更履歴を 1 つにまとめ、line hover 側でも同じ区間の rank marker 情報を拾えるようにする。point 側の `何日前 / 室数 / 稼働率 / 上限` に加えて、rank marker では `ランク A→B / 反映日 / 反映者` を追記する
-- tooltip は hover を外しても最後に表示した内容を残し、次の point または marker で上書きする
+- tooltip は point または marker の hover / focus 中だけ表示し、カーソルまたはフォーカスが外れたら非表示にする
 - 同じ部屋タイプで同じ日に複数回 rank 変更がある場合、Phase 1 ではその日の最後の 1 件だけを marker として表示する
 - Phase 1 では `localStorage` へ booking curve の生 JSON を persistent 保存しない
 - persistent cache が必要なら、`date / all / transient / group` だけの最小系列へ圧縮した payload を優先する

@@ -2145,6 +2145,16 @@ function showSalesSettingBookingCurveTooltip(
     pointElement.setAttribute("cy", sample.y.toFixed(2));
 }
 
+function hideSalesSettingBookingCurveTooltip(
+    tooltipElement: HTMLElement,
+    guideLineElement: SVGLineElement,
+    pointElement: SVGCircleElement
+): void {
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "false");
+    guideLineElement.setAttribute("visibility", "hidden");
+    pointElement.setAttribute("visibility", "hidden");
+}
+
 function showSalesSettingBookingCurveRankMarkerTooltip(
     tooltipElement: HTMLElement,
     guideLineElement: SVGLineElement,
@@ -2356,6 +2366,12 @@ function createSalesSettingBookingCurveSvg(
                 maxValue
             );
         });
+        hitboxElement.addEventListener("mouseleave", () => {
+            hideSalesSettingBookingCurveTooltip(tooltipElement, guideLineElement, pointElement);
+        });
+        hitboxElement.addEventListener("blur", () => {
+            hideSalesSettingBookingCurveTooltip(tooltipElement, guideLineElement, pointElement);
+        });
         svgElement.append(hitboxElement);
     });
 
@@ -2404,6 +2420,12 @@ function createSalesSettingBookingCurveSvg(
                 paddingBottom,
                 maxValue
             );
+        });
+        markerHitboxElement.addEventListener("mouseleave", () => {
+            hideSalesSettingBookingCurveTooltip(tooltipElement, guideLineElement, pointElement);
+        });
+        markerHitboxElement.addEventListener("blur", () => {
+            hideSalesSettingBookingCurveTooltip(tooltipElement, guideLineElement, pointElement);
         });
         svgElement.append(markerHitboxElement);
     }
