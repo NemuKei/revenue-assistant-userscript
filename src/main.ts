@@ -61,6 +61,7 @@ const SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE = "data-ra-sales-setti
 const SALES_SETTING_BOOKING_CURVE_TOOLTIP_VALUE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip-value";
 const SALES_SETTING_BOOKING_CURVE_TOOLTIP_META_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip-meta";
 const SALES_SETTING_BOOKING_CURVE_TOOLTIP_DETAIL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip-detail";
+const SALES_SETTING_BOOKING_CURVE_TOOLTIP_DETAIL_EMPHASIS_ATTRIBUTE = "data-ra-sales-setting-booking-curve-tooltip-detail-emphasis";
 const SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-axis-label";
 const SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_VISIBLE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-axis-label-visible";
 const SALES_SETTING_BOOKING_CURVE_Y_AXIS_LABEL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-y-axis-label";
@@ -734,7 +735,7 @@ function resolveSalesSettingBookingCurveActMetric(
     variant: "overall" | "individual"
 ): number | null {
     const observationLeadDays = getDaysBetweenDashedDateKeys(stayDate, batchDateKey);
-    if (observationLeadDays !== null && observationLeadDays > 0) {
+    if (observationLeadDays !== null && observationLeadDays >= 0) {
         return null;
     }
 
@@ -2099,10 +2100,11 @@ function showSalesSettingBookingCurveTooltip(
     guideLineElement: SVGLineElement,
     pointElement: SVGCircleElement,
     sample: SalesSettingBookingCurveSample,
+    marker: (SalesSettingBookingCurveMarker & { x: number; y: number }) | null,
     width: number,
     height: number,
     paddingBottom: number,
-    maxValue: number
+    capacityValue: number
 ): void {
     tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "true");
     tooltipElement.style.left = `${Math.max(48, Math.min(width - 48, sample.x))}px`;
@@ -2119,11 +2121,11 @@ function showSalesSettingBookingCurveTooltip(
     }
     if (metaElement !== null) {
         metaElement.textContent = sample.occupancyRate === null
-            ? `上限 ${formatGroupRoomNumber(maxValue)}室`
-            : `稼働率 ${formatSalesSettingBookingCurveOccupancyRate(sample.occupancyRate)} / 上限 ${formatGroupRoomNumber(maxValue)}室`;
+            ? `上限 ${formatGroupRoomNumber(capacityValue)}室`
+            : `稼働率 ${formatSalesSettingBookingCurveOccupancyRate(sample.occupancyRate)} / 上限 ${formatGroupRoomNumber(capacityValue)}室`;
     }
     if (detailElement !== null) {
-        detailElement.textContent = "";
+        renderSalesSettingBookingCurveTooltipDetail(detailElement, marker);
     }
 
     if (sample.y === null) {
@@ -2173,12 +2175,7 @@ function showSalesSettingBookingCurveRankMarkerTooltip(
             : `稼働率 ${formatSalesSettingBookingCurveOccupancyRate(occupancyRate)} / 上限 ${formatGroupRoomNumber(maxValue)}室`;
     }
     if (detailElement !== null) {
-        const detailParts = [
-            `ランク ${formatSalesSettingRankTransition(marker.beforeRankName, marker.afterRankName)}`,
-            formatSalesSettingBookingCurveMarkerDateLabel(marker.reflectedAt),
-            marker.reflectorName
-        ].filter((part): part is string => part !== null && part !== "");
-        detailElement.textContent = detailParts.join(" / ");
+        renderSalesSettingBookingCurveTooltipDetail(detailElement, marker);
     }
 
     guideLineElement.setAttribute("visibility", "visible");
@@ -2332,16 +2329,18 @@ function createSalesSettingBookingCurveSvg(
         hitboxElement.setAttribute("aria-label", sample.value === null
             ? `${getSalesSettingBookingCurveLabel(tick)}時点 データなし`
             : `${getSalesSettingBookingCurveLabel(tick)}時点 ${formatGroupRoomNumber(sample.value)}室`);
+        const activeMarker = findSalesSettingBookingCurveMarkerInRange(renderedMarkers, leftEdge, rightEdge, sample.x);
         hitboxElement.addEventListener("mouseenter", () => {
             showSalesSettingBookingCurveTooltip(
                 tooltipElement,
                 guideLineElement,
                 pointElement,
                 sample,
+                activeMarker,
                 width,
                 height,
                 paddingBottom,
-                safeMaxValue
+                maxValue
             );
         });
         hitboxElement.addEventListener("focus", () => {
@@ -2350,10 +2349,11 @@ function createSalesSettingBookingCurveSvg(
                 guideLineElement,
                 pointElement,
                 sample,
+                activeMarker,
                 width,
                 height,
                 paddingBottom,
-                safeMaxValue
+                maxValue
             );
         });
         svgElement.append(hitboxElement);
@@ -2409,6 +2409,52 @@ function createSalesSettingBookingCurveSvg(
     }
 
     return svgElement;
+}
+
+function findSalesSettingBookingCurveMarkerInRange(
+    renderedMarkers: Array<SalesSettingBookingCurveMarker & { x: number; y: number }>,
+    leftEdge: number,
+    rightEdge: number,
+    targetX: number
+): (SalesSettingBookingCurveMarker & { x: number; y: number }) | null {
+    let matchedMarker: (SalesSettingBookingCurveMarker & { x: number; y: number }) | null = null;
+    let smallestDistance = Number.POSITIVE_INFINITY;
+
+    for (const marker of renderedMarkers) {
+        if (marker.x < leftEdge || marker.x > rightEdge) {
+            continue;
+        }
+
+        const distance = Math.abs(marker.x - targetX);
+        if (distance <= smallestDistance) {
+            matchedMarker = marker;
+            smallestDistance = distance;
+        }
+    }
+
+    return matchedMarker;
+}
+
+function renderSalesSettingBookingCurveTooltipDetail(
+    detailElement: HTMLElement,
+    marker: (SalesSettingBookingCurveMarker & { x: number; y: number }) | null
+): void {
+    if (marker === null) {
+        detailElement.replaceChildren();
+        return;
+    }
+
+    const emphasisElement = document.createElement("span");
+    emphasisElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_DETAIL_EMPHASIS_ATTRIBUTE, "");
+    emphasisElement.textContent = `ランク ${formatSalesSettingRankTransition(marker.beforeRankName, marker.afterRankName)}`;
+
+    const tailParts = [
+        formatSalesSettingBookingCurveMarkerDateLabel(marker.reflectedAt),
+        marker.reflectorName
+    ].filter((part): part is string => part !== null && part !== "");
+    const tailText = tailParts.length === 0 ? "" : ` / ${tailParts.join(" / ")}`;
+
+    detailElement.replaceChildren(emphasisElement, document.createTextNode(tailText));
 }
 
 function createSalesSettingBookingCurvePanel(
@@ -3803,6 +3849,11 @@ function ensureGroupRoomStyles(): void {
             font-size: 10px;
             font-weight: 700;
             line-height: 1.25;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_TOOLTIP_DETAIL_EMPHASIS_ATTRIBUTE}] {
+            color: #243447;
+            font-weight: 800;
         }
 
         [${SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE}] {
