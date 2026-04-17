@@ -26,7 +26,7 @@
 ## Next
 
 1. 販売設定タブの販売室数差分を `booking_curve` ベースのまま維持するか、販売設定系 endpoint ベースへ寄せるかを判断する
-2. 最上段の全体 block と各室タイプ card へ、`室数` のみ・`全体 / 個人 / 団体` 切替あり・baseline なし・既定は閉じた表示の booking curve を段階導入する
+2. 最上段の全体 block にホテル全体 booking curve を常時展開で追加し、各室タイプ card へは `室数` のみ・baseline なし・既定は閉じた表示の booking curve を段階導入する
 3. 室タイプ別 booking curve の LT 軸を bucket 集約表示で定義し、`ACT` を `0日前` と分離した tick 仕様で実装する
 4. 並列数制限、先読み取得の単位、月送り時の再同期方法を見直し、体感速度を改善する
 5. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
@@ -38,7 +38,7 @@ Now:
 
 - 販売設定タブの販売室数差分のデータ源を確定する
 - 室タイプ別 booking curve の Phase 1 仕様を実装粒度まで固める
-- 全体 block と各室タイプ card の booking curve 開閉 UI を実装粒度まで固める
+- 全体 block 常時展開、各室タイプ card の block 内開閉 UI、`全体` と `個人` の横並び表示を実装粒度まで固める
 
 Next:
 
