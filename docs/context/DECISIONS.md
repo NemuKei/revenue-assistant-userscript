@@ -11,3 +11,4 @@
 - D-20260417-001 | 販売設定タブ内の室タイプ別 booking curve はフェーズ分割とし、Phase 1 は `室数` のみ、`全体 / 個人 / 団体` 切替あり、baseline なしで進める | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260417-002 | 室タイプ別 booking curve の LT 圧縮は bucket 集約とし、代表値は平均ではなく各 bucket の最後の日を使い、`ACT` は `0日前` と分離して扱う | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260417-003 | Phase 1 では `localStorage` へ booking curve 生 JSON を persistent 保存せず、必要なら最小系列のみを保持し、`IndexedDB` は baseline 導入以降に再判断する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260417-004 | 室タイプ別 booking curve の初期表示は常時展開ではなく閉じた状態を既定とし、最上段の全体 block にもホテル全体 booking curve を表示する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
