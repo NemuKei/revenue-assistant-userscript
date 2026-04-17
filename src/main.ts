@@ -67,6 +67,9 @@ const SALES_SETTING_BOOKING_CURVE_Y_AXIS_LINE_ATTRIBUTE = "data-ra-sales-setting
 const SALES_SETTING_BOOKING_CURVE_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-active-guide";
 const SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE = "data-ra-sales-setting-booking-curve-active-point";
 const SALES_SETTING_BOOKING_CURVE_HITBOX_ATTRIBUTE = "data-ra-sales-setting-booking-curve-hitbox";
+const SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS = new Set<SalesSettingBookingCurveTick>([
+    360, 300, 240, 180, 150, 120, 90, 60, 45, 30, 14, 7, 3, "ACT"
+]);
 const SALES_SETTING_BOOKING_CURVE_TICKS = [
     360, 330, 300, 270, 240, 210,
     180, 165, 150, 135, 120, 105,
@@ -1674,6 +1677,10 @@ function getSalesSettingBookingCurveLabel(tick: SalesSettingBookingCurveTick): s
     return tick === "ACT" ? "ACT" : String(tick);
 }
 
+function formatSalesSettingBookingCurveTooltipPointLabel(tick: SalesSettingBookingCurveTick): string {
+    return tick === "ACT" ? "ACT時点" : `${tick}日前時点`;
+}
+
 function estimateSalesSettingBookingCurveAxisLabelWidth(label: string): number {
     return Math.max(14, (label.length * 6.4) + 6);
 }
@@ -1723,7 +1730,7 @@ function resolveSalesSettingBookingCurveVisibleAxisLabels(samples: SalesSettingB
             continue;
         }
 
-        if (sample.tick === "ACT" || sample.tick === 0) {
+        if (!SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS.has(sample.tick) || sample.tick === "ACT") {
             continue;
         }
 
@@ -1855,7 +1862,7 @@ function showSalesSettingBookingCurveTooltip(
     const valueElement = tooltipElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOOLTIP_VALUE_ATTRIBUTE}]`);
     const metaElement = tooltipElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOOLTIP_META_ATTRIBUTE}]`);
     if (titleElement !== null) {
-        titleElement.textContent = `${getSalesSettingBookingCurveLabel(sample.tick)}時点`;
+        titleElement.textContent = formatSalesSettingBookingCurveTooltipPointLabel(sample.tick);
     }
     if (valueElement !== null) {
         valueElement.textContent = `${formatGroupRoomNumber(sample.value)}室`;
