@@ -68,14 +68,14 @@ const SALES_SETTING_BOOKING_CURVE_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-sales-settin
 const SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE = "data-ra-sales-setting-booking-curve-active-point";
 const SALES_SETTING_BOOKING_CURVE_HITBOX_ATTRIBUTE = "data-ra-sales-setting-booking-curve-hitbox";
 const SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS = new Set<SalesSettingBookingCurveTick>([
-    360, 300, 240, 180, 150, 120, 90, 60, 45, 30, 14, 7, 3, "ACT"
+    360, 270, 180, 150, 120, 90, 60, 45, 30, 21, 14, 7, 3, "ACT"
 ]);
 const SALES_SETTING_BOOKING_CURVE_TICKS = [
     360, 330, 300, 270, 240, 210,
     180, 165, 150, 135, 120, 105,
     90, 80, 70,
     60, 55, 50, 45, 40, 35,
-    30, 28, 26, 24, 22, 20, 18, 16,
+    30, 28, 26, 24, 21, 20, 18, 16,
     14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
     "ACT"
 ] as const;
@@ -1681,63 +1681,20 @@ function formatSalesSettingBookingCurveTooltipPointLabel(tick: SalesSettingBooki
     return tick === "ACT" ? "ACT時点" : `${tick}日前時点`;
 }
 
-function estimateSalesSettingBookingCurveAxisLabelWidth(label: string): number {
-    return Math.max(14, (label.length * 6.4) + 6);
+function resolveSalesSettingBookingCurveVisibleAxisLabels(samples: SalesSettingBookingCurveSample[]): boolean[] {
+    return samples.map((sample) => SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS.has(sample.tick));
 }
 
-function getSalesSettingBookingCurveAxisLabelBounds(sample: SalesSettingBookingCurveSample): { left: number; right: number } {
-    const label = getSalesSettingBookingCurveLabel(sample.tick);
-    const width = estimateSalesSettingBookingCurveAxisLabelWidth(label);
-
-    if (sample.tick === 360) {
-        return {
-            left: sample.x,
-            right: sample.x + width
-        };
+function getSalesSettingBookingCurveAxisTextAnchor(tick: SalesSettingBookingCurveTick): "start" | "middle" | "end" {
+    if (tick === "ACT") {
+        return "end";
     }
 
-    if (sample.tick === "ACT") {
-        return {
-            left: sample.x - width,
-            right: sample.x
-        };
+    if (tick === 360 || tick === 270) {
+        return "start";
     }
 
-    return {
-        left: sample.x - (width / 2),
-        right: sample.x + (width / 2)
-    };
-}
-
-function resolveSalesSettingBookingCurveAxisLabelRows(samples: SalesSettingBookingCurveSample[]): number[] {
-    const rowAssignments = samples.map(() => -1);
-    const minGap = 4;
-    const lastRightByRow = [Number.NEGATIVE_INFINITY, Number.NEGATIVE_INFINITY];
-
-    for (let index = 0; index < samples.length; index += 1) {
-        const sample = samples[index];
-        if (sample === undefined) {
-            continue;
-        }
-
-        if (!SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS.has(sample.tick)) {
-            continue;
-        }
-
-        const bounds = getSalesSettingBookingCurveAxisLabelBounds(sample);
-        for (let row = 0; row < lastRightByRow.length; row += 1) {
-            const lastRight = lastRightByRow[row] ?? Number.NEGATIVE_INFINITY;
-            if (bounds.left < lastRight + minGap) {
-                continue;
-            }
-
-            rowAssignments[index] = row;
-            lastRightByRow[row] = bounds.right;
-            break;
-        }
-    }
-
-    return rowAssignments;
+    return "middle";
 }
 
 function buildSalesSettingDummyCurveSeries(
@@ -1881,16 +1838,16 @@ function createSalesSettingBookingCurveSvg(
     const svgNamespace = "http://www.w3.org/2000/svg";
     const svgElement = document.createElementNS(svgNamespace, "svg");
     svgElement.setAttribute(SALES_SETTING_BOOKING_CURVE_PANEL_SVG_ATTRIBUTE, "");
-    svgElement.setAttribute("viewBox", "0 0 420 176");
+    svgElement.setAttribute("viewBox", "0 0 420 164");
     svgElement.setAttribute("role", "img");
     svgElement.setAttribute("aria-label", variant === "overall" ? "全体ブッキングカーブ表示イメージ" : "個人ブッキングカーブ表示イメージ");
 
     const width = 420;
-    const height = 176;
+    const height = 164;
     const paddingLeft = 38;
     const paddingRight = 10;
     const paddingTop = 14;
-    const paddingBottom = 40;
+    const paddingBottom = 28;
     const plotWidth = width - paddingLeft - paddingRight;
     const plotHeight = height - paddingTop - paddingBottom;
     const safeMaxValue = Math.max(1, maxValue);
@@ -1903,7 +1860,7 @@ function createSalesSettingBookingCurveSvg(
         paddingLeft,
         paddingTop
     );
-    const axisLabelRows = resolveSalesSettingBookingCurveAxisLabelRows(samples);
+    const visibleAxisLabels = resolveSalesSettingBookingCurveVisibleAxisLabels(samples);
 
     for (const ratio of getSalesSettingBookingCurveYAxisRatios(safeMaxValue)) {
         const y = paddingTop + ((1 - ratio) * plotHeight);
@@ -1957,8 +1914,7 @@ function createSalesSettingBookingCurveSvg(
 
     samples.forEach((sample, index) => {
         const tick = sample.tick;
-        const axisLabelRow = axisLabelRows[index] ?? -1;
-        const showAxisLabel = axisLabelRow >= 0;
+        const showAxisLabel = visibleAxisLabels[index] ?? false;
 
         const tickLineElement = document.createElementNS(svgNamespace, "line");
         tickLineElement.setAttribute("x1", sample.x.toFixed(2));
@@ -1974,8 +1930,8 @@ function createSalesSettingBookingCurveSvg(
             labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE, "");
             labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_VISIBLE_ATTRIBUTE, "true");
             labelElement.setAttribute("x", sample.x.toFixed(2));
-            labelElement.setAttribute("y", String(height - (axisLabelRow === 0 ? 20 : 7)));
-            labelElement.setAttribute("text-anchor", tick === 360 ? "start" : tick === "ACT" ? "end" : "middle");
+            labelElement.setAttribute("y", String(height - 6));
+            labelElement.setAttribute("text-anchor", getSalesSettingBookingCurveAxisTextAnchor(tick));
             labelElement.textContent = getSalesSettingBookingCurveLabel(tick);
             svgElement.append(labelElement);
         }
@@ -3303,15 +3259,15 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE}] {
             fill: #70839c;
-            font-size: 9px;
-            font-weight: 700;
+            font-size: 8px;
+            font-weight: 500;
             line-height: 1;
         }
 
         [${SALES_SETTING_BOOKING_CURVE_Y_AXIS_LABEL_ATTRIBUTE}] {
             fill: #8a9cb4;
-            font-size: 9px;
-            font-weight: 700;
+            font-size: 8px;
+            font-weight: 500;
             line-height: 1;
         }
 
