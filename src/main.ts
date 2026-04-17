@@ -1674,18 +1674,73 @@ function getSalesSettingBookingCurveLabel(tick: SalesSettingBookingCurveTick): s
     return tick === "ACT" ? "ACT" : String(tick);
 }
 
-function shouldShowSalesSettingBookingCurveAxisLabel(tick: SalesSettingBookingCurveTick): boolean {
-    return tick === "ACT"
-        || tick === 360
-        || tick === 240
-        || tick === 180
-        || tick === 120
-        || tick === 90
-        || tick === 60
-        || tick === 30
-        || tick === 14
-        || tick === 7
-        || tick === 0;
+function estimateSalesSettingBookingCurveAxisLabelWidth(label: string): number {
+    return Math.max(14, (label.length * 6.4) + 6);
+}
+
+function getSalesSettingBookingCurveAxisLabelBounds(sample: SalesSettingBookingCurveSample): { left: number; right: number } {
+    const label = getSalesSettingBookingCurveLabel(sample.tick);
+    const width = estimateSalesSettingBookingCurveAxisLabelWidth(label);
+
+    if (sample.tick === 360) {
+        return {
+            left: sample.x,
+            right: sample.x + width
+        };
+    }
+
+    if (sample.tick === "ACT") {
+        return {
+            left: sample.x - width,
+            right: sample.x
+        };
+    }
+
+    return {
+        left: sample.x - (width / 2),
+        right: sample.x + (width / 2)
+    };
+}
+
+function resolveSalesSettingBookingCurveVisibleAxisLabels(samples: SalesSettingBookingCurveSample[]): boolean[] {
+    const visible = samples.map(() => false);
+    const minGap = 4;
+    const actIndex = samples.findIndex((sample) => sample.tick === "ACT");
+    const actSample = actIndex >= 0 ? samples[actIndex] : undefined;
+    const actLeftBoundary = actIndex >= 0
+        && actSample !== undefined
+        ? getSalesSettingBookingCurveAxisLabelBounds(actSample).left - minGap
+        : Number.POSITIVE_INFINITY;
+
+    if (actIndex >= 0) {
+        visible[actIndex] = true;
+    }
+
+    let lastRight = Number.NEGATIVE_INFINITY;
+    for (let index = 0; index < samples.length; index += 1) {
+        const sample = samples[index];
+        if (sample === undefined) {
+            continue;
+        }
+
+        if (sample.tick === "ACT" || sample.tick === 0) {
+            continue;
+        }
+
+        const bounds = getSalesSettingBookingCurveAxisLabelBounds(sample);
+        if (bounds.right > actLeftBoundary) {
+            continue;
+        }
+
+        if (bounds.left < lastRight + minGap) {
+            continue;
+        }
+
+        visible[index] = true;
+        lastRight = bounds.right;
+    }
+
+    return visible;
 }
 
 function buildSalesSettingDummyCurveSeries(
@@ -1851,6 +1906,7 @@ function createSalesSettingBookingCurveSvg(
         paddingLeft,
         paddingTop
     );
+    const visibleAxisLabels = resolveSalesSettingBookingCurveVisibleAxisLabels(samples);
 
     for (const ratio of getSalesSettingBookingCurveYAxisRatios(safeMaxValue)) {
         const y = paddingTop + ((1 - ratio) * plotHeight);
@@ -1904,17 +1960,18 @@ function createSalesSettingBookingCurveSvg(
 
     samples.forEach((sample, index) => {
         const tick = sample.tick;
+        const showAxisLabel = visibleAxisLabels[index] ?? false;
 
         const tickLineElement = document.createElementNS(svgNamespace, "line");
         tickLineElement.setAttribute("x1", sample.x.toFixed(2));
         tickLineElement.setAttribute("x2", sample.x.toFixed(2));
         tickLineElement.setAttribute("y1", String(height - paddingBottom));
-        tickLineElement.setAttribute("y2", String((height - paddingBottom) + (shouldShowSalesSettingBookingCurveAxisLabel(tick) ? 6 : 4)));
+        tickLineElement.setAttribute("y2", String((height - paddingBottom) + (showAxisLabel ? 6 : 4)));
         tickLineElement.setAttribute("stroke", "#9fb0c8");
         tickLineElement.setAttribute("stroke-width", "1");
         svgElement.append(tickLineElement);
 
-        if (shouldShowSalesSettingBookingCurveAxisLabel(tick)) {
+        if (showAxisLabel) {
             const labelElement = document.createElementNS(svgNamespace, "text");
             labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE, "");
             labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_VISIBLE_ATTRIBUTE, "true");
