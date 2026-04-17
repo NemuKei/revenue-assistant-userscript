@@ -53,6 +53,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 最上段に `全体 販売室数: current / max` を表示し、その下へ `区分 / 室数 / 1日前 / 7日前 / 30日前` の表形式で全体・個人・団体のサマリーを表示する
 - 全体サマリーの下に、室タイプカードと同じ順序で、室タイプ別の `部屋タイプ / 最終変更 / ランク` を表形式で俯瞰できる rank overview を表示する
 - 各室タイプカードの `最終変更履歴` の下に、`ランク：A→B` を 1 行で表示する
+- 各室タイプカードの booking curve には、同 stay_date の rank 変更履歴を小さな丸 marker として重ねて表示できるようにする
 - 全体販売室数サマリーは、販売設定タブ上に描画済みの室タイプ別表示を合算して生成する
 - 販売設定タブの販売室数差分は、現状 `/api/v4/booking_curve` の `all.this_year_room_sum` を室タイプ別に引いて計算している
 
@@ -72,6 +73,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 各室タイプカードの開閉トリガーは、そのカード自身の block 内に置く
 - 各室タイプカードの標準表示は `全体` と `個人` の 2 系列とし、横並びで同時に見られる構成を優先する
 - `団体` 系列は Phase 1 の標準 UI では必須としない
+- rank 変更履歴 marker は、Phase 1 では各室タイプ card の booking curve にだけ重ねる。最上段の全体 block へは載せない
 - baseline は初期実装では入れない
 - 生データ保存は日次のまま維持し、圧縮するのは表示だけとする
 - 初期表示は、全体 block は `開いた状態`、各室タイプ card は `閉じた状態` を既定とする
@@ -89,15 +91,20 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 実画面の横軸ラベルは、上記の LT tick 全体から一部だけを間引いて 1 行で表示する
 - 2026-04-17 時点の優先表示ラベルは `ACT, 3, 7, 14, 21, 30, 45, 60, 90, 120, 150, 180, 270, 360` を正とする
 - 実画面での左右の向きは、既存のレベニューアシスタントの booking curve 表示に合わせる
+- rank 変更履歴 marker は、各 panel の線の上に小さな丸で重ねる
+- rank 変更履歴 marker の x 座標は、反映日時を宿泊日から引いた LT 日数を圧縮済み LT 軸へ補間して置く
+- rank 変更履歴 marker の y 座標は、同日の `booking_curve` 値を panel ごとに解決して使う
+- rank 変更履歴 marker の tooltip では、`何日前`、`ランク A→B`、`反映日`、`反映者` を表示する
+- 同じ部屋タイプで同じ日に複数回 rank 変更がある場合、Phase 1 ではその日の最後の 1 件だけを marker として表示する
 - Phase 1 では `localStorage` へ booking curve の生 JSON を persistent 保存しない
 - persistent cache が必要なら、`date / all / transient / group` だけの最小系列へ圧縮した payload を優先する
 - `IndexedDB` は Phase 1 では前提にしない
 
 #### Phase 1 Remaining
 
-- placeholder の custom SVG 系列を、`/api/v4/booking_curve` の実データ系列へ置き換える
 - 室タイプ別とホテル全体の `全体 / 個人` 系列で、どの stay_date と current 値を採用するかを明文化し、null fallback を実データで確認する
 - GUI verify では `dist/*.user.js` の build 完了だけでなく、Tampermonkey 側の再読込も済ませた状態を正とする
+- 室タイプ別 booking curve に重ねる rank 変更履歴 marker の見え方と tooltip の情報量を実画面で調整する
 
 #### Phase 2
 

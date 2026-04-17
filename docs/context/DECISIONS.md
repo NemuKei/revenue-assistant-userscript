@@ -14,3 +14,4 @@
 - D-20260417-004 | 最上段の全体 block はホテル全体 booking curve を常時展開で表示し、各室タイプ card は既定で閉じ、開閉トリガーは各 block 自身に持たせる | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260417-005 | Phase 1 の booking curve UI は custom SVG の placeholder 実装を先行し、hover tooltip と capacity 基準 y 軸を含めて見た目と操作を先に固める | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260417-006 | Phase 1 の横軸ラベルは 2 段表示へ固定せず、1 行表示を優先し、優先表示ラベルは `ACT, 3, 7, 14, 21, 30, 45, 60, 90, 120, 150, 180, 270, 360` とする | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260417-007 | 室タイプ別 booking curve の rank 変更履歴は、Phase 1 では各室タイプ card のみへ小さな丸 marker で重ね、同日複数変更は最後の 1 件だけを tooltip 付きで表示する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
