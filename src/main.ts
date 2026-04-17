@@ -2503,6 +2503,24 @@ function createSalesSettingBookingCurvePanel(
 
     const tooltipElement = createSalesSettingBookingCurveTooltip();
     const svgElement = createSalesSettingBookingCurveSvg(tooltipElement, maxValue, series, markers, variant);
+    const guideLineElement = svgElement.querySelector<SVGLineElement>(`[${SALES_SETTING_BOOKING_CURVE_ACTIVE_GUIDE_ATTRIBUTE}]`);
+    const pointElement = svgElement.querySelector<SVGCircleElement>(`[${SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE}]`);
+
+    if (guideLineElement !== null && pointElement !== null) {
+        const hideTooltip = () => {
+            hideSalesSettingBookingCurveTooltip(tooltipElement, guideLineElement, pointElement);
+        };
+
+        canvasElement.addEventListener("mouseleave", hideTooltip);
+        canvasElement.addEventListener("focusout", (event) => {
+            const nextFocusedElement = event.relatedTarget;
+            if (nextFocusedElement instanceof Node && canvasElement.contains(nextFocusedElement)) {
+                return;
+            }
+            hideTooltip();
+        });
+    }
+
     canvasElement.replaceChildren(tooltipElement, svgElement);
 
     panelElement.replaceChildren(
