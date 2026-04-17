@@ -40,6 +40,31 @@ const SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE = "data-ra-sales-setting-rank-o
 const SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-value";
 const SALES_SETTING_RANK_DETAIL_ATTRIBUTE = "data-ra-sales-setting-rank-detail";
 const SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-rank-detail-signature";
+const SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE = "data-ra-sales-setting-booking-curve-section";
+const SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE = "data-ra-sales-setting-booking-curve-kind";
+const SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-signature";
+const SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE = "data-ra-sales-setting-booking-curve-toggle-row";
+const SALES_SETTING_BOOKING_CURVE_TOGGLE_BUTTON_ATTRIBUTE = "data-ra-sales-setting-booking-curve-toggle-button";
+const SALES_SETTING_BOOKING_CURVE_TOGGLE_KEY_ATTRIBUTE = "data-ra-sales-setting-booking-curve-toggle-key";
+const SALES_SETTING_BOOKING_CURVE_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-toggle-active";
+const SALES_SETTING_BOOKING_CURVE_HEADER_ATTRIBUTE = "data-ra-sales-setting-booking-curve-header";
+const SALES_SETTING_BOOKING_CURVE_NOTE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-note";
+const SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE = "data-ra-sales-setting-booking-curve-grid";
+const SALES_SETTING_BOOKING_CURVE_PANEL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel";
+const SALES_SETTING_BOOKING_CURVE_PANEL_TITLE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel-title";
+const SALES_SETTING_BOOKING_CURVE_PANEL_METRIC_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel-metric";
+const SALES_SETTING_BOOKING_CURVE_PANEL_SVG_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel-svg";
+const SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-axis-label";
+const SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_VISIBLE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-axis-label-visible";
+const SALES_SETTING_BOOKING_CURVE_TICKS = [
+    360, 330, 300, 270, 240, 210,
+    180, 165, 150, 135, 120, 105,
+    90, 80, 70,
+    60, 55, 50, 45, 40, 35,
+    30, 28, 26, 24, 22, 20, 18, 16,
+    14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
+    "ACT"
+] as const;
 const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v4:";
 const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
 const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
@@ -131,11 +156,14 @@ interface SyncContext {
     facilityCacheKey: string;
 }
 
+type SalesSettingBookingCurveTick = typeof SALES_SETTING_BOOKING_CURVE_TICKS[number];
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
+const salesSettingBookingCurveOpenState = new Map<string, boolean>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
@@ -201,6 +229,20 @@ function installInteractionHooks(): void {
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (target instanceof Element) {
+            const bookingCurveToggleButton = target.closest<HTMLButtonElement>(`[${SALES_SETTING_BOOKING_CURVE_TOGGLE_BUTTON_ATTRIBUTE}]`);
+            if (bookingCurveToggleButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const toggleKey = bookingCurveToggleButton.getAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_KEY_ATTRIBUTE);
+                if (toggleKey !== null && toggleKey.length > 0) {
+                    const nextOpen = bookingCurveToggleButton.getAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_ACTIVE_ATTRIBUTE) !== "true";
+                    setSalesSettingBookingCurveOpen(toggleKey, nextOpen);
+                    queueCalendarSync();
+                }
+                return;
+            }
+
             const toggleButton = target.closest<HTMLButtonElement>(`[${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}]`);
             if (toggleButton !== null) {
                 event.preventDefault();
@@ -629,10 +671,12 @@ async function runCalendarSync(): Promise<void> {
         prefetchSalesSettingGroupRooms(activeAnalyzeDate, batchDateKey);
         cleanupSalesSettingRoomDeltas();
     } else {
+        salesSettingBookingCurveOpenState.clear();
         cleanupSalesSettingOverallSummary();
         cleanupSalesSettingRankOverview();
         cleanupSalesSettingRankDetails();
         cleanupSalesSettingGroupRooms();
+        cleanupSalesSettingBookingCurveCards();
         cleanupSalesSettingRoomDeltas();
     }
 
@@ -1583,8 +1627,322 @@ function updateGroupRoomToggleButton(buttonElement: HTMLButtonElement, visible: 
     }
 }
 
+function getSalesSettingBookingCurveToggleKey(roomGroupName: string): string {
+    return `room:${roomGroupName}`;
+}
+
+function isSalesSettingBookingCurveOpen(roomGroupName: string): boolean {
+    return salesSettingBookingCurveOpenState.get(getSalesSettingBookingCurveToggleKey(roomGroupName)) ?? false;
+}
+
+function setSalesSettingBookingCurveOpen(toggleKey: string, open: boolean): void {
+    salesSettingBookingCurveOpenState.set(toggleKey, open);
+}
+
+function updateSalesSettingBookingCurveToggleButton(buttonElement: HTMLButtonElement, roomGroupName: string, open: boolean): void {
+    buttonElement.type = "button";
+    buttonElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_BUTTON_ATTRIBUTE, "");
+    buttonElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_KEY_ATTRIBUTE, getSalesSettingBookingCurveToggleKey(roomGroupName));
+    buttonElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_ACTIVE_ATTRIBUTE, open ? "true" : "false");
+
+    const nextLabel = open ? "ブッキングカーブを閉じる" : "ブッキングカーブを開く";
+    if (buttonElement.textContent !== nextLabel) {
+        buttonElement.textContent = nextLabel;
+    }
+}
+
+function getSalesSettingBookingCurveLabel(tick: SalesSettingBookingCurveTick): string {
+    return tick === "ACT" ? "ACT" : String(tick);
+}
+
+function shouldShowSalesSettingBookingCurveAxisLabel(tick: SalesSettingBookingCurveTick): boolean {
+    return tick === "ACT"
+        || tick === 360
+        || tick === 240
+        || tick === 180
+        || tick === 120
+        || tick === 90
+        || tick === 60
+        || tick === 30
+        || tick === 14
+        || tick === 7
+        || tick === 0;
+}
+
+function buildSalesSettingDummyCurveSeries(
+    maxValue: number,
+    currentValue: number | null,
+    variant: "overall" | "individual"
+): number[] {
+    const safeMaxValue = Math.max(1, maxValue);
+    const fallbackCurrentValue = variant === "overall"
+        ? safeMaxValue * 0.78
+        : safeMaxValue * 0.52;
+    const targetValue = Math.min(safeMaxValue, Math.max(0, currentValue ?? fallbackCurrentValue));
+    const amplitude = variant === "overall" ? targetValue * 0.025 : targetValue * 0.035;
+    const baselineRatio = variant === "overall" ? 0.18 : 0.08;
+
+    return SALES_SETTING_BOOKING_CURVE_TICKS.map((tick, index) => {
+        const progress = SALES_SETTING_BOOKING_CURVE_TICKS.length <= 1
+            ? 1
+            : index / (SALES_SETTING_BOOKING_CURVE_TICKS.length - 1);
+        const eased = 1 - Math.pow(1 - progress, variant === "overall" ? 1.8 : 2.25);
+        const wave = Math.sin(progress * Math.PI * (variant === "overall" ? 3.1 : 3.8)) * amplitude;
+        const actBoost = tick === "ACT" ? safeMaxValue * (variant === "overall" ? 0.01 : 0.005) : 0;
+        const rawValue = targetValue * (baselineRatio + ((1 - baselineRatio) * eased)) + wave + actBoost;
+        const clamped = Math.max(0, Math.min(safeMaxValue, rawValue));
+        return Math.round(clamped * 10) / 10;
+    });
+}
+
+function createSalesSettingBookingCurveSvg(
+    maxValue: number,
+    currentValue: number | null,
+    variant: "overall" | "individual"
+): SVGSVGElement {
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    const svgElement = document.createElementNS(svgNamespace, "svg");
+    svgElement.setAttribute(SALES_SETTING_BOOKING_CURVE_PANEL_SVG_ATTRIBUTE, "");
+    svgElement.setAttribute("viewBox", "0 0 420 164");
+    svgElement.setAttribute("role", "img");
+    svgElement.setAttribute("aria-label", variant === "overall" ? "全体ブッキングカーブ表示イメージ" : "個人ブッキングカーブ表示イメージ");
+
+    const width = 420;
+    const height = 164;
+    const paddingLeft = 10;
+    const paddingRight = 10;
+    const paddingTop = 14;
+    const paddingBottom = 28;
+    const plotWidth = width - paddingLeft - paddingRight;
+    const plotHeight = height - paddingTop - paddingBottom;
+    const safeMaxValue = Math.max(1, maxValue);
+    const series = buildSalesSettingDummyCurveSeries(safeMaxValue, currentValue, variant);
+
+    for (const ratio of [0, 0.25, 0.5, 0.75, 1]) {
+        const y = paddingTop + ((1 - ratio) * plotHeight);
+        const lineElement = document.createElementNS(svgNamespace, "line");
+        lineElement.setAttribute("x1", String(paddingLeft));
+        lineElement.setAttribute("x2", String(width - paddingRight));
+        lineElement.setAttribute("y1", y.toFixed(2));
+        lineElement.setAttribute("y2", y.toFixed(2));
+        lineElement.setAttribute("stroke", ratio === 0 ? "#cfd8e7" : "#e7edf7");
+        lineElement.setAttribute("stroke-width", "1");
+        svgElement.append(lineElement);
+    }
+
+    const points = series.map((value, index) => {
+        const x = paddingLeft + ((plotWidth * index) / Math.max(1, series.length - 1));
+        const y = paddingTop + ((1 - (value / safeMaxValue)) * plotHeight);
+        return { x, y };
+    });
+
+    const linePath = points
+        .map((point, index) => `${index === 0 ? "M" : "L"}${point.x.toFixed(2)},${point.y.toFixed(2)}`)
+        .join(" ");
+    const areaElement = document.createElementNS(svgNamespace, "path");
+    areaElement.setAttribute("d", `${linePath} L${(width - paddingRight).toFixed(2)},${(height - paddingBottom).toFixed(2)} L${paddingLeft.toFixed(2)},${(height - paddingBottom).toFixed(2)} Z`);
+    areaElement.setAttribute("fill", variant === "overall" ? "rgba(31, 95, 191, 0.08)" : "rgba(67, 160, 71, 0.10)");
+    svgElement.append(areaElement);
+
+    const pathElement = document.createElementNS(svgNamespace, "path");
+    pathElement.setAttribute("d", linePath);
+    pathElement.setAttribute("fill", "none");
+    pathElement.setAttribute("stroke", variant === "overall" ? "#1f5fbf" : "#2f8f5b");
+    pathElement.setAttribute("stroke-width", "3");
+    pathElement.setAttribute("stroke-linejoin", "round");
+    pathElement.setAttribute("stroke-linecap", "round");
+    svgElement.append(pathElement);
+
+    points.forEach((point, index) => {
+        const tick = SALES_SETTING_BOOKING_CURVE_TICKS[index];
+        if (tick === undefined) {
+            return;
+        }
+
+        const tickLineElement = document.createElementNS(svgNamespace, "line");
+        tickLineElement.setAttribute("x1", point.x.toFixed(2));
+        tickLineElement.setAttribute("x2", point.x.toFixed(2));
+        tickLineElement.setAttribute("y1", String(height - paddingBottom));
+        tickLineElement.setAttribute("y2", String((height - paddingBottom) + (shouldShowSalesSettingBookingCurveAxisLabel(tick) ? 6 : 4)));
+        tickLineElement.setAttribute("stroke", "#9fb0c8");
+        tickLineElement.setAttribute("stroke-width", "1");
+        svgElement.append(tickLineElement);
+
+        if (shouldShowSalesSettingBookingCurveAxisLabel(tick)) {
+            const labelElement = document.createElementNS(svgNamespace, "text");
+            labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE, "");
+            labelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_VISIBLE_ATTRIBUTE, "true");
+            labelElement.setAttribute("x", point.x.toFixed(2));
+            labelElement.setAttribute("y", String(height - 6));
+            labelElement.setAttribute("text-anchor", tick === 360 ? "start" : tick === "ACT" ? "end" : "middle");
+            labelElement.textContent = getSalesSettingBookingCurveLabel(tick);
+            svgElement.append(labelElement);
+        }
+    });
+
+    return svgElement;
+}
+
+function createSalesSettingBookingCurvePanel(
+    title: string,
+    maxValue: number,
+    currentValue: number | null,
+    variant: "overall" | "individual"
+): HTMLDivElement {
+    const panelElement = document.createElement("div");
+    panelElement.setAttribute(SALES_SETTING_BOOKING_CURVE_PANEL_ATTRIBUTE, "");
+
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute(SALES_SETTING_BOOKING_CURVE_PANEL_TITLE_ATTRIBUTE, "");
+    titleElement.textContent = title;
+
+    const metricElement = document.createElement("div");
+    metricElement.setAttribute(SALES_SETTING_BOOKING_CURVE_PANEL_METRIC_ATTRIBUTE, "");
+    metricElement.textContent = `室数 ${formatCompactMetricValue(currentValue)} / ${formatGroupRoomNumber(maxValue)}`;
+
+    panelElement.replaceChildren(
+        titleElement,
+        metricElement,
+        createSalesSettingBookingCurveSvg(maxValue, currentValue, variant)
+    );
+
+    return panelElement;
+}
+
+function createSalesSettingBookingCurveSection(
+    kind: "overall" | "card",
+    maxValue: number,
+    currentOverallRoomCount: number | null,
+    currentIndividualRoomCount: number | null
+): HTMLElement {
+    const sectionElement = document.createElement("section");
+    sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE, "");
+    sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE, kind);
+
+    const headerElement = document.createElement("div");
+    headerElement.setAttribute(SALES_SETTING_BOOKING_CURVE_HEADER_ATTRIBUTE, "");
+
+    const titleElement = document.createElement("span");
+    titleElement.textContent = kind === "overall" ? "ブッキングカーブ" : "ブッキングカーブ表示イメージ";
+
+    const noteElement = document.createElement("span");
+    noteElement.setAttribute(SALES_SETTING_BOOKING_CURVE_NOTE_ATTRIBUTE, "");
+    noteElement.textContent = "UI確認用";
+
+    headerElement.replaceChildren(titleElement, noteElement);
+
+    const gridElement = document.createElement("div");
+    gridElement.setAttribute(SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE, "");
+    gridElement.replaceChildren(
+        createSalesSettingBookingCurvePanel("全体", maxValue, currentOverallRoomCount, "overall"),
+        createSalesSettingBookingCurvePanel("個人", maxValue, currentIndividualRoomCount, "individual")
+    );
+
+    sectionElement.replaceChildren(headerElement, gridElement);
+    return sectionElement;
+}
+
+function renderSalesSettingOverallBookingCurve(
+    containerElement: HTMLElement,
+    totalCapacity: SalesSettingRoomCapacity | null,
+    currentRoomValue: number | null,
+    currentIndividualRoomCount: number | null
+): void {
+    const existingSection = containerElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE}="overall"]`);
+    if (totalCapacity === null) {
+        existingSection?.remove();
+        return;
+    }
+
+    const signature = `overall:${totalCapacity.maxValue}:${currentRoomValue}:${currentIndividualRoomCount}`;
+    const sectionElement = existingSection ?? document.createElement("section");
+    if (existingSection?.getAttribute(SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE) !== signature) {
+        const nextSection = createSalesSettingBookingCurveSection(
+            "overall",
+            totalCapacity.maxValue,
+            currentRoomValue,
+            currentIndividualRoomCount
+        );
+        sectionElement.replaceChildren(...Array.from(nextSection.childNodes));
+        sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE, "");
+        sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE, "overall");
+        sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE, signature);
+    }
+
+    if (sectionElement.parentElement !== containerElement) {
+        containerElement.append(sectionElement);
+    }
+}
+
+function clearSalesSettingBookingCurveCard(card: SalesSettingCard): void {
+    card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`)?.remove();
+    card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE}="card"]`)?.remove();
+}
+
+function renderSalesSettingBookingCurveCard(
+    card: SalesSettingCard,
+    currentOverallRoomCount: number | null,
+    currentIndividualRoomCount: number | null
+): void {
+    const capacity = parseSalesSettingRoomCapacity(card.roomCountSummaryElement);
+    if (capacity === null) {
+        clearSalesSettingBookingCurveCard(card);
+        return;
+    }
+
+    const isOpen = isSalesSettingBookingCurveOpen(card.roomGroupName);
+    const existingToggleRow = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`);
+    const toggleRowElement = existingToggleRow ?? document.createElement("div");
+    toggleRowElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE, "");
+
+    const toggleButtonElement = (toggleRowElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOGGLE_BUTTON_ATTRIBUTE}]`) ?? document.createElement("button")) as HTMLButtonElement;
+    updateSalesSettingBookingCurveToggleButton(toggleButtonElement, card.roomGroupName, isOpen);
+    if (toggleButtonElement.parentElement !== toggleRowElement || toggleRowElement.childElementCount !== 1) {
+        toggleRowElement.replaceChildren(toggleButtonElement);
+    }
+
+    const insertionAnchor = card.detailWrapperElement;
+    if (toggleRowElement.parentElement !== card.cardElement) {
+        if (insertionAnchor !== null) {
+            card.cardElement.insertBefore(toggleRowElement, insertionAnchor);
+        } else {
+            card.cardElement.append(toggleRowElement);
+        }
+    }
+
+    const existingSection = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE}="card"]`);
+    if (!isOpen) {
+        existingSection?.remove();
+        return;
+    }
+
+    const signature = `card:${card.roomGroupName}:${capacity.maxValue}:${currentOverallRoomCount}:${currentIndividualRoomCount}`;
+    const sectionElement = existingSection ?? document.createElement("section");
+    if (existingSection?.getAttribute(SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE) !== signature) {
+        const nextSection = createSalesSettingBookingCurveSection(
+            "card",
+            capacity.maxValue,
+            currentOverallRoomCount,
+            currentIndividualRoomCount
+        );
+        sectionElement.replaceChildren(...Array.from(nextSection.childNodes));
+        sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE, "");
+        sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE, "card");
+        sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE, signature);
+    }
+
+    if (sectionElement.parentElement !== card.cardElement) {
+        if (insertionAnchor !== null) {
+            card.cardElement.insertBefore(sectionElement, insertionAnchor);
+        } else {
+            card.cardElement.append(sectionElement);
+        }
+    }
+}
+
 function clearSalesSettingGroupRoom(card: SalesSettingCard): void {
     card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`)?.remove();
+    clearSalesSettingBookingCurveCard(card);
 }
 
 function cleanupSalesSettingOverallSummary(): void {
@@ -1724,6 +2082,13 @@ function renderSalesSettingOverallSummary(
     if (containerElement !== null && containerElement.nextElementSibling !== firstCard.cardElement) {
         parentElement.insertBefore(containerElement, firstCard.cardElement);
     }
+
+    renderSalesSettingOverallBookingCurve(
+        containerElement,
+        totalCapacity,
+        currentRoomValue,
+        currentIndividualRoomCount
+    );
 }
 
 function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: SalesSettingRankSummary[]): void {
@@ -1908,16 +2273,19 @@ function renderSalesSettingGroupRoom(
 
     rowElement.replaceChildren(headElement, bodyElement);
 
-    if (existingRow !== null) {
-        return;
+    if (existingRow === null) {
+        if (card.detailWrapperElement !== null) {
+            card.cardElement.insertBefore(rowElement, card.detailWrapperElement);
+        } else {
+            card.cardElement.append(rowElement);
+        }
     }
 
-    if (card.detailWrapperElement !== null) {
-        card.cardElement.insertBefore(rowElement, card.detailWrapperElement);
-        return;
-    }
-
-    card.cardElement.append(rowElement);
+    renderSalesSettingBookingCurveCard(
+        card,
+        currentOverallRoomCount,
+        currentIndividualRoomCount
+    );
 }
 
 function renderSalesSettingRankDetail(card: SalesSettingCard, summary: SalesSettingRankSummary | null): void {
@@ -2311,6 +2679,12 @@ function cleanupSalesSettingGroupRooms(): void {
     }
 }
 
+function cleanupSalesSettingBookingCurveCards(): void {
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}], [${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}]`))) {
+        element.remove();
+    }
+}
+
 function cleanupSalesSettingRoomDeltas(): void {
     for (const deltaElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_ROOM_DELTA_ATTRIBUTE}]`))) {
         deltaElement.remove();
@@ -2526,6 +2900,111 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
+        [${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}] {
+            display: flex;
+            justify-content: flex-end;
+            margin: 2px 0 8px;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_TOGGLE_BUTTON_ATTRIBUTE}] {
+            border: 1px solid #c9d7ef;
+            border-radius: 999px;
+            background: #ffffff;
+            color: #456792;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            padding: 7px 11px;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_TOGGLE_BUTTON_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_TOGGLE_ACTIVE_ATTRIBUTE}="true"] {
+            background: #eef4ff;
+            border-color: #8fb2ea;
+            color: #1f5fbf;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}] {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            margin: 0 0 14px;
+            padding: 10px 12px 12px;
+            border: 1px solid #dfe7f5;
+            border-radius: 12px;
+            background: #fafcff;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_HEADER_ATTRIBUTE}] {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 10px;
+            color: #243447;
+            font-size: 14px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_NOTE_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            background: #eef4ff;
+            color: #5878a5;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            padding: 5px 8px;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE}] {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_PANEL_ATTRIBUTE}] {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            min-width: 0;
+            padding: 10px 10px 8px;
+            border: 1px solid #d8e2f1;
+            border-radius: 10px;
+            background: #ffffff;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_PANEL_TITLE_ATTRIBUTE}] {
+            color: #243447;
+            font-size: 13px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_PANEL_METRIC_ATTRIBUTE}] {
+            color: #5b6f8b;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_PANEL_SVG_ATTRIBUTE}] {
+            display: block;
+            width: 100%;
+            height: auto;
+            overflow: visible;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_AXIS_LABEL_ATTRIBUTE}] {
+            fill: #70839c;
+            font-size: 9px;
+            font-weight: 700;
+            line-height: 1;
+        }
+
         [${SALES_SETTING_OVERALL_GROUP_ROW_ATTRIBUTE}] {
             display: flex;
             flex-wrap: wrap;
@@ -2636,6 +3115,10 @@ function ensureGroupRoomStyles(): void {
             [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] th,
             [${SALES_SETTING_OVERALL_TABLE_ATTRIBUTE}] td {
                 padding-right: 10px;
+            }
+
+            [${SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE}] {
+                grid-template-columns: 1fr;
             }
 
             [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] {
