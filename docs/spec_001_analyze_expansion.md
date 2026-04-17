@@ -60,6 +60,8 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 
 - 対象は analyze 日付ページの `販売設定` タブ内にある各室タイプカードとする
 - 実装はフェーズ分割とし、初期実装では `室数` グラフだけを扱う
+- 2026-04-17 時点では、Phase 1 の UI 骨組みを先行実装済みであり、最上段の全体 block、各室タイプ card の開閉 UI、custom SVG のグラフ枠、hover tooltip、capacity 基準の y 軸は動作している
+- 2026-04-17 時点のグラフ系列は `booking_curve` の LT 生系列をまだ描いておらず、`UI確認用` の placeholder 表示である
 
 #### Phase 1
 
@@ -84,10 +86,18 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
   - `61-90日`: 10日単位の bucket 終端 `70, 80, 90`
   - `91-180日`: 15日単位の bucket 終端 `105, 120, 135, 150, 165, 180`
   - `181-360日`: 30日単位の bucket 終端 `210, 240, 270, 300, 330, 360`
+- 実画面の横軸ラベルは、上記の LT tick 全体から一部だけを間引いて 1 行で表示する
+- 2026-04-17 時点の優先表示ラベルは `ACT, 3, 7, 14, 21, 30, 45, 60, 90, 120, 150, 180, 270, 360` を正とする
 - 実画面での左右の向きは、既存のレベニューアシスタントの booking curve 表示に合わせる
 - Phase 1 では `localStorage` へ booking curve の生 JSON を persistent 保存しない
 - persistent cache が必要なら、`date / all / transient / group` だけの最小系列へ圧縮した payload を優先する
 - `IndexedDB` は Phase 1 では前提にしない
+
+#### Phase 1 Remaining
+
+- placeholder の custom SVG 系列を、`/api/v4/booking_curve` の実データ系列へ置き換える
+- 室タイプ別とホテル全体の `全体 / 個人` 系列で、どの stay_date と current 値を採用するかを明文化し、null fallback を実データで確認する
+- GUI verify では `dist/*.user.js` の build 完了だけでなく、Tampermonkey 側の再読込も済ませた状態を正とする
 
 #### Phase 2
 

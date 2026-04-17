@@ -12,3 +12,5 @@
 - D-20260417-002 | 室タイプ別 booking curve の LT 圧縮は bucket 集約とし、代表値は平均ではなく各 bucket の最後の日を使い、`ACT` は `0日前` と分離して扱う | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260417-003 | Phase 1 では `localStorage` へ booking curve 生 JSON を persistent 保存せず、必要なら最小系列のみを保持し、`IndexedDB` は baseline 導入以降に再判断する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260417-004 | 最上段の全体 block はホテル全体 booking curve を常時展開で表示し、各室タイプ card は既定で閉じ、開閉トリガーは各 block 自身に持たせる | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260417-005 | Phase 1 の booking curve UI は custom SVG の placeholder 実装を先行し、hover tooltip と capacity 基準 y 軸を含めて見た目と操作を先に固める | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260417-006 | Phase 1 の横軸ラベルは 2 段表示へ固定せず、1 行表示を優先し、優先表示ラベルは `ACT, 3, 7, 14, 21, 30, 45, 60, 90, 120, 150, 180, 270, 360` とする | status: applied | spec_link: docs/spec_001_analyze_expansion.md
