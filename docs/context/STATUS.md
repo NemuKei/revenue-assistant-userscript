@@ -29,28 +29,29 @@
 - 2026-04-18 時点で、当日 `ACT` 空表示、未来 stay_date の観測 LT 打ち切り、販売室数差分の data source、rank marker overlay の実データ前提を spot check 済みとして Phase 1 完了扱いへ更新済み
 - analyze 日付ページで販売設定カードが見えていない状態では、sales-setting 向け booking_curve prefetch を走らせない構成へ更新済み
 - sales-setting の card 行と overall summary が、同じ booking_curve response から比較値を 1 回で事前集計して再利用する構成へ更新済み
+- `queueCalendarSync()` は、同一 DOM 状態の署名を比較して不要な再同期を捨て、同期中の MutationObserver / interaction 由来の再要求を pending 1 回へ畳み込む構成へ更新済み
 - GitHub Pages へ userscript を自動配布する workflow を追加済み
 - npm と GitHub Actions の依存更新を週次で提案する Dependabot 設定を追加済み
 - pull request 用の検証 workflow と `CODEOWNERS` を追加済み
 
 ## Doing
 
-- 月送り、focus 復帰、MutationObserver 起点の `queueCalendarSync()` を棚卸しし、不要な再同期トリガーを絞る
+- 月送りや販売設定表示での `queueCalendarSync()` 実行回数を必要なら軽く計測し、署名ベース抑止後にも残る重複発火があるかを確認する
 
 ## Next
 
-1. 月送り、focus 復帰、MutationObserver 起点の `queueCalendarSync()` を棚卸しし、不要な再同期トリガーを絞る
+1. 月送りや販売設定表示での `queueCalendarSync()` 実行回数を軽く計測し、残る重複発火があれば発火源を絞る
 2. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
 3. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
 4. `団体` 系列を booking curve 標準 UI へ含めるかを、利用感ベースで再判断する
 
 ## Resume From Here
 
-- 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、sales-setting card 行と overall summary で booking_curve 比較値の事前集計を共有する変更まで反映済み
+- 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有と `queueCalendarSync()` の署名ベース重複抑止まで反映済み
 - 直近の保存点は `2c35a9b` `Close booking curve phase 1` と `eb45646` `Skip hidden sales-setting prefetch`
-- 次スレッドの最初の実装対象は `src/main.ts` の `queueCalendarSync()`、`scheduleConsistencyCheck()`、MutationObserver / focus 復帰まわりの再同期トリガーを読むところから始める
+- 次スレッドの最初の実装対象は、必要なら `src/main.ts` の `queueCalendarSync()` 呼び出し元へ軽い計測ログを足し、月送りと販売設定表示で残る重複発火を実測するところから始める
 - 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
-- 次の最小差分候補は、同一 analyze 日付で重複発火している `queueCalendarSync()` の入口を分類し、表示上必要なトリガーだけへ絞ること
+- 次の最小差分候補は、署名ベース抑止後も残る再同期だけを対象に、interaction timeout 群か consistency check のどちらが支配的かを切り分けること
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
 - 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面で `おすすめ` 状態では不要 prefetch が走らず、販売設定表示時だけ warm-up が走ることを確認する
 
@@ -68,16 +69,17 @@
 - 販売設定カードの `1日前 / 7日前 / 30日前` は、Phase 1 では booking_curve の室タイプ別 `all.this_year_room_sum` を正として扱う
 - `prefetchSalesSettingGroupRooms` は販売設定カードが DOM に見えている時だけ走る。次は prefetch 自体より、後段の count 解決重複を減らす方が優先度が高い
 - `prepareSalesSettingSyncData` は hotel / room-group ごとの booking_curve response から current, 1日前, 7日前, 30日前の比較値をまとめて解決し、card 行と overall summary で使い回す
+- `queueCalendarSync()` は completed signature と pending queue を持ち、同期中の DOM 変化は次の 1 回へ畳み込む。cache invalidation 時だけ force 付き再同期を許可する
 
 ## Remaining Task Triage
 
 Now:
 
-- `queueCalendarSync()` の発火源ごとに、同一表示内容で重複している再同期を洗い出す
+- 署名ベース抑止後にも残る `queueCalendarSync()` の実行回数を、月送りや販売設定表示で実測する
 
 Next:
 
-- 再同期トリガーの重複を減らして、月送り時の体感速度を改善する
+- 残る支配的な発火源だけを追加で削り、月送り時の体感速度を改善する
 
 After Next:
 

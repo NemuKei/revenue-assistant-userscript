@@ -267,6 +267,12 @@ let activeBatchDateKey: string | null = null;
 let activeFacilityCacheKey: string | null = null;
 let calendarObserver: MutationObserver | null = null;
 let calendarSyncQueued = false;
+let calendarSyncRunning = false;
+let queuedCalendarSyncSignature = "";
+let completedCalendarSyncSignature = "";
+let queuedCalendarSyncForce = false;
+let pendingCalendarSyncSignature = "";
+let pendingCalendarSyncForce = false;
 let syncVersion = 0;
 let consistencyCheckTimeoutId: number | null = null;
 let consistencyCheckLastTriggeredAt = 0;
@@ -565,7 +571,7 @@ async function verifyAnalyzePageConsistency(reason: string): Promise<void> {
         freshCurrentOverallGroup
     });
     invalidateGroupRoomCaches(batchDateKey);
-    queueCalendarSync();
+    queueCalendarSync({ force: true });
 }
 
 function isSameMetricValue(left: number | null, right: number | null): boolean {
@@ -868,54 +874,135 @@ function ensureCalendarObserver(): void {
     });
 }
 
-function queueCalendarSync(): void {
+function getCalendarSyncSignature(): string {
+    const analysisDate = activeAnalyzeDate ?? "-";
+    const batchDateKey = getCurrentBatchDateKey();
+    const calendarCells = collectMonthlyCalendarCells();
+    const cards = collectSalesSettingCards();
+    const firstCardParent = cards[0]?.cardElement.parentElement ?? null;
+
+    const calendarState = calendarCells
+        .map((cell) => {
+            const hasLayout = cell.containerElement.hasAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE) ? "1" : "0";
+            const hasBadge = cell.containerElement.querySelector<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`) === null ? "0" : "1";
+            return `${cell.stayDate}:${hasLayout}:${hasBadge}`;
+        })
+        .join(",");
+
+    const cardState = cards
+        .map((card) => {
+            const hasGroupRow = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`) === null ? "0" : "1";
+            const hasRankDetail = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`) === null ? "0" : "1";
+            const hasCurveToggle = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`) === null ? "0" : "1";
+            const hasCurveSection = card.cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE}="card"]`) === null ? "0" : "1";
+            const isCurveOpen = isSalesSettingBookingCurveOpen(card.roomGroupName) ? "1" : "0";
+            return `${card.roomGroupName}:${hasGroupRow}:${hasRankDetail}:${hasCurveToggle}:${hasCurveSection}:${isCurveOpen}`;
+        })
+        .join(",");
+
+    const hasOverallSummary = firstCardParent?.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`) === null ? "0" : "1";
+    const hasOverallCurve = firstCardParent?.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}] [${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE}="overall"]`) === null ? "0" : "1";
+    const hasRankOverview = firstCardParent?.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`) === null ? "0" : "1";
+
+    return [
+        `href:${window.location.pathname}${window.location.search}`,
+        `analysis:${analysisDate}`,
+        `batch:${batchDateKey}`,
+        `calendar-visible:${isGroupRoomCalendarVisible() ? "1" : "0"}`,
+        `cells:${calendarState}`,
+        `cards:${cardState}`,
+        `overall:${hasOverallSummary}`,
+        `overall-curve:${hasOverallCurve}`,
+        `rank:${hasRankOverview}`
+    ].join("|");
+}
+
+function queueCalendarSync(options: { force?: boolean } = {}): void {
+    const nextSignature = getCalendarSyncSignature();
+    const force = options.force === true;
+
+    if (calendarSyncRunning) {
+        pendingCalendarSyncSignature = nextSignature;
+        pendingCalendarSyncForce = pendingCalendarSyncForce || force;
+        return;
+    }
+
     if (calendarSyncQueued) {
+        if (!force && nextSignature === queuedCalendarSyncSignature) {
+            return;
+        }
+
+        queuedCalendarSyncSignature = nextSignature;
+        queuedCalendarSyncForce = queuedCalendarSyncForce || force;
+        return;
+    }
+
+    if (!force && nextSignature === completedCalendarSyncSignature) {
         return;
     }
 
     calendarSyncQueued = true;
+    queuedCalendarSyncSignature = nextSignature;
+    queuedCalendarSyncForce = force;
     window.requestAnimationFrame(() => {
         void runCalendarSync();
     });
 }
 
 async function runCalendarSync(): Promise<void> {
+    calendarSyncRunning = true;
     calendarSyncQueued = false;
-    const batchDateKey = getCurrentBatchDateKey();
-    const facilityCacheKey = await resolveCurrentFacilityCacheKey();
-    syncCacheBatch(batchDateKey, facilityCacheKey);
-    const syncContext = createSyncContext(batchDateKey, facilityCacheKey);
-    const analysisDate = activeAnalyzeDate;
+    queuedCalendarSyncForce = false;
 
-    if (analysisDate !== null) {
-        prefetchSalesSettingGroupRooms(analysisDate, batchDateKey);
-        cleanupSalesSettingRoomDeltas();
-    } else {
-        salesSettingBookingCurveOpenState.clear();
-        cleanupSalesSettingOverallSummary();
-        cleanupSalesSettingRankOverview();
-        cleanupSalesSettingRankDetails();
-        cleanupSalesSettingGroupRooms();
-        cleanupSalesSettingBookingCurveCards();
-        cleanupSalesSettingRoomDeltas();
-    }
+    try {
+        const batchDateKey = getCurrentBatchDateKey();
+        const facilityCacheKey = await resolveCurrentFacilityCacheKey();
+        syncCacheBatch(batchDateKey, facilityCacheKey);
+        const syncContext = createSyncContext(batchDateKey, facilityCacheKey);
+        const analysisDate = activeAnalyzeDate;
 
-    const salesSettingPreparedDataPromise = analysisDate === null
-        ? Promise.resolve(null)
-        : prepareSalesSettingSyncData(analysisDate, batchDateKey, syncContext);
+        if (analysisDate !== null) {
+            prefetchSalesSettingGroupRooms(analysisDate, batchDateKey);
+            cleanupSalesSettingRoomDeltas();
+        } else {
+            salesSettingBookingCurveOpenState.clear();
+            cleanupSalesSettingOverallSummary();
+            cleanupSalesSettingRankOverview();
+            cleanupSalesSettingRankDetails();
+            cleanupSalesSettingGroupRooms();
+            cleanupSalesSettingBookingCurveCards();
+            cleanupSalesSettingRoomDeltas();
+        }
 
-    await Promise.all([
-        syncMonthlyCalendarGroupRooms(batchDateKey),
-        analysisDate === null
-            ? Promise.resolve()
-            : salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingGroupRooms(preparedData, analysisDate, batchDateKey, syncContext)),
-        analysisDate === null
-            ? Promise.resolve()
-            : salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingOverallSummary(preparedData, analysisDate, batchDateKey, syncContext))
-    ]);
+        const salesSettingPreparedDataPromise = analysisDate === null
+            ? Promise.resolve(null)
+            : prepareSalesSettingSyncData(analysisDate, batchDateKey, syncContext);
 
-    if (analysisDate !== null) {
-        await syncSalesSettingRankInsights(analysisDate, syncContext);
+        await Promise.all([
+            syncMonthlyCalendarGroupRooms(batchDateKey),
+            analysisDate === null
+                ? Promise.resolve()
+                : salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingGroupRooms(preparedData, analysisDate, batchDateKey, syncContext)),
+            analysisDate === null
+                ? Promise.resolve()
+                : salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingOverallSummary(preparedData, analysisDate, batchDateKey, syncContext))
+        ]);
+
+        if (analysisDate !== null) {
+            await syncSalesSettingRankInsights(analysisDate, syncContext);
+        }
+    } finally {
+        calendarSyncRunning = false;
+        completedCalendarSyncSignature = getCalendarSyncSignature();
+
+        const pendingSignature = pendingCalendarSyncSignature;
+        const pendingForce = pendingCalendarSyncForce;
+        pendingCalendarSyncSignature = "";
+        pendingCalendarSyncForce = false;
+
+        if (pendingForce || (pendingSignature !== "" && pendingSignature !== completedCalendarSyncSignature)) {
+            queueCalendarSync({ force: pendingForce });
+        }
     }
 }
 
