@@ -38,30 +38,32 @@
 - interaction 遅延タイマーは、直前の sync が完了済みで DOM 署名も未変化なら残りタイマーを打ち切る構成へ更新済み
 - 現行 analyze UI では販売設定 card の `suggestions-*` DOM が見えず、`booking-curve-main-chart-header` と `部屋グループ` selector が sales-setting 可視状態の実 DOM であることを GUI 実測で確認済み
 - sales-setting 向け booking_curve prefetch の可視判定は、旧 `suggestions-*` card だけでなく現行 chart header + room-group selector UI でも成立する構成へ更新済み
+- 現行 rank mode では、legacy sales-setting card が無い場合でも booking curve セクション直下へ synthetic room-type host 群を生成し、既存の overall summary / rank overview / room-group table を再利用できる構成へ更新済み
+- synthetic host は booking curve 個別グラフ用の容量情報を持たないため、現行 UI ではまず table / rank 補助の復活を優先し、個別 booking curve card は描かない構成とした
 - GitHub Pages へ userscript を自動配布する workflow を追加済み
 - npm と GitHub Actions の依存更新を週次で提案する Dependabot 設定を追加済み
 - pull request 用の検証 workflow と `CODEOWNERS` を追加済み
 
 ## Doing
 
-- 現行 sales-setting UI で booking_curve prefetch 可視判定が正しく働くことを verify しつつ、旧 `suggestions-*` card 前提の描画拡張をどこまで現行 UI へ移植するかを切り分ける
+- synthetic current-ui host を userscript へ反映し、現行 rank mode で overall summary / rank overview / room-group table が意図した位置へ出るかを GUI verify する
 
 ## Next
 
-1. build を userscript へ反映し、現行 sales-setting UI でも不要 prefetch 抑止と可視時 warm-up が崩れていないかを確認する
-2. 旧 `suggestions-*` card 前提の sales-setting 描画拡張を、現行 `部屋グループ selector + chart` UI にどう載せ替えるかを最小差分で決める
+1. build を userscript へ反映し、現行 rank mode で synthetic current-ui host が期待どおり描画されるかを確認する
+2. synthetic host に容量情報をどう補うか、または個別 booking curve card を現 UI では省略したままにするかを判断する
 3. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
 4. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
 
 ## Resume From Here
 
-- 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、booking_curve persistent cache の最小系列化、interaction 遅延タイマー打ち切り、現行 sales-setting UI 可視判定の追従まで反映済み
+- 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、booking_curve persistent cache の最小系列化、interaction 遅延タイマー打ち切り、現行 sales-setting UI 可視判定の追従、synthetic current-ui host による summary / rank / room-group table 再利用まで反映済み
 - 直近の保存点は `2c35a9b` `Close booking curve phase 1` と `eb45646` `Skip hidden sales-setting prefetch`
 - 次スレッドの最初の実装対象は、userscript 更新後に analyze 画面で月送りを再実操作し、persistent booking-curve cache warning の再発有無を確認するところから始める
 - 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
 - 次の最小差分候補は、interaction 遅延タイマー打ち切り後にも残る支配的 reason だけを対象に、consistency check か外部 DOM 再描画かを切り分けること
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
-- 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面で現行 sales-setting UI 表示時に warm-up が走り、`おすすめ` 状態では不要 prefetch が走らないことを確認する
+- 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
 
 ## Notes For Next Thread
 
@@ -76,6 +78,7 @@
 - GUI verify では build 後の `dist/*.user.js` だけでなく、Tampermonkey 側の userscript 再読込も必要。再読込なしでは旧 build が表示されることがある
 - 販売設定カードの `1日前 / 7日前 / 30日前` は、Phase 1 では booking_curve の室タイプ別 `all.this_year_room_sum` を正として扱う
 - `prefetchSalesSettingGroupRooms` は旧 `suggestions-*` card だけでなく、現行 `booking-curve-main-chart-header` と `部屋グループ` selector が見えている sales-setting UI でも走る
+- 現行 UI の synthetic host は booking curve セクション下に自前 DOM を生成して legacy render 関数を再利用する。room group 名は booking curve の room-group list から列挙し、個別 capacity は未確保なので card booking curve はまだ描かない
 - `prepareSalesSettingSyncData` は hotel / room-group ごとの booking_curve response から current, 1日前, 7日前, 30日前の比較値をまとめて解決し、card 行と overall summary で使い回す
 - `queueCalendarSync()` は completed signature と pending queue を持ち、同期中の DOM 変化は次の 1 回へ畳み込む。cache invalidation 時だけ force 付き再同期を許可する
 - `queueCalendarSync()` の debug summary は `__DEV__` 時だけ有効で、reason ごとの requested / scheduled / skippedQueued / skippedCompleted / queuedWhileRunning / executed / forced を console.info へ出す

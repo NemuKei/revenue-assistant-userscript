@@ -40,6 +40,15 @@ const SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE = "data-ra-sales-setting-rank-o
 const SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-value";
 const SALES_SETTING_RANK_DETAIL_ATTRIBUTE = "data-ra-sales-setting-rank-detail";
 const SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-rank-detail-signature";
+const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
+const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
+const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
+const SALES_SETTING_CURRENT_UI_CARD_ROOM_GROUP_ATTRIBUTE = "data-ra-sales-setting-current-ui-room-group";
+const SALES_SETTING_CURRENT_UI_HEADING_ATTRIBUTE = "data-ra-sales-setting-current-ui-heading";
+const SALES_SETTING_CURRENT_UI_TITLE_ATTRIBUTE = "data-ra-sales-setting-current-ui-title";
+const SALES_SETTING_CURRENT_UI_META_ATTRIBUTE = "data-ra-sales-setting-current-ui-meta";
+const SALES_SETTING_CURRENT_UI_META_LABEL_ATTRIBUTE = "data-ra-sales-setting-current-ui-meta-label";
+const SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE = "data-ra-sales-setting-current-ui-detail-wrapper";
 const SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE = "data-ra-sales-setting-booking-curve-section";
 const SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE = "data-ra-sales-setting-booking-curve-kind";
 const SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-signature";
@@ -99,6 +108,7 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`,
     `[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`,
     `[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`,
+    `[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`,
     `[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`,
     `[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}]`
 ].join(", ");
@@ -1145,6 +1155,9 @@ async function runCalendarSync(): Promise<void> {
         const analysisDate = activeAnalyzeDate;
 
         if (analysisDate !== null) {
+            if (!hasCurrentSalesSettingUi()) {
+                cleanupCurrentUiSalesSettingRoot();
+            }
             prefetchSalesSettingGroupRooms(analysisDate, batchDateKey);
             cleanupSalesSettingRoomDeltas();
         } else {
@@ -1155,6 +1168,7 @@ async function runCalendarSync(): Promise<void> {
             cleanupSalesSettingGroupRooms();
             cleanupSalesSettingBookingCurveCards();
             cleanupSalesSettingRoomDeltas();
+            cleanupCurrentUiSalesSettingRoot();
         }
 
         const salesSettingPreparedDataPromise = analysisDate === null
@@ -1484,7 +1498,7 @@ function collectMonthlyCalendarCells(): MonthlyCalendarCell[] {
         });
 }
 
-function collectSalesSettingCards(): SalesSettingCard[] {
+function collectLegacySalesSettingCards(): SalesSettingCard[] {
     return Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="suggestions-heading"]`))
         .flatMap((headingElement) => {
             const roomTypeElement = headingElement.querySelector<HTMLElement>(`[data-testid="suggestions-room-type-name"]`);
@@ -1512,6 +1526,136 @@ function collectSalesSettingCards(): SalesSettingCard[] {
                 detailWrapperElement: cardElement.querySelector<HTMLElement>(`[data-testid="suggestions-detail-wrapper"]`)
             }];
         });
+}
+
+function collectSalesSettingCards(): SalesSettingCard[] {
+    const legacyCards = collectLegacySalesSettingCards();
+    if (legacyCards.length > 0) {
+        return legacyCards;
+    }
+
+    return collectCurrentUiSalesSettingCards();
+}
+
+function collectCurrentUiSalesSettingCards(): SalesSettingCard[] {
+    if (!hasCurrentSalesSettingUi()) {
+        cleanupCurrentUiSalesSettingRoot();
+        return [];
+    }
+
+    const contentElement = findCurrentUiSalesSettingContentElement();
+    const containerElement = contentElement?.parentElement;
+    const roomGroupNames = collectCurrentUiRoomGroupNames();
+    if (!(contentElement instanceof HTMLElement) || !(containerElement instanceof HTMLElement) || roomGroupNames.length === 0) {
+        cleanupCurrentUiSalesSettingRoot();
+        return [];
+    }
+
+    const existingRoot = containerElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`);
+    const rootElement = existingRoot ?? document.createElement("section");
+    rootElement.setAttribute(SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE, "");
+
+    const cardsContainerElement = rootElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}]`) ?? document.createElement("div");
+    cardsContainerElement.setAttribute(SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE, "");
+
+    const existingCards = new Map(Array.from(cardsContainerElement.querySelectorAll<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE}]`))
+        .map((cardElement) => [cardElement.getAttribute(SALES_SETTING_CURRENT_UI_CARD_ROOM_GROUP_ATTRIBUTE) ?? "", cardElement]));
+
+    const cards = roomGroupNames.map((roomGroupName) => {
+        const cardElement = existingCards.get(roomGroupName) ?? document.createElement("section");
+        cardElement.setAttribute(SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE, "");
+        cardElement.setAttribute(SALES_SETTING_CURRENT_UI_CARD_ROOM_GROUP_ATTRIBUTE, roomGroupName);
+
+        const headingElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_HEADING_ATTRIBUTE}]`) ?? document.createElement("div");
+        headingElement.setAttribute(SALES_SETTING_CURRENT_UI_HEADING_ATTRIBUTE, "");
+
+        const titleElement = headingElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_TITLE_ATTRIBUTE}]`) ?? document.createElement("div");
+        titleElement.setAttribute(SALES_SETTING_CURRENT_UI_TITLE_ATTRIBUTE, "");
+        titleElement.textContent = roomGroupName;
+
+        const metaElement = headingElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_META_ATTRIBUTE}]`) ?? document.createElement("div");
+        metaElement.setAttribute(SALES_SETTING_CURRENT_UI_META_ATTRIBUTE, "");
+
+        const metaLabelElement = metaElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_META_LABEL_ATTRIBUTE}]`) ?? document.createElement("span");
+        metaLabelElement.setAttribute(SALES_SETTING_CURRENT_UI_META_LABEL_ATTRIBUTE, "");
+        metaLabelElement.textContent = "最終変更";
+
+        const latestReflectionElement = metaElement.querySelector<HTMLElement>(`[data-ra-sales-setting-current-ui-latest-reflection]`) ?? document.createElement("span");
+        latestReflectionElement.setAttribute("data-ra-sales-setting-current-ui-latest-reflection", "");
+        if ((latestReflectionElement.textContent ?? "").trim() === "") {
+            latestReflectionElement.textContent = "-";
+        }
+        if (latestReflectionElement.parentElement !== metaElement || metaElement.childElementCount !== 2) {
+            metaElement.replaceChildren(metaLabelElement, latestReflectionElement);
+        }
+
+        if (headingElement.childElementCount !== 2 || titleElement.parentElement !== headingElement || metaElement.parentElement !== headingElement) {
+            headingElement.replaceChildren(titleElement, metaElement);
+        }
+
+        const detailWrapperElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE}]`) ?? document.createElement("div");
+        detailWrapperElement.setAttribute(SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE, "");
+
+        if (cardElement.childElementCount < 2 || headingElement.parentElement !== cardElement || detailWrapperElement.parentElement !== cardElement) {
+            cardElement.replaceChildren(headingElement, detailWrapperElement);
+        }
+
+        return {
+            roomGroupName,
+            cardElement,
+            headingElement,
+            latestReflectionElement,
+            roomCountSummaryElement: null,
+            detailWrapperElement
+        } satisfies SalesSettingCard;
+    });
+
+    const validNames = new Set(roomGroupNames);
+    for (const [roomGroupName, cardElement] of existingCards.entries()) {
+        if (!validNames.has(roomGroupName)) {
+            cardElement.remove();
+        }
+    }
+
+    cardsContainerElement.replaceChildren(...cards.map((card) => card.cardElement));
+
+    if (cardsContainerElement.parentElement !== rootElement || rootElement.childElementCount !== 1) {
+        rootElement.replaceChildren(cardsContainerElement);
+    }
+
+    if (rootElement.parentElement !== containerElement || rootElement.previousElementSibling !== contentElement) {
+        containerElement.insertBefore(rootElement, contentElement.nextSibling);
+    }
+
+    return cards;
+}
+
+function cleanupCurrentUiSalesSettingRoot(): void {
+    document.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`)?.remove();
+}
+
+function collectCurrentUiRoomGroupNames(): string[] {
+    return Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="booking-curve-rm-room-group-list"] li`))
+        .map((element) => element.textContent?.trim() ?? "")
+        .filter((name) => name !== "" && name !== "全て");
+}
+
+function findCurrentUiSalesSettingContentElement(): HTMLElement | null {
+    const headerElement = document.querySelector<HTMLElement>(`[data-testid="${SALES_SETTING_CURRENT_UI_HEADER_TEST_ID}"]`);
+    if (headerElement === null) {
+        return null;
+    }
+
+    let element = headerElement.parentElement;
+    while (element !== null) {
+        if (element.querySelector<HTMLElement>(`[data-testid="booking-curve-rm-room-group-list"]`) !== null) {
+            return element;
+        }
+
+        element = element.parentElement;
+    }
+
+    return null;
 }
 
 function hasVisibleSalesSettingUi(): boolean {
@@ -3050,18 +3194,20 @@ function renderSalesSettingOverallSummary(
         containerElement.setAttribute(SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE, "");
         containerElement.setAttribute(SALES_SETTING_OVERALL_SUMMARY_SIGNATURE_ATTRIBUTE, signature);
 
-        const salesRowElement = document.createElement("div");
-        salesRowElement.setAttribute(SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE, "");
-
         const titleElement = document.createElement("span");
         titleElement.setAttribute(SALES_SETTING_OVERALL_TITLE_ATTRIBUTE, "");
         titleElement.textContent = "全体";
 
-        const metricElement = document.createElement("span");
-        metricElement.setAttribute(SALES_SETTING_OVERALL_METRIC_ATTRIBUTE, "");
-        metricElement.textContent = `販売室数 : ${formatSalesSettingCapacity(totalCapacity)}`;
-
-        salesRowElement.replaceChildren(titleElement, metricElement);
+        const salesRowElement = document.createElement("div");
+        salesRowElement.setAttribute(SALES_SETTING_OVERALL_SALES_ROW_ATTRIBUTE, "");
+        if (totalCapacity === null) {
+            salesRowElement.replaceChildren(titleElement);
+        } else {
+            const metricElement = document.createElement("span");
+            metricElement.setAttribute(SALES_SETTING_OVERALL_METRIC_ATTRIBUTE, "");
+            metricElement.textContent = `販売室数 : ${formatSalesSettingCapacity(totalCapacity)}`;
+            salesRowElement.replaceChildren(titleElement, metricElement);
+        }
 
         const tableElement = document.createElement("table");
         tableElement.setAttribute(SALES_SETTING_OVERALL_TABLE_ATTRIBUTE, "");
@@ -4040,6 +4186,65 @@ function ensureGroupRoomStyles(): void {
             font-weight: 700;
             line-height: 1.4;
             white-space: nowrap;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}] {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin: 14px 0 0;
+            padding-top: 14px;
+            border-top: 1px solid #dfe7f5;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}] {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE}] {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+            padding: 12px 14px;
+            border: 1px solid #dfe7f5;
+            border-radius: 12px;
+            background: #fafcff;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_HEADING_ATTRIBUTE}] {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 8px 12px;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_TITLE_ATTRIBUTE}] {
+            color: #243447;
+            font-size: 16px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_META_ATTRIBUTE}] {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            color: #50627a;
+            font-size: 12px;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_META_LABEL_ATTRIBUTE}] {
+            color: #6a7e99;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE}] {
+            min-height: 0;
         }
 
         [${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}] {
