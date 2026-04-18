@@ -1114,7 +1114,7 @@ function getCalendarSyncSignature(): string {
         .map((cell) => {
             const hasLayout = cell.containerElement.hasAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE) ? "1" : "0";
             const hasBadge = cell.containerElement.querySelector<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`) === null ? "0" : "1";
-            const hasLastChange = cell.indicatorElement?.querySelector<HTMLElement>(`[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`) === null ? "0" : "1";
+            const hasLastChange = cell.anchorElement.querySelector<HTMLElement>(`[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`) === null ? "0" : "1";
             return `${cell.stayDate}:${hasLayout}:${hasBadge}:${hasLastChange}`;
         })
         .join(",");
@@ -1531,10 +1531,10 @@ function buildCalendarLatestChangeDaysAgoByStayDate(statuses: LincolnSuggestStat
 }
 
 function renderCalendarLatestChange(cell: MonthlyCalendarCell, daysAgo: number | null): void {
-    const hostElement = cell.indicatorElement;
-    const existingElement = hostElement?.querySelector<HTMLElement>(`[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`) ?? null;
+    const hostElement = cell.anchorElement;
+    const existingElement = hostElement.querySelector<HTMLElement>(`[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`);
 
-    if (!(hostElement instanceof HTMLElement) || daysAgo === null) {
+    if (daysAgo === null) {
         existingElement?.remove();
         hostElement?.removeAttribute(CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE);
         return;
@@ -4869,21 +4869,18 @@ function ensureGroupRoomStyles(): void {
             line-height: 10px;
         }
 
-        [${CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE}] {
-            display: flex !important;
-            flex-direction: column !important;
-            justify-content: flex-end !important;
-            gap: 1px;
-            text-align: right;
-        }
-
         [${CALENDAR_LAST_CHANGE_ATTRIBUTE}] {
-            align-self: flex-end;
+            position: absolute;
+            left: 2px;
+            bottom: 2px;
             color: #6a7e99;
             font-size: 10px;
             font-weight: 600;
             line-height: 10px;
+            pointer-events: none;
+            text-shadow: 0 0 2px rgba(255, 255, 255, 0.95);
             white-space: nowrap;
+            z-index: 1;
         }
 
         [${GROUP_ROOM_TOGGLE_ATTRIBUTE}] {
