@@ -755,7 +755,35 @@ async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promi
         throw new Error(`booking curve request failed: ${response.status}`);
     }
 
-    return (await response.json()) as BookingCurveResponse;
+    return compactBookingCurveResponse((await response.json()) as BookingCurveResponse);
+}
+
+function compactBookingCurveResponse(data: BookingCurveResponse): BookingCurveResponse {
+    return {
+        stay_date: data.stay_date,
+        booking_curve: (data.booking_curve ?? []).map((point) => {
+            const compactPoint: BookingCurvePoint = {
+                date: point.date
+            };
+
+            const allCount = point.all?.this_year_room_sum;
+            if (typeof allCount === "number") {
+                compactPoint.all = { this_year_room_sum: allCount };
+            }
+
+            const transientCount = point.transient?.this_year_room_sum;
+            if (typeof transientCount === "number") {
+                compactPoint.transient = { this_year_room_sum: transientCount };
+            }
+
+            const groupCount = point.group?.this_year_room_sum;
+            if (typeof groupCount === "number") {
+                compactPoint.group = { this_year_room_sum: groupCount };
+            }
+
+            return compactPoint;
+        })
+    };
 }
 
 function findBookingCurveCount(data: BookingCurveResponse, lookupDate: string, countScope: BookingCurveCountScope): number | null {
@@ -1892,7 +1920,7 @@ function readPersistedBookingCurve(facilityCacheKey: string, cacheKey: string): 
             return undefined;
         }
 
-        return JSON.parse(raw) as BookingCurveResponse;
+        return compactBookingCurveResponse(JSON.parse(raw) as BookingCurveResponse);
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to read persistent booking-curve cache`, {
             cacheKey,
@@ -1905,7 +1933,10 @@ function readPersistedBookingCurve(facilityCacheKey: string, cacheKey: string): 
 
 function writePersistedBookingCurve(facilityCacheKey: string, cacheKey: string, data: BookingCurveResponse): void {
     try {
-        window.localStorage.setItem(`${getBookingCurveStoragePrefix(facilityCacheKey)}${cacheKey}`, JSON.stringify(data));
+        window.localStorage.setItem(
+            `${getBookingCurveStoragePrefix(facilityCacheKey)}${cacheKey}`,
+            JSON.stringify(compactBookingCurveResponse(data))
+        );
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to write persistent booking-curve cache`, {
             cacheKey,
