@@ -16,3 +16,4 @@
 - D-20260417-006 | Phase 1 の横軸ラベルは 2 段表示へ固定せず、1 行表示を優先し、優先表示ラベルは `ACT, 3, 7, 14, 21, 30, 45, 60, 90, 120, 150, 180, 270, 360` とする | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260417-007 | 室タイプ別 booking curve の rank 変更履歴は、Phase 1 では各室タイプ card のみへ小さな丸 marker で重ね、同日複数変更は最後の 1 件だけを tooltip 付きで表示する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260418-001 | 販売設定タブの室タイプ別 `1日前 / 7日前 / 30日前` の販売室数差分は、Phase 1 では `/api/v4/booking_curve` の室タイプ別 `all.this_year_room_sum` を正として維持し、販売設定系 endpoint への寄せ替えは Phase 2 以降の再判断とする | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260418-002 | 現行 current UI の synthetic room-type host における個別 booking curve capacity は `/api/v1/suggest/output/current_settings` の `rm_room_groups[].max_num_room` を room group 名単位で補い、既存 card renderer を再利用する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
