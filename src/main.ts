@@ -1411,6 +1411,10 @@ async function loadRoomGroups(): Promise<RoomGroup[]> {
 }
 
 function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: string): void {
+    if (collectSalesSettingCards().length === 0) {
+        return;
+    }
+
     const prefetchKey = `${batchDateKey}:${analysisDate}`;
     if (salesSettingPrefetchKeys.has(prefetchKey)) {
         return;
