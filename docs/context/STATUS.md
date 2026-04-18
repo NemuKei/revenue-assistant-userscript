@@ -40,17 +40,18 @@
 - sales-setting 向け booking_curve prefetch の可視判定は、旧 `suggestions-*` card だけでなく現行 chart header + room-group selector UI でも成立する構成へ更新済み
 - 現行 rank mode では、legacy sales-setting card が無い場合でも booking curve セクション直下へ synthetic room-type host 群を生成し、既存の overall summary / rank overview / room-group table を再利用できる構成へ更新済み
 - synthetic host は booking curve 個別グラフ用の容量情報を持たないため、現行 UI ではまず table / rank 補助の復活を優先し、個別 booking curve card は描かない構成とした
+- 現行 current UI の overall summary / rank overview は、booking curve host 再描画で消えないよう synthetic room-type host から切り離し、body 直下の専用 supplement portal へ描画する構成へ更新済み
 - GitHub Pages へ userscript を自動配布する workflow を追加済み
 - npm と GitHub Actions の依存更新を週次で提案する Dependabot 設定を追加済み
 - pull request 用の検証 workflow と `CODEOWNERS` を追加済み
 
 ## Doing
 
-- synthetic current-ui host を userscript へ反映し、現行 rank mode で overall summary / rank overview / room-group table が意図した位置へ出るかを GUI verify する
+- current-ui supplement portal を配布 userscript へ反映し、現行 rank mode で overall summary / rank overview が final state で残るかを GUI verify する
 
 ## Next
 
-1. build を userscript へ反映し、現行 rank mode で synthetic current-ui host が期待どおり描画されるかを確認する
+1. current-ui supplement portal を含む build を userscript へ反映し、現行 rank mode で overall summary / rank overview / room-group table が期待どおり描画されるかを確認する
 2. synthetic host に容量情報をどう補うか、または個別 booking curve card を現 UI では省略したままにするかを判断する
 3. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
 4. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
@@ -63,6 +64,7 @@
 - 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
 - 次の最小差分候補は、interaction 遅延タイマー打ち切り後にも残る支配的 reason だけを対象に、consistency check か外部 DOM 再描画かを切り分けること
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
+- current-ui supplement portal 追加後のローカル GUI verify では、ページ上の style に `data-ra-sales-setting-current-ui-supplements` selector が見えず stale userscript を踏んでいたため、配布 userscript 更新後に再確認する
 - 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
 
 ## Notes For Next Thread

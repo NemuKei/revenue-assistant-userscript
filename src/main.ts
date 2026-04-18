@@ -49,6 +49,7 @@ const SALES_SETTING_CURRENT_UI_TITLE_ATTRIBUTE = "data-ra-sales-setting-current-
 const SALES_SETTING_CURRENT_UI_META_ATTRIBUTE = "data-ra-sales-setting-current-ui-meta";
 const SALES_SETTING_CURRENT_UI_META_LABEL_ATTRIBUTE = "data-ra-sales-setting-current-ui-meta-label";
 const SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE = "data-ra-sales-setting-current-ui-detail-wrapper";
+const SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE = "data-ra-sales-setting-current-ui-supplements";
 const SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE = "data-ra-sales-setting-booking-curve-section";
 const SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE = "data-ra-sales-setting-booking-curve-kind";
 const SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-signature";
@@ -98,6 +99,8 @@ const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v4:";
 const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
 const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
 const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
+const SALES_SETTING_SUPPLEMENT_CLEANUP_DELAY_MS = 1500;
+const SALES_SETTING_SUPPLEMENT_RETRY_DELAYS_MS = [150, 600, 1500, 3000, 6000] as const;
 const CALENDAR_SYNC_DEBUG_STORAGE_KEY = "revenue-assistant:debug:calendar-sync";
 const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `#${GROUP_ROOM_STYLE_ID}`,
@@ -109,6 +112,7 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`,
     `[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`,
     `[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`,
+    `[${SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE}]`,
     `[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`,
     `[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}]`
 ].join(", ");
@@ -295,6 +299,15 @@ const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
+let latestSalesSettingPreparedSnapshot: {
+    analysisDate: string;
+    batchDateKey: string;
+    preparedData: SalesSettingPreparedData;
+} | null = null;
+let latestSalesSettingRankStatusesSnapshot: {
+    analysisDate: string;
+    statuses: LincolnSuggestStatus[];
+} | null = null;
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
@@ -315,6 +328,8 @@ let syncVersion = 0;
 let consistencyCheckTimeoutId: number | null = null;
 let consistencyCheckLastTriggeredAt = 0;
 let consistencyCheckRunVersion = 0;
+let salesSettingSupplementCleanupTimeoutId: number | null = null;
+const salesSettingSupplementRetryTimeoutIds: number[] = [];
 let resolvedFacilityCacheKey: string | null = null;
 let resolvedFacilityLabel: string | null = null;
 let facilityCacheKeyPromise: Promise<string> | null = null;
@@ -1308,6 +1323,11 @@ async function syncSalesSettingGroupRooms(
         return;
     }
 
+    latestSalesSettingRankStatusesSnapshot = {
+        analysisDate,
+        statuses
+    };
+
     const rankHistoryByRoomGroupName = buildSalesSettingRankHistoryByRoomGroup(statuses, analysisDate);
     const inconsistentRoomGroupNames = getInconsistentSalesSettingGroupNames(
         preparedData.cardMetrics.map((metric) => ({
@@ -1327,18 +1347,23 @@ async function syncSalesSettingGroupRooms(
         return;
     }
 
+    const currentCardsByRoomGroupName = new Map(
+        collectSalesSettingCards().map((card) => [card.roomGroupName, card] as const)
+    );
+
     for (const metric of preparedData.cardMetrics) {
+        const currentCard = currentCardsByRoomGroupName.get(metric.roomGroupName) ?? metric.card;
         if (metric.metrics === null) {
-            clearSalesSettingGroupRoom(metric.card);
+            clearSalesSettingGroupRoom(currentCard);
             continue;
         }
 
-        if (!metric.card.cardElement.isConnected) {
+        if (!currentCard.cardElement.isConnected) {
             continue;
         }
 
         renderSalesSettingGroupRoom(
-            metric.card,
+            currentCard,
             metric.metrics.allMetrics.currentValue,
             metric.metrics.allMetrics.previousDayValue,
             metric.metrics.allMetrics.previousWeekValue,
@@ -1361,6 +1386,15 @@ async function syncSalesSettingGroupRooms(
                 )
         );
     }
+
+    if (hasCurrentSalesSettingUi()) {
+        const latestCards = collectSalesSettingCards();
+        const firstCard = latestCards[0];
+        if (firstCard !== undefined && firstCard.cardElement.isConnected) {
+            renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
+            renderSalesSettingRankInsightsFromStatuses(latestCards, statuses, firstCard);
+        }
+    }
 }
 
 async function syncSalesSettingOverallSummary(
@@ -1370,22 +1404,32 @@ async function syncSalesSettingOverallSummary(
     syncContext: SyncContext
 ): Promise<void> {
     if (preparedData === null || preparedData.cards.length === 0) {
-        cleanupSalesSettingOverallSummary();
+        if (!hasCurrentSalesSettingUi()) {
+            scheduleSalesSettingSupplementCleanup();
+        }
         return;
     }
 
-    const { cards } = preparedData;
-
+    cancelSalesSettingSupplementCleanup();
     ensureGroupRoomStyles();
     if (isSyncContextStale(syncContext)) {
         return;
     }
 
-    const firstCard = cards[0];
+    const firstCard = collectSalesSettingCards()[0] ?? preparedData.cards[0];
     if (firstCard === undefined || !firstCard.cardElement.isConnected) {
         return;
     }
 
+    renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
+}
+
+function renderSalesSettingOverallSummaryFromPreparedData(
+    preparedData: SalesSettingPreparedData,
+    analysisDate: string,
+    batchDateKey: string,
+    firstCard: SalesSettingCard
+): void {
     const roomDeltaMetrics = preparedData.cardMetrics.map((metric) => metric.metrics?.allMetrics ?? createEmptySalesSettingComparisonMetrics());
     const currentRoomGroupMetrics = preparedData.cardMetrics.map((metric) => ({
         roomGroupName: metric.roomGroupName,
@@ -1430,11 +1474,13 @@ async function syncSalesSettingOverallSummary(
 async function syncSalesSettingRankInsights(analysisDate: string, syncContext: SyncContext): Promise<void> {
     const cards = collectSalesSettingCards();
     if (cards.length === 0) {
-        cleanupSalesSettingRankOverview();
-        cleanupSalesSettingRankDetails();
+        if (!hasCurrentSalesSettingUi()) {
+            scheduleSalesSettingSupplementCleanup();
+        }
         return;
     }
 
+    cancelSalesSettingSupplementCleanup();
     ensureGroupRoomStyles();
 
     const statuses = await getLincolnSuggestStatuses(analysisDate)
@@ -1449,13 +1495,34 @@ async function syncSalesSettingRankInsights(analysisDate: string, syncContext: S
         return;
     }
 
-    const summaries = buildSalesSettingRankSummaries(cards, statuses);
-    const summaryByRoomGroupName = new Map(summaries.map((summary) => [summary.roomGroupName, summary]));
+    latestSalesSettingRankStatusesSnapshot = {
+        analysisDate,
+        statuses
+    };
 
-    const firstCard = cards[0];
+    const currentCards = collectSalesSettingCards();
+    if (currentCards.length === 0) {
+        if (!hasCurrentSalesSettingUi()) {
+            scheduleSalesSettingSupplementCleanup();
+        }
+        return;
+    }
+
+    const firstCard = currentCards[0];
     if (firstCard === undefined || !firstCard.cardElement.isConnected) {
         return;
     }
+
+    renderSalesSettingRankInsightsFromStatuses(currentCards, statuses, firstCard);
+}
+
+function renderSalesSettingRankInsightsFromStatuses(
+    cards: SalesSettingCard[],
+    statuses: LincolnSuggestStatus[],
+    firstCard: SalesSettingCard
+): void {
+    const summaries = buildSalesSettingRankSummaries(cards, statuses);
+    const summaryByRoomGroupName = new Map(summaries.map((summary) => [summary.roomGroupName, summary]));
 
     renderSalesSettingRankOverview(
         firstCard,
@@ -1531,6 +1598,7 @@ function collectLegacySalesSettingCards(): SalesSettingCard[] {
 function collectSalesSettingCards(): SalesSettingCard[] {
     const legacyCards = collectLegacySalesSettingCards();
     if (legacyCards.length > 0) {
+        cleanupCurrentUiSalesSettingRoot();
         return legacyCards;
     }
 
@@ -1545,13 +1613,26 @@ function collectCurrentUiSalesSettingCards(): SalesSettingCard[] {
 
     const contentElement = findCurrentUiSalesSettingContentElement();
     const containerElement = contentElement?.parentElement;
+    const fallbackRoot = document.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`);
+    const fallbackCards = collectExistingCurrentUiSalesSettingCards(fallbackRoot);
     const roomGroupNames = collectCurrentUiRoomGroupNames();
-    if (!(contentElement instanceof HTMLElement) || !(containerElement instanceof HTMLElement) || roomGroupNames.length === 0) {
+    if (!(contentElement instanceof HTMLElement) || !(containerElement instanceof HTMLElement)) {
+        if (fallbackCards.length > 0) {
+            return fallbackCards;
+        }
         cleanupCurrentUiSalesSettingRoot();
         return [];
     }
 
-    const existingRoot = containerElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`);
+    if (roomGroupNames.length === 0) {
+        if (fallbackCards.length > 0) {
+            return fallbackCards;
+        }
+        cleanupCurrentUiSalesSettingRoot();
+        return [];
+    }
+
+    const existingRoot = containerElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`) ?? fallbackRoot;
     const rootElement = existingRoot ?? document.createElement("section");
     rootElement.setAttribute(SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE, "");
 
@@ -1619,19 +1700,165 @@ function collectCurrentUiSalesSettingCards(): SalesSettingCard[] {
 
     cardsContainerElement.replaceChildren(...cards.map((card) => card.cardElement));
 
-    if (cardsContainerElement.parentElement !== rootElement || rootElement.childElementCount !== 1) {
-        rootElement.replaceChildren(cardsContainerElement);
-    }
+    rootElement.replaceChildren(cardsContainerElement);
 
     if (rootElement.parentElement !== containerElement || rootElement.previousElementSibling !== contentElement) {
         containerElement.insertBefore(rootElement, contentElement.nextSibling);
     }
+
+    restoreCurrentUiSalesSettingSupplements(cards);
+    scheduleCurrentUiSalesSettingSupplementRestore();
 
     return cards;
 }
 
 function cleanupCurrentUiSalesSettingRoot(): void {
     document.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`)?.remove();
+    document.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE}]`)?.remove();
+}
+
+function findDirectChildByAttribute(parentElement: HTMLElement, attributeName: string): HTMLElement | null {
+    return Array.from(parentElement.children)
+        .find((element): element is HTMLElement => element instanceof HTMLElement && element.hasAttribute(attributeName))
+        ?? null;
+}
+
+function ensureCurrentUiSupplementsElement(): HTMLElement | null {
+    if (!(document.body instanceof HTMLElement)) {
+        return null;
+    }
+
+    const existingElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE}]`);
+    const supplementsElement = existingElement ?? document.createElement("section");
+    supplementsElement.setAttribute(SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE, "");
+
+    if (supplementsElement.parentElement !== document.body || document.body.lastElementChild !== supplementsElement) {
+        document.body.append(supplementsElement);
+    }
+
+    return supplementsElement;
+}
+
+function collectExistingCurrentUiSalesSettingCards(rootElement: HTMLElement | null): SalesSettingCard[] {
+    if (!(rootElement instanceof HTMLElement)) {
+        return [];
+    }
+
+    return Array.from(rootElement.querySelectorAll<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE}]`))
+        .flatMap((cardElement) => {
+            const roomGroupName = cardElement.getAttribute(SALES_SETTING_CURRENT_UI_CARD_ROOM_GROUP_ATTRIBUTE)?.trim() ?? "";
+            const headingElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_HEADING_ATTRIBUTE}]`);
+            const latestReflectionElement = cardElement.querySelector<HTMLElement>(`[data-ra-sales-setting-current-ui-latest-reflection]`);
+            const detailWrapperElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE}]`);
+            if (roomGroupName === "" || headingElement === null || detailWrapperElement === null) {
+                return [];
+            }
+
+            return [{
+                roomGroupName,
+                cardElement,
+                headingElement,
+                latestReflectionElement,
+                roomCountSummaryElement: null,
+                detailWrapperElement
+            } satisfies SalesSettingCard];
+        });
+}
+
+function restoreCurrentUiSalesSettingSupplements(cards: SalesSettingCard[]): void {
+    if (!hasCurrentSalesSettingUi() || cards.length === 0) {
+        return;
+    }
+
+    cancelSalesSettingSupplementCleanup();
+
+    const analysisDate = activeAnalyzeDate;
+    const batchDateKey = activeBatchDateKey;
+    const firstCard = cards[0];
+    if (analysisDate === null || batchDateKey === null || firstCard === undefined || !firstCard.cardElement.isConnected) {
+        return;
+    }
+
+    if (
+        latestSalesSettingPreparedSnapshot !== null
+        && latestSalesSettingPreparedSnapshot.analysisDate === analysisDate
+        && latestSalesSettingPreparedSnapshot.batchDateKey === batchDateKey
+    ) {
+        renderSalesSettingOverallSummaryFromPreparedData(
+            latestSalesSettingPreparedSnapshot.preparedData,
+            analysisDate,
+            batchDateKey,
+            firstCard
+        );
+    }
+
+    if (
+        latestSalesSettingRankStatusesSnapshot !== null
+        && latestSalesSettingRankStatusesSnapshot.analysisDate === analysisDate
+    ) {
+        renderSalesSettingRankInsightsFromStatuses(
+            cards,
+            latestSalesSettingRankStatusesSnapshot.statuses,
+            firstCard
+        );
+    }
+}
+
+function scheduleSalesSettingSupplementCleanup(): void {
+    if (salesSettingSupplementCleanupTimeoutId !== null) {
+        return;
+    }
+
+    salesSettingSupplementCleanupTimeoutId = window.setTimeout(() => {
+        salesSettingSupplementCleanupTimeoutId = null;
+        if (hasCurrentSalesSettingUi()) {
+            return;
+        }
+
+        cleanupSalesSettingOverallSummary();
+        cleanupSalesSettingRankOverview();
+        cleanupSalesSettingRankDetails();
+    }, SALES_SETTING_SUPPLEMENT_CLEANUP_DELAY_MS);
+}
+
+function cancelSalesSettingSupplementCleanup(): void {
+    if (salesSettingSupplementCleanupTimeoutId === null) {
+        return;
+    }
+
+    window.clearTimeout(salesSettingSupplementCleanupTimeoutId);
+    salesSettingSupplementCleanupTimeoutId = null;
+}
+
+function scheduleCurrentUiSalesSettingSupplementRestore(): void {
+    clearCurrentUiSalesSettingSupplementRestore();
+
+    if (!hasCurrentSalesSettingUi()) {
+        return;
+    }
+
+    for (const delayMs of SALES_SETTING_SUPPLEMENT_RETRY_DELAYS_MS) {
+        const timeoutId = window.setTimeout(() => {
+            const cards = collectExistingCurrentUiSalesSettingCards(
+                document.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`)
+            );
+            if (cards.length === 0) {
+                return;
+            }
+
+            restoreCurrentUiSalesSettingSupplements(cards);
+        }, delayMs);
+        salesSettingSupplementRetryTimeoutIds.push(timeoutId);
+    }
+}
+
+function clearCurrentUiSalesSettingSupplementRestore(): void {
+    while (salesSettingSupplementRetryTimeoutIds.length > 0) {
+        const timeoutId = salesSettingSupplementRetryTimeoutIds.pop();
+        if (timeoutId !== undefined) {
+            window.clearTimeout(timeoutId);
+        }
+    }
 }
 
 function collectCurrentUiRoomGroupNames(): string[] {
@@ -1815,12 +2042,20 @@ async function prepareSalesSettingSyncData(
         return null;
     }
 
-    return {
+    const preparedData = {
         cards,
         totalCapacity,
         hotelMetrics,
         cardMetrics
+    } satisfies SalesSettingPreparedData;
+
+    latestSalesSettingPreparedSnapshot = {
+        analysisDate,
+        batchDateKey,
+        preparedData
     };
+
+    return preparedData;
 }
 
 function getRoomGroups(): Promise<RoomGroup[]> {
@@ -1967,6 +2202,8 @@ function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
     groupRoomCache.clear();
     bookingCurveCache.clear();
     lincolnSuggestStatusCache.clear();
+    latestSalesSettingPreparedSnapshot = null;
+    latestSalesSettingRankStatusesSnapshot = null;
     resetPersistedGroupRoomCache(batchDateKey, facilityCacheKey);
 }
 
@@ -3172,12 +3409,13 @@ function renderSalesSettingOverallSummary(
     showGroupMetrics = true,
     curveData: SalesSettingBookingCurveRenderData | null = null
 ): void {
-    const parentElement = firstCard.cardElement.parentElement;
-    if (parentElement === null) {
+    const sectionContainer = resolveSalesSettingSectionContainer(firstCard);
+    const insertionAnchor = resolveSalesSettingSectionInsertionAnchor(firstCard);
+    if (sectionContainer === null) {
         return;
     }
 
-    const existingContainer = parentElement.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`);
+    const existingContainer = findDirectChildByAttribute(sectionContainer, SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE);
     const containerElement = existingContainer ?? document.createElement("section");
     const signature = [
         totalCapacity === null ? "sales:-" : `sales:${totalCapacity.currentValue}/${totalCapacity.maxValue}`,
@@ -3264,8 +3502,12 @@ function renderSalesSettingOverallSummary(
         containerElement.replaceChildren(salesRowElement, tableElement);
     }
 
-    if (containerElement !== null && containerElement.nextElementSibling !== firstCard.cardElement) {
-        parentElement.insertBefore(containerElement, firstCard.cardElement);
+    if (insertionAnchor === null) {
+        if (containerElement.parentElement !== sectionContainer || sectionContainer.lastElementChild !== containerElement) {
+            sectionContainer.append(containerElement);
+        }
+    } else if (containerElement.nextElementSibling !== insertionAnchor) {
+        sectionContainer.insertBefore(containerElement, insertionAnchor);
     }
 
     renderSalesSettingOverallBookingCurve(
@@ -3278,12 +3520,13 @@ function renderSalesSettingOverallSummary(
 }
 
 function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: SalesSettingRankSummary[]): void {
-    const parentElement = firstCard.cardElement.parentElement;
-    if (parentElement === null) {
+    const sectionContainer = resolveSalesSettingSectionContainer(firstCard);
+    const insertionAnchor = resolveSalesSettingSectionInsertionAnchor(firstCard);
+    if (sectionContainer === null) {
         return;
     }
 
-    const existingContainer = parentElement.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`);
+    const existingContainer = findDirectChildByAttribute(sectionContainer, SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE);
     if (summaries.length === 0) {
         existingContainer?.remove();
         return;
@@ -3346,11 +3589,31 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
         );
     }
 
-    const overallSummaryElement = parentElement.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`);
-    const insertionAnchor = overallSummaryElement?.nextSibling ?? firstCard.cardElement;
-    if (containerElement !== insertionAnchor?.previousSibling) {
-        parentElement.insertBefore(containerElement, insertionAnchor);
+    const overallSummaryElement = findDirectChildByAttribute(sectionContainer, SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE);
+    const rankInsertionAnchor = overallSummaryElement?.nextSibling ?? insertionAnchor;
+    if (rankInsertionAnchor === null) {
+        if (containerElement.parentElement !== sectionContainer || sectionContainer.lastElementChild !== containerElement) {
+            sectionContainer.append(containerElement);
+        }
+    } else if (containerElement !== rankInsertionAnchor.previousSibling) {
+        sectionContainer.insertBefore(containerElement, rankInsertionAnchor);
     }
+}
+
+function resolveSalesSettingSectionContainer(card: SalesSettingCard): HTMLElement | null {
+    if (card.cardElement.hasAttribute(SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE)) {
+        return ensureCurrentUiSupplementsElement();
+    }
+
+    return card.cardElement.parentElement;
+}
+
+function resolveSalesSettingSectionInsertionAnchor(card: SalesSettingCard): HTMLElement | null {
+    if (card.cardElement.hasAttribute(SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE)) {
+        return null;
+    }
+
+    return card.cardElement;
 }
 
 function renderSalesSettingGroupRoom(
@@ -4195,6 +4458,18 @@ function ensureGroupRoomStyles(): void {
             margin: 14px 0 0;
             padding-top: 14px;
             border-top: 1px solid #dfe7f5;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE}] {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            width: min(1180px, calc(100vw - 32px));
+            margin: 18px auto 24px;
+        }
+
+        [${SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE}]:empty {
+            display: none;
         }
 
         [${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}] {
