@@ -39,6 +39,7 @@
 - 2026-04-18 の GUI 再実測で、fresh analyze tab 初期表示の `mutation-observer` は requested が 16 から 1、queuedWhileRunning が 15 から 0 へ低下したことを確認済み
 - `scheduleMutationObserverCalendarSync()` は、flush 時点の DOM 署名が前回完了済みと同じなら `queueCalendarSync()` を呼ばずに打ち切る構成へ更新済み
 - 2026-04-18 の GUI 再実測で、analyze 月送り 1 回の `mutation-observer` は requested 5 / skippedCompleted 4 から requested 2 / skippedCompleted 1 まで低下したことを確認済み
+- 2026-04-18 の GUI 再実測で、focus 復帰では `mutation-observer` が requested 1 / scheduled 1 に留まり、warning や `consistency-invalidate` を増やさず、group row 6 件・rank detail 6 件・`ブッキングカーブを開く` 6 件が維持されることを確認済み
 - booking_curve の persistent cache は raw response をそのまま保存せず、`date / all / transient / group` の最小系列だけを保存する構成へ更新済み
 - booking_curve の persistent cache 書き込み時は、旧 `v1/v2/v3` userscript が残した legacy localStorage を 1 回だけ自動 cleanup し、quota 例外時は cleanup 後に 1 回だけ再保存を試みる構成へ更新済み
 - 2026-04-18 の GUI verify で、analyze 日付ページから月送り 1 回後も `failed to write persistent booking-curve cache` warning は再発せず、legacy `v1/v2/v3` key が 0 件であることを確認済み
@@ -56,21 +57,21 @@
 
 ## Doing
 
-- focus 復帰を GUI 再実測し、observer coalescing と completed-signature 打ち切り後にも残る支配的な再同期トリガーだけを対象に `queueCalendarSync()` をさらに減らす
+- `同月同曜日` baseline の最小表示仕様と、それに伴う `IndexedDB` 導入要否を判断する
 
 ## Next
 
-1. focus 復帰を GUI 再実測し、observer coalescing と completed-signature 打ち切り後にも残る支配的な再同期トリガーだけを対象に `queueCalendarSync()` をさらに減らす
-2. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
-3. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
+1. `同月同曜日` baseline の最小表示仕様と、それに伴う `IndexedDB` 導入要否を判断する
+2. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
+3. `団体` 系列を booking curve の標準 UI に含めるかを、実装後の使用感で再判断する
 
 ## Resume From Here
 
 - 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、debug snapshot の DOM / localStorage 出力、observer callback の 1 本化待ち、booking_curve persistent cache の最小系列化、interaction 遅延タイマー打ち切り、現行 sales-setting UI 可視判定の追従、synthetic current-ui host による summary / rank / room-group table 再利用、`current_settings` ベースの個別 booking curve capacity 補完まで反映済み
 - 直近の保存点は、この変更を commit した時点の `main`
-- 次スレッドの最初の実装対象は、focus 復帰を GUI 再実測し、snapshot の `summary` と `mutationObserverSummaries` を比べて、observer coalescing と completed-signature 打ち切り後にも支配的な reason だけを対象に `queueCalendarSync()` の不要発火を削るところから始める
+- 次スレッドの最初の実装対象は、`同月同曜日` baseline を本当に重ねるか、重ねるならホテル全体だけで始めるか室タイプ card まで含めるか、`comparison_curves` 相当の最小 UI を先に決めるところから始める
 - 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
-- 次の最小差分候補は、focus 復帰でまだ支配的な reason だけを対象に、consistency check か外部 DOM 再描画かを切り分けること
+- 次の最小差分候補は、baseline の対象を `全体 block のみ` へ絞った場合に、現行 localStorage 圧縮 payload のままで headroom が足りるかを試算し、足りなければ booking_curve persistent cache だけを IndexedDB へ移す分割案を切ること
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
 - 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
 
@@ -102,7 +103,7 @@
 
 Now:
 
-- focus 復帰を再実測し、observer coalescing と completed-signature 打ち切り後にも残る支配的な再同期トリガーだけを対象に `queueCalendarSync()` を減らす
+- `同月同曜日` baseline の対象範囲と `IndexedDB` 導入要否を判断する
 
 Next:
 
