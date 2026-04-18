@@ -35,6 +35,7 @@
 - 月送りの GUI 実測では `mutation-observer` が支配的な発火源だったため、自前で挿入した DOM subtree だけの mutation は observer 段階で捨てる構成へ更新済み
 - 自前 DOM mutation 除外後の月送り GUI 再実測では、`mutation-observer` requested が 52 件から 11 件まで低下したことを確認済み
 - booking_curve の persistent cache は raw response をそのまま保存せず、`date / all / transient / group` の最小系列だけを保存する構成へ更新済み
+- booking_curve の persistent cache 書き込み時は、旧 `v1/v2/v3` userscript が残した legacy localStorage を 1 回だけ自動 cleanup し、quota 例外時は cleanup 後に 1 回だけ再保存を試みる構成へ更新済み
 - interaction 遅延タイマーは、直前の sync が完了済みで DOM 署名も未変化なら残りタイマーを打ち切る構成へ更新済み
 - 現行 analyze UI では販売設定 card の `suggestions-*` DOM が見えず、`booking-curve-main-chart-header` と `部屋グループ` selector が sales-setting 可視状態の実 DOM であることを GUI 実測で確認済み
 - sales-setting 向け booking_curve prefetch の可視判定は、旧 `suggestions-*` card だけでなく現行 chart header + room-group selector UI でも成立する構成へ更新済み
@@ -95,6 +96,7 @@
 Now:
 
 - cache 圧縮後の userscript を画面へ反映し、月送りで persistent booking-curve cache warning が再発しないかを確認する
+- cache 圧縮と legacy storage cleanup 後の userscript を画面へ反映し、月送りで persistent booking-curve cache warning が再発しないかを確認する
 
 Next:
 
