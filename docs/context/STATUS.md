@@ -35,28 +35,29 @@
 - 月送りの GUI 実測では `mutation-observer` が支配的な発火源だったため、自前で挿入した DOM subtree だけの mutation は observer 段階で捨てる構成へ更新済み
 - 自前 DOM mutation 除外後の月送り GUI 再実測では、`mutation-observer` requested が 52 件から 11 件まで低下したことを確認済み
 - booking_curve の persistent cache は raw response をそのまま保存せず、`date / all / transient / group` の最小系列だけを保存する構成へ更新済み
+- interaction 遅延タイマーは、直前の sync が完了済みで DOM 署名も未変化なら残りタイマーを打ち切る構成へ更新済み
 - GitHub Pages へ userscript を自動配布する workflow を追加済み
 - npm と GitHub Actions の依存更新を週次で提案する Dependabot 設定を追加済み
 - pull request 用の検証 workflow と `CODEOWNERS` を追加済み
 
 ## Doing
 
-- booking_curve cache 圧縮後の build を userscript へ反映し、月送り時の persistent cache warning が再発しないかを確認する
+- interaction 遅延タイマー打ち切り後の build を userscript へ反映し、月送りや表示モード切替で `interaction:*` requested 件数がどこまで減るかを確認する
 
 ## Next
 
-1. build を userscript へ反映し、analyze 画面の月送りで persistent booking-curve cache warning が消えたかを確認する
+1. build を userscript へ反映し、analyze 画面の月送りや表示モード切替で `interaction:*` requested 件数が減ったかを確認する
 2. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
 3. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
 4. `団体` 系列を booking curve 標準 UI へ含めるかを、利用感ベースで再判断する
 
 ## Resume From Here
 
-- 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、booking_curve persistent cache の最小系列化まで反映済み
+- 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、booking_curve persistent cache の最小系列化、interaction 遅延タイマー打ち切りまで反映済み
 - 直近の保存点は `2c35a9b` `Close booking curve phase 1` と `eb45646` `Skip hidden sales-setting prefetch`
 - 次スレッドの最初の実装対象は、userscript 更新後に analyze 画面で月送りを再実操作し、persistent booking-curve cache warning の再発有無を確認するところから始める
 - 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
-- 次の最小差分候補は、自前 DOM mutation 除外後にも残る支配的 reason だけを対象に、interaction timeout 群か consistency check か、または外部 DOM 再描画かを切り分けること
+- 次の最小差分候補は、interaction 遅延タイマー打ち切り後にも残る支配的 reason だけを対象に、consistency check か外部 DOM 再描画かを切り分けること
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
 - 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面で `おすすめ` 状態では不要 prefetch が走らず、販売設定表示時だけ warm-up が走ることを確認する
 

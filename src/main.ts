@@ -411,10 +411,31 @@ function scheduleInteractionSync(): void {
 
     for (const delay of [120, 300, 700, 1500, 3000]) {
         const timeoutId = window.setTimeout(() => {
+            removeInteractionSyncTimeout(timeoutId);
+
+            if (shouldSkipTrailingInteractionSyncs()) {
+                clearInteractionSyncTimeouts();
+                return;
+            }
+
             queueCalendarSync({ reason: `interaction:${delay}` });
         }, delay);
         interactionSyncTimeoutIds.push(timeoutId);
     }
+}
+
+function removeInteractionSyncTimeout(timeoutId: number): void {
+    const index = interactionSyncTimeoutIds.indexOf(timeoutId);
+    if (index >= 0) {
+        interactionSyncTimeoutIds.splice(index, 1);
+    }
+}
+
+function shouldSkipTrailingInteractionSyncs(): boolean {
+    return !calendarSyncRunning
+        && !calendarSyncQueued
+        && completedCalendarSyncSignature !== ""
+        && getCalendarSyncSignature() === completedCalendarSyncSignature;
 }
 
 function clearInteractionSyncTimeouts(): void {
