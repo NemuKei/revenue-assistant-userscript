@@ -87,6 +87,7 @@ const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v4:";
 const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
 const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
 const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
+const CALENDAR_SYNC_DEBUG_STORAGE_KEY = "revenue-assistant:debug:calendar-sync";
 
 interface BookingCurvePoint {
     date: string;
@@ -297,7 +298,8 @@ let facilityCacheKeyPromise: Promise<string> | null = null;
 function boot(): void {
     console.info(`[${SCRIPT_NAME}] initialized`, {
         href: window.location.href,
-        dev: __DEV__
+        dev: __DEV__,
+        calendarSyncDebug: isCalendarSyncDebugEnabled()
     });
 
     installNavigationHooks();
@@ -474,6 +476,18 @@ function clearConsistencyCheckTimeout(): void {
     if (consistencyCheckTimeoutId !== null) {
         window.clearTimeout(consistencyCheckTimeoutId);
         consistencyCheckTimeoutId = null;
+    }
+}
+
+function isCalendarSyncDebugEnabled(): boolean {
+    if (__DEV__) {
+        return true;
+    }
+
+    try {
+        return window.localStorage.getItem(CALENDAR_SYNC_DEBUG_STORAGE_KEY) === "1";
+    } catch {
+        return false;
     }
 }
 
@@ -950,7 +964,7 @@ function getCalendarSyncDebugCounters(reason: string): CalendarSyncDebugCounters
 }
 
 function recordCalendarSyncDebugEvent(reason: string, kind: keyof CalendarSyncDebugCounters): void {
-    if (!__DEV__) {
+    if (!isCalendarSyncDebugEnabled()) {
         return;
     }
 
@@ -960,7 +974,7 @@ function recordCalendarSyncDebugEvent(reason: string, kind: keyof CalendarSyncDe
 }
 
 function flushCalendarSyncDebugLog(): void {
-    if (!__DEV__ || !calendarSyncDebugDirty || calendarSyncDebugCounters.size === 0) {
+    if (!isCalendarSyncDebugEnabled() || !calendarSyncDebugDirty || calendarSyncDebugCounters.size === 0) {
         return;
     }
 
@@ -1070,7 +1084,7 @@ async function runCalendarSync(): Promise<void> {
     } finally {
         calendarSyncRunning = false;
         completedCalendarSyncSignature = getCalendarSyncSignature();
-        if (__DEV__) {
+        if (isCalendarSyncDebugEnabled()) {
             recordCalendarSyncDebugEvent("runCalendarSync", "executed");
             flushCalendarSyncDebugLog();
         }
