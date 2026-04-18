@@ -41,17 +41,18 @@
 - 現行 rank mode では、legacy sales-setting card が無い場合でも booking curve セクション直下へ synthetic room-type host 群を生成し、既存の overall summary / rank overview / room-group table を再利用できる構成へ更新済み
 - synthetic host は booking curve 個別グラフ用の容量情報を持たないため、現行 UI ではまず table / rank 補助の復活を優先し、個別 booking curve card は描かない構成とした
 - 現行 current UI の overall summary / rank overview は、booking curve host 再描画で消えないよう synthetic room-type host から切り離し、body 直下の専用 supplement portal へ描画する構成へ更新済み
+- 2026-04-18 の GUI verify で、analyze 現行 rank mode にて current-ui supplement portal、overall summary、rank overview、room-group table 6 件が final state まで残ることを確認済み
 - GitHub Pages へ userscript を自動配布する workflow を追加済み
 - npm と GitHub Actions の依存更新を週次で提案する Dependabot 設定を追加済み
 - pull request 用の検証 workflow と `CODEOWNERS` を追加済み
 
 ## Doing
 
-- current-ui supplement portal を配布 userscript へ反映し、現行 rank mode で overall summary / rank overview が final state で残るかを GUI verify する
+- synthetic host に容量情報をどう補うか、または個別 booking curve card を現 UI では省略したままにするかを整理する
 
 ## Next
 
-1. current-ui supplement portal を含む build を userscript へ反映し、現行 rank mode で overall summary / rank overview / room-group table が期待どおり描画されるかを確認する
+1. synthetic host に容量情報をどう補うか、または現 UI では個別 booking curve card を省略したままにするかを判断する
 2. synthetic host に容量情報をどう補うか、または個別 booking curve card を現 UI では省略したままにするかを判断する
 3. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
 4. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
