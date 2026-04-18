@@ -4,6 +4,7 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
+const CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const LINCOLN_SUGGEST_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
@@ -49,6 +50,8 @@ const SALES_SETTING_CURRENT_UI_TITLE_ATTRIBUTE = "data-ra-sales-setting-current-
 const SALES_SETTING_CURRENT_UI_META_ATTRIBUTE = "data-ra-sales-setting-current-ui-meta";
 const SALES_SETTING_CURRENT_UI_META_LABEL_ATTRIBUTE = "data-ra-sales-setting-current-ui-meta-label";
 const SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE = "data-ra-sales-setting-current-ui-detail-wrapper";
+const SALES_SETTING_CURRENT_UI_CAPACITY_ATTRIBUTE = "data-ra-sales-setting-current-ui-capacity";
+const SALES_SETTING_CURRENT_UI_CAPACITY_MAX_ATTRIBUTE = "data-ra-sales-setting-current-ui-capacity-max";
 const SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE = "data-ra-sales-setting-current-ui-supplements";
 const SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE = "data-ra-sales-setting-booking-curve-section";
 const SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE = "data-ra-sales-setting-booking-curve-kind";
@@ -210,6 +213,22 @@ interface SalesSettingPreparedData {
     cardMetrics: SalesSettingPreparedCardMetric[];
 }
 
+interface SalesSettingCurrentSettingRoomGroup {
+    rm_room_group_id?: string;
+    rm_room_group_name?: string;
+    remaining_num_room?: number;
+    max_num_room?: number;
+}
+
+interface SalesSettingCurrentSettingByDate {
+    stay_date?: string;
+    rm_room_groups?: SalesSettingCurrentSettingRoomGroup[];
+}
+
+interface SalesSettingCurrentSettingsResponse {
+    suggest_output_current_settings?: SalesSettingCurrentSettingByDate[];
+}
+
 interface LincolnSuggestStatus {
     date?: string;
     suggest_calc_datetime?: string | null;
@@ -313,6 +332,7 @@ let latestSalesSettingRankStatusesSnapshot: {
     analysisDate: string;
     statuses: LincolnSuggestStatus[];
 } | null = null;
+const salesSettingCurrentSettingsPromiseCache = new Map<string, Promise<SalesSettingCurrentSettingsResponse>>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
@@ -1683,8 +1703,17 @@ function collectCurrentUiSalesSettingCards(): SalesSettingCard[] {
         const detailWrapperElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE}]`) ?? document.createElement("div");
         detailWrapperElement.setAttribute(SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE, "");
 
-        if (cardElement.childElementCount < 2 || headingElement.parentElement !== cardElement || detailWrapperElement.parentElement !== cardElement) {
-            cardElement.replaceChildren(headingElement, detailWrapperElement);
+        const capacityElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_CAPACITY_ATTRIBUTE}]`) ?? document.createElement("span");
+        capacityElement.setAttribute(SALES_SETTING_CURRENT_UI_CAPACITY_ATTRIBUTE, "");
+        capacityElement.hidden = true;
+
+        if (
+            cardElement.childElementCount < 3
+            || headingElement.parentElement !== cardElement
+            || capacityElement.parentElement !== cardElement
+            || detailWrapperElement.parentElement !== cardElement
+        ) {
+            cardElement.replaceChildren(headingElement, capacityElement, detailWrapperElement);
         }
 
         return {
@@ -1692,7 +1721,7 @@ function collectCurrentUiSalesSettingCards(): SalesSettingCard[] {
             cardElement,
             headingElement,
             latestReflectionElement,
-            roomCountSummaryElement: null,
+            roomCountSummaryElement: capacityElement,
             detailWrapperElement
         } satisfies SalesSettingCard;
     });
@@ -1755,6 +1784,7 @@ function collectExistingCurrentUiSalesSettingCards(rootElement: HTMLElement | nu
             const roomGroupName = cardElement.getAttribute(SALES_SETTING_CURRENT_UI_CARD_ROOM_GROUP_ATTRIBUTE)?.trim() ?? "";
             const headingElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_HEADING_ATTRIBUTE}]`);
             const latestReflectionElement = cardElement.querySelector<HTMLElement>(`[data-ra-sales-setting-current-ui-latest-reflection]`);
+            const capacityElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_CAPACITY_ATTRIBUTE}]`);
             const detailWrapperElement = cardElement.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE}]`);
             if (roomGroupName === "" || headingElement === null || detailWrapperElement === null) {
                 return [];
@@ -1765,7 +1795,7 @@ function collectExistingCurrentUiSalesSettingCards(rootElement: HTMLElement | nu
                 cardElement,
                 headingElement,
                 latestReflectionElement,
-                roomCountSummaryElement: null,
+                roomCountSummaryElement: capacityElement,
                 detailWrapperElement
             } satisfies SalesSettingCard];
         });
@@ -2011,6 +2041,11 @@ async function prepareSalesSettingSyncData(
         return null;
     }
 
+    await populateCurrentUiSalesSettingCapacities(analysisDate, cards);
+    if (isSyncContextStale(syncContext)) {
+        return null;
+    }
+
     const comparisonDateKeys = getSalesSettingComparisonDateKeys(batchDateKey);
     const totalCapacity = sumSalesSettingRoomCapacities(cards);
     const [roomGroups, hotelMetrics] = await Promise.all([
@@ -2078,6 +2113,123 @@ function getRoomGroups(): Promise<RoomGroup[]> {
 
     roomGroupListPromise = request;
     return request;
+}
+
+function getSalesSettingCurrentSettings(analysisDate: string): Promise<SalesSettingCurrentSettingsResponse> {
+    const monthKey = analysisDate.slice(0, 6);
+    const cached = salesSettingCurrentSettingsPromiseCache.get(monthKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const { fromDateKey, toDateKey } = getSalesSettingMonthDateRange(analysisDate);
+    const request = loadSalesSettingCurrentSettings(fromDateKey, toDateKey)
+        .catch((error: unknown) => {
+            salesSettingCurrentSettingsPromiseCache.delete(monthKey);
+            throw error;
+        });
+
+    salesSettingCurrentSettingsPromiseCache.set(monthKey, request);
+    return request;
+}
+
+async function loadSalesSettingCurrentSettings(
+    fromDateKey: string,
+    toDateKey: string
+): Promise<SalesSettingCurrentSettingsResponse> {
+    const url = new URL(CURRENT_SETTINGS_ENDPOINT, window.location.origin);
+    url.searchParams.set("from", fromDateKey);
+    url.searchParams.set("to", toDateKey);
+
+    const response = await fetch(url.toString(), {
+        credentials: "include",
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`current settings request failed: ${response.status}`);
+    }
+
+    return (await response.json()) as SalesSettingCurrentSettingsResponse;
+}
+
+async function populateCurrentUiSalesSettingCapacities(
+    analysisDate: string,
+    cards: SalesSettingCard[]
+): Promise<void> {
+    if (!cards.some((card) => card.cardElement.hasAttribute(SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE))) {
+        return;
+    }
+
+    const capacityByRoomGroupName = await getSalesSettingCurrentSettings(analysisDate)
+        .then(buildCurrentUiCapacityByRoomGroupName)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to load current-ui sales-setting capacities`, {
+                analysisDate,
+                error
+            });
+            return new Map<string, number>();
+        });
+
+    for (const card of cards) {
+        if (!card.cardElement.hasAttribute(SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE)) {
+            continue;
+        }
+
+        const maxValue = capacityByRoomGroupName.get(card.roomGroupName) ?? null;
+        updateCurrentUiSalesSettingCapacity(card.roomCountSummaryElement, maxValue);
+    }
+}
+
+function buildCurrentUiCapacityByRoomGroupName(
+    response: SalesSettingCurrentSettingsResponse
+): Map<string, number> {
+    const capacityByRoomGroupName = new Map<string, number>();
+
+    for (const currentSetting of response.suggest_output_current_settings ?? []) {
+        for (const roomGroup of currentSetting.rm_room_groups ?? []) {
+            const roomGroupName = roomGroup.rm_room_group_name?.trim() ?? "";
+            const maxNumRoom = roomGroup.max_num_room;
+            if (roomGroupName === "" || typeof maxNumRoom !== "number" || !Number.isFinite(maxNumRoom) || maxNumRoom <= 0) {
+                continue;
+            }
+
+            capacityByRoomGroupName.set(
+                roomGroupName,
+                Math.max(capacityByRoomGroupName.get(roomGroupName) ?? 0, maxNumRoom)
+            );
+        }
+    }
+
+    return capacityByRoomGroupName;
+}
+
+function updateCurrentUiSalesSettingCapacity(element: HTMLElement | null, maxValue: number | null): void {
+    if (!(element instanceof HTMLElement)) {
+        return;
+    }
+
+    if (maxValue === null) {
+        element.removeAttribute(SALES_SETTING_CURRENT_UI_CAPACITY_MAX_ATTRIBUTE);
+        element.textContent = "";
+        return;
+    }
+
+    element.setAttribute(SALES_SETTING_CURRENT_UI_CAPACITY_MAX_ATTRIBUTE, String(maxValue));
+    element.textContent = `0 / ${formatGroupRoomNumber(maxValue)}`;
+}
+
+function getSalesSettingMonthDateRange(analysisDate: string): { fromDateKey: string; toDateKey: string } {
+    const year = Number(analysisDate.slice(0, 4));
+    const monthIndex = Number(analysisDate.slice(4, 6)) - 1;
+    const lastDate = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+
+    return {
+        fromDateKey: `${analysisDate.slice(0, 6)}01`,
+        toDateKey: `${analysisDate.slice(0, 6)}${String(lastDate).padStart(2, "0")}`
+    };
 }
 
 async function loadRoomGroups(): Promise<RoomGroup[]> {
@@ -3366,7 +3518,7 @@ function renderSalesSettingBookingCurveCard(
     currentIndividualRoomCount: number | null,
     curveData: SalesSettingBookingCurveRenderData | null
 ): void {
-    const capacity = parseSalesSettingRoomCapacity(card.roomCountSummaryElement);
+    const capacity = resolveSalesSettingBookingCurveCapacity(card.roomCountSummaryElement);
     if (capacity === null || curveData === null) {
         clearSalesSettingBookingCurveCard(card);
         return;
@@ -3977,6 +4129,10 @@ function sumSalesSettingRoomCapacities(cards: SalesSettingCard[]): SalesSettingR
 }
 
 function parseSalesSettingRoomCapacity(element: HTMLElement | null): SalesSettingRoomCapacity | null {
+    if (element?.hasAttribute(SALES_SETTING_CURRENT_UI_CAPACITY_MAX_ATTRIBUTE)) {
+        return null;
+    }
+
     const text = element?.textContent ?? "";
     const match = /(\d+(?:\.\d+)?)\s*\/\s*(\d+(?:\.\d+)?)/.exec(text);
     if (match === null) {
@@ -3991,6 +4147,23 @@ function parseSalesSettingRoomCapacity(element: HTMLElement | null): SalesSettin
 
     return {
         currentValue,
+        maxValue
+    };
+}
+
+function resolveSalesSettingBookingCurveCapacity(element: HTMLElement | null): SalesSettingRoomCapacity | null {
+    const parsedCapacity = parseSalesSettingRoomCapacity(element);
+    if (parsedCapacity !== null) {
+        return parsedCapacity;
+    }
+
+    const maxValue = Number(element?.getAttribute(SALES_SETTING_CURRENT_UI_CAPACITY_MAX_ATTRIBUTE));
+    if (!Number.isFinite(maxValue) || maxValue <= 0) {
+        return null;
+    }
+
+    return {
+        currentValue: maxValue,
         maxValue
     };
 }
