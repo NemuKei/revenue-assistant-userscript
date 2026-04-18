@@ -11,20 +11,21 @@
 - userscript の TypeScript 開発基盤
 - `dist/*.user.js` の生成と配布
 - Chrome remote debugging と CDP 接続の確認導線
-- レベニューアシスタント analyze 画面の拡張実装
+- レベニューアシスタント top / analyze 画面の拡張実装
 - userscript の運用に必要な最小限の文書正本
 
 ## Out Of Scope
 
 - 外部サーバーや外部保存先との連携
 - Playwright を使った本格的な end-to-end テストの常設
-- analyze 画面以外の拡張仕様
+- top / analyze 画面以外の拡張仕様
 - userscript 以外の Chrome 拡張配布形態
 
 ## Current Public Behavior
 
-現在の userscript は、analyze 日付ページを検知し、次の公開挙動を提供する。
+現在の userscript は、top / analyze 系ページを検知し、次の公開挙動を提供する。
 
+- トップカレンダー各日付セルの最下部へ、販売ランク最終変更の相対日数を表示する
 - 月次カレンダー各日付セルへ団体室数を表示する
 - カレンダー上の団体室数表示を切り替えるトグルを提供する
 - 販売設定タブで、室タイプ別の販売室数に対する `1日前差分 / 7日前差分 / 30日前差分` を表示する

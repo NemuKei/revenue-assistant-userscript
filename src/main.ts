@@ -13,6 +13,8 @@ const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
 const GROUP_ROOM_INDICATOR_ATTRIBUTE = "data-ra-group-room-indicator";
+const CALENDAR_LAST_CHANGE_ATTRIBUTE = "data-ra-calendar-last-change";
+const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
 const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
 const GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE = "data-ra-group-room-toggle-button";
 const GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-group-room-toggle-active";
@@ -116,6 +118,8 @@ const CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE = "data-ra-calendar-sync-debug-snap
 const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `#${GROUP_ROOM_STYLE_ID}`,
     `[${GROUP_ROOM_BADGE_ATTRIBUTE}]`,
+    `[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`,
+    `[${CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE}]`,
     `[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`,
     `[${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}]`,
     `[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`,
@@ -344,6 +348,7 @@ interface CalendarSyncDebugSnapshot {
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
+const lincolnSuggestStatusRangeCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
@@ -1109,7 +1114,8 @@ function getCalendarSyncSignature(): string {
         .map((cell) => {
             const hasLayout = cell.containerElement.hasAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE) ? "1" : "0";
             const hasBadge = cell.containerElement.querySelector<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`) === null ? "0" : "1";
-            return `${cell.stayDate}:${hasLayout}:${hasBadge}`;
+            const hasLastChange = cell.indicatorElement?.querySelector<HTMLElement>(`[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`) === null ? "0" : "1";
+            return `${cell.stayDate}:${hasLayout}:${hasBadge}:${hasLastChange}`;
         })
         .join(",");
 
@@ -1366,6 +1372,7 @@ async function runCalendarSync(): Promise<void> {
 
         await Promise.all([
             syncMonthlyCalendarGroupRooms(batchDateKey),
+            syncMonthlyCalendarLatestChanges(),
             analysisDate === null
                 ? Promise.resolve()
                 : salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingGroupRooms(preparedData, analysisDate, batchDateKey, syncContext)),
@@ -1441,6 +1448,119 @@ async function syncMonthlyCalendarGroupRooms(batchDateKey: string): Promise<void
 
         renderGroupRoomCount(cell, groupRoomCount);
     }));
+}
+
+async function syncMonthlyCalendarLatestChanges(): Promise<void> {
+    const cells = collectMonthlyCalendarCells();
+    if (cells.length === 0 || activeAnalyzeDate !== null) {
+        cleanupMonthlyCalendarLatestChanges();
+        return;
+    }
+
+    const dateRange = getMonthlyCalendarDateRange(cells);
+    if (dateRange === null) {
+        cleanupMonthlyCalendarLatestChanges();
+        return;
+    }
+
+    ensureGroupRoomStyles();
+
+    const statuses = await getLincolnSuggestStatusesForRange(dateRange.fromDateKey, dateRange.toDateKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to load calendar latest changes`, {
+                fromDateKey: dateRange.fromDateKey,
+                toDateKey: dateRange.toDateKey,
+                error
+            });
+            return [] as LincolnSuggestStatus[];
+        });
+    const latestDaysAgoByStayDate = buildCalendarLatestChangeDaysAgoByStayDate(statuses);
+
+    for (const cell of cells) {
+        if (!cell.anchorElement.isConnected) {
+            continue;
+        }
+
+        renderCalendarLatestChange(cell, latestDaysAgoByStayDate.get(cell.stayDate) ?? null);
+    }
+}
+
+function getMonthlyCalendarDateRange(cells: MonthlyCalendarCell[]): { fromDateKey: string; toDateKey: string } | null {
+    const sortedDates = cells
+        .map((cell) => cell.stayDate)
+        .sort((left, right) => left.localeCompare(right));
+    const fromDateKey = sortedDates[0];
+    const toDateKey = sortedDates[sortedDates.length - 1];
+
+    if (fromDateKey === undefined || toDateKey === undefined) {
+        return null;
+    }
+
+    return { fromDateKey, toDateKey };
+}
+
+function buildCalendarLatestChangeDaysAgoByStayDate(statuses: LincolnSuggestStatus[]): Map<string, number> {
+    const latestTimestampByStayDate = new Map<string, string>();
+
+    for (const status of statuses) {
+        const stayDate = status.date?.trim();
+        if (stayDate === undefined || stayDate === "") {
+            continue;
+        }
+
+        const timestamp = getLincolnSuggestStatusTimestamp(status);
+        if (timestamp === null) {
+            continue;
+        }
+
+        const previousTimestamp = latestTimestampByStayDate.get(stayDate);
+        if (previousTimestamp === undefined || Date.parse(timestamp) > Date.parse(previousTimestamp)) {
+            latestTimestampByStayDate.set(stayDate, timestamp);
+        }
+    }
+
+    const daysAgoByStayDate = new Map<string, number>();
+    for (const [stayDate, timestamp] of latestTimestampByStayDate.entries()) {
+        const daysAgo = getDaysAgo(timestamp);
+        if (daysAgo !== null) {
+            daysAgoByStayDate.set(stayDate, daysAgo);
+        }
+    }
+
+    return daysAgoByStayDate;
+}
+
+function renderCalendarLatestChange(cell: MonthlyCalendarCell, daysAgo: number | null): void {
+    const hostElement = cell.indicatorElement;
+    const existingElement = hostElement?.querySelector<HTMLElement>(`[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`) ?? null;
+
+    if (!(hostElement instanceof HTMLElement) || daysAgo === null) {
+        existingElement?.remove();
+        hostElement?.removeAttribute(CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE);
+        return;
+    }
+
+    hostElement.setAttribute(CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE, "");
+    const nextLabel = formatSalesSettingDaysAgo(daysAgo);
+    const labelElement = existingElement ?? document.createElement("div");
+    labelElement.setAttribute(CALENDAR_LAST_CHANGE_ATTRIBUTE, "");
+    if (labelElement.textContent !== nextLabel) {
+        labelElement.textContent = nextLabel;
+    }
+
+    if (existingElement === null) {
+        hostElement.append(labelElement);
+    }
+}
+
+function cleanupMonthlyCalendarLatestChanges(): void {
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`))) {
+        element.remove();
+    }
+
+    for (const hostElement of Array.from(document.querySelectorAll<HTMLElement>(`[${CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE}]`))) {
+        hostElement.removeAttribute(CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE);
+    }
 }
 
 function renderCachedMonthlyCalendarGroupRooms(
@@ -2466,11 +2586,33 @@ function getLincolnSuggestStatuses(analysisDate: string): Promise<LincolnSuggest
     return request;
 }
 
+function getLincolnSuggestStatusesForRange(fromDateKey: string, toDateKey: string): Promise<LincolnSuggestStatus[]> {
+    const cacheKey = `${fromDateKey}:${toDateKey}`;
+    const cached = lincolnSuggestStatusRangeCache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const request = loadLincolnSuggestStatusesForRange(fromDateKey, toDateKey)
+        .catch((error: unknown) => {
+            lincolnSuggestStatusRangeCache.delete(cacheKey);
+            throw error;
+        });
+    lincolnSuggestStatusRangeCache.set(cacheKey, request);
+
+    return request;
+}
+
 async function loadLincolnSuggestStatuses(analysisDate: string): Promise<LincolnSuggestStatus[]> {
+    const statuses = await loadLincolnSuggestStatusesForRange(analysisDate, analysisDate);
+    return statuses.filter((status) => status.date === analysisDate);
+}
+
+async function loadLincolnSuggestStatusesForRange(fromDateKey: string, toDateKey: string): Promise<LincolnSuggestStatus[]> {
     const url = new URL(LINCOLN_SUGGEST_STATUS_ENDPOINT, window.location.origin);
     url.searchParams.set("filter_type", "stay_date");
-    url.searchParams.set("from", analysisDate);
-    url.searchParams.set("to", analysisDate);
+    url.searchParams.set("from", fromDateKey);
+    url.searchParams.set("to", toDateKey);
 
     const response = await fetch(url.toString(), {
         credentials: "include",
@@ -2484,7 +2626,7 @@ async function loadLincolnSuggestStatuses(analysisDate: string): Promise<Lincoln
     }
 
     const payload = (await response.json()) as LincolnSuggestStatusResponse;
-    return (payload.suggest_statuses ?? []).filter((status) => status.date === analysisDate);
+    return payload.suggest_statuses ?? [];
 }
 
 function getCurrentBatchDateKey(): string {
@@ -2521,6 +2663,7 @@ function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
     groupRoomCache.clear();
     bookingCurveCache.clear();
     lincolnSuggestStatusCache.clear();
+    lincolnSuggestStatusRangeCache.clear();
     latestSalesSettingPreparedSnapshot = null;
     latestSalesSettingRankStatusesSnapshot = null;
     resetPersistedGroupRoomCache(batchDateKey, facilityCacheKey);
@@ -4650,6 +4793,8 @@ function renderGroupRoomCount(cell: MonthlyCalendarCell, groupRoomCount: number 
 }
 
 function cleanupMonthlyCalendarGroupRooms(): void {
+    cleanupMonthlyCalendarLatestChanges();
+
     for (const badgeElement of Array.from(document.querySelectorAll<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`))) {
         badgeElement.remove();
     }
@@ -4722,6 +4867,23 @@ function ensureGroupRoomStyles(): void {
             font-size: 10px;
             font-weight: 700;
             line-height: 10px;
+        }
+
+        [${CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE}] {
+            display: flex !important;
+            flex-direction: column !important;
+            justify-content: flex-end !important;
+            gap: 1px;
+            text-align: right;
+        }
+
+        [${CALENDAR_LAST_CHANGE_ATTRIBUTE}] {
+            align-self: flex-end;
+            color: #6a7e99;
+            font-size: 10px;
+            font-weight: 600;
+            line-height: 10px;
+            white-space: nowrap;
         }
 
         [${GROUP_ROOM_TOGGLE_ATTRIBUTE}] {
