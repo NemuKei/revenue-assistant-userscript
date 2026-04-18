@@ -55,14 +55,13 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 各室タイプカードの `最終変更履歴` の下に、`ランク：A→B` を 1 行で表示する
 - 各室タイプカードの booking curve には、同 stay_date の rank 変更履歴を小さな丸 marker として重ねて表示できるようにする
 - 全体販売室数サマリーは、販売設定タブ上に描画済みの室タイプ別表示を合算して生成する
-- 販売設定タブの販売室数差分は、現状 `/api/v4/booking_curve` の `all.this_year_room_sum` を室タイプ別に引いて計算している
+- 販売設定タブの販売室数差分は、Phase 1 では `/api/v4/booking_curve` の室タイプ別 `all.this_year_room_sum` を正として維持する
 
 ### Candidate: Room-Type Booking Curve
 
 - 対象は analyze 日付ページの `販売設定` タブ内にある各室タイプカードとする
 - 実装はフェーズ分割とし、初期実装では `室数` グラフだけを扱う
-- 2026-04-17 時点では、Phase 1 の UI 骨組みを先行実装済みであり、最上段の全体 block、各室タイプ card の開閉 UI、custom SVG のグラフ枠、hover tooltip、capacity 基準の y 軸は動作している
-- 2026-04-17 時点のグラフ系列は `booking_curve` の LT 生系列をまだ描いておらず、`UI確認用` の placeholder 表示である
+- 2026-04-18 時点で、Phase 1 の booking curve は `/api/v4/booking_curve` の LT 実系列へ接続済みであり、最上段の全体 block、各室タイプ card の開閉 UI、custom SVG、hover tooltip、capacity 基準 y 軸、rank marker overlay を含めて運用可能な状態とする
 
 #### Phase 1
 
@@ -104,11 +103,12 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - persistent cache が必要なら、`date / all / transient / group` だけの最小系列へ圧縮した payload を優先する
 - `IndexedDB` は Phase 1 では前提にしない
 
-#### Phase 1 Remaining
+#### Phase 1 Verification Notes
 
-- 室タイプ別とホテル全体の `全体 / 個人` 系列で、どの stay_date と current 値を採用するかを明文化し、null fallback を実データで確認する
-- GUI verify では `dist/*.user.js` の build 完了だけでなく、Tampermonkey 側の再読込も済ませた状態を正とする
-- 室タイプ別 booking curve に重ねる rank 変更履歴 marker の見え方と tooltip の情報量を実画面で調整する
+- 室タイプ別とホテル全体の `全体 / 個人` 系列は、選択中 analyze 日付を `stay_date` として扱い、current 値は `batch-date` 以前の最新非 null を使う
+- 当日 stay_date では `ACT` を空表示にし、未来 stay_date では観測 LT より先を空表示にする
+- GUI verify では `dist/*.user.js` の build 完了だけでなく、Tampermonkey 側の userscript 再読込も済ませた状態を正とする
+- rank marker は card panel 上で小さな丸として視認でき、tooltip では `ランク A→B / 反映日 / 反映者` を確認できることを Phase 1 の受け入れ条件とする
 
 #### Phase 2
 
@@ -139,34 +139,23 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 
 ## Remaining Candidate Scope
 
-### Candidate 1: Sales Setting Delta Data Source
-
-- 販売設定タブの販売室数差分を、現在の `booking_curve` ベースのまま維持するか、`/api/v3/suggest/output/details` ベースへ寄せるかを判断する
-- 判断では、計算の意味、レスポンス整合性、取得回数、保守性を比較する
-
-### Candidate 2: Performance Tuning
+### Candidate 1: Performance Tuning
 
 - 月送り時と販売設定タブ再描画時の体感速度を改善する
 - 比較対象は request 並列数、先読み取得の単位、キャッシュ再利用単位とする
 
-### Candidate 3: Competitor Price Table
+### Candidate 2: Competitor Price Table
 
 - `/api/v5/competitor_prices` を使った競合価格表を販売設定タブへ埋め込むか判断する
 - 実装する場合は、表示位置、比較単位、列数、既存タブとの役割分担を先に仕様化する
 
-### Candidate 4: Room-Type Booking Curve
+### Candidate 3: Booking Curve Phase 2
 
-- 最上段の全体 block にもホテル全体 booking curve を表示し、そこは常時展開を既定とする
-- 販売設定タブ内の各室タイプカードへ booking curve を段階導入する
-- 初期実装では `室数` のみ、baseline なしとする
-- 標準 UI は `全体` と `個人` の 2 系列を横並びで同時表示し、`団体` は初期必須要件に含めない
-- 各室タイプ card は既定で閉じ、開閉トリガーは各 block 自身に持たせる
-- LT 軸は日次生データを bucket 集約表示へ圧縮し、代表値は各 bucket の最後の日を使う
-- `ACT` は `0日前` と分離して扱う
-- Phase 2 で `同月同曜日` baseline と `IndexedDB` 導入要否を再判断する
+- `同月同曜日` baseline を別系列として重ねる
+- `団体` 系列を標準 UI に含めるかを再判断する
+- baseline や複数比較系列が増える場合に `IndexedDB` 導入要否を再判断する
 
 ## Open Questions
 
-1. 販売設定タブの販売室数差分は、現状の `booking_curve` 由来値で十分か
-2. 月送りやタブ切替時の request 数をどこまで減らすべきか
-3. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
+1. 月送りやタブ切替時の request 数をどこまで減らすべきか
+2. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
