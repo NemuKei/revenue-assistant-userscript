@@ -110,6 +110,8 @@ const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
 const SALES_SETTING_SUPPLEMENT_CLEANUP_DELAY_MS = 1500;
 const SALES_SETTING_SUPPLEMENT_RETRY_DELAYS_MS = [150, 600, 1500, 3000, 6000] as const;
 const CALENDAR_SYNC_DEBUG_STORAGE_KEY = "revenue-assistant:debug:calendar-sync";
+const CALENDAR_SYNC_DEBUG_LAST_STORAGE_KEY = `${CALENDAR_SYNC_DEBUG_STORAGE_KEY}:last`;
+const CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE = "data-ra-calendar-sync-debug-snapshot";
 const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `#${GROUP_ROOM_STYLE_ID}`,
     `[${GROUP_ROOM_BADGE_ATTRIBUTE}]`,
@@ -122,7 +124,8 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`,
     `[${SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE}]`,
     `[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`,
-    `[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}]`
+    `[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}]`,
+    `[${CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE}]`
 ].join(", ");
 
 interface BookingCurvePoint {
@@ -317,6 +320,25 @@ interface CalendarSyncDebugCounters {
     forced: number;
 }
 
+interface CalendarSyncDebugSummaryEntry extends CalendarSyncDebugCounters {
+    reason: string;
+}
+
+interface CalendarSyncDebugMutationSummary {
+    callbackId: number;
+    mutationCount: number;
+    attributeNames: string[];
+    targetSummaries: string[];
+}
+
+interface CalendarSyncDebugSnapshot {
+    runId: number;
+    href: string;
+    capturedAt: string;
+    summary: CalendarSyncDebugSummaryEntry[];
+    mutationObserverSummaries: CalendarSyncDebugMutationSummary[];
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
@@ -339,6 +361,7 @@ let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
 let activeFacilityCacheKey: string | null = null;
 let calendarObserver: MutationObserver | null = null;
+let mutationObserverSyncQueued = false;
 let calendarSyncQueued = false;
 let calendarSyncRunning = false;
 let queuedCalendarSyncSignature = "";
@@ -349,6 +372,8 @@ let pendingCalendarSyncForce = false;
 const calendarSyncDebugCounters = new Map<string, CalendarSyncDebugCounters>();
 let calendarSyncDebugDirty = false;
 let calendarSyncDebugRunId = 0;
+let calendarSyncDebugMutationCallbackId = 0;
+const calendarSyncDebugMutationSummaries: CalendarSyncDebugMutationSummary[] = [];
 let syncVersion = 0;
 let consistencyCheckTimeoutId: number | null = null;
 let consistencyCheckLastTriggeredAt = 0;
@@ -1009,7 +1034,8 @@ function ensureCalendarObserver(): void {
             return;
         }
 
-        queueCalendarSync({ reason: "mutation-observer" });
+        recordCalendarSyncMutationDebug(mutations);
+        scheduleMutationObserverCalendarSync();
     });
     calendarObserver.observe(root, {
         attributes: true,
@@ -1043,6 +1069,25 @@ function isRevenueAssistantManagedNode(node: Node | null): boolean {
     }
 
     return node.parentElement?.closest(REVENUE_ASSISTANT_MANAGED_SELECTOR) !== null;
+}
+
+function scheduleMutationObserverCalendarSync(): void {
+    if (mutationObserverSyncQueued) {
+        return;
+    }
+
+    mutationObserverSyncQueued = true;
+    const flush = (): void => {
+        if (calendarSyncRunning || calendarSyncQueued) {
+            window.requestAnimationFrame(flush);
+            return;
+        }
+
+        mutationObserverSyncQueued = false;
+        queueCalendarSync({ reason: "mutation-observer" });
+    };
+
+    window.requestAnimationFrame(flush);
 }
 
 function getCalendarSyncSignature(): string {
@@ -1107,6 +1152,67 @@ function getCalendarSyncDebugCounters(reason: string): CalendarSyncDebugCounters
     return created;
 }
 
+function recordCalendarSyncMutationDebug(mutations: MutationRecord[]): void {
+    if (!isCalendarSyncDebugEnabled()) {
+        return;
+    }
+
+    const attributeNames = new Map<string, number>();
+    const targetSummaries = new Map<string, number>();
+
+    for (const mutation of mutations) {
+        if (mutation.type === "attributes") {
+            const attributeName = mutation.attributeName ?? "(unknown)";
+            attributeNames.set(attributeName, (attributeNames.get(attributeName) ?? 0) + 1);
+        }
+
+        const targetSummary = summarizeCalendarSyncMutationTarget(mutation);
+        targetSummaries.set(targetSummary, (targetSummaries.get(targetSummary) ?? 0) + 1);
+    }
+
+    calendarSyncDebugMutationCallbackId += 1;
+    calendarSyncDebugMutationSummaries.push({
+        callbackId: calendarSyncDebugMutationCallbackId,
+        mutationCount: mutations.length,
+        attributeNames: Array.from(attributeNames.entries())
+            .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+            .map(([name, count]) => `${name}:${count}`)
+            .slice(0, 5),
+        targetSummaries: Array.from(targetSummaries.entries())
+            .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]))
+            .map(([name, count]) => `${name}:${count}`)
+            .slice(0, 5)
+    });
+
+    while (calendarSyncDebugMutationSummaries.length > 5) {
+        calendarSyncDebugMutationSummaries.shift();
+    }
+}
+
+function summarizeCalendarSyncMutationTarget(mutation: MutationRecord): string {
+    const targetElement = mutation.target instanceof Element
+        ? mutation.target
+        : mutation.target.parentElement;
+
+    if (!(targetElement instanceof Element)) {
+        return mutation.type;
+    }
+
+    const dataTestId = targetElement.getAttribute("data-testid");
+    if (typeof dataTestId === "string" && dataTestId.length > 0) {
+        return `${mutation.type}:${targetElement.tagName.toLowerCase()}[data-testid=${dataTestId}]`;
+    }
+
+    const className = typeof targetElement.className === "string"
+        ? targetElement.className.trim().split(/\s+/).filter((name) => name.length > 0).slice(0, 2).join(".")
+        : "";
+    if (className.length > 0) {
+        return `${mutation.type}:${targetElement.tagName.toLowerCase()}.${className}`;
+    }
+
+    return `${mutation.type}:${targetElement.tagName.toLowerCase()}`;
+}
+
 function recordCalendarSyncDebugEvent(reason: string, kind: keyof CalendarSyncDebugCounters): void {
     if (!isCalendarSyncDebugEnabled()) {
         return;
@@ -1130,14 +1236,48 @@ function flushCalendarSyncDebugLog(): void {
             ...counters
         }));
 
-    console.info(`[${SCRIPT_NAME}] calendar sync debug`, {
+    const snapshot: CalendarSyncDebugSnapshot = {
         runId: calendarSyncDebugRunId,
         href: window.location.href,
-        summary
-    });
+        capturedAt: new Date().toISOString(),
+        summary,
+        mutationObserverSummaries: calendarSyncDebugMutationSummaries.slice()
+    };
+
+    console.info(`[${SCRIPT_NAME}] calendar sync debug`, snapshot);
+    writeCalendarSyncDebugSnapshot(snapshot);
 
     calendarSyncDebugCounters.clear();
+    calendarSyncDebugMutationSummaries.length = 0;
     calendarSyncDebugDirty = false;
+}
+
+function writeCalendarSyncDebugSnapshot(snapshot: CalendarSyncDebugSnapshot): void {
+    writeCalendarSyncDebugSnapshotElement(snapshot);
+
+    try {
+        window.localStorage.setItem(CALENDAR_SYNC_DEBUG_LAST_STORAGE_KEY, JSON.stringify(snapshot));
+    } catch {
+        // Ignore debug snapshot persistence failures.
+    }
+}
+
+function writeCalendarSyncDebugSnapshotElement(snapshot: CalendarSyncDebugSnapshot): void {
+    if (!(document.body instanceof HTMLElement)) {
+        return;
+    }
+
+    const element = document.querySelector<HTMLElement>(`[${CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE}]`) ?? document.createElement("script");
+    element.setAttribute(CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE, "");
+    element.setAttribute("type", "application/json");
+    const nextText = JSON.stringify(snapshot);
+    if (element.textContent !== nextText) {
+        element.textContent = nextText;
+    }
+
+    if (element.parentElement !== document.body) {
+        document.body.append(element);
+    }
 }
 
 function queueCalendarSync(options: { force?: boolean; reason?: string } = {}): void {
