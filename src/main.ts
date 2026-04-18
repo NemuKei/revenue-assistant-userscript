@@ -1083,7 +1083,13 @@ function scheduleMutationObserverCalendarSync(): void {
             return;
         }
 
+        const nextSignature = getCalendarSyncSignature();
         mutationObserverSyncQueued = false;
+
+        if (nextSignature === completedCalendarSyncSignature) {
+            return;
+        }
+
         queueCalendarSync({ reason: "mutation-observer" });
     };
 
