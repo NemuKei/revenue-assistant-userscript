@@ -39,6 +39,7 @@ const SALES_SETTING_RANK_OVERVIEW_ROW_ATTRIBUTE = "data-ra-sales-setting-rank-ov
 const SALES_SETTING_RANK_OVERVIEW_ROOM_ATTRIBUTE = "data-ra-sales-setting-rank-overview-room";
 const SALES_SETTING_RANK_OVERVIEW_META_ATTRIBUTE = "data-ra-sales-setting-rank-overview-meta";
 const SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE = "data-ra-sales-setting-rank-overview-value";
+const SALES_SETTING_RANK_OVERVIEW_DELTA_ATTRIBUTE = "data-ra-sales-setting-rank-overview-delta";
 const SALES_SETTING_RANK_DETAIL_ATTRIBUTE = "data-ra-sales-setting-rank-detail";
 const SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-rank-detail-signature";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
@@ -256,6 +257,7 @@ interface SalesSettingRankSummary {
     latestReflectionDaysAgo: number | null;
     beforeRankName: string | null;
     afterRankName: string | null;
+    roomDelta: number | null;
 }
 
 interface SalesSettingRankHistoryEvent {
@@ -1564,7 +1566,7 @@ async function syncSalesSettingGroupRooms(
         const firstCard = latestCards[0];
         if (firstCard !== undefined && firstCard.cardElement.isConnected) {
             renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
-            renderSalesSettingRankInsightsFromStatuses(latestCards, statuses, firstCard);
+            renderSalesSettingRankInsightsFromStatuses(latestCards, statuses, firstCard, preparedData);
         }
     }
 }
@@ -1685,15 +1687,21 @@ async function syncSalesSettingRankInsights(analysisDate: string, syncContext: S
         return;
     }
 
-    renderSalesSettingRankInsightsFromStatuses(currentCards, statuses, firstCard);
+    renderSalesSettingRankInsightsFromStatuses(
+        currentCards,
+        statuses,
+        firstCard,
+        resolveLatestSalesSettingPreparedData(analysisDate)
+    );
 }
 
 function renderSalesSettingRankInsightsFromStatuses(
     cards: SalesSettingCard[],
     statuses: LincolnSuggestStatus[],
-    firstCard: SalesSettingCard
+    firstCard: SalesSettingCard,
+    preparedData: SalesSettingPreparedData | null = null
 ): void {
-    const summaries = buildSalesSettingRankSummaries(cards, statuses);
+    const summaries = buildSalesSettingRankSummaries(cards, statuses, preparedData);
     const summaryByRoomGroupName = new Map(summaries.map((summary) => [summary.roomGroupName, summary]));
 
     renderSalesSettingRankOverview(
@@ -1961,13 +1969,17 @@ function restoreCurrentUiSalesSettingSupplements(cards: SalesSettingCard[]): voi
         return;
     }
 
-    if (
+    const preparedData = (
         latestSalesSettingPreparedSnapshot !== null
         && latestSalesSettingPreparedSnapshot.analysisDate === analysisDate
         && latestSalesSettingPreparedSnapshot.batchDateKey === batchDateKey
-    ) {
+    )
+        ? latestSalesSettingPreparedSnapshot.preparedData
+        : null;
+
+    if (preparedData !== null) {
         renderSalesSettingOverallSummaryFromPreparedData(
-            latestSalesSettingPreparedSnapshot.preparedData,
+            preparedData,
             analysisDate,
             batchDateKey,
             firstCard
@@ -1981,7 +1993,8 @@ function restoreCurrentUiSalesSettingSupplements(cards: SalesSettingCard[]): voi
         renderSalesSettingRankInsightsFromStatuses(
             cards,
             latestSalesSettingRankStatusesSnapshot.statuses,
-            firstCard
+            firstCard,
+            preparedData
         );
     }
 }
@@ -3897,7 +3910,7 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
 
     const orderedSummaries = summaries.slice().sort(compareSalesSettingRankSummaries);
     const signature = orderedSummaries
-        .map((summary) => `${summary.roomGroupName}:${summary.latestReflectionAt}:${summary.beforeRankName}:${summary.afterRankName}`)
+        .map((summary) => `${summary.roomGroupName}:${summary.latestReflectionAt}:${summary.beforeRankName}:${summary.afterRankName}:${summary.roomDelta}`)
         .join("|");
     const containerElement = existingContainer ?? document.createElement("section");
 
@@ -3914,10 +3927,13 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
 
         const headElement = document.createElement("thead");
         const headerRowElement = document.createElement("tr");
-        for (const label of ["部屋タイプ", "最終変更", "ランク"]) {
+        for (const label of ["部屋タイプ", "最終変更", "ランク", "増減"]) {
             const headerCellElement = document.createElement("th");
             headerCellElement.scope = "col";
             headerCellElement.textContent = label;
+            if (label === "増減") {
+                headerCellElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_DELTA_ATTRIBUTE, "");
+            }
             headerRowElement.append(headerCellElement);
         }
         headElement.append(headerRowElement);
@@ -3940,7 +3956,12 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
             valueElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE, "");
             valueElement.textContent = formatSalesSettingRankTransition(summary.beforeRankName, summary.afterRankName);
 
-            rowElement.replaceChildren(roomElement, metaElement, valueElement);
+            const deltaElement = document.createElement("td");
+            deltaElement.setAttribute(SALES_SETTING_RANK_OVERVIEW_DELTA_ATTRIBUTE, "");
+            deltaElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getMetricDeltaTone(summary.roomDelta, 0));
+            deltaElement.textContent = formatCompactMetricDelta(summary.roomDelta, 0);
+
+            rowElement.replaceChildren(roomElement, metaElement, valueElement, deltaElement);
             bodyElement.append(rowElement);
         }
 
@@ -4322,8 +4343,16 @@ function formatSalesSettingCapacity(capacity: SalesSettingRoomCapacity | null): 
     return `${formatGroupRoomNumber(capacity.currentValue)} / ${formatGroupRoomNumber(capacity.maxValue)}`;
 }
 
-function buildSalesSettingRankSummaries(cards: SalesSettingCard[], statuses: LincolnSuggestStatus[]): SalesSettingRankSummary[] {
+function buildSalesSettingRankSummaries(
+    cards: SalesSettingCard[],
+    statuses: LincolnSuggestStatus[],
+    preparedData: SalesSettingPreparedData | null = null
+): SalesSettingRankSummary[] {
     const latestStatusByRoomGroupName = new Map<string, LincolnSuggestStatus>();
+    const metricByRoomGroupName = new Map(
+        preparedData?.cardMetrics.map((metric) => [metric.roomGroupName, metric.metrics]) ?? []
+    );
+
     for (const status of statuses.slice().sort(compareLincolnSuggestStatuses)) {
         const roomGroupName = status.rm_room_group_name?.trim();
         if (roomGroupName === undefined || roomGroupName === "") {
@@ -4342,15 +4371,45 @@ function buildSalesSettingRankSummaries(cards: SalesSettingCard[], statuses: Lin
         }
 
         const latestReflectionAt = getLincolnSuggestStatusTimestamp(status);
+        const reflectedDateKey = getDateKeyFromTimestamp(latestReflectionAt);
+        const metrics = metricByRoomGroupName.get(card.roomGroupName) ?? null;
         return [{
             roomGroupName: card.roomGroupName,
             displayOrder: index,
             latestReflectionAt,
             latestReflectionDaysAgo: getDaysAgo(latestReflectionAt),
             beforeRankName: status.before_price_rank_name ?? null,
-            afterRankName: status.after_price_rank_name ?? null
+            afterRankName: status.after_price_rank_name ?? null,
+            roomDelta: resolveSalesSettingRankSummaryDelta(metrics?.bookingCurveData ?? null, metrics?.allMetrics.currentValue ?? null, reflectedDateKey)
         }];
     });
+}
+
+function resolveLatestSalesSettingPreparedData(analysisDate: string): SalesSettingPreparedData | null {
+    if (
+        latestSalesSettingPreparedSnapshot === null
+        || latestSalesSettingPreparedSnapshot.analysisDate !== analysisDate
+    ) {
+        return null;
+    }
+
+    if (activeBatchDateKey !== null && latestSalesSettingPreparedSnapshot.batchDateKey !== activeBatchDateKey) {
+        return null;
+    }
+
+    return latestSalesSettingPreparedSnapshot.preparedData;
+}
+
+function resolveSalesSettingRankSummaryDelta(
+    bookingCurveData: BookingCurveResponse | null,
+    currentValue: number | null,
+    reflectedDateKey: string | null
+): number | null {
+    if (bookingCurveData === null || currentValue === null || reflectedDateKey === null) {
+        return null;
+    }
+
+    return getMetricDelta(currentValue, findBookingCurveCount(bookingCurveData, reflectedDateKey, "all"));
 }
 
 function buildSalesSettingRankHistoryByRoomGroup(
@@ -5184,6 +5243,11 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE}] {
             color: #243447;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_RANK_OVERVIEW_DELTA_ATTRIBUTE}] {
+            text-align: right;
             white-space: nowrap;
         }
 
