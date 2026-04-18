@@ -71,6 +71,8 @@ const SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE = "data-ra-sales-settin
 const SALES_SETTING_BOOKING_CURVE_MARKER_POINT_ATTRIBUTE = "data-ra-sales-setting-booking-curve-marker-point";
 const SALES_SETTING_BOOKING_CURVE_MARKER_HITBOX_ATTRIBUTE = "data-ra-sales-setting-booking-curve-marker-hitbox";
 const SALES_SETTING_BOOKING_CURVE_HITBOX_ATTRIBUTE = "data-ra-sales-setting-booking-curve-hitbox";
+const SALES_SETTING_CURRENT_UI_HEADER_TEST_ID = "booking-curve-main-chart-header";
+const SALES_SETTING_CURRENT_UI_ROOM_GROUP_SELECTOR_TEST_ID = "highlight-filter-price-rank-rm-room-group-pulldown-form";
 const SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS = new Set<SalesSettingBookingCurveTick>([
     360, 270, 180, 150, 120, 90, 60, 45, 30, 21, 14, 7, 3, "ACT"
 ]);
@@ -1512,6 +1514,15 @@ function collectSalesSettingCards(): SalesSettingCard[] {
         });
 }
 
+function hasVisibleSalesSettingUi(): boolean {
+    return collectSalesSettingCards().length > 0 || hasCurrentSalesSettingUi();
+}
+
+function hasCurrentSalesSettingUi(): boolean {
+    return document.querySelector<HTMLElement>(`[data-testid="${SALES_SETTING_CURRENT_UI_HEADER_TEST_ID}"]`) !== null
+        && document.querySelector<HTMLElement>(`[data-testid="${SALES_SETTING_CURRENT_UI_ROOM_GROUP_SELECTOR_TEST_ID}"]`) !== null;
+}
+
 function getLookupDate(stayDate: string): string {
     return stayDate;
 }
@@ -1700,7 +1711,7 @@ async function loadRoomGroups(): Promise<RoomGroup[]> {
 }
 
 function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: string): void {
-    if (collectSalesSettingCards().length === 0) {
+    if (!hasVisibleSalesSettingUi()) {
         return;
     }
 
