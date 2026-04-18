@@ -65,6 +65,15 @@
 2. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
 3. `団体` 系列を booking curve の標準 UI に含めるかを、実装後の使用感で再判断する
 
+## Thread Handoff
+
+- 現在の `main` は clean 前提で再開できる。直近の押し込み済み保存点は `4724c0c` `Skip redundant mutation-observer calendar sync flushes` と `0e558f1` `Record focus resume verification and next baseline work`
+- 直近の確認済み verify は `npm run check` 通過と、analyze 画面の月送り・focus 復帰 GUI 実測。focus 復帰では warning / `consistency-invalidate` の増加なし、group row 6 件、rank detail 6 件、`ブッキングカーブを開く` 6 件を確認済み
+- 次スレッドの最初の判断点は 1 つだけでよい。`同月同曜日` baseline を `全体 block のみ` で始めるか、最初から室タイプ card まで含めるかを先に決める
+- baseline の scope を決める前に `IndexedDB` 実装へ入らない。現状の localStorage 実測は revenue-assistant 分だけで約 210 万文字、715 key、hotel booking_curve 1 key は約 4.5 万文字で、headroom はまだあるが広くはない
+- `IndexedDB` が必要になった場合でも、最初の移行対象は booking_curve persistent cache だけに限定する。`group-room count visibility` や debug snapshot まで同時に移さない
+- 次スレッドの最小 verify は docs 判断だけなら差分確認のみ、実装に入るなら `npm run check`。GUI まで触る場合だけ analyze rank mode で current-ui supplement portal、overall summary、rank overview、room-group table が崩れていないことを再確認する
+
 ## Resume From Here
 
 - 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、debug snapshot の DOM / localStorage 出力、observer callback の 1 本化待ち、booking_curve persistent cache の最小系列化、interaction 遅延タイマー打ち切り、現行 sales-setting UI 可視判定の追従、synthetic current-ui host による summary / rank / room-group table 再利用、`current_settings` ベースの個別 booking curve capacity 補完まで反映済み
@@ -107,8 +116,8 @@ Now:
 
 Next:
 
-- `同月同曜日` baseline と `IndexedDB` 導入要否を判断する
+- `competitor_prices` と `団体` 系列 UI の導入要否を判断する
 
 After Next:
 
-- `competitor_prices` と `団体` 系列 UI の導入要否を決める
+- baseline 実装後の使用感を見て、室タイプ card まで baseline を広げるか、`団体` 系列を標準 UI に含めるかを再判断する

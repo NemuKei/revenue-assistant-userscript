@@ -116,6 +116,13 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - baseline 用の履歴系列を複数本持つ必要が出た場合に、`IndexedDB` 導入を再判断する
 - baseline は `rm-booking-curve-lab` の `comparison_curves` と同様に、描画用の別系列として扱う
 
+#### Phase 2 Pending Decisions
+
+- 2026-04-18 時点で未確定なのは、baseline を `全体 block のみ` で先に入れるか、室タイプ card まで同時に入れるか
+- 最初の slice では、Phase 1 の `全体 / 個人` 系列、rank marker overlay、tooltip close、`ACT` 空表示を崩さないことを優先する
+- baseline scope が固まる前に、persistent cache 全体を `IndexedDB` へ移す前提で設計しない。必要になった場合も booking_curve persistent cache を最初の移行対象とする
+- Phase 2 の最初の受け入れ条件は、baseline 追加後も current-ui supplement portal、overall summary、rank overview、room-group table が維持され、不要 warning を増やさないこととする
+
 ## キャッシュと同期のルール
 
 ### キャッシュ範囲
@@ -159,3 +166,5 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 
 1. 月送りやタブ切替時の request 数をどこまで減らすべきか
 2. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
+3. baseline は `全体 block のみ` から始めるべきか、それとも室タイプ card まで同時に出すべきか
+4. baseline scope を決めた時点で、現行 localStorage headroom のまま進められるか
