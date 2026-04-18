@@ -96,6 +96,11 @@ const SALES_SETTING_BOOKING_CURVE_TICKS = [
     "ACT"
 ] as const;
 const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v4:";
+const LEGACY_GROUP_ROOM_STORAGE_PREFIXES = [
+    "revenue-assistant:group-room-count:v1:",
+    "revenue-assistant:group-room-count:v2:",
+    "revenue-assistant:group-room-count:v3:"
+] as const;
 const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-visible`;
 const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
 const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
@@ -330,6 +335,7 @@ let consistencyCheckLastTriggeredAt = 0;
 let consistencyCheckRunVersion = 0;
 let salesSettingSupplementCleanupTimeoutId: number | null = null;
 const salesSettingSupplementRetryTimeoutIds: number[] = [];
+let legacyGroupRoomStorageCleanupAttempted = false;
 let resolvedFacilityCacheKey: string | null = null;
 let resolvedFacilityLabel: string | null = null;
 let facilityCacheKeyPromise: Promise<string> | null = null;
@@ -2196,6 +2202,8 @@ function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
         return;
     }
 
+    cleanupLegacyGroupRoomStorage();
+
     activeBatchDateKey = batchDateKey;
     activeFacilityCacheKey = facilityCacheKey;
     salesSettingPrefetchKeys.clear();
@@ -2345,16 +2353,73 @@ function readPersistedBookingCurve(facilityCacheKey: string, cacheKey: string): 
 }
 
 function writePersistedBookingCurve(facilityCacheKey: string, cacheKey: string, data: BookingCurveResponse): void {
+    const storageKey = `${getBookingCurveStoragePrefix(facilityCacheKey)}${cacheKey}`;
+    const serialized = JSON.stringify(compactBookingCurveResponse(data));
+
     try {
-        window.localStorage.setItem(
-            `${getBookingCurveStoragePrefix(facilityCacheKey)}${cacheKey}`,
-            JSON.stringify(compactBookingCurveResponse(data))
-        );
+        window.localStorage.setItem(storageKey, serialized);
     } catch (error: unknown) {
+        const recovered = tryRecoverPersistentBookingCurveQuota(storageKey, serialized);
+        if (recovered) {
+            return;
+        }
+
         console.warn(`[${SCRIPT_NAME}] failed to write persistent booking-curve cache`, {
             cacheKey,
             error
         });
+    }
+}
+
+function cleanupLegacyGroupRoomStorage(): boolean {
+    if (legacyGroupRoomStorageCleanupAttempted) {
+        return false;
+    }
+
+    legacyGroupRoomStorageCleanupAttempted = true;
+
+    try {
+        const keysToRemove: string[] = [];
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+            const key = window.localStorage.key(index);
+            if (key !== null && LEGACY_GROUP_ROOM_STORAGE_PREFIXES.some((prefix) => key.startsWith(prefix))) {
+                keysToRemove.push(key);
+            }
+        }
+
+        for (const key of keysToRemove) {
+            window.localStorage.removeItem(key);
+        }
+
+        if (keysToRemove.length > 0) {
+            console.info(`[${SCRIPT_NAME}] removed legacy group-room storage`, {
+                removedCount: keysToRemove.length
+            });
+            return true;
+        }
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to cleanup legacy group-room storage`, {
+            error
+        });
+    }
+
+    return false;
+}
+
+function tryRecoverPersistentBookingCurveQuota(storageKey: string, serialized: string): boolean {
+    const cleaned = cleanupLegacyGroupRoomStorage();
+    if (!cleaned) {
+        return false;
+    }
+
+    try {
+        window.localStorage.setItem(storageKey, serialized);
+        console.info(`[${SCRIPT_NAME}] recovered persistent booking-curve cache after legacy cleanup`, {
+            storageKey
+        });
+        return true;
+    } catch {
+        return false;
     }
 }
 
