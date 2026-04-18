@@ -34,14 +34,25 @@
 
 ## Doing
 
-- Phase 2 の候補として、request 数と先読み単位の見直し、baseline、競合価格表の導入要否を整理する
+- Phase 2 の先頭タスクとして、sales-setting summary / card が同じ booking_curve response を繰り返し数え直している経路を整理し、request 数と再同期コストを下げる
 
 ## Next
 
-1. request 数、先読み取得の単位、月送り時の再同期方法を見直し、体感速度を改善する
-2. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
-3. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
-4. `団体` 系列を booking curve 標準 UI へ含めるかを、利用感ベースで再判断する
+1. `syncSalesSettingGroupRooms` と `syncSalesSettingOverallSummary` で同じ booking_curve response を使い回せる形へ整理し、scope/date ごとの count 解決の重複を減らす
+2. 月送り、focus 復帰、MutationObserver 起点の `queueCalendarSync()` を棚卸しし、不要な再同期トリガーを絞る
+3. `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で判断する
+4. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
+5. `団体` 系列を booking curve 標準 UI へ含めるかを、利用感ベースで再判断する
+
+## Resume From Here
+
+- 現在地は Phase 2 の最初の性能改善に着手済みで、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止める変更まで反映済み
+- 直近の保存点は `2c35a9b` `Close booking curve phase 1` と `eb45646` `Skip hidden sales-setting prefetch`
+- 次スレッドの最初の実装対象は `src/main.ts` の `fetchScopedBookingCurveCount`、`syncSalesSettingGroupRooms`、`syncSalesSettingOverallSummary`、`runCalendarSync` を読むところから始める
+- 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
+- 次の最小差分候補は、同一 `BookingCurveResponse` から `all / transient / group` の current, 1日前, 7日前, 30日前をまとめて解決し、card と overall summary の両方で再利用すること
+- GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
+- 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面で `おすすめ` 状態では不要 prefetch が走らず、販売設定表示時だけ warm-up が走ることを確認する
 
 ## Notes For Next Thread
 
@@ -55,16 +66,17 @@
 - 2026-04-17 時点の横軸ラベル優先表示は `ACT, 3, 7, 14, 21, 30, 45, 60, 90, 120, 150, 180, 270, 360`
 - GUI verify では build 後の `dist/*.user.js` だけでなく、Tampermonkey 側の userscript 再読込も必要。再読込なしでは旧 build が表示されることがある
 - 販売設定カードの `1日前 / 7日前 / 30日前` は、Phase 1 では booking_curve の室タイプ別 `all.this_year_room_sum` を正として扱う
+- `prefetchSalesSettingGroupRooms` は販売設定カードが DOM に見えている時だけ走る。次は prefetch 自体より、後段の count 解決重複を減らす方が優先度が高い
 
 ## Remaining Task Triage
 
 Now:
 
-- Phase 2 の改善候補を優先順位付きで整理する
+- sales-setting 系で同じ booking_curve response を再走査している箇所をまとめ、最小差分の改善案へ落とす
 
 Next:
 
-- request 数と先読み単位を見直して、体感速度を改善する
+- 再同期トリガーの重複を減らして、月送り時の体感速度を改善する
 
 After Next:
 

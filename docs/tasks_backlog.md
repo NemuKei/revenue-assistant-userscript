@@ -2,7 +2,8 @@
 
 ## Active Backlog
 
-- `booking_curve` と販売設定タブ再同期の request 数を見直し、月送り時の体感速度を改善する
+- `syncSalesSettingGroupRooms` と `syncSalesSettingOverallSummary` で同じ booking_curve response を再利用し、scope/date ごとの count 解決重複を減らす
+- 月送り、focus 復帰、MutationObserver 起点の再同期トリガーを棚卸しし、不要な `queueCalendarSync()` を減らす
 - `同月同曜日` baseline と `IndexedDB` 導入要否を Phase 2 で再判断する
 - `団体` 系列を booking curve の標準 UI に含めるかを、実装後の使用感で再判断する
 - 室タイプ別 booking curve の rank 変更履歴 marker の見え方と tooltip 情報量の polish を必要なら継続する
