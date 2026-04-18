@@ -17,3 +17,4 @@
 - D-20260417-007 | 室タイプ別 booking curve の rank 変更履歴は、Phase 1 では各室タイプ card のみへ小さな丸 marker で重ね、同日複数変更は最後の 1 件だけを tooltip 付きで表示する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260418-001 | 販売設定タブの室タイプ別 `1日前 / 7日前 / 30日前` の販売室数差分は、Phase 1 では `/api/v4/booking_curve` の室タイプ別 `all.this_year_room_sum` を正として維持し、販売設定系 endpoint への寄せ替えは Phase 2 以降の再判断とする | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260418-002 | 現行 current UI の synthetic room-type host における個別 booking curve capacity は `/api/v1/suggest/output/current_settings` の `rm_room_groups[].max_num_room` を room group 名単位で補い、既存 card renderer を再利用する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260418-003 | `queueCalendarSync()` の MutationObserver 起点は、observer callback ごとに直接 queue せず、同期が空くまで 1 本だけ待たせてから queue し、debug snapshot は console だけでなく DOM と localStorage にも残す | status: applied | spec_link: docs/spec_001_analyze_expansion.md
