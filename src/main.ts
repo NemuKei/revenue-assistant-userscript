@@ -254,6 +254,16 @@ interface SalesSettingBookingCurveMarker {
     signature: string;
 }
 
+interface CalendarSyncDebugCounters {
+    requested: number;
+    scheduled: number;
+    executed: number;
+    skippedCompleted: number;
+    skippedQueued: number;
+    queuedWhileRunning: number;
+    forced: number;
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
@@ -273,6 +283,9 @@ let completedCalendarSyncSignature = "";
 let queuedCalendarSyncForce = false;
 let pendingCalendarSyncSignature = "";
 let pendingCalendarSyncForce = false;
+const calendarSyncDebugCounters = new Map<string, CalendarSyncDebugCounters>();
+let calendarSyncDebugDirty = false;
+let calendarSyncDebugRunId = 0;
 let syncVersion = 0;
 let consistencyCheckTimeoutId: number | null = null;
 let consistencyCheckLastTriggeredAt = 0;
@@ -340,7 +353,7 @@ function installInteractionHooks(): void {
                 if (toggleKey !== null && toggleKey.length > 0) {
                     const nextOpen = bookingCurveToggleButton.getAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_ACTIVE_ATTRIBUTE) !== "true";
                     setSalesSettingBookingCurveOpen(toggleKey, nextOpen);
-                    queueCalendarSync();
+                    queueCalendarSync({ reason: "booking-curve-toggle" });
                 }
                 return;
             }
@@ -361,7 +374,7 @@ function installInteractionHooks(): void {
                     return;
                 }
 
-                queueCalendarSync();
+                queueCalendarSync({ reason: "group-room-toggle" });
                 return;
             }
         }
@@ -378,13 +391,13 @@ function installInteractionHooks(): void {
 }
 
 function scheduleInteractionSync(): void {
-    queueCalendarSync();
+    queueCalendarSync({ reason: "interaction:immediate" });
 
     clearInteractionSyncTimeouts();
 
     for (const delay of [120, 300, 700, 1500, 3000]) {
         const timeoutId = window.setTimeout(() => {
-            queueCalendarSync();
+            queueCalendarSync({ reason: `interaction:${delay}` });
         }, delay);
         interactionSyncTimeoutIds.push(timeoutId);
     }
@@ -411,7 +424,7 @@ function syncPage(): void {
     }
 
     ensureCalendarObserver();
-    queueCalendarSync();
+    queueCalendarSync({ reason: "sync-page" });
 
     if (selectedDate === null) {
         clearInteractionSyncTimeouts();
@@ -571,7 +584,7 @@ async function verifyAnalyzePageConsistency(reason: string): Promise<void> {
         freshCurrentOverallGroup
     });
     invalidateGroupRoomCaches(batchDateKey);
-    queueCalendarSync({ force: true });
+    queueCalendarSync({ force: true, reason: "consistency-invalidate" });
 }
 
 function isSameMetricValue(left: number | null, right: number | null): boolean {
@@ -864,7 +877,7 @@ function ensureCalendarObserver(): void {
 
     const root = document.querySelector("#root") ?? document.body;
     calendarObserver = new MutationObserver(() => {
-        queueCalendarSync();
+        queueCalendarSync({ reason: "mutation-observer" });
     });
     calendarObserver.observe(root, {
         attributes: true,
@@ -917,33 +930,96 @@ function getCalendarSyncSignature(): string {
     ].join("|");
 }
 
-function queueCalendarSync(options: { force?: boolean } = {}): void {
+function getCalendarSyncDebugCounters(reason: string): CalendarSyncDebugCounters {
+    const existing = calendarSyncDebugCounters.get(reason);
+    if (existing !== undefined) {
+        return existing;
+    }
+
+    const created: CalendarSyncDebugCounters = {
+        requested: 0,
+        scheduled: 0,
+        executed: 0,
+        skippedCompleted: 0,
+        skippedQueued: 0,
+        queuedWhileRunning: 0,
+        forced: 0
+    };
+    calendarSyncDebugCounters.set(reason, created);
+    return created;
+}
+
+function recordCalendarSyncDebugEvent(reason: string, kind: keyof CalendarSyncDebugCounters): void {
+    if (!__DEV__) {
+        return;
+    }
+
+    const counters = getCalendarSyncDebugCounters(reason);
+    counters[kind] += 1;
+    calendarSyncDebugDirty = true;
+}
+
+function flushCalendarSyncDebugLog(): void {
+    if (!__DEV__ || !calendarSyncDebugDirty || calendarSyncDebugCounters.size === 0) {
+        return;
+    }
+
+    calendarSyncDebugRunId += 1;
+    const summary = Array.from(calendarSyncDebugCounters.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([reason, counters]) => ({
+            reason,
+            ...counters
+        }));
+
+    console.info(`[${SCRIPT_NAME}] calendar sync debug`, {
+        runId: calendarSyncDebugRunId,
+        href: window.location.href,
+        summary
+    });
+
+    calendarSyncDebugCounters.clear();
+    calendarSyncDebugDirty = false;
+}
+
+function queueCalendarSync(options: { force?: boolean; reason?: string } = {}): void {
     const nextSignature = getCalendarSyncSignature();
     const force = options.force === true;
+    const reason = options.reason ?? "unspecified";
+
+    recordCalendarSyncDebugEvent(reason, "requested");
+    if (force) {
+        recordCalendarSyncDebugEvent(reason, "forced");
+    }
 
     if (calendarSyncRunning) {
         pendingCalendarSyncSignature = nextSignature;
         pendingCalendarSyncForce = pendingCalendarSyncForce || force;
+        recordCalendarSyncDebugEvent(reason, "queuedWhileRunning");
         return;
     }
 
     if (calendarSyncQueued) {
         if (!force && nextSignature === queuedCalendarSyncSignature) {
+            recordCalendarSyncDebugEvent(reason, "skippedQueued");
             return;
         }
 
         queuedCalendarSyncSignature = nextSignature;
         queuedCalendarSyncForce = queuedCalendarSyncForce || force;
+        recordCalendarSyncDebugEvent(reason, "scheduled");
         return;
     }
 
     if (!force && nextSignature === completedCalendarSyncSignature) {
+        recordCalendarSyncDebugEvent(reason, "skippedCompleted");
         return;
     }
 
     calendarSyncQueued = true;
     queuedCalendarSyncSignature = nextSignature;
     queuedCalendarSyncForce = force;
+    recordCalendarSyncDebugEvent(reason, "scheduled");
     window.requestAnimationFrame(() => {
         void runCalendarSync();
     });
@@ -994,6 +1070,10 @@ async function runCalendarSync(): Promise<void> {
     } finally {
         calendarSyncRunning = false;
         completedCalendarSyncSignature = getCalendarSyncSignature();
+        if (__DEV__) {
+            recordCalendarSyncDebugEvent("runCalendarSync", "executed");
+            flushCalendarSyncDebugLog();
+        }
 
         const pendingSignature = pendingCalendarSyncSignature;
         const pendingForce = pendingCalendarSyncForce;
@@ -1001,7 +1081,7 @@ async function runCalendarSync(): Promise<void> {
         pendingCalendarSyncForce = false;
 
         if (pendingForce || (pendingSignature !== "" && pendingSignature !== completedCalendarSyncSignature)) {
-            queueCalendarSync({ force: pendingForce });
+            queueCalendarSync({ force: pendingForce, reason: "pending-flush" });
         }
     }
 }
