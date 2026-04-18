@@ -19,3 +19,6 @@
 - D-20260418-002 | 現行 current UI の synthetic room-type host における個別 booking curve capacity は `/api/v1/suggest/output/current_settings` の `rm_room_groups[].max_num_room` を room group 名単位で補い、既存 card renderer を再利用する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260418-003 | `queueCalendarSync()` の MutationObserver 起点は、observer callback ごとに直接 queue せず、同期が空くまで 1 本だけ待たせてから queue し、debug snapshot は console だけでなく DOM と localStorage にも残す | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260418-004 | observer coalescing と completed-signature 打ち切り後の focus 復帰 GUI 実測では `mutation-observer` が requested 1 / scheduled 1 に留まり、現時点では `queueCalendarSync()` の性能改善は一区切りとする。次は `同月同曜日` baseline の最小範囲を決め、`IndexedDB` はその実装 scope が固まってから booking_curve persistent cache 単位で再判断する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260418-005 | analyze のランク変更履歴は、次の slice では最新1件サマリーを維持し、table へ `増減` 列だけを追加する最小差分で進める | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260418-006 | トップカレンダーの最終変更表示は、初期 slice では `相対日数のみ / セル最下部のみ / analyze 画面では非表示` を正とし、文字密度を優先して日付文字列や常時表示は入れない | status: applied | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260418-007 | 月次実績画面のカスタム booking curve は、いきなり実装へ入らず、まず対象画面の DOM と API を調査してから最小仕様を決める | status: applied | spec_link: docs/spec_000_overview.md

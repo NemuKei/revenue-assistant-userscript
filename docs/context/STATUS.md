@@ -57,19 +57,21 @@
 
 ## Doing
 
-- `同月同曜日` baseline の最小表示仕様と、それに伴う `IndexedDB` 導入要否を判断する
+- analyze のランク変更履歴 table を、最新1件サマリーのまま `増減` 列だけ追加する最小差分として task 化し、実装順を決める
+- トップカレンダーの最終変更表示を、`相対日数のみ / セル最下部のみ / analyze 画面では非表示` の最小実装として task 化する
+- 月次実績画面のカスタム booking curve は、いきなり実装せず、対象画面の DOM と API の調査タスクから始める
 
 ## Next
 
-1. `同月同曜日` baseline の最小表示仕様と、それに伴う `IndexedDB` 導入要否を判断する
-2. `competitor_prices` を販売設定タブへ埋め込む価値と最小表示仕様を判断する
-3. `団体` 系列を booking curve の標準 UI に含めるかを、実装後の使用感で再判断する
+1. analyze のランク変更履歴 table へ `増減` 列を追加し、既存の右寄せと正負色付けへ揃える
+2. トップカレンダーへ最終変更の相対日数を小さく追加し、analyze 画面では非表示で始める
+3. 月次実績画面の DOM と API を調査し、カスタム booking curve の最小仕様とデータ取得可否を切り分ける
 
 ## Thread Handoff
 
 - 現在の `main` は clean 前提で再開できる。直近の押し込み済み保存点は `4724c0c` `Skip redundant mutation-observer calendar sync flushes` と `0e558f1` `Record focus resume verification and next baseline work`
 - 直近の確認済み verify は `npm run check` 通過と、analyze 画面の月送り・focus 復帰 GUI 実測。focus 復帰では warning / `consistency-invalidate` の増加なし、group row 6 件、rank detail 6 件、`ブッキングカーブを開く` 6 件を確認済み
-- 次スレッドの最初の判断点は 1 つだけでよい。`同月同曜日` baseline を `全体 block のみ` で始めるか、最初から室タイプ card まで含めるかを先に決める
+- 次スレッドの先頭は、baseline 判断へ戻る前に、3 件の優先タスクを小さく切る。順番は `rank overview の増減列`、`トップカレンダーの相対日数表示`、`月次実績画面の DOM/API 調査` を正とする
 - baseline の scope を決める前に `IndexedDB` 実装へ入らない。現状の localStorage 実測は revenue-assistant 分だけで約 210 万文字、715 key、hotel booking_curve 1 key は約 4.5 万文字で、headroom はまだあるが広くはない
 - `IndexedDB` が必要になった場合でも、最初の移行対象は booking_curve persistent cache だけに限定する。`group-room count visibility` や debug snapshot まで同時に移さない
 - 次スレッドの最小 verify は docs 判断だけなら差分確認のみ、実装に入るなら `npm run check`。GUI まで触る場合だけ analyze rank mode で current-ui supplement portal、overall summary、rank overview、room-group table が崩れていないことを再確認する
@@ -78,9 +80,10 @@
 
 - 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、debug snapshot の DOM / localStorage 出力、observer callback の 1 本化待ち、booking_curve persistent cache の最小系列化、interaction 遅延タイマー打ち切り、現行 sales-setting UI 可視判定の追従、synthetic current-ui host による summary / rank / room-group table 再利用、`current_settings` ベースの個別 booking curve capacity 補完まで反映済み
 - 直近の保存点は、この変更を commit した時点の `main`
-- 次スレッドの最初の実装対象は、`同月同曜日` baseline を本当に重ねるか、重ねるならホテル全体だけで始めるか室タイプ card まで含めるか、`comparison_curves` 相当の最小 UI を先に決めるところから始める
+- 次スレッドの最初の実装対象は、baseline へ戻る前に、analyze の rank overview へ `増減` 列を追加する小さな slice と、トップカレンダーの最終変更相対日数表示の小さな slice を切ること
 - 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
-- 次の最小差分候補は、baseline の対象を `全体 block のみ` へ絞った場合に、現行 localStorage 圧縮 payload のままで headroom が足りるかを試算し、足りなければ booking_curve persistent cache だけを IndexedDB へ移す分割案を切ること
+- トップカレンダーの最終変更表示は、初期 slice では `相対日数のみ` とし、セル最下部へ置き、analyze 画面では非表示を正とする
+- 月次実績画面の booking curve は、まず DOM と API の調査だけを 1 本切り、データ源と表示余地が見えるまで実装へ入らない
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
 - 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
 
@@ -112,10 +115,13 @@
 
 Now:
 
-- `同月同曜日` baseline の対象範囲と `IndexedDB` 導入要否を判断する
+- analyze のランク変更履歴 table へ `増減` 列を足す最小差分を実装する
+- トップカレンダーへ最終変更の相対日数を最小表示で足す
+- 月次実績画面の DOM と API を調査する
 
 Next:
 
+- `同月同曜日` baseline の対象範囲と `IndexedDB` 導入要否を判断する
 - `competitor_prices` と `団体` 系列 UI の導入要否を判断する
 
 After Next:
