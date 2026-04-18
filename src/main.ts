@@ -88,6 +88,18 @@ const GROUP_ROOM_VISIBILITY_STORAGE_KEY = `${GROUP_ROOM_STORAGE_PREFIX}calendar-
 const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
 const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
 const CALENDAR_SYNC_DEBUG_STORAGE_KEY = "revenue-assistant:debug:calendar-sync";
+const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
+    `#${GROUP_ROOM_STYLE_ID}`,
+    `[${GROUP_ROOM_BADGE_ATTRIBUTE}]`,
+    `[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`,
+    `[${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}]`,
+    `[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`,
+    `[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`,
+    `[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`,
+    `[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`,
+    `[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`,
+    `[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}]`
+].join(", ");
 
 interface BookingCurvePoint {
     date: string;
@@ -890,7 +902,11 @@ function ensureCalendarObserver(): void {
     }
 
     const root = document.querySelector("#root") ?? document.body;
-    calendarObserver = new MutationObserver(() => {
+    calendarObserver = new MutationObserver((mutations) => {
+        if (mutations.every((mutation) => isRevenueAssistantManagedMutation(mutation))) {
+            return;
+        }
+
         queueCalendarSync({ reason: "mutation-observer" });
     });
     calendarObserver.observe(root, {
@@ -899,6 +915,32 @@ function ensureCalendarObserver(): void {
         childList: true,
         subtree: true
     });
+}
+
+function isRevenueAssistantManagedMutation(mutation: MutationRecord): boolean {
+    if (mutation.type === "attributes") {
+        return isRevenueAssistantManagedNode(mutation.target);
+    }
+
+    if (isRevenueAssistantManagedNode(mutation.target)) {
+        return true;
+    }
+
+    const changedNodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)];
+    return changedNodes.length > 0 && changedNodes.every((node) => isRevenueAssistantManagedNode(node));
+}
+
+function isRevenueAssistantManagedNode(node: Node | null): boolean {
+    if (node === null) {
+        return false;
+    }
+
+    if (node instanceof Element) {
+        return node.matches(REVENUE_ASSISTANT_MANAGED_SELECTOR)
+            || node.closest(REVENUE_ASSISTANT_MANAGED_SELECTOR) !== null;
+    }
+
+    return node.parentElement?.closest(REVENUE_ASSISTANT_MANAGED_SELECTOR) !== null;
 }
 
 function getCalendarSyncSignature(): string {
