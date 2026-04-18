@@ -5246,7 +5246,7 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
-        [${SALES_SETTING_RANK_OVERVIEW_DELTA_ATTRIBUTE}] {
+        [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] [${SALES_SETTING_RANK_OVERVIEW_DELTA_ATTRIBUTE}] {
             text-align: right;
             white-space: nowrap;
         }
