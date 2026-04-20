@@ -3019,12 +3019,12 @@ function ensureGroupRoomToggle(hasCalendar: boolean): void {
         toggleElement.remove();
     }
 
-    if (toggleElement.parentElement === null) {
         if (insertionAnchor !== null) {
-            toolbarElement.insertBefore(toggleElement, insertionAnchor);
-        } else {
+            if (toggleElement.parentElement !== toolbarElement || toggleElement.nextElementSibling !== insertionAnchor) {
+                toolbarElement.insertBefore(toggleElement, insertionAnchor);
+            }
+        } else if (toggleElement.parentElement !== toolbarElement || toolbarElement.lastElementChild !== toggleElement) {
             toolbarElement.append(toggleElement);
-        }
     }
 }
 
