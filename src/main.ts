@@ -1113,6 +1113,18 @@ function scheduleMutationObserverCalendarSync(): void {
     window.requestAnimationFrame(flush);
 }
 
+function resolveGroupRoomToggleInsertionAnchor(
+    segmentedControl: HTMLElement,
+    toolbarElement: HTMLElement
+): HTMLElement | null {
+    const segmentedWrapper = segmentedControl.parentElement;
+    if (segmentedWrapper?.parentElement !== toolbarElement) {
+        return toolbarElement.firstElementChild as HTMLElement | null;
+    }
+
+    return segmentedWrapper.nextElementSibling as HTMLElement | null;
+}
+
 function repairGroupRoomToggleLayout(): boolean {
     if (activeAnalyzeDate !== null) {
         return false;
@@ -1125,18 +1137,18 @@ function repairGroupRoomToggleLayout(): boolean {
 
     const segmentedControl = document.querySelector<HTMLElement>(`[data-testid="segmented-control"]`);
     const toolbarElement = segmentedControl?.parentElement?.parentElement ?? null;
-    if (toolbarElement === null) {
+    if (segmentedControl === null || toolbarElement === null) {
         return false;
     }
 
     const toggleElement = document.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`);
-    const actionButton = Array.from(toolbarElement.querySelectorAll<HTMLButtonElement>("button"))
-        .find((buttonElement) => (buttonElement.textContent ?? "").includes("販売設定を一括反映"));
-    const insertionAnchor = actionButton?.parentElement ?? null;
+    const insertionAnchor = resolveGroupRoomToggleInsertionAnchor(segmentedControl, toolbarElement);
     const isMisaligned = toggleElement !== null
         && toggleElement.parentElement === toolbarElement
-        && insertionAnchor !== null
-        && toggleElement.nextElementSibling !== insertionAnchor;
+        && (
+            (insertionAnchor !== null && toggleElement.nextElementSibling !== insertionAnchor)
+            || (insertionAnchor === null && toolbarElement.lastElementChild !== toggleElement)
+        );
 
     if (toggleElement === null || isMisaligned) {
         ensureGroupRoomToggle(true);
@@ -1154,9 +1166,9 @@ function getGroupRoomToggleLayoutSignature(): string {
     }
 
     const toggleElement = document.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`);
-    const actionButton = Array.from(toolbarElement.querySelectorAll<HTMLButtonElement>("button"))
-        .find((buttonElement) => (buttonElement.textContent ?? "").includes("販売設定を一括反映"));
-    const insertionAnchor = actionButton?.parentElement ?? null;
+    const insertionAnchor = segmentedControl === null
+        ? null
+        : resolveGroupRoomToggleInsertionAnchor(segmentedControl, toolbarElement);
 
     return [
         `toggle:${toggleElement === null ? "0" : "1"}`,
@@ -3066,9 +3078,7 @@ function ensureGroupRoomToggle(hasCalendar: boolean): void {
         return;
     }
 
-    const actionButton = Array.from(toolbarElement.querySelectorAll<HTMLButtonElement>("button"))
-        .find((buttonElement) => (buttonElement.textContent ?? "").includes("販売設定を一括反映"));
-    const insertionAnchor = actionButton?.parentElement ?? null;
+    const insertionAnchor = resolveGroupRoomToggleInsertionAnchor(segmentedControl, toolbarElement);
 
     const toggleElement = existingToggle ?? document.createElement("div");
     toggleElement.setAttribute(GROUP_ROOM_TOGGLE_ATTRIBUTE, "");
@@ -4953,8 +4963,7 @@ function ensureGroupRoomStyles(): void {
             display: inline-flex;
             align-items: center;
             align-self: center;
-            margin: 0 16px 0 20px;
-            margin-right: auto;
+            margin: 0 24px 0 20px;
             pointer-events: auto;
             position: relative;
             z-index: 2;
