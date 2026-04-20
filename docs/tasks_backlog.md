@@ -2,7 +2,7 @@
 
 ## Active Backlog
 
-- 月次実績画面のカスタム booking curve は、いきなり実装せず、対象画面の DOM と API の調査タスクから着手する
+- 月次実績画面の custom booking curve は LT 基準を正とし、予約日基準 chart の派生表示として最小 UI、差し込み位置、`予約日 -> LT` 変換方針を決める
 - `同月同曜日` baseline を `全体 block のみ` で始めるか、室タイプ card まで含めるかを決める
 - 選んだ baseline scope で localStorage headroom が足りるかを試算する
 - localStorage headroom が不足する場合だけ、booking_curve persistent cache 限定で `IndexedDB` 移行案を切る

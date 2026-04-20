@@ -60,15 +60,16 @@
 - 2026-04-20 の月次実績画面 DOM/API 調査で、route は `/monthly-progress/YYYY-MM`、stable selector は `chart-tabs`、`chart-sub-tabs-*`、`chart-content-*`、`table-contents` 系であることを確認済み
 - 月次実績画面の主要 API 候補として、`/api/v1/booking_curve/monthly`、`/api/v1/booking_progress/monthly`、`/api/v1/sales_diffs`、`/api/v1/sales_diffs/performance`、`/api/v3/lincoln/suggest/status` を確認済み
 - 月次実績画面では、宿泊日基準 `販売客室数` への切替で `booking_curve/monthly`、`sales_diffs`、`calendar` が再取得され、予約日基準への切替では `booking_curve/monthly` のみ再取得されることを GUI 実測で確認済み
+- 月次実績画面の custom booking curve は、2026-04-20 時点で `LT基準` を正とし、表示と操作は `予約日基準` chart の派生として設計する判断を確定済み
 
 ## Doing
 
-- 月次実績画面の調査結果をもとに、custom booking curve の最小仕様、表示位置、宿泊日基準 / 予約日基準の初期 scope を切り分ける
+- 月次実績画面の LT 基準 custom booking curve を、予約日基準 chart 派生としてどこへ差し込むか、最小 UI とデータ整形方針を切り分ける
 
 ## Next
 
-1. 月次実績画面の custom booking curve を、chart area 直下の独立 block として入れるか、既存 chart DOM を置き換えずに差し込む形で最小仕様を決める
-2. 宿泊日基準 / 予約日基準の両対応を初手で入れるか、宿泊日基準から段階導入するかを決める
+1. 月次実績画面の custom booking curve を、予約日基準 chart area 直下の独立 block として入れるか、既存 chart DOM を置き換えずに差し込む形で最小仕様を決める
+2. LT 基準の系列化を `/api/v1/booking_curve/monthly` からどう組み立てるか、`予約日 -> LT` の変換方針を決める
 3. `同月同曜日` baseline の最小表示仕様と、それに伴う `IndexedDB` 導入要否を判断する
 4. booking curve の標準 UI に `団体` 系列を含めるかを、実装後の使用感ベースで再判断する
 
@@ -82,6 +83,7 @@
 - 次スレッドの最小 verify は docs 判断だけなら差分確認のみ、実装に入るなら `npm run check`。GUI まで触る場合だけ、対象画面に応じて月次実績画面の DOM/API 実測、または analyze rank mode の current-ui supplement portal、overall summary、rank overview、room-group table 再確認を行う
 - 2026-04-20 の月次実績画面 GUI 調査では、トップ導線の `月次実績` link から `/monthly-progress/2026-04` へ遷移でき、表示中 chart の testid は state に応じて `chart-content-sales-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfReservationBasis` へ切り替わることを確認済み
 - `/api/v1/booking_curve/monthly?year_month=202604` は `sales_based` と `room_based` の 181 点系列、および `updated_at` を返し、月次実績画面の curve 表示の primary data source 候補として使えることを確認済み
+- 月次実績画面の custom booking curve は LT 基準を正とし、宿泊日基準へ寄せず、予約日基準 chart の派生表示として扱う
 
 ## Resume From Here
 
@@ -95,7 +97,7 @@
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
 - 次スレッドの最小 verify は、調査だけなら差分確認または採取メモで足りる。実装に入る場合は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
 - 月次実績画面の初回調査は完了済みで、route は `/monthly-progress/YYYY-MM`、主要 data source は `/api/v1/booking_curve/monthly`、補助候補は `/api/v1/booking_progress/monthly`、`/api/v1/sales_diffs`、`/api/v1/sales_diffs/performance`、`/api/v3/lincoln/suggest/status` と整理できている
-- 次スレッドの最初の判断対象は、既存 Recharts DOM を置き換えずに chart area 直下へ独立 block を差し込むかどうかと、宿泊日基準 / 予約日基準のどちらまでを初手 scope に含めるか
+- 次スレッドの最初の判断対象は、既存 Recharts DOM を置き換えずに予約日基準 chart area 直下へ独立 block を差し込むかどうかと、`予約日 -> LT` の変換をどこで持つか
 
 ## Notes For Next Thread
 
@@ -126,12 +128,13 @@
 - 宿泊日基準 `売上` の visible chart は `chart-content-sales-dateOfStayBasis`、宿泊日基準 `販売客室数` は `chart-content-numberOfRoomsSold-dateOfStayBasis`、予約日基準 `販売客室数` は `chart-content-numberOfRoomsSold-dateOfReservationBasis` だった
 - 宿泊日基準 `販売客室数` への切替では `booking_curve/monthly`、`sales_diffs`、`calendar` が再取得され、予約日基準への切替では `booking_curve/monthly` のみ再取得された
 - `/api/v1/booking_curve/monthly` は `sales_based` と `room_based` の 181 点系列を返す。各点は `date / this_year_sum / last_year_sum` を持ち、`updated_at` も返る
+- custom booking curve の基準軸は LT を正とする。月次実績画面では予約日基準 chart の派生表示として扱い、宿泊日基準を初手の土台にはしない
 
 ## Remaining Task Triage
 
 Now:
 
-- 月次実績画面の custom booking curve の最小仕様、表示位置、宿泊日基準 / 予約日基準の初期 scope を決める
+- 月次実績画面の LT 基準 custom booking curve の最小仕様、表示位置、`予約日 -> LT` 変換方針を決める
 
 Next:
 

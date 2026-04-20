@@ -11,14 +11,14 @@
 - userscript の TypeScript 開発基盤
 - `dist/*.user.js` の生成と配布
 - Chrome remote debugging と CDP 接続の確認導線
-- レベニューアシスタント top / analyze 画面の拡張実装
+- レベニューアシスタント top / analyze / monthly-progress 画面の拡張実装または拡張調査
 - userscript の運用に必要な最小限の文書正本
 
 ## Out Of Scope
 
 - 外部サーバーや外部保存先との連携
 - Playwright を使った本格的な end-to-end テストの常設
-- top / analyze 画面以外の拡張仕様
+- top / analyze / monthly-progress 画面以外の拡張仕様
 - userscript 以外の Chrome 拡張配布形態
 
 ## Current Public Behavior
@@ -34,6 +34,8 @@
 - `booking_curve` 系の取得結果を `最終データ更新` 日付と施設単位で分離して `localStorage` に保持し、起動時、ページ復帰時、フォーカス復帰時に整合チェックを行って異常時は再同期する
 
 analyze 画面の詳細仕様は `docs/spec_001_analyze_expansion.md` を正本とする。
+
+monthly-progress 画面の custom booking curve は調査と仕様整理の段階であり、現時点の公開挙動にはまだ含めない。
 
 ## Architecture
 
