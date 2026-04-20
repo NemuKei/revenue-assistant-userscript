@@ -1,4 +1,12 @@
-import { persistMonthlyBookingCurveSnapshot } from "./monthlyProgressIndexedDb";
+import {
+    persistMonthlyBookingCurveSnapshot,
+    readLatestMonthlyBookingCurveSnapshot
+} from "./monthlyProgressIndexedDb";
+import {
+    buildMonthlyProgressLeadTimeSeries,
+    getYearMonthBounds,
+    summarizeMonthlyProgressLeadTimeSeries
+} from "./monthlyProgressLeadTime";
 
 const MONTHLY_PROGRESS_ROUTE_PATTERN = /^\/monthly-progress\/(\d{4})-(\d{2})$/;
 const MONTHLY_PROGRESS_FEATURE_STORAGE_KEY = "revenue-assistant:feature:monthly-progress:enabled";
@@ -148,6 +156,37 @@ export function syncMonthlyProgressPage(options: MonthlyProgressSyncOptions): vo
                     error
                 });
             });
+
+            void readLatestMonthlyBookingCurveSnapshot(facilityCacheKey, options.routeState.yearMonth)
+                .then((snapshot) => {
+                    if (snapshot === undefined) {
+                        return;
+                    }
+
+                    const monthBounds = getYearMonthBounds(snapshot.yearMonth);
+                    if (monthBounds === null) {
+                        return;
+                    }
+
+                    const roomSeries = buildMonthlyProgressLeadTimeSeries(snapshot.payload, "room", monthBounds.firstDateKey);
+                    const salesSeries = buildMonthlyProgressLeadTimeSeries(snapshot.payload, "sales", monthBounds.firstDateKey);
+                    console.info(`[${options.scriptName}] monthly-progress LT preview ready`, {
+                        href: options.href,
+                        yearMonth: options.routeState.yearMonth,
+                        snapshotBatchDateKey: snapshot.batchDateKey,
+                        anchorDateKey: monthBounds.firstDateKey,
+                        room: summarizeMonthlyProgressLeadTimeSeries(roomSeries),
+                        sales: summarizeMonthlyProgressLeadTimeSeries(salesSeries)
+                    });
+                })
+                .catch((error: unknown) => {
+                    console.warn(`[${options.scriptName}] failed to prepare monthly-progress LT preview`, {
+                        href: options.href,
+                        yearMonth: options.routeState.yearMonth,
+                        facilityCacheKey,
+                        error
+                    });
+                });
 
             console.info(`[${options.scriptName}] monthly-progress route ready`, {
                 href: options.href,

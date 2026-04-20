@@ -27,3 +27,4 @@
 - D-20260420-003 | 月次実績画面の custom booking curve は別 userscript へ分離せず、既存 userscript のまま進める。既存 top / analyze の完成機能を巻き込まないよう、route 単位の起動境界、monthly-progress 専用 storage namespace、描画責務の局所化を前提に実装する | status: applied | spec_link: docs/spec_000_overview.md
 - D-20260420-004 | 月次実績画面は UI 実装より先に、同一 userscript 内の独立 slice として土台を切る。`/monthly-progress` route では既存 top / analyze の observer / sync を停止し、monthly-progress 側は kill switch と namespaced storage adapter を先に持つ | status: applied | spec_link: docs/spec_000_overview.md
 - D-20260420-005 | 月次実績画面の `/api/v1/booking_curve/monthly` は、取り逃がし防止のため batch-date 単位の write-only snapshot を IndexedDB へ保存し始める。初期 slice では read path を切り替えず、現行表示は API 正本のまま維持する | status: applied | spec_link: docs/spec_000_overview.md
+- D-20260420-006 | 月次実績画面の `予約日 -> LT` 変換は、まず `booking_curve/monthly` snapshot を month-start anchor の LT 系列へ落とす純粋関数として切る。初期 slice では preview と将来の UI 接続点の固定に使い、既存表示はまだ差し替えない | status: applied | spec_link: docs/spec_000_overview.md

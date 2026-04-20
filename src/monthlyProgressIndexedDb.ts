@@ -16,20 +16,20 @@ interface MonthlyBookingCurveResponse {
     updated_at?: string | null;
 }
 
-interface MonthlyBookingCurveSnapshotPoint {
+export interface MonthlyBookingCurveSnapshotPoint {
     date: string;
     thisYearSum: number | null;
     lastYearSum: number | null;
 }
 
-interface MonthlyBookingCurveSnapshotPayload {
+export interface MonthlyBookingCurveSnapshotPayload {
     yearMonth: string;
     updatedAt: string | null;
     salesBased: MonthlyBookingCurveSnapshotPoint[];
     roomBased: MonthlyBookingCurveSnapshotPoint[];
 }
 
-interface MonthlyBookingCurveSnapshotRecord {
+export interface MonthlyBookingCurveSnapshotRecord {
     snapshotKey: string;
     facilityCacheKey: string;
     yearMonth: string;
@@ -65,6 +65,19 @@ export function persistMonthlyBookingCurveSnapshot(options: PersistMonthlyBookin
 
     pendingMonthlyBookingCurveSnapshotWrites.set(snapshotKey, request);
     return request;
+}
+
+export async function readLatestMonthlyBookingCurveSnapshot(
+    facilityCacheKey: string,
+    yearMonth: string
+): Promise<MonthlyBookingCurveSnapshotRecord | undefined> {
+    return withMonthlyBookingCurveStore("readonly", async (store) => {
+        const index = store.index("facility-year-month");
+        const snapshots = await getSnapshotRecordsByFacilityAndYearMonth(index, facilityCacheKey, yearMonth);
+        return snapshots
+            .slice()
+            .sort((left, right) => right.batchDateKey.localeCompare(left.batchDateKey) || right.fetchedAt.localeCompare(left.fetchedAt))[0];
+    });
 }
 
 function buildMonthlyBookingCurveSnapshotKey(
@@ -217,6 +230,24 @@ function getSnapshotRecord(
 
         request.onerror = () => {
             reject(request.error ?? new Error("failed to read monthly booking-curve snapshot"));
+        };
+    });
+}
+
+function getSnapshotRecordsByFacilityAndYearMonth(
+    index: IDBIndex,
+    facilityCacheKey: string,
+    yearMonth: string
+): Promise<MonthlyBookingCurveSnapshotRecord[]> {
+    return new Promise((resolve, reject) => {
+        const request = index.getAll(IDBKeyRange.only([facilityCacheKey, yearMonth]));
+
+        request.onsuccess = () => {
+            resolve((request.result as MonthlyBookingCurveSnapshotRecord[] | undefined) ?? []);
+        };
+
+        request.onerror = () => {
+            reject(request.error ?? new Error("failed to read monthly booking-curve snapshots by facility/yearMonth"));
         };
     });
 }

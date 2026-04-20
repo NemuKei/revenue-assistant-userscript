@@ -64,15 +64,16 @@
 - 月次実績画面の custom booking curve は別 userscript へ分離せず、既存 userscript のまま進める判断を確定済み。既存 top / analyze の完成機能を巻き込まないことを優先し、route 単位の起動境界と monthly-progress 専用 storage namespace を前提にする
 - 月次実績画面向けに route-scoped slice の土台を追加し、`/monthly-progress/YYYY-MM` では既存 top / analyze の observer / sync を停止しつつ、monthly-progress 専用 kill switch と storage namespace を先に切る実装を反映済み
 - 月次実績画面の `/api/v1/booking_curve/monthly` は、取り逃がし防止のため facility + yearMonth + batch-date 単位で write-only snapshot を IndexedDB へ保存し始めた。read path はまだ切り替えず、現行表示は API 正本のまま維持する
+- 月次実績画面の `予約日 -> LT` 変換は、保存済み snapshot を month-start anchor の LT 系列へ落とす純粋関数として切り出し、route 初期化時に preview summary を console へ出せる状態まで追加済み
 
 ## Doing
 
-- 月次実績画面の LT 基準 custom booking curve を、追加済み route-scoped slice と IndexedDB write-only snapshot の上で予約日基準 chart 派生としてどこへ差し込むか、最小 UI とデータ整形方針を切り分ける
+- 月次実績画面の LT 基準 custom booking curve を、追加済み route-scoped slice、IndexedDB write-only snapshot、month-start anchor の LT 変換関数の上で予約日基準 chart 派生としてどこへ差し込むか、最小 UI とデータ整形方針を切り分ける
 
 ## Next
 
 1. 月次実績画面の custom booking curve を、予約日基準 chart area 直下の独立 block として入れるか、既存 chart DOM を置き換えずに差し込む形で最小仕様を決める
-2. LT 基準の系列化を `/api/v1/booking_curve/monthly` からどう組み立てるか、`予約日 -> LT` の変換方針を決める
+2. 追加済み month-start anchor の `予約日 -> LT` 変換を、どの UI block と目盛り仕様へ接続するか決める
 3. 追加済み monthly-progress 専用起動境界、storage namespace、kill switch を前提に、verify 境界と DOM 差し込み責務を決める
 4. write-only で保存し始めた IndexedDB snapshot を、どの時点で baseline や過去比較の read path に繋ぐか判断する
 5. booking curve の標準 UI に `団体` 系列を含めるかを、実装後の使用感ベースで再判断する
@@ -84,6 +85,7 @@
 - 次スレッドの先頭は、トップカレンダー修正済み前提で、`月次実績画面の DOM/API 調査` を最優先にする
 - 現状の localStorage 実測は revenue-assistant 分だけで約 210 万文字、715 key、hotel booking_curve 1 key は約 4.5 万文字で、headroom はまだあるが広くはない
 - `IndexedDB` は monthly-progress の `/api/v1/booking_curve/monthly` snapshot を write-only で保存する用途から先に使い始めた。設定値、toggle、debug snapshot は引き続き localStorage を維持する
+- `src/monthlyProgressLeadTime.ts` を追加し、保存済み snapshot を month-start anchor の LT 系列へ変換する純粋関数と summary helper を切り出した。現時点では console preview までで、UI の read path はまだ切り替えない
 - 次スレッドの最小 verify は docs 判断だけなら差分確認のみ、実装に入るなら `npm run check`。GUI まで触る場合だけ、対象画面に応じて月次実績画面の DOM/API 実測、または analyze rank mode の current-ui supplement portal、overall summary、rank overview、room-group table 再確認を行う
 - 2026-04-20 の月次実績画面 GUI 調査では、トップ導線の `月次実績` link から `/monthly-progress/2026-04` へ遷移でき、表示中 chart の testid は state に応じて `chart-content-sales-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfReservationBasis` へ切り替わることを確認済み
 - `/api/v1/booking_curve/monthly?year_month=202604` は `sales_based` と `room_based` の 181 点系列、および `updated_at` を返し、月次実績画面の curve 表示の primary data source 候補として使えることを確認済み
@@ -91,6 +93,7 @@
 - 月次実績画面の custom booking curve は別 userscript へ分離せず、同一 userscript 上で進める。その代わり、既存 top / analyze 完成機能を巻き込まないよう、起動条件、storage、描画責務を monthly-progress 側へ閉じる
 - `src/monthlyProgress.ts` に monthly-progress 専用 route-scoped scaffold を追加し、main 側は route dispatch のみで monthly-progress へ渡す構造に寄せた。`/monthly-progress` では既存 observer / sync を停止し、kill switch と namespaced storage adapter を先に持つ
 - `src/monthlyProgressIndexedDb.ts` を追加し、monthly-progress の `booking_curve/monthly` を facility + yearMonth + batch-date 単位の snapshot として IndexedDB へ write-only 保存する。初期 slice ではまだ UI の read path には使わない
+- `src/monthlyProgress.ts` は route 初期化時に最新 snapshot を読み、month-start anchor の LT preview summary を console.info へ出せる。UI 未接続のまま、変換責務だけを先に固定する
 
 ## Resume From Here
 
@@ -105,7 +108,7 @@
 - 次スレッドの最小 verify は、調査だけなら差分確認または採取メモで足りる。実装に入る場合は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
 - 月次実績画面の初回調査は完了済みで、route は `/monthly-progress/YYYY-MM`、主要 data source は `/api/v1/booking_curve/monthly`、補助候補は `/api/v1/booking_progress/monthly`、`/api/v1/sales_diffs`、`/api/v1/sales_diffs/performance`、`/api/v3/lincoln/suggest/status` と整理できている
 - 次スレッドの最初の判断対象は、既存 Recharts DOM を置き換えずに予約日基準 chart area 直下へ独立 block を差し込むかどうかと、`予約日 -> LT` の変換をどこで持つか
-- 月次実績画面の実装は同一 userscript 上で進める前提のまま、monthly-progress 専用の起動境界、storage namespace、kill switch、write-only IndexedDB snapshot までは先に切ってある。次スレッドでは、その上に最小 UI と `予約日 -> LT` 変換を積む
+- 月次実績画面の実装は同一 userscript 上で進める前提のまま、monthly-progress 専用の起動境界、storage namespace、kill switch、write-only IndexedDB snapshot、month-start anchor の LT 変換関数までは先に切ってある。次スレッドでは、その上に最小 UI を積む
 
 ## Notes For Next Thread
 
@@ -143,7 +146,7 @@
 
 Now:
 
-- 月次実績画面の LT 基準 custom booking curve の最小仕様、表示位置、`予約日 -> LT` 変換方針を、追加済み route-scoped slice と IndexedDB snapshot の上で決める
+- 月次実績画面の LT 基準 custom booking curve の最小仕様、表示位置、目盛り仕様を、追加済み route-scoped slice と IndexedDB snapshot / LT 変換関数の上で決める
 
 Next:
 
