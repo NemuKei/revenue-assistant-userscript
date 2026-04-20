@@ -536,6 +536,7 @@ function syncPage(): void {
     const nextHref = window.location.href;
     const previousAnalyzeDate = activeAnalyzeDate;
     const selectedDate = getAnalyzeDate(window.location.pathname);
+    const returnedToCalendarTop = previousAnalyzeDate !== null && selectedDate === null;
 
     activeAnalyzeDate = selectedDate;
 
@@ -549,6 +550,10 @@ function syncPage(): void {
     if (selectedDate === null) {
         clearInteractionSyncTimeouts();
         clearConsistencyCheckTimeout();
+
+        if (returnedToCalendarTop) {
+            scheduleInteractionSync();
+        }
 
         if (nextHref !== activeHref) {
             activeHref = nextHref;
