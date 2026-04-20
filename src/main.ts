@@ -1095,6 +1095,11 @@ function scheduleMutationObserverCalendarSync(): void {
             return;
         }
 
+        if (repairGroupRoomToggleLayout()) {
+            mutationObserverSyncQueued = false;
+            return;
+        }
+
         const nextSignature = getCalendarSyncSignature();
         mutationObserverSyncQueued = false;
 
@@ -1106,6 +1111,39 @@ function scheduleMutationObserverCalendarSync(): void {
     };
 
     window.requestAnimationFrame(flush);
+}
+
+function repairGroupRoomToggleLayout(): boolean {
+    if (activeAnalyzeDate !== null) {
+        return false;
+    }
+
+    const cells = collectMonthlyCalendarCells();
+    if (cells.length === 0) {
+        return false;
+    }
+
+    const segmentedControl = document.querySelector<HTMLElement>(`[data-testid="segmented-control"]`);
+    const toolbarElement = segmentedControl?.parentElement?.parentElement ?? null;
+    if (toolbarElement === null) {
+        return false;
+    }
+
+    const toggleElement = document.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`);
+    const actionButton = Array.from(toolbarElement.querySelectorAll<HTMLButtonElement>("button"))
+        .find((buttonElement) => (buttonElement.textContent ?? "").includes("販売設定を一括反映"));
+    const insertionAnchor = actionButton?.parentElement ?? null;
+    const isMisaligned = toggleElement !== null
+        && toggleElement.parentElement === toolbarElement
+        && insertionAnchor !== null
+        && toggleElement.nextElementSibling !== insertionAnchor;
+
+    if (toggleElement === null || isMisaligned) {
+        ensureGroupRoomToggle(true);
+        return true;
+    }
+
+    return false;
 }
 
 function getGroupRoomToggleLayoutSignature(): string {
