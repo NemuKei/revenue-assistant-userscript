@@ -398,6 +398,7 @@ let resolvedFacilityCacheKey: string | null = null;
 let resolvedFacilityLabel: string | null = null;
 let facilityCacheKeyPromise: Promise<string> | null = null;
 let activeMonthlyProgressYearMonth: string | null = null;
+let activeMonthlyProgressBatchDateKey: string | null = null;
 
 function boot(): void {
     console.info(`[${SCRIPT_NAME}] initialized`, {
@@ -545,13 +546,21 @@ function syncPage(): void {
     const selectedDate = getAnalyzeDate(window.location.pathname);
     const monthlyProgressRouteState = getMonthlyProgressRouteState(window.location.pathname);
     const previousMonthlyProgressYearMonth = activeMonthlyProgressYearMonth;
+    const previousMonthlyProgressBatchDateKey = activeMonthlyProgressBatchDateKey;
     const returnedToCalendarTop = previousAnalyzeDate !== null && selectedDate === null;
 
     activeAnalyzeDate = selectedDate;
     activeMonthlyProgressYearMonth = monthlyProgressRouteState?.yearMonth ?? null;
+    activeMonthlyProgressBatchDateKey = monthlyProgressRouteState === null ? null : getCurrentBatchDateKey();
 
     if (monthlyProgressRouteState !== null) {
-        handleMonthlyProgressRoute(nextHref, monthlyProgressRouteState, previousMonthlyProgressYearMonth);
+        handleMonthlyProgressRoute(
+            nextHref,
+            monthlyProgressRouteState,
+            previousMonthlyProgressYearMonth,
+            previousMonthlyProgressBatchDateKey,
+            activeMonthlyProgressBatchDateKey
+        );
         return;
     }
 
@@ -594,15 +603,21 @@ function syncPage(): void {
 function handleMonthlyProgressRoute(
     nextHref: string,
     routeState: ReturnType<typeof getMonthlyProgressRouteState>,
-    previousYearMonth: string | null
+    previousYearMonth: string | null,
+    previousBatchDateKey: string | null,
+    batchDateKey: string | null
 ): void {
     if (routeState === null) {
         return;
     }
 
+    if (batchDateKey === null) {
+        return;
+    }
+
     suspendCalendarFeatures();
 
-    if (nextHref === activeHref && routeState.yearMonth === previousYearMonth) {
+    if (nextHref === activeHref && routeState.yearMonth === previousYearMonth && batchDateKey === previousBatchDateKey) {
         return;
     }
 
@@ -611,6 +626,7 @@ function handleMonthlyProgressRoute(
         scriptName: SCRIPT_NAME,
         href: nextHref,
         routeState,
+        batchDateKey,
         resolveFacilityCacheKey: resolveCurrentFacilityCacheKey
     });
 }

@@ -1,3 +1,5 @@
+import { persistMonthlyBookingCurveSnapshot } from "./monthlyProgressIndexedDb";
+
 const MONTHLY_PROGRESS_ROUTE_PATTERN = /^\/monthly-progress\/(\d{4})-(\d{2})$/;
 const MONTHLY_PROGRESS_FEATURE_STORAGE_KEY = "revenue-assistant:feature:monthly-progress:enabled";
 const MONTHLY_PROGRESS_STORAGE_PREFIX = "revenue-assistant:monthly-progress:v1:";
@@ -20,6 +22,7 @@ interface MonthlyProgressSyncOptions {
     scriptName: string;
     href: string;
     routeState: MonthlyProgressRouteState;
+    batchDateKey: string;
     resolveFacilityCacheKey: () => Promise<string>;
 }
 
@@ -108,7 +111,7 @@ export function createMonthlyProgressStorageAdapter(facilityCacheKey: string): M
 
 export function syncMonthlyProgressPage(options: MonthlyProgressSyncOptions): void {
     const enabled = isMonthlyProgressFeatureEnabled();
-    const nextSignature = `${options.href}:${options.routeState.yearMonth}:${enabled ? "enabled" : "disabled"}`;
+    const nextSignature = `${options.href}:${options.routeState.yearMonth}:${options.batchDateKey}:${enabled ? "enabled" : "disabled"}`;
     if (nextSignature === activeMonthlyProgressSignature) {
         return;
     }
@@ -131,9 +134,25 @@ export function syncMonthlyProgressPage(options: MonthlyProgressSyncOptions): vo
             }
 
             const storage = createMonthlyProgressStorageAdapter(facilityCacheKey);
+            void persistMonthlyBookingCurveSnapshot({
+                scriptName: options.scriptName,
+                facilityCacheKey,
+                yearMonth: options.routeState.yearMonth,
+                batchDateKey: options.batchDateKey
+            }).catch((error: unknown) => {
+                console.warn(`[${options.scriptName}] failed to persist monthly-progress booking-curve snapshot`, {
+                    href: options.href,
+                    yearMonth: options.routeState.yearMonth,
+                    batchDateKey: options.batchDateKey,
+                    facilityCacheKey,
+                    error
+                });
+            });
+
             console.info(`[${options.scriptName}] monthly-progress route ready`, {
                 href: options.href,
                 yearMonth: options.routeState.yearMonth,
+                batchDateKey: options.batchDateKey,
                 facilityCacheKey,
                 storageNamespace: storage.namespacePrefix,
                 killSwitchStorageKey: MONTHLY_PROGRESS_FEATURE_STORAGE_KEY

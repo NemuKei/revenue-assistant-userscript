@@ -26,3 +26,4 @@
 - D-20260420-002 | 月次実績画面の custom booking curve は LT 基準を正とし、宿泊日基準の派生ではなく、予約日基準 chart を土台にした派生表示として設計する | status: applied | spec_link: docs/spec_000_overview.md
 - D-20260420-003 | 月次実績画面の custom booking curve は別 userscript へ分離せず、既存 userscript のまま進める。既存 top / analyze の完成機能を巻き込まないよう、route 単位の起動境界、monthly-progress 専用 storage namespace、描画責務の局所化を前提に実装する | status: applied | spec_link: docs/spec_000_overview.md
 - D-20260420-004 | 月次実績画面は UI 実装より先に、同一 userscript 内の独立 slice として土台を切る。`/monthly-progress` route では既存 top / analyze の observer / sync を停止し、monthly-progress 側は kill switch と namespaced storage adapter を先に持つ | status: applied | spec_link: docs/spec_000_overview.md
+- D-20260420-005 | 月次実績画面の `/api/v1/booking_curve/monthly` は、取り逃がし防止のため batch-date 単位の write-only snapshot を IndexedDB へ保存し始める。初期 slice では read path を切り替えず、現行表示は API 正本のまま維持する | status: applied | spec_link: docs/spec_000_overview.md
