@@ -7,6 +7,7 @@ import {
     buildMonthlyProgressLeadTimeSeries,
     getYearMonthBounds,
     summarizeMonthlyProgressLeadTimeSeries,
+    type MonthlyProgressLeadTimePoint,
     type MonthlyProgressLeadTimeSeries
 } from "./monthlyProgressLeadTime";
 import { LEAD_TIME_BUCKET_TICKS, LEAD_TIME_BUCKET_VISIBLE_TICKS } from "./leadTimeBuckets";
@@ -16,11 +17,15 @@ const MONTHLY_PROGRESS_FEATURE_STORAGE_KEY = "revenue-assistant:feature:monthly-
 const MONTHLY_PROGRESS_STORAGE_PREFIX = "revenue-assistant:monthly-progress:v1:";
 const MONTHLY_PROGRESS_PREVIEW_STYLE_ID = "revenue-assistant-monthly-progress-preview-style";
 const MONTHLY_PROGRESS_PREVIEW_ROOT_ATTRIBUTE = "data-ra-monthly-progress-preview-root";
-const MONTHLY_PROGRESS_PREVIEW_CARD_ATTRIBUTE = "data-ra-monthly-progress-preview-card";
-const MONTHLY_PROGRESS_PREVIEW_LABEL_ATTRIBUTE = "data-ra-monthly-progress-preview-label";
-const MONTHLY_PROGRESS_PREVIEW_VALUE_ATTRIBUTE = "data-ra-monthly-progress-preview-value";
 const MONTHLY_PROGRESS_PREVIEW_META_ATTRIBUTE = "data-ra-monthly-progress-preview-meta";
 const MONTHLY_PROGRESS_PREVIEW_NOTE_ATTRIBUTE = "data-ra-monthly-progress-preview-note";
+const MONTHLY_PROGRESS_PREVIEW_LEGEND_ATTRIBUTE = "data-ra-monthly-progress-preview-legend";
+const MONTHLY_PROGRESS_PREVIEW_LEGEND_ITEM_ATTRIBUTE = "data-ra-monthly-progress-preview-legend-item";
+const MONTHLY_PROGRESS_PREVIEW_SUMMARY_ATTRIBUTE = "data-ra-monthly-progress-preview-summary";
+const MONTHLY_PROGRESS_PREVIEW_SUMMARY_LABEL_ATTRIBUTE = "data-ra-monthly-progress-preview-summary-label";
+const MONTHLY_PROGRESS_PREVIEW_SUMMARY_VALUE_ATTRIBUTE = "data-ra-monthly-progress-preview-summary-value";
+const MONTHLY_PROGRESS_PREVIEW_CANVAS_ATTRIBUTE = "data-ra-monthly-progress-preview-canvas";
+const MONTHLY_PROGRESS_PREVIEW_SVG_ATTRIBUTE = "data-ra-monthly-progress-preview-svg";
 const MONTHLY_PROGRESS_RESERVATION_CHART_TEST_ID = "chart-content-numberOfRoomsSold-dateOfReservationBasis";
 
 export interface MonthlyProgressRouteState {
@@ -385,7 +390,7 @@ function renderMonthlyProgressPreview(options: {
     root.setAttribute(MONTHLY_PROGRESS_PREVIEW_ROOT_ATTRIBUTE, "");
 
     const heading = document.createElement("h3");
-    heading.textContent = "LTブッキングカーブ preview";
+    heading.textContent = "LTブッキングカーブ";
 
     const meta = document.createElement("p");
     meta.setAttribute(MONTHLY_PROGRESS_PREVIEW_META_ATTRIBUTE, "");
@@ -393,35 +398,292 @@ function renderMonthlyProgressPreview(options: {
 
     const note = document.createElement("p");
     note.setAttribute(MONTHLY_PROGRESS_PREVIEW_NOTE_ATTRIBUTE, "");
-    note.textContent = "日別と同じ LT バケット集約。現年 / 前年同時点の販売客室数を表示。";
+    note.textContent = "日別と同じ LT バケット集約で、現年と前年同時点の販売客室数を 2 本線で表示。";
 
-    const grid = document.createElement("div");
-    for (const point of visiblePoints) {
-        const card = document.createElement("div");
-        card.setAttribute(MONTHLY_PROGRESS_PREVIEW_CARD_ATTRIBUTE, "");
+    const legend = document.createElement("div");
+    legend.setAttribute(MONTHLY_PROGRESS_PREVIEW_LEGEND_ATTRIBUTE, "");
+    legend.replaceChildren(
+        createMonthlyProgressLegendItem("現年", "this-year"),
+        createMonthlyProgressLegendItem("前年", "last-year")
+    );
 
-        const label = document.createElement("div");
-        label.setAttribute(MONTHLY_PROGRESS_PREVIEW_LABEL_ATTRIBUTE, "");
-        label.textContent = point === null || point.tick === "ACT" ? "ACT" : `${point.tick}日前`;
+    const summary = document.createElement("div");
+    summary.setAttribute(MONTHLY_PROGRESS_PREVIEW_SUMMARY_ATTRIBUTE, "");
+    summary.replaceChildren(
+        createMonthlyProgressSummaryItem("ACT 現年", formatMetricValue(resolveLeadTimeSeriesActValue(options.roomSeries, "thisYear"))),
+        createMonthlyProgressSummaryItem("ACT 前年", formatMetricValue(resolveLeadTimeSeriesActValue(options.roomSeries, "lastYear"))),
+        createMonthlyProgressSummaryItem("終点", resolveLeadTimeSeriesActDateLabel(options.roomSeries))
+    );
 
-        const value = document.createElement("div");
-        value.setAttribute(MONTHLY_PROGRESS_PREVIEW_VALUE_ATTRIBUTE, "");
-        value.textContent = point === null ? "- / -" : `${formatMetricValue(point.thisYearValue)} / ${formatMetricValue(point.lastYearValue)}`;
+    const canvas = document.createElement("div");
+    canvas.setAttribute(MONTHLY_PROGRESS_PREVIEW_CANVAS_ATTRIBUTE, "");
+    canvas.replaceChildren(createMonthlyProgressPreviewSvg(visiblePoints));
 
-        const sub = document.createElement("div");
-        sub.setAttribute(MONTHLY_PROGRESS_PREVIEW_META_ATTRIBUTE, "");
-        sub.textContent = point === null || point.targetDateKey === null ? "データなし" : `end ${formatDateKey(point.targetDateKey)}`;
-
-        card.replaceChildren(label, value, sub);
-        grid.append(card);
-    }
-
-    root.replaceChildren(heading, meta, note, grid);
+    root.replaceChildren(heading, meta, note, legend, summary, canvas);
 
     if (root.parentElement !== chartGroup || root.previousElementSibling !== chartContainer) {
         root.remove();
         chartContainer.insertAdjacentElement("afterend", root);
     }
+}
+
+function createMonthlyProgressLegendItem(label: string, tone: "this-year" | "last-year"): HTMLSpanElement {
+    const item = document.createElement("span");
+    item.setAttribute(MONTHLY_PROGRESS_PREVIEW_LEGEND_ITEM_ATTRIBUTE, tone);
+    item.textContent = label;
+    return item;
+}
+
+function createMonthlyProgressSummaryItem(label: string, value: string): HTMLDivElement {
+    const item = document.createElement("div");
+    const labelElement = document.createElement("div");
+    labelElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_SUMMARY_LABEL_ATTRIBUTE, "");
+    labelElement.textContent = label;
+
+    const valueElement = document.createElement("div");
+    valueElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_SUMMARY_VALUE_ATTRIBUTE, "");
+    valueElement.textContent = value;
+
+    item.append(labelElement, valueElement);
+    return item;
+}
+
+function createMonthlyProgressPreviewSvg(points: Array<MonthlyProgressLeadTimePoint | null>): SVGSVGElement {
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNamespace, "svg");
+    svg.setAttribute(MONTHLY_PROGRESS_PREVIEW_SVG_ATTRIBUTE, "");
+    svg.setAttribute("viewBox", "0 0 720 220");
+    svg.setAttribute("role", "img");
+    svg.setAttribute("aria-label", "月次実績 LT ブッキングカーブ");
+
+    const width = 720;
+    const height = 220;
+    const paddingLeft = 46;
+    const paddingRight = 16;
+    const paddingTop = 16;
+    const paddingBottom = 34;
+    const plotWidth = width - paddingLeft - paddingRight;
+    const plotHeight = height - paddingTop - paddingBottom;
+    const maxValue = getMonthlyProgressPreviewRoundedMaxValue(points);
+    const safeMaxValue = Math.max(1, maxValue);
+    const baselineY = height - paddingBottom;
+    const samples = points.map((point, index) => {
+        const x = points.length === 1
+            ? paddingLeft
+            : paddingLeft + ((plotWidth * index) / Math.max(1, points.length - 1));
+        const thisYearY = point?.thisYearValue === null || point?.thisYearValue === undefined
+            ? null
+            : paddingTop + ((1 - (point.thisYearValue / safeMaxValue)) * plotHeight);
+        const lastYearY = point?.lastYearValue === null || point?.lastYearValue === undefined
+            ? null
+            : paddingTop + ((1 - (point.lastYearValue / safeMaxValue)) * plotHeight);
+        return {
+            point,
+            x,
+            thisYearY,
+            lastYearY
+        };
+    });
+
+    for (const ratio of [0, 0.25, 0.5, 0.75, 1]) {
+        const y = paddingTop + ((1 - ratio) * plotHeight);
+        const line = document.createElementNS(svgNamespace, "line");
+        line.setAttribute("x1", String(paddingLeft));
+        line.setAttribute("x2", String(width - paddingRight));
+        line.setAttribute("y1", y.toFixed(2));
+        line.setAttribute("y2", y.toFixed(2));
+        line.setAttribute("stroke", ratio === 0 ? "#cfd8e7" : "#e7edf7");
+        line.setAttribute("stroke-width", "1");
+        svg.append(line);
+
+        const label = document.createElementNS(svgNamespace, "text");
+        label.setAttribute("x", String(paddingLeft - 6));
+        label.setAttribute("y", String(y + 3));
+        label.setAttribute("text-anchor", "end");
+        label.setAttribute("fill", "#8a9cb4");
+        label.setAttribute("font-size", "10");
+        label.textContent = formatMetricValue(Math.round(safeMaxValue * ratio));
+        svg.append(label);
+    }
+
+    const xAxis = document.createElementNS(svgNamespace, "line");
+    xAxis.setAttribute("x1", String(paddingLeft));
+    xAxis.setAttribute("x2", String(width - paddingRight));
+    xAxis.setAttribute("y1", String(baselineY));
+    xAxis.setAttribute("y2", String(baselineY));
+    xAxis.setAttribute("stroke", "#cfd8e7");
+    xAxis.setAttribute("stroke-width", "1");
+    svg.append(xAxis);
+
+    const thisYearAreaPath = buildMonthlyProgressPreviewAreaPath(samples, baselineY, "thisYearY");
+    if (thisYearAreaPath !== "") {
+        const area = document.createElementNS(svgNamespace, "path");
+        area.setAttribute("d", thisYearAreaPath);
+        area.setAttribute("fill", "rgba(31, 95, 191, 0.10)");
+        svg.append(area);
+    }
+
+    const lastYearPath = buildMonthlyProgressPreviewLinePath(samples, "lastYearY");
+    if (lastYearPath !== "") {
+        const path = document.createElementNS(svgNamespace, "path");
+        path.setAttribute("d", lastYearPath);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "#93a4b8");
+        path.setAttribute("stroke-width", "3");
+        path.setAttribute("stroke-linejoin", "round");
+        path.setAttribute("stroke-linecap", "round");
+        svg.append(path);
+    }
+
+    const thisYearPath = buildMonthlyProgressPreviewLinePath(samples, "thisYearY");
+    if (thisYearPath !== "") {
+        const path = document.createElementNS(svgNamespace, "path");
+        path.setAttribute("d", thisYearPath);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "#1f5fbf");
+        path.setAttribute("stroke-width", "3.5");
+        path.setAttribute("stroke-linejoin", "round");
+        path.setAttribute("stroke-linecap", "round");
+        svg.append(path);
+    }
+
+    for (const sample of samples) {
+        const tickLine = document.createElementNS(svgNamespace, "line");
+        tickLine.setAttribute("x1", sample.x.toFixed(2));
+        tickLine.setAttribute("x2", sample.x.toFixed(2));
+        tickLine.setAttribute("y1", String(baselineY));
+        tickLine.setAttribute("y2", String(baselineY + 5));
+        tickLine.setAttribute("stroke", "#9fb0c8");
+        tickLine.setAttribute("stroke-width", "1");
+        svg.append(tickLine);
+
+        const label = document.createElementNS(svgNamespace, "text");
+        label.setAttribute("x", sample.x.toFixed(2));
+        label.setAttribute("y", String(height - 10));
+        label.setAttribute("text-anchor", resolveMonthlyProgressPreviewLabelAnchor(sample.point?.tick ?? "ACT", sample.x, paddingLeft, width - paddingRight));
+        label.setAttribute("fill", "#70839c");
+        label.setAttribute("font-size", "10");
+        label.textContent = formatMonthlyProgressPreviewTickLabel(sample.point?.tick ?? "ACT");
+        svg.append(label);
+
+        if (sample.lastYearY !== null) {
+            const point = document.createElementNS(svgNamespace, "circle");
+            point.setAttribute("cx", sample.x.toFixed(2));
+            point.setAttribute("cy", sample.lastYearY.toFixed(2));
+            point.setAttribute("r", "3");
+            point.setAttribute("fill", "#ffffff");
+            point.setAttribute("stroke", "#93a4b8");
+            point.setAttribute("stroke-width", "2");
+            svg.append(point);
+        }
+
+        if (sample.thisYearY !== null) {
+            const point = document.createElementNS(svgNamespace, "circle");
+            point.setAttribute("cx", sample.x.toFixed(2));
+            point.setAttribute("cy", sample.thisYearY.toFixed(2));
+            point.setAttribute("r", "3.2");
+            point.setAttribute("fill", "#ffffff");
+            point.setAttribute("stroke", "#1f5fbf");
+            point.setAttribute("stroke-width", "2.2");
+            svg.append(point);
+        }
+    }
+
+    return svg;
+}
+
+function buildMonthlyProgressPreviewLinePath(
+    samples: Array<{ x: number; thisYearY: number | null; lastYearY: number | null }>,
+    key: "thisYearY" | "lastYearY"
+): string {
+    let path = "";
+    for (const sample of samples) {
+        const y = sample[key];
+        if (y === null) {
+            continue;
+        }
+
+        path += path === "" ? `M ${sample.x.toFixed(2)} ${y.toFixed(2)}` : ` L ${sample.x.toFixed(2)} ${y.toFixed(2)}`;
+    }
+
+    return path;
+}
+
+function buildMonthlyProgressPreviewAreaPath(
+    samples: Array<{ x: number; thisYearY: number | null }>,
+    baselineY: number,
+    key: "thisYearY"
+): string {
+    const plotted = samples.filter((sample) => sample[key] !== null);
+    if (plotted.length === 0) {
+        return "";
+    }
+
+    const first = plotted[0];
+    const last = plotted[plotted.length - 1];
+    if (first === undefined || last === undefined || first[key] === null || last[key] === null) {
+        return "";
+    }
+
+    let path = `M ${first.x.toFixed(2)} ${baselineY.toFixed(2)} L ${first.x.toFixed(2)} ${first[key].toFixed(2)}`;
+    for (const sample of plotted.slice(1)) {
+        if (sample[key] === null) {
+            continue;
+        }
+
+        path += ` L ${sample.x.toFixed(2)} ${sample[key].toFixed(2)}`;
+    }
+
+    path += ` L ${last.x.toFixed(2)} ${baselineY.toFixed(2)} Z`;
+    return path;
+}
+
+function getMonthlyProgressPreviewRoundedMaxValue(points: Array<MonthlyProgressLeadTimePoint | null>): number {
+    const maxValue = points.reduce((currentMax, point) => {
+        const candidate = Math.max(point?.thisYearValue ?? 0, point?.lastYearValue ?? 0);
+        return Math.max(currentMax, candidate);
+    }, 0);
+
+    if (maxValue <= 10) {
+        return 10;
+    }
+
+    const magnitude = 10 ** Math.floor(Math.log10(maxValue));
+    return Math.ceil(maxValue / magnitude) * magnitude;
+}
+
+function resolveMonthlyProgressPreviewLabelAnchor(tick: number | "ACT", x: number, minX: number, maxX: number): "start" | "middle" | "end" {
+    if (tick === LEAD_TIME_BUCKET_TICKS[0] || x <= minX + 16) {
+        return "start";
+    }
+
+    if (tick === "ACT" || x >= maxX - 16) {
+        return "end";
+    }
+
+    return "middle";
+}
+
+function formatMonthlyProgressPreviewTickLabel(tick: number | "ACT"): string {
+    return tick === "ACT" ? "ACT" : `${tick}`;
+}
+
+function resolveLeadTimeSeriesActValue(series: MonthlyProgressLeadTimeSeries, variant: "thisYear" | "lastYear"): number | null {
+    const actPoint = series.points.find((point) => point.tick === "ACT");
+    if (actPoint === undefined) {
+        return null;
+    }
+
+    return variant === "thisYear" ? actPoint.thisYearValue : actPoint.lastYearValue;
+}
+
+function resolveLeadTimeSeriesActDateLabel(series: MonthlyProgressLeadTimeSeries): string {
+    const actPoint = series.points.find((point) => point.tick === "ACT");
+    if (actPoint?.targetDateKey === null || actPoint?.targetDateKey === undefined) {
+        return "-";
+    }
+
+    return formatDateKey(actPoint.targetDateKey);
 }
 
 function cleanupMonthlyProgressPreview(): void {
@@ -463,29 +725,75 @@ function ensureMonthlyProgressPreviewStyles(): void {
         font-size: 12px;
         line-height: 1.6;
       }
-      [${MONTHLY_PROGRESS_PREVIEW_ROOT_ATTRIBUTE}] > div:last-child {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(88px, 1fr));
-        gap: 10px;
-        margin-top: 14px;
+            [${MONTHLY_PROGRESS_PREVIEW_LEGEND_ATTRIBUTE}] {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 8px;
+                margin-top: 12px;
       }
-      [${MONTHLY_PROGRESS_PREVIEW_CARD_ATTRIBUTE}] {
-        border-radius: 10px;
-        border: 1px solid #d8e5f2;
-        background: #ffffff;
-        padding: 10px 10px 9px;
+            [${MONTHLY_PROGRESS_PREVIEW_LEGEND_ITEM_ATTRIBUTE}] {
+                display: inline-flex;
+                align-items: center;
+                gap: 6px;
+                padding: 5px 9px;
+                border-radius: 999px;
+                border: 1px solid #dbe5f2;
+                background: #ffffff;
+                color: #315375;
+                font-size: 11px;
+                font-weight: 700;
       }
-      [${MONTHLY_PROGRESS_PREVIEW_LABEL_ATTRIBUTE}] {
-        color: #305272;
+            [${MONTHLY_PROGRESS_PREVIEW_LEGEND_ITEM_ATTRIBUTE}="this-year"]::before,
+            [${MONTHLY_PROGRESS_PREVIEW_LEGEND_ITEM_ATTRIBUTE}="last-year"]::before {
+                content: "";
+                width: 14px;
+                height: 0;
+                border-top: 3px solid #1f5fbf;
+                border-radius: 999px;
+            }
+            [${MONTHLY_PROGRESS_PREVIEW_LEGEND_ITEM_ATTRIBUTE}="last-year"]::before {
+                border-top-color: #93a4b8;
+            }
+            [${MONTHLY_PROGRESS_PREVIEW_SUMMARY_ATTRIBUTE}] {
+                display: grid;
+                grid-template-columns: repeat(3, minmax(0, 1fr));
+                gap: 10px;
+                margin-top: 12px;
+            }
+            [${MONTHLY_PROGRESS_PREVIEW_SUMMARY_ATTRIBUTE}] > div {
+                border-radius: 10px;
+                border: 1px solid #d8e5f2;
+                background: #ffffff;
+                padding: 8px 10px;
+            }
+            [${MONTHLY_PROGRESS_PREVIEW_SUMMARY_LABEL_ATTRIBUTE}] {
+                color: #5b7594;
         font-size: 11px;
         font-weight: 700;
       }
-      [${MONTHLY_PROGRESS_PREVIEW_VALUE_ATTRIBUTE}] {
-        margin-top: 6px;
+            [${MONTHLY_PROGRESS_PREVIEW_SUMMARY_VALUE_ATTRIBUTE}] {
+                margin-top: 4px;
         color: #17324f;
-        font-size: 13px;
+                font-size: 14px;
         font-weight: 700;
-        letter-spacing: 0.01em;
+            }
+            [${MONTHLY_PROGRESS_PREVIEW_CANVAS_ATTRIBUTE}] {
+                margin-top: 14px;
+                border-radius: 12px;
+                border: 1px solid #d8e5f2;
+                background: #ffffff;
+                padding: 10px 10px 4px;
+            }
+            [${MONTHLY_PROGRESS_PREVIEW_SVG_ATTRIBUTE}] {
+                display: block;
+                width: 100%;
+                height: auto;
+                overflow: visible;
+            }
+            @media (max-width: 720px) {
+                [${MONTHLY_PROGRESS_PREVIEW_SUMMARY_ATTRIBUTE}] {
+                    grid-template-columns: 1fr;
+                }
       }
     `;
     document.head.append(style);
