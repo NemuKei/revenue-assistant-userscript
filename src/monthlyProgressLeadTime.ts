@@ -79,12 +79,13 @@ function buildBucketedLeadTimePoint(
     tick: LeadTimeBucketTick
 ): MonthlyProgressLeadTimePoint {
     if (tick === "ACT") {
+        const actObserved = observationDateKey >= anchorDateKey;
         return {
             tick,
-            targetDateKey: observationDateKey,
-            leadTimeDays: observationLeadDays,
-            thisYearValue: resolveExactMetricAtDate(sourcePoints, observationDateKey, "thisYear"),
-            lastYearValue: resolveExactMetricAtDate(sourcePoints, observationDateKey, "lastYear")
+            targetDateKey: anchorDateKey,
+            leadTimeDays: 0,
+            thisYearValue: actObserved ? resolveExactMetricAtDate(sourcePoints, anchorDateKey, "thisYear") : null,
+            lastYearValue: resolveExactMetricAtDate(sourcePoints, anchorDateKey, "lastYear")
         };
     }
 
@@ -99,21 +100,13 @@ function buildBucketedLeadTimePoint(
         };
     }
 
-    if (observationLeadDays !== null && observationLeadDays > tick) {
-        return {
-            tick,
-            targetDateKey,
-            leadTimeDays: tick,
-            thisYearValue: null,
-            lastYearValue: null
-        };
-    }
-
     return {
         tick,
         targetDateKey,
         leadTimeDays: tick,
-        thisYearValue: resolveMetricAtDate(sourcePoints, targetDateKey, "thisYear"),
+        thisYearValue: observationLeadDays !== null && observationLeadDays > tick
+            ? null
+            : resolveMetricAtDate(sourcePoints, targetDateKey, "thisYear"),
         lastYearValue: resolveMetricAtDate(sourcePoints, targetDateKey, "lastYear")
     };
 }

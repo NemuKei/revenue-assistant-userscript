@@ -64,18 +64,18 @@
 - 月次実績画面の custom booking curve は別 userscript へ分離せず、既存 userscript のまま進める判断を確定済み。既存 top / analyze の完成機能を巻き込まないことを優先し、route 単位の起動境界と monthly-progress 専用 storage namespace を前提にする
 - 月次実績画面向けに route-scoped slice の土台を追加し、`/monthly-progress/YYYY-MM` では既存 top / analyze の observer / sync を停止しつつ、monthly-progress 専用 kill switch と storage namespace を先に切る実装を反映済み
 - 月次実績画面の `/api/v1/booking_curve/monthly` は、取り逃がし防止のため facility + yearMonth + batch-date 単位で write-only snapshot を IndexedDB へ保存し始めた。read path はまだ切り替えず、現行表示は API 正本のまま維持する
-- 月次実績画面の `予約日 -> LT` 変換は、保存済み snapshot を month-start anchor の LT 系列へ落とす純粋関数として切り出し、route 初期化時に preview summary を console へ出せる状態まで追加済み
+- 月次実績画面の `予約日 -> LT` 変換は、保存済み snapshot を month-end anchor の LT 系列へ落とす純粋関数として扱い、現年は未観測 bucket と ACT を打ち切る形へ更新済み
 - 月次実績画面の LT 横軸メモリは、日別 booking curve と同じ LT バケット定義を使う判断で確定し、monthly preview も同じ bucket end-date 集約へ更新済み
-- 月次実績画面の最初の UI として、予約日基準 `販売客室数` chart 直下へ LT バケット集約の軽量 curve chart を独立 section で差し込む実装を追加済み。既存 Recharts chart は置き換えず、reservation basis chart が見えない時は block を外す
+- 月次実績画面の最初の UI として、予約日基準 `販売客室数` chart 直下へ 2 カラムの LT chart section を独立 block で差し込む実装を追加済み。左に `販売客室数`、右に `販売単価` を置き、対象月から未来 3 か月を同時表示し、`前年 / 前々年` compare と hover tooltip を持つ。既存 Recharts chart は置き換えず、reservation basis chart が見えない時は block を外す
 
 ## Doing
 
-- 月次実績画面の LT 基準 custom booking curve を、追加済み route-scoped slice、IndexedDB write-only snapshot、軽量 curve chart の上でどこまで本実装へ寄せるかを切り分ける
+- 月次実績画面の LT 基準 custom booking curve を、追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart の上でどこまで本実装へ寄せるかを切り分ける
 
 ## Next
 
-1. 追加済み reservation basis chart 直下の軽量 curve chart を、final の custom graph へ置き換えるか、同 chart を段階拡張するか決める
-2. 追加済み LT バケット集約系列のラベル表示仕様と、軽量 curve chart から本実装へ進める最小要件を決める
+1. 追加済み reservation basis chart 直下の 2 カラム multi-month chart を、final の custom graph へ置き換えるか、同 chart を段階拡張するか決める
+2. 追加済み LT バケット集約系列の月別色分け、compare 見せ方、tooltip 詳細粒度をどこまで本実装へ寄せるか決める
 3. 追加済み monthly-progress 専用起動境界、storage namespace、kill switch を前提に、verify 境界と DOM 差し込み責務を決める
 4. write-only で保存し始めた IndexedDB snapshot を、どの時点で baseline や過去比較の read path に繋ぐか判断する
 5. booking curve の標準 UI に `団体` 系列を含めるかを、実装後の使用感ベースで再判断する
@@ -89,7 +89,7 @@
 - `IndexedDB` は monthly-progress の `/api/v1/booking_curve/monthly` snapshot を write-only で保存する用途から先に使い始めた。設定値、toggle、debug snapshot は引き続き localStorage を維持する
 - `src/monthlyProgressLeadTime.ts` を追加し、保存済み snapshot を month-start anchor の LT 系列へ変換する純粋関数と summary helper を切り出した。現時点では console preview までで、UI の read path はまだ切り替えない
 - `src/leadTimeBuckets.ts` を追加し、日別 booking curve と monthly preview が同じ LT バケット定義を共有する構造へ寄せた
-- `src/monthlyProgress.ts` は reservation basis `販売客室数` chart の親直後へ独立 section を差し込み、visible LT tick を 2 本線の軽量 SVG curve chart として描画する。monthly 専用 observer で tab 切替に追従し、chart が見えない時は cleanup する
+- `src/monthlyProgress.ts` は reservation basis `販売客室数` chart の親直後へ独立 section を差し込み、visible LT tick を使った 2 カラム multi-month SVG chart を描画する。左は `販売客室数`、右は `販売単価`、対象月から未来 3 か月を同時表示し、`前年 / 前々年` compare と hover tooltip を monthly 専用 observer 配下で制御する
 - 次スレッドの最小 verify は docs 判断だけなら差分確認のみ、実装に入るなら `npm run check`。GUI まで触る場合だけ、対象画面に応じて月次実績画面の DOM/API 実測、または analyze rank mode の current-ui supplement portal、overall summary、rank overview、room-group table 再確認を行う
 - 2026-04-20 の月次実績画面 GUI 調査では、トップ導線の `月次実績` link から `/monthly-progress/2026-04` へ遷移でき、表示中 chart の testid は state に応じて `chart-content-sales-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfReservationBasis` へ切り替わることを確認済み
 - `/api/v1/booking_curve/monthly?year_month=202604` は `sales_based` と `room_based` の 181 点系列、および `updated_at` を返し、月次実績画面の curve 表示の primary data source 候補として使えることを確認済み
@@ -99,7 +99,7 @@
 - `src/monthlyProgressIndexedDb.ts` を追加し、monthly-progress の `booking_curve/monthly` を facility + yearMonth + batch-date 単位の snapshot として IndexedDB へ write-only 保存する。初期 slice ではまだ UI の read path には使わない
 - `src/monthlyProgress.ts` は route 初期化時に最新 snapshot を読み、month-start anchor の LT preview summary を console.info へ出せる。UI 未接続のまま、変換責務だけを先に固定する
 - monthly preview の LT 系列は raw 日別点ではなく、日別 booking curve と同じ bucket end-date 集約で出す。x 軸メモリの粒度を先に共通化する
-- 次の UI 実装は、差し込み済み軽量 curve chart を final の custom booking curve へどう寄せるかの判断から始める
+- 次の UI 実装は、差し込み済み 2 カラム multi-month chart を final の custom booking curve へどう寄せるかの判断から始める
 
 ## Resume From Here
 
