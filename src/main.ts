@@ -1108,6 +1108,28 @@ function scheduleMutationObserverCalendarSync(): void {
     window.requestAnimationFrame(flush);
 }
 
+function getGroupRoomToggleLayoutSignature(): string {
+    const segmentedControl = document.querySelector<HTMLElement>(`[data-testid="segmented-control"]`);
+    const toolbarElement = segmentedControl?.parentElement?.parentElement ?? null;
+    if (toolbarElement === null) {
+        return "toolbar:none";
+    }
+
+    const toggleElement = document.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`);
+    const actionButton = Array.from(toolbarElement.querySelectorAll<HTMLButtonElement>("button"))
+        .find((buttonElement) => (buttonElement.textContent ?? "").includes("販売設定を一括反映"));
+    const insertionAnchor = actionButton?.parentElement ?? null;
+
+    return [
+        `toggle:${toggleElement === null ? "0" : "1"}`,
+        `anchor:${insertionAnchor === null ? "0" : "1"}`,
+        `parent:${toggleElement?.parentElement === toolbarElement ? "1" : "0"}`,
+        insertionAnchor !== null
+            ? `anchored:${toggleElement?.nextElementSibling === insertionAnchor ? "1" : "0"}`
+            : `last:${toolbarElement.lastElementChild === toggleElement ? "1" : "0"}`
+    ].join(",");
+}
+
 function getCalendarSyncSignature(): string {
     const analysisDate = activeAnalyzeDate ?? "-";
     const batchDateKey = getCurrentBatchDateKey();
@@ -1144,6 +1166,7 @@ function getCalendarSyncSignature(): string {
         `analysis:${analysisDate}`,
         `batch:${batchDateKey}`,
         `calendar-visible:${isGroupRoomCalendarVisible() ? "1" : "0"}`,
+        `toggle-layout:${getGroupRoomToggleLayoutSignature()}`,
         `cells:${calendarState}`,
         `cards:${cardState}`,
         `overall:${hasOverallSummary}`,
