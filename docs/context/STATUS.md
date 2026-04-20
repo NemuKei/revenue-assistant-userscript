@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-04-18
+最終更新: 2026-04-20
 
 ## Done
 
@@ -13,7 +13,9 @@
 - 販売設定タブの室タイプ別 `1日前差分 / 7日前差分 / 30日前差分` は、Phase 1 では `/api/v4/booking_curve` の室タイプ別 `all.this_year_room_sum` を正として維持する判断を確定済み
 - analyze 日付ページの販売設定タブ最上段で、全体販売室数サマリーと全体団体室数サマリーを 2 行で表示する拡張を実装済み
 - analyze 日付ページの販売設定タブで、室タイプ別の `最終変更 何日前 / ランク A→B / 増減` を俯瞰できる rank overview を追加済み
+- analyze 日付ページの販売設定タブの rank overview `増減` 列は、値ずれしない配置へ補正済み
 - トップカレンダー各日付セルの最下部へ、販売ランク最終変更の相対日数を表示する拡張を追加済みで、analyze 画面では非表示を維持する構成へ更新済み
+- トップカレンダーの `◯日前` 表示は、既存 indicator flow に混ぜず、日付セル anchor 直下の overlay として配置する構成へ更新済み
 - analyze 日付ページの販売設定タブで、各室タイプカードの `最終変更履歴` の下へ `ランク：A→B` を表示する拡張を追加済み
 - analyze 日付ページの販売設定タブ最上段に、ホテル全体 booking curve の常時展開 block を追加済み
 - analyze 日付ページの販売設定タブで、各室タイプ card ごとに booking curve 開閉 UI を追加済み
@@ -68,23 +70,24 @@
 
 ## Thread Handoff
 
-- 現在の `main` は clean 前提で再開できる。直近の押し込み済み保存点は `4724c0c` `Skip redundant mutation-observer calendar sync flushes` と `0e558f1` `Record focus resume verification and next baseline work`
-- 直近の確認済み verify は `npm run check` 通過と、analyze 画面の月送り・focus 復帰 GUI 実測。focus 復帰では warning / `consistency-invalidate` の増加なし、group row 6 件、rank detail 6 件、`ブッキングカーブを開く` 6 件を確認済み
-- 次スレッドの先頭は、rank overview の増減列が入った前提で、`トップカレンダーの相対日数表示` と `月次実績画面の DOM/API 調査` を優先する
+- 現在の `main` は clean 前提で再開できる。直近の押し込み済み保存点は `ca1525e` `Fix rank overview delta alignment`、`ca298fa` `Add top calendar latest change label`、`874e73c` `Fix calendar latest change label layout`
+- 直近の確認済み verify は `npm run check` 通過と、トップ画面カレンダーの通常表示、`1日前増減`、`1日 / 7日前増減`、analyze 画面非表示の GUI 実測。`◯日前` が既存 indicator を押し下げず、analyze では 0 件であることを確認済み
+- 次スレッドの先頭は、トップカレンダー修正済み前提で、`月次実績画面の DOM/API 調査` を最優先にする
 - baseline の scope を決める前に `IndexedDB` 実装へ入らない。現状の localStorage 実測は revenue-assistant 分だけで約 210 万文字、715 key、hotel booking_curve 1 key は約 4.5 万文字で、headroom はまだあるが広くはない
 - `IndexedDB` が必要になった場合でも、最初の移行対象は booking_curve persistent cache だけに限定する。`group-room count visibility` や debug snapshot まで同時に移さない
-- 次スレッドの最小 verify は docs 判断だけなら差分確認のみ、実装に入るなら `npm run check`。GUI まで触る場合だけ analyze rank mode で current-ui supplement portal、overall summary、rank overview、room-group table が崩れていないことを再確認する
+- 次スレッドの最小 verify は docs 判断だけなら差分確認のみ、実装に入るなら `npm run check`。GUI まで触る場合だけ、対象画面に応じて月次実績画面の DOM/API 実測、または analyze rank mode の current-ui supplement portal、overall summary、rank overview、room-group table 再確認を行う
 
 ## Resume From Here
 
 - 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、debug snapshot の DOM / localStorage 出力、observer callback の 1 本化待ち、booking_curve persistent cache の最小系列化、interaction 遅延タイマー打ち切り、現行 sales-setting UI 可視判定の追従、synthetic current-ui host による summary / rank / room-group table 再利用、`current_settings` ベースの個別 booking curve capacity 補完まで反映済み
-- 直近の保存点は、この変更を commit した時点の `main`
-- 次スレッドの最初の実装対象は、baseline へ戻る前に、トップカレンダーの最終変更相対日数表示の小さな slice を切ること
+- rank overview の `増減` 列追加と配置補正、トップカレンダーの `相対日数のみ / セル最下部のみ / analyze 画面では非表示` は実装と GUI verify まで完了済み
+- トップカレンダーの `◯日前` は、既存 indicator 配下へ差し込むと `1日前増減` と `1日 / 7日前増減` の縦積みを壊すため、日付セル anchor 直下の absolute overlay を正とする
+- 直近の保存点は、上記トップカレンダー layout fix を含む `874e73c` 時点の `main`
+- 次スレッドの最初の実装対象は、baseline へ戻る前に、月次実績画面の DOM と API の調査へ入ること
 - 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
-- トップカレンダーの最終変更表示は、初期 slice では `相対日数のみ` とし、セル最下部へ置き、analyze 画面では非表示を正とする
 - 月次実績画面の booking curve は、まず DOM と API の調査だけを 1 本切り、データ源と表示余地が見えるまで実装へ入らない
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
-- 次スレッドの最小 verify は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
+- 次スレッドの最小 verify は、調査だけなら差分確認または採取メモで足りる。実装に入る場合は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
 
 ## Notes For Next Thread
 
@@ -97,6 +100,7 @@
 - booking curve の見出しは対象名を含めて表示する。y 軸は整数メモリへ丸め、満室ラインは補助線で別描画する
 - 2026-04-17 時点の横軸ラベル優先表示は `ACT, 3, 7, 14, 21, 30, 45, 60, 90, 120, 150, 180, 270, 360`
 - GUI verify では build 後の `dist/*.user.js` だけでなく、Tampermonkey 側の userscript 再読込も必要。再読込なしでは旧 build が表示されることがある
+- トップカレンダーの `◯日前` は root 画面でだけ表示し、normal、`1日前増減`、`1日 / 7日前増減` の 3 モードで indicator の縦積みを壊していないかを見る
 - 販売設定カードの `1日前 / 7日前 / 30日前` は、Phase 1 では booking_curve の室タイプ別 `all.this_year_room_sum` を正として扱う
 - `prefetchSalesSettingGroupRooms` は旧 `suggestions-*` card だけでなく、現行 `booking-curve-main-chart-header` と `部屋グループ` selector が見えている sales-setting UI でも走る
 - 現行 UI の synthetic host は booking curve セクション下に自前 DOM を生成して legacy render 関数を再利用する。room group 名は booking curve の room-group list から列挙し、個別 capacity は `/api/v1/suggest/output/current_settings` の `max_num_room` を hidden element へ補って card booking curve を描く
@@ -114,7 +118,6 @@
 
 Now:
 
-- トップカレンダーへ最終変更の相対日数を最小表示で足す
 - 月次実績画面の DOM と API を調査する
 
 Next:
