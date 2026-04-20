@@ -1,3 +1,9 @@
+import {
+    cleanupMonthlyProgressPage,
+    getMonthlyProgressRouteState,
+    syncMonthlyProgressPage
+} from "./monthlyProgress";
+
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Userscript"
     : (GM_info.script?.name ?? "Revenue Assistant Userscript");
@@ -391,6 +397,7 @@ let legacyGroupRoomStorageCleanupAttempted = false;
 let resolvedFacilityCacheKey: string | null = null;
 let resolvedFacilityLabel: string | null = null;
 let facilityCacheKeyPromise: Promise<string> | null = null;
+let activeMonthlyProgressYearMonth: string | null = null;
 
 function boot(): void {
     console.info(`[${SCRIPT_NAME}] initialized`, {
@@ -536,9 +543,19 @@ function syncPage(): void {
     const nextHref = window.location.href;
     const previousAnalyzeDate = activeAnalyzeDate;
     const selectedDate = getAnalyzeDate(window.location.pathname);
+    const monthlyProgressRouteState = getMonthlyProgressRouteState(window.location.pathname);
+    const previousMonthlyProgressYearMonth = activeMonthlyProgressYearMonth;
     const returnedToCalendarTop = previousAnalyzeDate !== null && selectedDate === null;
 
     activeAnalyzeDate = selectedDate;
+    activeMonthlyProgressYearMonth = monthlyProgressRouteState?.yearMonth ?? null;
+
+    if (monthlyProgressRouteState !== null) {
+        handleMonthlyProgressRoute(nextHref, monthlyProgressRouteState, previousMonthlyProgressYearMonth);
+        return;
+    }
+
+    cleanupMonthlyProgressPage();
 
     if (selectedDate !== null && (nextHref !== activeHref || selectedDate !== previousAnalyzeDate)) {
         salesSettingBookingCurveOpenState.clear();
@@ -572,6 +589,55 @@ function syncPage(): void {
     activeHref = nextHref;
     scheduleConsistencyCheck("route");
     void logSelectedDateGroupRooms(selectedDate);
+}
+
+function handleMonthlyProgressRoute(
+    nextHref: string,
+    routeState: ReturnType<typeof getMonthlyProgressRouteState>,
+    previousYearMonth: string | null
+): void {
+    if (routeState === null) {
+        return;
+    }
+
+    suspendCalendarFeatures();
+
+    if (nextHref === activeHref && routeState.yearMonth === previousYearMonth) {
+        return;
+    }
+
+    activeHref = nextHref;
+    syncMonthlyProgressPage({
+        scriptName: SCRIPT_NAME,
+        href: nextHref,
+        routeState,
+        resolveFacilityCacheKey: resolveCurrentFacilityCacheKey
+    });
+}
+
+function suspendCalendarFeatures(): void {
+    syncVersion += 1;
+    clearInteractionSyncTimeouts();
+    clearConsistencyCheckTimeout();
+    cleanupCalendarObserver();
+    mutationObserverSyncQueued = false;
+    calendarSyncQueued = false;
+    queuedCalendarSyncSignature = "";
+    queuedCalendarSyncForce = false;
+    pendingCalendarSyncSignature = "";
+    pendingCalendarSyncForce = false;
+    completedCalendarSyncSignature = "";
+    salesSettingBookingCurveOpenState.clear();
+    cleanupMonthlyCalendarGroupRooms();
+    cleanupMonthlyCalendarLatestChanges();
+    cleanupSalesSettingOverallSummary();
+    cleanupSalesSettingRankOverview();
+    cleanupSalesSettingRankDetails();
+    cleanupSalesSettingGroupRooms();
+    cleanupSalesSettingBookingCurveCards();
+    cleanupSalesSettingRoomDeltas();
+    cleanupCurrentUiSalesSettingRoot();
+    ensureGroupRoomToggle(false);
 }
 
 function scheduleConsistencyCheck(reason: string): void {
@@ -1055,6 +1121,15 @@ function ensureCalendarObserver(): void {
         childList: true,
         subtree: true
     });
+}
+
+function cleanupCalendarObserver(): void {
+    if (calendarObserver === null) {
+        return;
+    }
+
+    calendarObserver.disconnect();
+    calendarObserver = null;
 }
 
 function isRevenueAssistantManagedMutation(mutation: MutationRecord): boolean {

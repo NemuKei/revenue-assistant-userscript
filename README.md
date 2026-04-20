@@ -53,6 +53,8 @@ npm run check
 - API 取得と日次キャッシュ
 - SPA 風遷移に対する再同期
 
+また、月次実績画面向けには、まだ custom booking curve 自体は未実装ですが、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。
+
 ## ドキュメントの正本
 
 - `AGENTS.md`: リポジトリ全体の常設ルール
