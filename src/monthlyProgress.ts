@@ -789,7 +789,7 @@ function createMonthlyProgressPanelSvg(
         labelElement.setAttribute("y", String(y + 3));
         labelElement.setAttribute("text-anchor", "end");
         labelElement.setAttribute("fill", "#8a9cb4");
-        labelElement.setAttribute("font-size", "9");
+        labelElement.setAttribute("font-size", "8");
         labelElement.textContent = panel.metric === "room"
             ? formatMetricValue(Math.round(maxValue * ratio))
             : formatCurrencyValue(Math.round(maxValue * ratio));
@@ -818,7 +818,7 @@ function createMonthlyProgressPanelSvg(
             compareElement.setAttribute("d", comparePath);
             compareElement.setAttribute("fill", "none");
             compareElement.setAttribute("stroke", withAlpha(month.color, 0.52));
-            compareElement.setAttribute("stroke-width", "2");
+            compareElement.setAttribute("stroke-width", "1.5");
             compareElement.setAttribute("stroke-dasharray", "5 4");
             compareElement.setAttribute("stroke-linejoin", "round");
             compareElement.setAttribute("stroke-linecap", "round");
@@ -831,7 +831,7 @@ function createMonthlyProgressPanelSvg(
             currentElement.setAttribute("d", currentPath);
             currentElement.setAttribute("fill", "none");
             currentElement.setAttribute("stroke", month.color);
-            currentElement.setAttribute("stroke-width", "2.8");
+            currentElement.setAttribute("stroke-width", "2.2");
             currentElement.setAttribute("stroke-linejoin", "round");
             currentElement.setAttribute("stroke-linecap", "round");
             svgElement.append(currentElement);
@@ -849,10 +849,10 @@ function createMonthlyProgressPanelSvg(
                 const circle = document.createElementNS(svgNamespace, "circle");
                 circle.setAttribute("cx", x.toFixed(2));
                 circle.setAttribute("cy", currentY.toFixed(2));
-                circle.setAttribute("r", "2.7");
+                circle.setAttribute("r", "2.4");
                 circle.setAttribute("fill", "#ffffff");
                 circle.setAttribute("stroke", month.color);
-                circle.setAttribute("stroke-width", "1.8");
+                circle.setAttribute("stroke-width", "1.4");
                 svgElement.append(circle);
             }
         });
@@ -879,7 +879,7 @@ function createMonthlyProgressPanelSvg(
             labelElement.setAttribute("y", String(height - 10));
             labelElement.setAttribute("text-anchor", resolveMonthlyProgressPreviewLabelAnchor(point.tick, x, paddingLeft, width - paddingRight));
             labelElement.setAttribute("fill", "#70839c");
-            labelElement.setAttribute("font-size", "9");
+            labelElement.setAttribute("font-size", "8");
             labelElement.textContent = formatMonthlyProgressPreviewTickLabel(point.tick);
             svgElement.append(labelElement);
         }
@@ -970,8 +970,13 @@ function showMonthlyProgressTooltip(
         .filter((row): row is HTMLDivElement => row !== null);
     gridElement.replaceChildren(...rows);
 
-    const maxLeft = Math.max(8, width - 176);
-    tooltipElement.style.left = `${Math.max(8, Math.min(maxLeft, x + 12))}px`;
+    const canvasWidth = tooltipElement.parentElement?.clientWidth ?? width;
+    const tooltipWidth = tooltipElement.offsetWidth > 0 ? tooltipElement.offsetWidth : 176;
+    const xRatio = width <= 0 ? 0 : (x / width);
+    const anchorLeft = xRatio * canvasWidth;
+    const desiredLeft = anchorLeft + 14;
+    const maxLeft = Math.max(8, canvasWidth - tooltipWidth - 8);
+    tooltipElement.style.left = `${Math.max(8, Math.min(maxLeft, desiredLeft))}px`;
     tooltipElement.style.transform = "none";
     tooltipElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ACTIVE_ATTRIBUTE, "true");
 
