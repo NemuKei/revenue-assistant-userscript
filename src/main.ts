@@ -1113,16 +1113,17 @@ function scheduleMutationObserverCalendarSync(): void {
     window.requestAnimationFrame(flush);
 }
 
-function resolveGroupRoomToggleInsertionAnchor(
+function resolveGroupRoomToggleHostElement(
     segmentedControl: HTMLElement,
     toolbarElement: HTMLElement
 ): HTMLElement | null {
     const segmentedWrapper = segmentedControl.parentElement;
     if (segmentedWrapper?.parentElement !== toolbarElement) {
-        return toolbarElement.firstElementChild as HTMLElement | null;
+        return null;
     }
 
-    return segmentedWrapper.nextElementSibling as HTMLElement | null;
+    const hostElement = segmentedWrapper.nextElementSibling;
+    return hostElement instanceof HTMLElement ? hostElement : null;
 }
 
 function repairGroupRoomToggleLayout(): boolean {
@@ -1141,16 +1142,17 @@ function repairGroupRoomToggleLayout(): boolean {
         return false;
     }
 
-    const toggleElement = document.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`);
-    const insertionAnchor = resolveGroupRoomToggleInsertionAnchor(segmentedControl, toolbarElement);
-    const isMisaligned = toggleElement !== null
-        && toggleElement.parentElement === toolbarElement
-        && (
-            (insertionAnchor !== null && toggleElement.nextElementSibling !== insertionAnchor)
-            || (insertionAnchor === null && toolbarElement.lastElementChild !== toggleElement)
-        );
+    const hostElement = resolveGroupRoomToggleHostElement(segmentedControl, toolbarElement);
+    if (hostElement === null) {
+        return false;
+    }
 
-    if (toggleElement === null || isMisaligned) {
+    const toggleElement = document.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`);
+    const isMisaligned = toggleElement === null
+        || toggleElement.parentElement !== hostElement
+        || window.getComputedStyle(hostElement).position === "static";
+
+    if (isMisaligned) {
         ensureGroupRoomToggle(true);
         return true;
     }
@@ -1166,17 +1168,15 @@ function getGroupRoomToggleLayoutSignature(): string {
     }
 
     const toggleElement = document.querySelector<HTMLElement>(`[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`);
-    const insertionAnchor = segmentedControl === null
+    const hostElement = segmentedControl === null
         ? null
-        : resolveGroupRoomToggleInsertionAnchor(segmentedControl, toolbarElement);
+        : resolveGroupRoomToggleHostElement(segmentedControl, toolbarElement);
 
     return [
         `toggle:${toggleElement === null ? "0" : "1"}`,
-        `anchor:${insertionAnchor === null ? "0" : "1"}`,
-        `parent:${toggleElement?.parentElement === toolbarElement ? "1" : "0"}`,
-        insertionAnchor !== null
-            ? `anchored:${toggleElement?.nextElementSibling === insertionAnchor ? "1" : "0"}`
-            : `last:${toolbarElement.lastElementChild === toggleElement ? "1" : "0"}`
+        `host:${hostElement === null ? "0" : "1"}`,
+        `parent:${toggleElement?.parentElement === hostElement ? "1" : "0"}`,
+        `host-position:${hostElement !== null && window.getComputedStyle(hostElement).position !== "static" ? "1" : "0"}`
     ].join(",");
 }
 
@@ -3078,7 +3078,15 @@ function ensureGroupRoomToggle(hasCalendar: boolean): void {
         return;
     }
 
-    const insertionAnchor = resolveGroupRoomToggleInsertionAnchor(segmentedControl, toolbarElement);
+    const hostElement = resolveGroupRoomToggleHostElement(segmentedControl, toolbarElement);
+    if (hostElement === null) {
+        existingToggle?.remove();
+        return;
+    }
+
+    if (window.getComputedStyle(hostElement).position === "static") {
+        hostElement.style.position = "relative";
+    }
 
     const toggleElement = existingToggle ?? document.createElement("div");
     toggleElement.setAttribute(GROUP_ROOM_TOGGLE_ATTRIBUTE, "");
@@ -3091,16 +3099,12 @@ function ensureGroupRoomToggle(hasCalendar: boolean): void {
         toggleElement.replaceChildren(buttonElement);
     }
 
-    if (toggleElement.parentElement !== toolbarElement) {
+    if (toggleElement.parentElement !== hostElement) {
         toggleElement.remove();
     }
 
-    if (insertionAnchor !== null) {
-        if (toggleElement.parentElement !== toolbarElement || toggleElement.nextElementSibling !== insertionAnchor) {
-            toolbarElement.insertBefore(toggleElement, insertionAnchor);
-        }
-    } else if (toggleElement.parentElement !== toolbarElement || toolbarElement.lastElementChild !== toggleElement) {
-        toolbarElement.append(toggleElement);
+    if (toggleElement.parentElement !== hostElement) {
+        hostElement.append(toggleElement);
     }
 }
 
@@ -4962,10 +4966,11 @@ function ensureGroupRoomStyles(): void {
         [${GROUP_ROOM_TOGGLE_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
-            align-self: center;
-            margin: 0 24px 0 20px;
             pointer-events: auto;
-            position: relative;
+            position: absolute;
+            top: 50%;
+            right: 24px;
+            transform: translateY(-50%);
             z-index: 2;
         }
 
