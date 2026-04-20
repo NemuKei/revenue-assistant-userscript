@@ -168,8 +168,18 @@ export function syncMonthlyProgressPage(options: MonthlyProgressSyncOptions): vo
                         return;
                     }
 
-                    const roomSeries = buildMonthlyProgressLeadTimeSeries(snapshot.payload, "room", monthBounds.firstDateKey);
-                    const salesSeries = buildMonthlyProgressLeadTimeSeries(snapshot.payload, "sales", monthBounds.firstDateKey);
+                    const roomSeries = buildMonthlyProgressLeadTimeSeries(
+                        snapshot.payload,
+                        "room",
+                        monthBounds.firstDateKey,
+                        snapshot.batchDateKey
+                    );
+                    const salesSeries = buildMonthlyProgressLeadTimeSeries(
+                        snapshot.payload,
+                        "sales",
+                        monthBounds.firstDateKey,
+                        snapshot.batchDateKey
+                    );
                     console.info(`[${options.scriptName}] monthly-progress LT preview ready`, {
                         href: options.href,
                         yearMonth: options.routeState.yearMonth,

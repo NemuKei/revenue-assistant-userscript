@@ -1,8 +1,10 @@
 import type { MonthlyBookingCurveSnapshotPayload, MonthlyBookingCurveSnapshotPoint } from "./monthlyProgressIndexedDb";
+import { LEAD_TIME_BUCKET_TICKS, type LeadTimeBucketTick } from "./leadTimeBuckets";
 
 export interface MonthlyProgressLeadTimePoint {
-    reservationDate: string;
-    leadTimeDays: number;
+    tick: LeadTimeBucketTick;
+    targetDateKey: string | null;
+    leadTimeDays: number | null;
     thisYearValue: number | null;
     lastYearValue: number | null;
 }
@@ -10,6 +12,7 @@ export interface MonthlyProgressLeadTimePoint {
 export interface MonthlyProgressLeadTimeSeries {
     yearMonth: string;
     anchorDateKey: string;
+    observationDateKey: string;
     points: MonthlyProgressLeadTimePoint[];
 }
 
@@ -35,56 +38,137 @@ export function getYearMonthBounds(yearMonth: string): { firstDateKey: string; l
 export function buildMonthlyProgressLeadTimeSeries(
     payload: MonthlyBookingCurveSnapshotPayload,
     metric: "sales" | "room",
-    anchorDateKey: string
+    anchorDateKey: string,
+    observationDateKey: string
 ): MonthlyProgressLeadTimeSeries {
     const sourcePoints = metric === "sales" ? payload.salesBased : payload.roomBased;
-    const points = sourcePoints
-        .map((point) => buildLeadTimePoint(point, anchorDateKey))
-        .filter((point): point is MonthlyProgressLeadTimePoint => point !== null)
-        .sort((left, right) => right.leadTimeDays - left.leadTimeDays || left.reservationDate.localeCompare(right.reservationDate));
+    const observationLeadDays = getDaysBetweenDateKeys(anchorDateKey, observationDateKey);
+    const points = LEAD_TIME_BUCKET_TICKS.map((tick) => buildBucketedLeadTimePoint(sourcePoints, anchorDateKey, observationDateKey, observationLeadDays, tick));
 
     return {
         yearMonth: payload.yearMonth,
         anchorDateKey,
+        observationDateKey,
         points
     };
 }
 
 export function summarizeMonthlyProgressLeadTimeSeries(series: MonthlyProgressLeadTimeSeries): {
     pointCount: number;
-    maxLeadTimeDays: number | null;
-    minLeadTimeDays: number | null;
-    latestThisYearValue: number | null;
-    latestLastYearValue: number | null;
+    nonNullThisYearCount: number;
+    nonNullLastYearCount: number;
+    actThisYearValue: number | null;
+    actLastYearValue: number | null;
 } {
-    const firstPoint = series.points[0] ?? null;
-    const lastPoint = series.points.at(-1) ?? null;
+    const actPoint = series.points.find((point) => point.tick === "ACT") ?? null;
 
     return {
         pointCount: series.points.length,
-        maxLeadTimeDays: firstPoint?.leadTimeDays ?? null,
-        minLeadTimeDays: lastPoint?.leadTimeDays ?? null,
-        latestThisYearValue: lastPoint?.thisYearValue ?? null,
-        latestLastYearValue: lastPoint?.lastYearValue ?? null
+        nonNullThisYearCount: series.points.filter((point) => point.thisYearValue !== null).length,
+        nonNullLastYearCount: series.points.filter((point) => point.lastYearValue !== null).length,
+        actThisYearValue: actPoint?.thisYearValue ?? null,
+        actLastYearValue: actPoint?.lastYearValue ?? null
     };
 }
 
-function buildLeadTimePoint(
-    point: MonthlyBookingCurveSnapshotPoint,
-    anchorDateKey: string
-): MonthlyProgressLeadTimePoint | null {
-    const reservationDateKey = point.date.replace(/-/g, "");
-    const leadTimeDays = getDaysBetweenDateKeys(anchorDateKey, reservationDateKey);
-    if (leadTimeDays === null) {
-        return null;
+function buildBucketedLeadTimePoint(
+    sourcePoints: MonthlyBookingCurveSnapshotPoint[],
+    anchorDateKey: string,
+    observationDateKey: string,
+    observationLeadDays: number | null,
+    tick: LeadTimeBucketTick
+): MonthlyProgressLeadTimePoint {
+    if (tick === "ACT") {
+        return {
+            tick,
+            targetDateKey: observationDateKey,
+            leadTimeDays: observationLeadDays,
+            thisYearValue: resolveExactMetricAtDate(sourcePoints, observationDateKey, "thisYear"),
+            lastYearValue: resolveExactMetricAtDate(sourcePoints, observationDateKey, "lastYear")
+        };
+    }
+
+    const targetDateKey = shiftDate(anchorDateKey, -tick);
+    if (targetDateKey === null) {
+        return {
+            tick,
+            targetDateKey: null,
+            leadTimeDays: tick,
+            thisYearValue: null,
+            lastYearValue: null
+        };
+    }
+
+    if (observationLeadDays !== null && observationLeadDays > tick) {
+        return {
+            tick,
+            targetDateKey,
+            leadTimeDays: tick,
+            thisYearValue: null,
+            lastYearValue: null
+        };
     }
 
     return {
-        reservationDate: point.date,
-        leadTimeDays,
-        thisYearValue: point.thisYearSum,
-        lastYearValue: point.lastYearSum
+        tick,
+        targetDateKey,
+        leadTimeDays: tick,
+        thisYearValue: resolveMetricAtDate(sourcePoints, targetDateKey, "thisYear"),
+        lastYearValue: resolveMetricAtDate(sourcePoints, targetDateKey, "lastYear")
     };
+}
+
+function resolveMetricAtDate(
+    points: MonthlyBookingCurveSnapshotPoint[],
+    lookupDateKey: string,
+    variant: "thisYear" | "lastYear"
+): number | null {
+    let latestMatchedDate = "";
+    let latestMatchedValue: number | null = null;
+
+    for (const point of points) {
+        const pointDateKey = point.date.replace(/-/g, "");
+        const value = variant === "thisYear" ? point.thisYearSum : point.lastYearSum;
+        if (pointDateKey > lookupDateKey || value === null) {
+            continue;
+        }
+
+        if (pointDateKey >= latestMatchedDate) {
+            latestMatchedDate = pointDateKey;
+            latestMatchedValue = value;
+        }
+    }
+
+    return latestMatchedValue;
+}
+
+function resolveExactMetricAtDate(
+    points: MonthlyBookingCurveSnapshotPoint[],
+    targetDateKey: string,
+    variant: "thisYear" | "lastYear"
+): number | null {
+    for (const point of points) {
+        if (point.date.replace(/-/g, "") !== targetDateKey) {
+            continue;
+        }
+
+        return variant === "thisYear" ? point.thisYearSum : point.lastYearSum;
+    }
+
+    return null;
+}
+
+function shiftDate(dateKey: string, offsetDays: number): string | null {
+    if (!/^\d{8}$/.test(dateKey)) {
+        return null;
+    }
+
+    const year = Number(dateKey.slice(0, 4));
+    const month = Number(dateKey.slice(4, 6));
+    const day = Number(dateKey.slice(6, 8));
+    const value = new Date(Date.UTC(year, month - 1, day));
+    value.setUTCDate(value.getUTCDate() + offsetDays);
+    return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
 }
 
 function getDaysBetweenDateKeys(laterDateKey: string, earlierDateKey: string): number | null {

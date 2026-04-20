@@ -3,6 +3,11 @@ import {
     getMonthlyProgressRouteState,
     syncMonthlyProgressPage
 } from "./monthlyProgress";
+import {
+    LEAD_TIME_BUCKET_TICKS as SALES_SETTING_BOOKING_CURVE_TICKS,
+    LEAD_TIME_BUCKET_VISIBLE_TICKS as SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS,
+    type LeadTimeBucketTick as SalesSettingBookingCurveTick
+} from "./leadTimeBuckets";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Userscript"
@@ -95,18 +100,6 @@ const SALES_SETTING_BOOKING_CURVE_MARKER_HITBOX_ATTRIBUTE = "data-ra-sales-setti
 const SALES_SETTING_BOOKING_CURVE_HITBOX_ATTRIBUTE = "data-ra-sales-setting-booking-curve-hitbox";
 const SALES_SETTING_CURRENT_UI_HEADER_TEST_ID = "booking-curve-main-chart-header";
 const SALES_SETTING_CURRENT_UI_ROOM_GROUP_SELECTOR_TEST_ID = "highlight-filter-price-rank-rm-room-group-pulldown-form";
-const SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS = new Set<SalesSettingBookingCurveTick>([
-    360, 270, 180, 150, 120, 90, 60, 45, 30, 21, 14, 7, 3, "ACT"
-]);
-const SALES_SETTING_BOOKING_CURVE_TICKS = [
-    360, 330, 300, 270, 240, 210,
-    180, 165, 150, 135, 120, 105,
-    90, 80, 70,
-    60, 55, 50, 45, 40, 35,
-    30, 28, 26, 24, 21, 20, 18, 16,
-    14, 13, 12, 11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0,
-    "ACT"
-] as const;
 const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v4:";
 const LEGACY_GROUP_ROOM_STORAGE_PREFIXES = [
     "revenue-assistant:group-room-count:v1:",
@@ -286,8 +279,6 @@ interface SyncContext {
     batchDateKey: string;
     facilityCacheKey: string;
 }
-
-type SalesSettingBookingCurveTick = typeof SALES_SETTING_BOOKING_CURVE_TICKS[number];
 
 interface SalesSettingBookingCurveSample {
     tick: SalesSettingBookingCurveTick;

@@ -53,7 +53,7 @@ npm run check
 - API 取得と日次キャッシュ
 - SPA 風遷移に対する再同期
 
-また、月次実績画面向けには、まだ custom booking curve 自体は未実装ですが、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。加えて、`/api/v1/booking_curve/monthly` の結果は write-only で IndexedDB へ日次 snapshot 保存を始めており、保存済み snapshot を予約日基準から LT 基準へ変換する read helper も追加済みです。表示の read path はまだ現行 API を正とします。
+また、月次実績画面向けには、まだ custom booking curve 自体は未実装ですが、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。加えて、`/api/v1/booking_curve/monthly` の結果は write-only で IndexedDB へ日次 snapshot 保存を始めており、保存済み snapshot を予約日基準から LT 基準へ変換する read helper は、日別と同じ LT バケット定義で preview まで確認できる状態にしてあります。表示の read path はまだ現行 API を正とします。
 
 ## ドキュメントの正本
 
