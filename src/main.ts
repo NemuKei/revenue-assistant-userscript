@@ -1460,7 +1460,7 @@ async function runCalendarSync(): Promise<void> {
         ]);
 
         if (analysisDate !== null) {
-            await syncSalesSettingRankInsights(analysisDate, syncContext);
+            await salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingRankInsights(analysisDate, syncContext, preparedData));
         }
     } finally {
         calendarSyncRunning = false;
@@ -1842,8 +1842,20 @@ function renderSalesSettingOverallSummaryFromPreparedData(
             : buildSalesSettingBookingCurveRenderData(preparedData.hotelMetrics.bookingCurveData, analysisDate, batchDateKey)
     );
 }
+async function syncSalesSettingRankInsights(
+    analysisDate: string,
+    syncContext: SyncContext,
+    preparedData: SalesSettingPreparedData | null
+): Promise<void> {
+    if (preparedData === null || preparedData.cards.length === 0) {
+        cleanupSalesSettingRankOverview();
+        cleanupSalesSettingRankDetails();
+        if (!hasCurrentSalesSettingUi()) {
+            scheduleSalesSettingSupplementCleanup();
+        }
+        return;
+    }
 
-async function syncSalesSettingRankInsights(analysisDate: string, syncContext: SyncContext): Promise<void> {
     const cards = collectSalesSettingCards();
     if (cards.length === 0) {
         if (!hasCurrentSalesSettingUi()) {
@@ -1889,7 +1901,7 @@ async function syncSalesSettingRankInsights(analysisDate: string, syncContext: S
         currentCards,
         statuses,
         firstCard,
-        resolveLatestSalesSettingPreparedData(analysisDate)
+        preparedData
     );
 }
 
@@ -2185,7 +2197,8 @@ function restoreCurrentUiSalesSettingSupplements(cards: SalesSettingCard[]): voi
     }
 
     if (
-        latestSalesSettingRankStatusesSnapshot !== null
+        preparedData !== null
+        && latestSalesSettingRankStatusesSnapshot !== null
         && latestSalesSettingRankStatusesSnapshot.analysisDate === analysisDate
     ) {
         renderSalesSettingRankInsightsFromStatuses(
@@ -2194,7 +2207,11 @@ function restoreCurrentUiSalesSettingSupplements(cards: SalesSettingCard[]): voi
             firstCard,
             preparedData
         );
+        return;
     }
+
+    cleanupSalesSettingRankOverview();
+    cleanupSalesSettingRankDetails();
 }
 
 function scheduleSalesSettingSupplementCleanup(): void {
@@ -4606,21 +4623,6 @@ function buildSalesSettingRankSummaries(
             roomDelta: resolveSalesSettingRankSummaryDelta(metrics?.bookingCurveData ?? null, metrics?.allMetrics.currentValue ?? null, reflectedDateKey)
         }];
     });
-}
-
-function resolveLatestSalesSettingPreparedData(analysisDate: string): SalesSettingPreparedData | null {
-    if (
-        latestSalesSettingPreparedSnapshot === null
-        || latestSalesSettingPreparedSnapshot.analysisDate !== analysisDate
-    ) {
-        return null;
-    }
-
-    if (activeBatchDateKey !== null && latestSalesSettingPreparedSnapshot.batchDateKey !== activeBatchDateKey) {
-        return null;
-    }
-
-    return latestSalesSettingPreparedSnapshot.preparedData;
 }
 
 function resolveSalesSettingRankSummaryDelta(
