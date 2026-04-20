@@ -42,6 +42,7 @@ const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_GRID_ATTRIBUTE = "data-ra-monthly-progres
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ROW_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-row";
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_MONTH_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-month";
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_VALUE_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-value";
+const MONTHLY_PROGRESS_PREVIEW_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-monthly-progress-preview-active-guide";
 const MONTHLY_PROGRESS_COMPARE_MODE_STORAGE_KEY = "preview-compare-mode";
 const MONTHLY_PROGRESS_RESERVATION_CHART_TEST_ID = "chart-content-numberOfRoomsSold-dateOfReservationBasis";
 const MONTHLY_PROGRESS_VISIBLE_MONTH_COUNT = 4;
@@ -749,23 +750,24 @@ function createMonthlyProgressPanelSvg(
     const svgNamespace = "http://www.w3.org/2000/svg";
     const svgElement = document.createElementNS(svgNamespace, "svg");
     svgElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_SVG_ATTRIBUTE, "");
-    svgElement.setAttribute("viewBox", "0 0 360 222");
+    svgElement.setAttribute("viewBox", "0 0 360 196");
     svgElement.setAttribute("role", "img");
     svgElement.setAttribute("aria-label", `${panel.title} LTブッキングカーブ`);
 
     const width = 360;
-    const height = 222;
-    const paddingLeft = 38;
+    const height = 196;
+    const paddingLeft = 36;
     const paddingRight = 12;
-    const paddingTop = 14;
-    const paddingBottom = 34;
+    const paddingTop = 12;
+    const paddingBottom = 28;
     const plotWidth = width - paddingLeft - paddingRight;
     const plotHeight = height - paddingTop - paddingBottom;
     const baselineY = height - paddingBottom;
 
     const pointsByMonth = panel.focusMonths.map((month) => panel.metric === "room" ? month.roomPoints : month.unitPricePoints);
-    const tickCount = pointsByMonth[0]?.length ?? 0;
-    const axisTicks = pointsByMonth[0] ?? [];
+    const axisTickIndices = getMonthlyProgressActiveTickIndices(pointsByMonth);
+    const axisTicks = axisTickIndices.map((index) => pointsByMonth[0]?.[index]).filter((point): point is MonthlyProgressPreviewPoint => point !== undefined);
+    const tickCount = axisTicks.length;
     const maxValue = Math.max(1, getMonthlyProgressPanelRoundedMaxValue(pointsByMonth));
     const xPositions = axisTicks.map((_, index) => tickCount <= 1
         ? paddingLeft
@@ -803,9 +805,14 @@ function createMonthlyProgressPanelSvg(
     xAxis.setAttribute("stroke-width", "1");
     svgElement.append(xAxis);
 
+    const guideLineElement = document.createElementNS(svgNamespace, "line");
+    guideLineElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_ACTIVE_GUIDE_ATTRIBUTE, "");
+    guideLineElement.setAttribute("visibility", "hidden");
+    svgElement.append(guideLineElement);
+
     panel.focusMonths.forEach((month, monthIndex) => {
         const monthPoints = pointsByMonth[monthIndex] ?? [];
-        const comparePath = buildMonthlyProgressChartPath(monthPoints, xPositions, maxValue, plotHeight, paddingTop, "compareValue");
+        const comparePath = buildMonthlyProgressChartPath(monthPoints, axisTickIndices, xPositions, maxValue, plotHeight, paddingTop, "compareValue");
         if (comparePath !== "") {
             const compareElement = document.createElementNS(svgNamespace, "path");
             compareElement.setAttribute("d", comparePath);
@@ -818,7 +825,7 @@ function createMonthlyProgressPanelSvg(
             svgElement.append(compareElement);
         }
 
-        const currentPath = buildMonthlyProgressChartPath(monthPoints, xPositions, maxValue, plotHeight, paddingTop, "currentValue");
+        const currentPath = buildMonthlyProgressChartPath(monthPoints, axisTickIndices, xPositions, maxValue, plotHeight, paddingTop, "currentValue");
         if (currentPath !== "") {
             const currentElement = document.createElementNS(svgNamespace, "path");
             currentElement.setAttribute("d", currentPath);
@@ -830,9 +837,10 @@ function createMonthlyProgressPanelSvg(
             svgElement.append(currentElement);
         }
 
-        monthPoints.forEach((point, pointIndex) => {
-            const x = xPositions[pointIndex];
-            if (x === undefined) {
+        axisTickIndices.forEach((pointIndex, displayIndex) => {
+            const point = monthPoints[pointIndex];
+            const x = xPositions[displayIndex];
+            if (point === undefined || x === undefined) {
                 return;
             }
 
@@ -889,18 +897,17 @@ function createMonthlyProgressPanelSvg(
         hitbox.setAttribute("tabindex", "0");
         hitbox.setAttribute("role", "button");
         hitbox.setAttribute("aria-label", `${panel.title} ${formatMonthlyProgressTooltipTickLabel(point.tick)}`);
-        const tooltipLeftRatio = x / width;
         hitbox.addEventListener("mouseenter", () => {
-            showMonthlyProgressTooltip(tooltipElement, panel, index, tooltipLeftRatio);
+            showMonthlyProgressTooltip(tooltipElement, guideLineElement, panel, axisTickIndices[index] ?? index, x, width, paddingTop, baselineY);
         });
         hitbox.addEventListener("focus", () => {
-            showMonthlyProgressTooltip(tooltipElement, panel, index, tooltipLeftRatio);
+            showMonthlyProgressTooltip(tooltipElement, guideLineElement, panel, axisTickIndices[index] ?? index, x, width, paddingTop, baselineY);
         });
         hitbox.addEventListener("mouseleave", () => {
-            hideMonthlyProgressTooltip(tooltipElement);
+            hideMonthlyProgressTooltip(tooltipElement, guideLineElement);
         });
         hitbox.addEventListener("blur", () => {
-            hideMonthlyProgressTooltip(tooltipElement);
+            hideMonthlyProgressTooltip(tooltipElement, guideLineElement);
         });
         svgElement.append(hitbox);
     });
@@ -910,9 +917,13 @@ function createMonthlyProgressPanelSvg(
 
 function showMonthlyProgressTooltip(
     tooltipElement: HTMLDivElement,
+    guideLineElement: SVGLineElement,
     panel: MonthlyProgressPanelModel,
     pointIndex: number,
-    horizontalRatio: number
+    x: number,
+    width: number,
+    paddingTop: number,
+    baselineY: number
 ): void {
     const titleElement = tooltipElement.querySelector<HTMLElement>(`[${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TITLE_ATTRIBUTE}]`);
     const gridElement = tooltipElement.querySelector<HTMLElement>(`[${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_GRID_ATTRIBUTE}]`);
@@ -922,7 +933,7 @@ function showMonthlyProgressTooltip(
 
     const referencePoint = (panel.metric === "room" ? panel.focusMonths[0]?.roomPoints : panel.focusMonths[0]?.unitPricePoints)?.[pointIndex];
     if (referencePoint === undefined) {
-        hideMonthlyProgressTooltip(tooltipElement);
+        hideMonthlyProgressTooltip(tooltipElement, guideLineElement);
         return;
     }
 
@@ -959,21 +970,26 @@ function showMonthlyProgressTooltip(
         .filter((row): row is HTMLDivElement => row !== null);
     gridElement.replaceChildren(...rows);
 
-    tooltipElement.style.left = `${(horizontalRatio * 100).toFixed(2)}%`;
-    tooltipElement.style.transform = horizontalRatio >= 0.72
-        ? "translateX(calc(-100% + 12px))"
-        : horizontalRatio <= 0.18
-            ? "translateX(-12px)"
-            : "translateX(-50%)";
+    const maxLeft = Math.max(8, width - 176);
+    tooltipElement.style.left = `${Math.max(8, Math.min(maxLeft, x + 12))}px`;
+    tooltipElement.style.transform = "none";
     tooltipElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ACTIVE_ATTRIBUTE, "true");
+
+    guideLineElement.setAttribute("x1", x.toFixed(2));
+    guideLineElement.setAttribute("x2", x.toFixed(2));
+    guideLineElement.setAttribute("y1", String(paddingTop));
+    guideLineElement.setAttribute("y2", String(baselineY));
+    guideLineElement.setAttribute("visibility", "visible");
 }
 
-function hideMonthlyProgressTooltip(tooltipElement: HTMLDivElement): void {
+function hideMonthlyProgressTooltip(tooltipElement: HTMLDivElement, guideLineElement: SVGLineElement): void {
     tooltipElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ACTIVE_ATTRIBUTE, "false");
+    guideLineElement.setAttribute("visibility", "hidden");
 }
 
 function buildMonthlyProgressChartPath(
     points: MonthlyProgressPreviewPoint[],
+    pointIndices: number[],
     xPositions: number[],
     maxValue: number,
     plotHeight: number,
@@ -981,8 +997,12 @@ function buildMonthlyProgressChartPath(
     key: "currentValue" | "compareValue"
 ): string {
     let path = "";
-    points.forEach((point, index) => {
-        const x = xPositions[index];
+    pointIndices.forEach((pointIndex, displayIndex) => {
+        const point = points[pointIndex];
+        const x = xPositions[displayIndex];
+        if (point === undefined) {
+            return;
+        }
         const y = resolveMonthlyProgressChartY(point[key], maxValue, plotHeight, paddingTop);
         if (x === undefined || y === null) {
             return;
@@ -991,6 +1011,21 @@ function buildMonthlyProgressChartPath(
         path += path === "" ? `M ${x.toFixed(2)} ${y.toFixed(2)}` : ` L ${x.toFixed(2)} ${y.toFixed(2)}`;
     });
     return path;
+}
+
+function getMonthlyProgressActiveTickIndices(pointsByMonth: MonthlyProgressPreviewPoint[][]): number[] {
+    const referencePoints = pointsByMonth[0] ?? [];
+    if (referencePoints.length === 0) {
+        return [];
+    }
+
+    const firstActiveIndex = referencePoints.findIndex((_, index) => pointsByMonth.some((monthPoints) => {
+        const point = monthPoints[index];
+        return point !== undefined && (point.currentValue !== null || point.compareValue !== null);
+    }));
+
+    const safeFirstIndex = firstActiveIndex === -1 ? 0 : firstActiveIndex;
+    return referencePoints.map((_, index) => index).slice(safeFirstIndex);
 }
 
 function resolveMonthlyProgressChartY(
@@ -1129,18 +1164,18 @@ function ensureMonthlyProgressPreviewStyles(): void {
       }
       [${MONTHLY_PROGRESS_PREVIEW_PANEL_TITLE_ATTRIBUTE}] {
         color: #1f3856;
-        font-size: 13px;
+                font-size: 12px;
         font-weight: 700;
       }
       [${MONTHLY_PROGRESS_PREVIEW_PANEL_SUBTITLE_ATTRIBUTE}] {
         margin-top: 2px;
         color: #5c7492;
-        font-size: 11px;
+                font-size: 10px;
         font-weight: 700;
       }
       [${MONTHLY_PROGRESS_PREVIEW_CANVAS_ATTRIBUTE}] {
         position: relative;
-        margin-top: 8px;
+                margin-top: 6px;
       }
       [${MONTHLY_PROGRESS_PREVIEW_SVG_ATTRIBUTE}] {
         display: block;
@@ -1196,6 +1231,11 @@ function ensureMonthlyProgressPreviewStyles(): void {
         font-weight: 700;
         line-height: 1.25;
       }
+            [${MONTHLY_PROGRESS_PREVIEW_ACTIVE_GUIDE_ATTRIBUTE}] {
+                stroke: rgba(95, 118, 148, 0.42);
+                stroke-width: 1.5;
+                stroke-dasharray: 4 4;
+            }
       @media (max-width: 960px) {
         [${MONTHLY_PROGRESS_PREVIEW_GRID_ATTRIBUTE}] {
           grid-template-columns: 1fr;
