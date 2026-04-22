@@ -46,7 +46,6 @@ const MONTHLY_PROGRESS_PREVIEW_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-monthly-progres
 const MONTHLY_PROGRESS_COMPARE_MODE_STORAGE_KEY = "preview-compare-mode";
 const MONTHLY_PROGRESS_RESERVATION_CHART_TEST_ID = "chart-content-numberOfRoomsSold-dateOfReservationBasis";
 const MONTHLY_PROGRESS_VISIBLE_MONTH_COUNT = 4;
-const MONTHLY_PROGRESS_PREVIEW_AXIS_TICKS = new Set<LeadTimeBucketTick>([360, 180, 90, 45, 21, 7, "ACT"]);
 const MONTHLY_PROGRESS_PREVIEW_MONTH_COLORS = ["#1f5fbf", "#0f8f8f", "#d37a1f", "#c14f72"] as const;
 
 export interface MonthlyProgressRouteState {
@@ -82,6 +81,8 @@ interface MonthlyProgressPreviewPoint {
     tick: LeadTimeBucketTick;
     currentValue: number | null;
     compareValue: number | null;
+    lastYearCompareValue: number | null;
+    twoYearsAgoCompareValue: number | null;
     currentDateKey: string | null;
     compareDateKey: string | null;
 }
@@ -416,29 +417,27 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
             context.batchDateKey
         );
 
-        let compareRoomSeries: MonthlyProgressLeadTimeSeries | null = null;
-        let compareSalesSeries: MonthlyProgressLeadTimeSeries | null = null;
+        let previousYearRoomSeries: MonthlyProgressLeadTimeSeries | null = null;
+        let previousYearSalesSeries: MonthlyProgressLeadTimeSeries | null = null;
 
-        if (compareMode === "two-years-ago") {
-            const previousYearMonth = shiftYearMonth(focusYearMonth, -12);
-            if (previousYearMonth !== null) {
-                const compareSnapshot = await ensureMonthlyProgressSnapshotRecord(context, previousYearMonth);
-                if (compareSnapshot !== undefined) {
-                    const compareMonthBounds = getYearMonthBounds(compareSnapshot.yearMonth);
-                    if (compareMonthBounds !== null) {
-                        compareRoomSeries = buildMonthlyProgressLeadTimeSeries(
-                            compareSnapshot.payload,
-                            "room",
-                            compareMonthBounds.lastDateKey,
-                            context.batchDateKey
-                        );
-                        compareSalesSeries = buildMonthlyProgressLeadTimeSeries(
-                            compareSnapshot.payload,
-                            "sales",
-                            compareMonthBounds.lastDateKey,
-                            context.batchDateKey
-                        );
-                    }
+        const previousYearMonth = shiftYearMonth(focusYearMonth, -12);
+        if (previousYearMonth !== null) {
+            const previousYearSnapshot = await ensureMonthlyProgressSnapshotRecord(context, previousYearMonth);
+            if (previousYearSnapshot !== undefined) {
+                const previousYearMonthBounds = getYearMonthBounds(previousYearSnapshot.yearMonth);
+                if (previousYearMonthBounds !== null) {
+                    previousYearRoomSeries = buildMonthlyProgressLeadTimeSeries(
+                        previousYearSnapshot.payload,
+                        "room",
+                        previousYearMonthBounds.lastDateKey,
+                        context.batchDateKey
+                    );
+                    previousYearSalesSeries = buildMonthlyProgressLeadTimeSeries(
+                        previousYearSnapshot.payload,
+                        "sales",
+                        previousYearMonthBounds.lastDateKey,
+                        context.batchDateKey
+                    );
                 }
             }
         }
@@ -449,8 +448,8 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
             compareMode,
             primaryRoomSeries,
             primarySalesSeries,
-            compareRoomSeries,
-            compareSalesSeries
+            previousYearRoomSeries,
+            previousYearSalesSeries
         }));
     }
 
@@ -493,18 +492,18 @@ function buildMonthlyProgressFocusMonthPreview(options: {
     compareMode: MonthlyProgressCompareMode;
     primaryRoomSeries: MonthlyProgressLeadTimeSeries;
     primarySalesSeries: MonthlyProgressLeadTimeSeries;
-    compareRoomSeries: MonthlyProgressLeadTimeSeries | null;
-    compareSalesSeries: MonthlyProgressLeadTimeSeries | null;
+    previousYearRoomSeries: MonthlyProgressLeadTimeSeries | null;
+    previousYearSalesSeries: MonthlyProgressLeadTimeSeries | null;
 }): MonthlyProgressFocusMonthPreview {
     const roomPoints = buildMonthlyProgressMetricPoints(
         options.primaryRoomSeries,
         options.compareMode,
-        options.compareRoomSeries
+        options.previousYearRoomSeries
     );
     const salesPoints = buildMonthlyProgressMetricPoints(
         options.primarySalesSeries,
         options.compareMode,
-        options.compareSalesSeries
+        options.previousYearSalesSeries
     );
 
     return {
@@ -523,6 +522,8 @@ function buildMonthlyProgressFocusMonthPreview(options: {
                 tick: salesPoint.tick,
                 currentValue: divideNullable(salesPoint.currentValue, roomPoint?.currentValue ?? null),
                 compareValue: divideNullable(salesPoint.compareValue, roomPoint?.compareValue ?? null),
+                lastYearCompareValue: divideNullable(salesPoint.lastYearCompareValue, roomPoint?.lastYearCompareValue ?? null),
+                twoYearsAgoCompareValue: divideNullable(salesPoint.twoYearsAgoCompareValue, roomPoint?.twoYearsAgoCompareValue ?? null),
                 currentDateKey: salesPoint.currentDateKey,
                 compareDateKey: salesPoint.compareDateKey
             };
@@ -533,24 +534,26 @@ function buildMonthlyProgressFocusMonthPreview(options: {
 function buildMonthlyProgressMetricPoints(
     primarySeries: MonthlyProgressLeadTimeSeries,
     compareMode: MonthlyProgressCompareMode,
-    compareSeries: MonthlyProgressLeadTimeSeries | null
+    previousYearSeries: MonthlyProgressLeadTimeSeries | null
 ): MonthlyProgressPreviewPoint[] {
-    return LEAD_TIME_BUCKET_TICKS
-        .filter((tick) => LEAD_TIME_BUCKET_VISIBLE_TICKS.has(tick))
-        .map((tick) => {
+    return LEAD_TIME_BUCKET_TICKS.map((tick) => {
             const primaryPoint = findMonthlyProgressLeadTimePoint(primarySeries, tick);
-            const comparePoint = compareMode === "last-year"
-                ? primaryPoint
-                : findMonthlyProgressLeadTimePoint(compareSeries, tick);
+            const previousYearPoint = findMonthlyProgressLeadTimePoint(previousYearSeries, tick);
+            const lastYearCompareValue = primaryPoint?.lastYearValue ?? null;
+            const twoYearsAgoCompareValue = previousYearPoint?.lastYearValue ?? null;
 
             return {
                 tick,
                 currentValue: primaryPoint?.thisYearValue ?? null,
                 compareValue: compareMode === "last-year"
-                    ? primaryPoint?.lastYearValue ?? null
-                    : comparePoint?.lastYearValue ?? null,
+                    ? lastYearCompareValue
+                    : twoYearsAgoCompareValue,
+                lastYearCompareValue,
+                twoYearsAgoCompareValue,
                 currentDateKey: primaryPoint?.targetDateKey ?? null,
-                compareDateKey: comparePoint?.targetDateKey ?? null
+                compareDateKey: compareMode === "last-year"
+                    ? primaryPoint?.targetDateKey ?? null
+                    : previousYearPoint?.targetDateKey ?? null
             };
         });
 }
@@ -873,7 +876,7 @@ function createMonthlyProgressPanelSvg(
         tickLineElement.setAttribute("stroke-width", "1");
         svgElement.append(tickLineElement);
 
-        if (MONTHLY_PROGRESS_PREVIEW_AXIS_TICKS.has(point.tick)) {
+        if (LEAD_TIME_BUCKET_VISIBLE_TICKS.has(point.tick)) {
             const labelElement = document.createElementNS(svgNamespace, "text");
             labelElement.setAttribute("x", x.toFixed(2));
             labelElement.setAttribute("y", String(height - 10));
@@ -1049,7 +1052,12 @@ function resolveMonthlyProgressChartY(
 function getMonthlyProgressPanelRoundedMaxValue(pointsByMonth: MonthlyProgressPreviewPoint[][]): number {
     const maxValue = pointsByMonth.reduce((currentMax, monthPoints) => {
         const monthMax = monthPoints.reduce((pointMax, point) => {
-            return Math.max(pointMax, point.currentValue ?? 0, point.compareValue ?? 0);
+            return Math.max(
+                pointMax,
+                point.currentValue ?? 0,
+                point.lastYearCompareValue ?? 0,
+                point.twoYearsAgoCompareValue ?? 0
+            );
         }, 0);
         return Math.max(currentMax, monthMax);
     }, 0);
