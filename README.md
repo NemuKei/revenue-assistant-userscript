@@ -39,6 +39,8 @@ npm run check
 
 ## 現在の実装状態
 
+### Analyze 日付ページ
+
 現時点の `src/main.ts` は、レベニューアシスタントの analyze 日付ページを検知し、次の拡張を実装しています。ブッキングカーブ API の結果は、画面上の `最終データ更新` 日付が変わるまで、かつ施設ごとに分離して `localStorage` にキャッシュします。起動時、ページ復帰時、フォーカス復帰時には団体系の整合チェックを行い、異常時は group 系キャッシュを破棄して再同期します。
 
 - 月次カレンダー各日付セルへの団体室数表示
@@ -53,7 +55,11 @@ npm run check
 - API 取得と日次キャッシュ
 - SPA 風遷移に対する再同期
 
-また、月次実績画面向けには、まだ final の custom booking curve 自体は未実装ですが、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。加えて、`/api/v1/booking_curve/monthly` の結果は write-only で IndexedDB へ日次 snapshot 保存を始めており、予約日基準 chart 直下へ month-end anchor の LT バケット集約 chart を独立 section で差し込んでいます。現在は `販売客室数` と `販売単価` の 2 カラム表示、対象月から未来 3 か月の同時表示、`前年 / 前々年` compare 切替、hover tooltip まで入っています。表示の read path はまだ現行 API を正とします。
+### 月次実績画面
+
+月次実績画面向けには、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。
+
+`/api/v1/booking_curve/monthly` の結果は write-only で IndexedDB へ日次 snapshot 保存を始めており、予約日基準 chart 直下へ month-end anchor の LT バケット集約 chart を独立 section で差し込んでいます。現在は `販売客室数` と `販売単価` の 2 カラム表示、対象月から未来 3 か月の同時表示、`前年 / 前々年` compare 切替、hover tooltip まで入っています。表示の read path はまだ現行 API を正とします。
 
 ## ドキュメントの正本
 

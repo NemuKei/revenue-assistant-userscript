@@ -82,39 +82,21 @@
 
 ## Thread Handoff
 
-- 現在の `main` は clean 前提で再開できる。直近の押し込み済み保存点は `ca1525e` `Fix rank overview delta alignment`、`ca298fa` `Add top calendar latest change label`、`874e73c` `Fix calendar latest change label layout`
-- 直近の確認済み verify は `npm run check` 通過と、トップ画面カレンダーの通常表示、`1日前増減`、`1日 / 7日前増減`、analyze 画面非表示の GUI 実測。`◯日前` が既存 indicator を押し下げず、analyze では 0 件であることを確認済み
-- 次スレッドの先頭は、トップカレンダー修正済み前提で、`月次実績画面の DOM/API 調査` を最優先にする
-- 現状の localStorage 実測は revenue-assistant 分だけで約 210 万文字、715 key、hotel booking_curve 1 key は約 4.5 万文字で、headroom はまだあるが広くはない
-- `IndexedDB` は monthly-progress の `/api/v1/booking_curve/monthly` snapshot を write-only で保存する用途から先に使い始めた。設定値、toggle、debug snapshot は引き続き localStorage を維持する
-- `src/monthlyProgressLeadTime.ts` を追加し、保存済み snapshot を month-start anchor の LT 系列へ変換する純粋関数と summary helper を切り出した。現時点では console preview までで、UI の read path はまだ切り替えない
-- `src/leadTimeBuckets.ts` を追加し、日別 booking curve と monthly preview が同じ LT バケット定義を共有する構造へ寄せた
-- `src/monthlyProgress.ts` は reservation basis `販売客室数` chart の親直後へ独立 section を差し込み、visible LT tick を使った 2 カラム multi-month SVG chart を描画する。左は `販売客室数`、右は `販売単価`、対象月から未来 3 か月を同時表示し、`前年 / 前々年` compare と hover tooltip を monthly 専用 observer 配下で制御する
-- 次スレッドの最小 verify は docs 判断だけなら差分確認のみ、実装に入るなら `npm run check`。GUI まで触る場合だけ、対象画面に応じて月次実績画面の DOM/API 実測、または analyze rank mode の current-ui supplement portal、overall summary、rank overview、room-group table 再確認を行う
-- 2026-04-20 の月次実績画面 GUI 調査では、トップ導線の `月次実績` link から `/monthly-progress/2026-04` へ遷移でき、表示中 chart の testid は state に応じて `chart-content-sales-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfReservationBasis` へ切り替わることを確認済み
-- `/api/v1/booking_curve/monthly?year_month=202604` は `sales_based` と `room_based` の 181 点系列、および `updated_at` を返し、月次実績画面の curve 表示の primary data source 候補として使えることを確認済み
-- 月次実績画面の custom booking curve は LT 基準を正とし、宿泊日基準へ寄せず、予約日基準 chart の派生表示として扱う
-- 月次実績画面の custom booking curve は別 userscript へ分離せず、同一 userscript 上で進める。その代わり、既存 top / analyze 完成機能を巻き込まないよう、起動条件、storage、描画責務を monthly-progress 側へ閉じる
-- `src/monthlyProgress.ts` に monthly-progress 専用 route-scoped scaffold を追加し、main 側は route dispatch のみで monthly-progress へ渡す構造に寄せた。`/monthly-progress` では既存 observer / sync を停止し、kill switch と namespaced storage adapter を先に持つ
-- `src/monthlyProgressIndexedDb.ts` を追加し、monthly-progress の `booking_curve/monthly` を facility + yearMonth + batch-date 単位の snapshot として IndexedDB へ write-only 保存する。初期 slice ではまだ UI の read path には使わない
-- `src/monthlyProgress.ts` は route 初期化時に最新 snapshot を読み、month-start anchor の LT preview summary を console.info へ出せる。UI 未接続のまま、変換責務だけを先に固定する
-- monthly preview の LT 系列は raw 日別点ではなく、日別 booking curve と同じ bucket end-date 集約で出す。x 軸メモリの粒度を先に共通化する
-- 次の UI 実装は、差し込み済み 2 カラム multi-month chart を final の custom booking curve へどう寄せるかの判断から始める
+- 現在の `main` は clean 前提で再開できる
+- 月次実績画面の custom booking curve は、予約日基準 chart の派生表示として扱い、宿泊日基準へは寄せない
+- monthly-progress は同一 userscript 内の route-scoped slice として進め、既存 top / analyze の observer / sync は `/monthly-progress` で停止する
+- `src/monthlyProgressIndexedDb.ts` は `/api/v1/booking_curve/monthly` を facility + yearMonth + batch-date 単位の snapshot として write-only 保存する。設定値や toggle は引き続き localStorage を使う
+- `src/monthlyProgressLeadTime.ts` は保存済み snapshot を month-end anchor の LT 系列へ変換し、現年は未観測 bucket と ACT を打ち切る
+- `src/monthlyProgress.ts` は reservation basis `販売客室数` chart 直下へ独立 section を差し込み、左に `販売客室数`、右に `販売単価` を置く 2 カラム multi-month SVG chart を描画する。対象月から未来 3 か月を同時表示し、`前年 / 前々年` compare と hover tooltip を monthly 専用 observer 配下で制御する
+- 2026-04-20 時点の実測では、トップ導線の `月次実績` link から `/monthly-progress/2026-04` へ遷移でき、表示中 chart の testid は `chart-content-sales-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfStayBasis`、`chart-content-numberOfRoomsSold-dateOfReservationBasis` へ切り替わる
+- `/api/v1/booking_curve/monthly?year_month=YYYYMM` は `sales_based` と `room_based` の 181 点系列、および `updated_at` を返す
+- 次スレッドの最小 verify は、docs だけなら差分確認、実装に入るなら `npm run check`、GUI まで触る場合だけ月次実績画面で実測する
 
 ## Resume From Here
 
-- 現在地は Phase 2 の最初の性能改善として、販売設定カードが見えていない状態では sales-setting 向け booking_curve prefetch を止め、booking_curve 比較値の事前集計共有、`queueCalendarSync()` の署名ベース重複抑止、reason 付き debug summary、通常ビルド向け debug フラグ、自前 DOM mutation 除外、debug snapshot の DOM / localStorage 出力、observer callback の 1 本化待ち、booking_curve persistent cache の最小系列化、interaction 遅延タイマー打ち切り、現行 sales-setting UI 可視判定の追従、synthetic current-ui host による summary / rank / room-group table 再利用、`current_settings` ベースの個別 booking curve capacity 補完まで反映済み
-- rank overview の `増減` 列追加と配置補正、トップカレンダーの `相対日数のみ / セル最下部のみ / analyze 画面では非表示` は実装と GUI verify まで完了済み
-- トップカレンダーの `◯日前` は、既存 indicator 配下へ差し込むと `1日前増減` と `1日 / 7日前増減` の縦積みを壊すため、日付セル anchor 直下の absolute overlay を正とする
-- 直近の保存点は、上記トップカレンダー layout fix を含む `874e73c` 時点の `main`
-- 次スレッドの最初の実装対象は、baseline へ戻る前に、月次実績画面の DOM と API の調査へ入ること
-- 先に保持すべき公開挙動は、Phase 1 の booking curve UI、tooltip close、`ACT` 空表示、rank marker overlay を変えないこと
-- 月次実績画面の booking curve は、まず DOM と API の調査だけを 1 本切り、データ源と表示余地が見えるまで実装へ入らない
+- 現在地は、月次実績画面の LT 基準 custom booking curve を、追加済み route-scoped slice、write-only IndexedDB snapshot、2 カラム multi-month chart の上でどこまで本実装へ寄せるかを切り分ける段階
+- 直近の判断対象は、baseline を `全体 block のみ` で始めるか、どの時点で write-only 保存済み snapshot を read 利用へ切り替えるか
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
-- 次スレッドの最小 verify は、調査だけなら差分確認または採取メモで足りる。実装に入る場合は `npm run check`。GUI まで触る場合だけ analyze 画面の rank mode で synthetic current-ui host が表示され、不要 warning を増やさないことを確認する
-- 月次実績画面の初回調査は完了済みで、route は `/monthly-progress/YYYY-MM`、主要 data source は `/api/v1/booking_curve/monthly`、補助候補は `/api/v1/booking_progress/monthly`、`/api/v1/sales_diffs`、`/api/v1/sales_diffs/performance`、`/api/v3/lincoln/suggest/status` と整理できている
-- 次スレッドの最初の判断対象は、既存 Recharts DOM を置き換えずに予約日基準 chart area 直下へ独立 block を差し込むかどうかと、`予約日 -> LT` の変換をどこで持つか
-- 月次実績画面の実装は同一 userscript 上で進める前提のまま、monthly-progress 専用の起動境界、storage namespace、kill switch、write-only IndexedDB snapshot、month-start anchor の LT 変換関数までは先に切ってある。次スレッドでは、その上に最小 UI を積む
 
 ## Notes For Next Thread
 
