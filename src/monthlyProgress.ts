@@ -1058,8 +1058,19 @@ function getMonthlyProgressPanelRoundedMaxValue(pointsByMonth: MonthlyProgressPr
         return 10;
     }
 
-    const magnitude = 10 ** Math.floor(Math.log10(maxValue));
-    return Math.ceil(maxValue / magnitude) * magnitude;
+    const rawStep = maxValue / 4;
+    const magnitude = 10 ** Math.floor(Math.log10(rawStep));
+    const normalizedStep = rawStep / magnitude;
+
+    let stepUnit = 10;
+    for (const candidate of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 7.5, 8, 10]) {
+        if (normalizedStep <= candidate) {
+            stepUnit = candidate;
+            break;
+        }
+    }
+
+    return stepUnit * magnitude * 4;
 }
 
 function cleanupMonthlyProgressPreview(): void {
