@@ -537,25 +537,25 @@ function buildMonthlyProgressMetricPoints(
     previousYearSeries: MonthlyProgressLeadTimeSeries | null
 ): MonthlyProgressPreviewPoint[] {
     return LEAD_TIME_BUCKET_TICKS.map((tick) => {
-            const primaryPoint = findMonthlyProgressLeadTimePoint(primarySeries, tick);
-            const previousYearPoint = findMonthlyProgressLeadTimePoint(previousYearSeries, tick);
-            const lastYearCompareValue = primaryPoint?.lastYearValue ?? null;
-            const twoYearsAgoCompareValue = previousYearPoint?.lastYearValue ?? null;
+        const primaryPoint = findMonthlyProgressLeadTimePoint(primarySeries, tick);
+        const previousYearPoint = findMonthlyProgressLeadTimePoint(previousYearSeries, tick);
+        const lastYearCompareValue = primaryPoint?.lastYearValue ?? null;
+        const twoYearsAgoCompareValue = previousYearPoint?.lastYearValue ?? null;
 
-            return {
-                tick,
-                currentValue: primaryPoint?.thisYearValue ?? null,
-                compareValue: compareMode === "last-year"
-                    ? lastYearCompareValue
-                    : twoYearsAgoCompareValue,
-                lastYearCompareValue,
-                twoYearsAgoCompareValue,
-                currentDateKey: primaryPoint?.targetDateKey ?? null,
-                compareDateKey: compareMode === "last-year"
-                    ? primaryPoint?.targetDateKey ?? null
-                    : previousYearPoint?.targetDateKey ?? null
-            };
-        });
+        return {
+            tick,
+            currentValue: primaryPoint?.thisYearValue ?? null,
+            compareValue: compareMode === "last-year"
+                ? lastYearCompareValue
+                : twoYearsAgoCompareValue,
+            lastYearCompareValue,
+            twoYearsAgoCompareValue,
+            currentDateKey: primaryPoint?.targetDateKey ?? null,
+            compareDateKey: compareMode === "last-year"
+                ? primaryPoint?.targetDateKey ?? null
+                : previousYearPoint?.targetDateKey ?? null
+        };
+    });
 }
 
 function findMonthlyProgressLeadTimePoint(
