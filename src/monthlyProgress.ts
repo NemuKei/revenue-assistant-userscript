@@ -868,7 +868,7 @@ function createMonthlyProgressPanelSvg(
 
     const width = 360;
     const height = 196;
-    const paddingLeft = panel.metric === "sales" ? 72 : panel.metric === "unit-price" ? 52 : 36;
+    const paddingLeft = panel.metric === "sales" ? 56 : panel.metric === "unit-price" ? 52 : 36;
     const paddingRight = 12;
     const paddingTop = 12;
     const paddingBottom = 28;
@@ -904,7 +904,9 @@ function createMonthlyProgressPanelSvg(
         labelElement.setAttribute("font-size", "8");
         labelElement.textContent = panel.metric === "room"
             ? formatMetricValue(Math.round(maxValue * ratio))
-            : formatCurrencyValue(Math.round(maxValue * ratio));
+            : panel.metric === "sales"
+                ? formatSalesAxisValue(Math.round(maxValue * ratio))
+                : formatCurrencyValue(Math.round(maxValue * ratio));
         svgElement.append(labelElement);
     }
 
@@ -1492,6 +1494,14 @@ function formatMetricValue(value: number | null): string {
 
 function formatCurrencyValue(value: number | null): string {
     return value === null ? "-" : `¥${Math.round(value).toLocaleString("ja-JP")}`;
+}
+
+function formatSalesAxisValue(value: number | null): string {
+    if (value === null) {
+        return "-";
+    }
+
+    return `${Math.round(value / 10000).toLocaleString("ja-JP")}万円`;
 }
 
 function divideNullable(numerator: number | null, denominator: number | null): number | null {
