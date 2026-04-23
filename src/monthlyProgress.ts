@@ -1001,6 +1001,7 @@ function showMonthlyProgressTooltip(
         pointElement.setAttribute("cx", x.toFixed(2));
         pointElement.setAttribute("cy", y.toFixed(2));
         pointElement.setAttribute("visibility", "visible");
+        pointElement.parentElement?.appendChild(pointElement);
     });
 }
 
