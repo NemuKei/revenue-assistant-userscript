@@ -11,7 +11,6 @@ import {
 } from "./monthlyProgressLeadTime";
 import {
     LEAD_TIME_BUCKET_TICKS,
-    LEAD_TIME_BUCKET_VISIBLE_TICKS,
     type LeadTimeBucketTick
 } from "./leadTimeBuckets";
 
@@ -43,9 +42,11 @@ const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ROW_ATTRIBUTE = "data-ra-monthly-progress
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_MONTH_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-month";
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_VALUE_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-value";
 const MONTHLY_PROGRESS_PREVIEW_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-monthly-progress-preview-active-guide";
+const MONTHLY_PROGRESS_PREVIEW_ACTIVE_POINT_ATTRIBUTE = "data-ra-monthly-progress-preview-active-point";
 const MONTHLY_PROGRESS_COMPARE_MODE_STORAGE_KEY = "preview-compare-mode";
 const MONTHLY_PROGRESS_RESERVATION_CHART_TEST_ID = "chart-content-numberOfRoomsSold-dateOfReservationBasis";
 const MONTHLY_PROGRESS_VISIBLE_MONTH_COUNT = 4;
+const MONTHLY_PROGRESS_PREVIEW_LABEL_TICKS = new Set<LeadTimeBucketTick>([360, 270, 180, 120, 90, 60, 45, 30, 21, 14, 7, 3, "ACT"]);
 const MONTHLY_PROGRESS_PREVIEW_MONTH_COLORS = ["#1f5fbf", "#0f8f8f", "#d37a1f", "#c14f72"] as const;
 
 export interface MonthlyProgressRouteState {
@@ -813,6 +814,18 @@ function createMonthlyProgressPanelSvg(
     guideLineElement.setAttribute("visibility", "hidden");
     svgElement.append(guideLineElement);
 
+    const activePointElements = panel.focusMonths.map((month) => {
+        const pointElement = document.createElementNS(svgNamespace, "circle");
+        pointElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_ACTIVE_POINT_ATTRIBUTE, "");
+        pointElement.setAttribute("r", "3.2");
+        pointElement.setAttribute("fill", "#ffffff");
+        pointElement.setAttribute("stroke", month.color);
+        pointElement.setAttribute("stroke-width", "1.6");
+        pointElement.setAttribute("visibility", "hidden");
+        svgElement.append(pointElement);
+        return pointElement;
+    });
+
     panel.focusMonths.forEach((month, monthIndex) => {
         const monthPoints = pointsByMonth[monthIndex] ?? [];
         const comparePath = buildMonthlyProgressChartPath(monthPoints, axisTickIndices, xPositions, maxValue, plotHeight, paddingTop, "compareValue");
@@ -839,26 +852,6 @@ function createMonthlyProgressPanelSvg(
             currentElement.setAttribute("stroke-linecap", "round");
             svgElement.append(currentElement);
         }
-
-        axisTickIndices.forEach((pointIndex, displayIndex) => {
-            const point = monthPoints[pointIndex];
-            const x = xPositions[displayIndex];
-            if (point === undefined || x === undefined) {
-                return;
-            }
-
-            const currentY = resolveMonthlyProgressChartY(point.currentValue, maxValue, plotHeight, paddingTop);
-            if (currentY !== null) {
-                const circle = document.createElementNS(svgNamespace, "circle");
-                circle.setAttribute("cx", x.toFixed(2));
-                circle.setAttribute("cy", currentY.toFixed(2));
-                circle.setAttribute("r", "2.4");
-                circle.setAttribute("fill", "#ffffff");
-                circle.setAttribute("stroke", month.color);
-                circle.setAttribute("stroke-width", "1.4");
-                svgElement.append(circle);
-            }
-        });
     });
 
     axisTicks.forEach((point, index) => {
@@ -876,7 +869,7 @@ function createMonthlyProgressPanelSvg(
         tickLineElement.setAttribute("stroke-width", "1");
         svgElement.append(tickLineElement);
 
-        if (LEAD_TIME_BUCKET_VISIBLE_TICKS.has(point.tick)) {
+        if (MONTHLY_PROGRESS_PREVIEW_LABEL_TICKS.has(point.tick)) {
             const labelElement = document.createElementNS(svgNamespace, "text");
             labelElement.setAttribute("x", x.toFixed(2));
             labelElement.setAttribute("y", String(height - 10));
@@ -901,16 +894,16 @@ function createMonthlyProgressPanelSvg(
         hitbox.setAttribute("role", "button");
         hitbox.setAttribute("aria-label", `${panel.title} ${formatMonthlyProgressTooltipTickLabel(point.tick)}`);
         hitbox.addEventListener("mouseenter", () => {
-            showMonthlyProgressTooltip(tooltipElement, guideLineElement, panel, axisTickIndices[index] ?? index, x, width, paddingTop, baselineY);
+            showMonthlyProgressTooltip(tooltipElement, guideLineElement, activePointElements, panel, axisTickIndices[index] ?? index, x, maxValue, plotHeight, width, paddingTop, baselineY);
         });
         hitbox.addEventListener("focus", () => {
-            showMonthlyProgressTooltip(tooltipElement, guideLineElement, panel, axisTickIndices[index] ?? index, x, width, paddingTop, baselineY);
+            showMonthlyProgressTooltip(tooltipElement, guideLineElement, activePointElements, panel, axisTickIndices[index] ?? index, x, maxValue, plotHeight, width, paddingTop, baselineY);
         });
         hitbox.addEventListener("mouseleave", () => {
-            hideMonthlyProgressTooltip(tooltipElement, guideLineElement);
+            hideMonthlyProgressTooltip(tooltipElement, guideLineElement, activePointElements);
         });
         hitbox.addEventListener("blur", () => {
-            hideMonthlyProgressTooltip(tooltipElement, guideLineElement);
+            hideMonthlyProgressTooltip(tooltipElement, guideLineElement, activePointElements);
         });
         svgElement.append(hitbox);
     });
@@ -921,9 +914,12 @@ function createMonthlyProgressPanelSvg(
 function showMonthlyProgressTooltip(
     tooltipElement: HTMLDivElement,
     guideLineElement: SVGLineElement,
+    activePointElements: SVGCircleElement[],
     panel: MonthlyProgressPanelModel,
     pointIndex: number,
     x: number,
+    maxValue: number,
+    plotHeight: number,
     width: number,
     paddingTop: number,
     baselineY: number
@@ -936,7 +932,7 @@ function showMonthlyProgressTooltip(
 
     const referencePoint = (panel.metric === "room" ? panel.focusMonths[0]?.roomPoints : panel.focusMonths[0]?.unitPricePoints)?.[pointIndex];
     if (referencePoint === undefined) {
-        hideMonthlyProgressTooltip(tooltipElement, guideLineElement);
+        hideMonthlyProgressTooltip(tooltipElement, guideLineElement, activePointElements);
         return;
     }
 
@@ -988,11 +984,36 @@ function showMonthlyProgressTooltip(
     guideLineElement.setAttribute("y1", String(paddingTop));
     guideLineElement.setAttribute("y2", String(baselineY));
     guideLineElement.setAttribute("visibility", "visible");
+
+    panel.focusMonths.forEach((month, monthIndex) => {
+        const pointElement = activePointElements[monthIndex];
+        if (pointElement === undefined) {
+            return;
+        }
+
+        const point = panel.metric === "room" ? month.roomPoints[pointIndex] : month.unitPricePoints[pointIndex];
+        const y = resolveMonthlyProgressChartY(point?.currentValue ?? null, maxValue, plotHeight, paddingTop);
+        if (y === null) {
+            pointElement.setAttribute("visibility", "hidden");
+            return;
+        }
+
+        pointElement.setAttribute("cx", x.toFixed(2));
+        pointElement.setAttribute("cy", y.toFixed(2));
+        pointElement.setAttribute("visibility", "visible");
+    });
 }
 
-function hideMonthlyProgressTooltip(tooltipElement: HTMLDivElement, guideLineElement: SVGLineElement): void {
+function hideMonthlyProgressTooltip(
+    tooltipElement: HTMLDivElement,
+    guideLineElement: SVGLineElement,
+    activePointElements: SVGCircleElement[]
+): void {
     tooltipElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ACTIVE_ATTRIBUTE, "false");
     guideLineElement.setAttribute("visibility", "hidden");
+    activePointElements.forEach((pointElement) => {
+        pointElement.setAttribute("visibility", "hidden");
+    });
 }
 
 function buildMonthlyProgressChartPath(
