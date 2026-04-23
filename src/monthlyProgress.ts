@@ -33,6 +33,8 @@ const MONTHLY_PROGRESS_PREVIEW_MONTH_ITEM_ATTRIBUTE = "data-ra-monthly-progress-
 const MONTHLY_PROGRESS_PREVIEW_MONTH_SWATCH_ATTRIBUTE = "data-ra-monthly-progress-preview-month-swatch";
 const MONTHLY_PROGRESS_PREVIEW_GRID_ATTRIBUTE = "data-ra-monthly-progress-preview-grid";
 const MONTHLY_PROGRESS_PREVIEW_PANEL_ATTRIBUTE = "data-ra-monthly-progress-preview-panel";
+const MONTHLY_PROGRESS_PREVIEW_PANEL_HEADER_ATTRIBUTE = "data-ra-monthly-progress-preview-panel-header";
+const MONTHLY_PROGRESS_PREVIEW_PANEL_HEADING_ATTRIBUTE = "data-ra-monthly-progress-preview-panel-heading";
 const MONTHLY_PROGRESS_PREVIEW_PANEL_TITLE_ATTRIBUTE = "data-ra-monthly-progress-preview-panel-title";
 const MONTHLY_PROGRESS_PREVIEW_PANEL_SUBTITLE_ATTRIBUTE = "data-ra-monthly-progress-preview-panel-subtitle";
 const MONTHLY_PROGRESS_PREVIEW_CANVAS_ATTRIBUTE = "data-ra-monthly-progress-preview-canvas";
@@ -118,6 +120,7 @@ interface MonthlyProgressPanelModel {
     subtitle: string;
     focusMonths: MonthlyProgressFocusMonthPreview[];
     compareLabel: string;
+    controls?: HTMLElement;
 }
 
 let activeMonthlyProgressSignature = "";
@@ -671,7 +674,6 @@ function renderMonthlyProgressPreview(options: {
     controls.setAttribute(MONTHLY_PROGRESS_PREVIEW_CONTROLS_ATTRIBUTE, "");
     controls.replaceChildren(
         createMonthlyProgressCompareGroup(options.context, options.previewModel.compareMode),
-        createMonthlyProgressSecondaryMetricGroup(options.context, options.previewModel.secondaryMetric),
         createMonthlyProgressMonthLegend(options.previewModel.focusMonths)
     );
 
@@ -690,7 +692,8 @@ function renderMonthlyProgressPreview(options: {
             title: options.previewModel.secondaryMetric === "sales" ? "売上" : "販売単価",
             subtitle: `${options.previewModel.secondaryMetric === "sales" ? "売上" : "売上 ÷ 室数"} / compare ${options.previewModel.compareLabel}`,
             focusMonths: options.previewModel.focusMonths,
-            compareLabel: options.previewModel.compareLabel
+            compareLabel: options.previewModel.compareLabel,
+            controls: createMonthlyProgressSecondaryMetricGroup(options.context, options.previewModel.secondaryMetric)
         })
     );
 
@@ -805,6 +808,12 @@ function createMonthlyProgressPanel(panel: MonthlyProgressPanelModel): HTMLEleme
     const panelElement = document.createElement("section");
     panelElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_PANEL_ATTRIBUTE, "");
 
+    const header = document.createElement("div");
+    header.setAttribute(MONTHLY_PROGRESS_PREVIEW_PANEL_HEADER_ATTRIBUTE, "");
+
+    const heading = document.createElement("div");
+    heading.setAttribute(MONTHLY_PROGRESS_PREVIEW_PANEL_HEADING_ATTRIBUTE, "");
+
     const title = document.createElement("div");
     title.setAttribute(MONTHLY_PROGRESS_PREVIEW_PANEL_TITLE_ATTRIBUTE, "");
     title.textContent = panel.title;
@@ -813,6 +822,13 @@ function createMonthlyProgressPanel(panel: MonthlyProgressPanelModel): HTMLEleme
     subtitle.setAttribute(MONTHLY_PROGRESS_PREVIEW_PANEL_SUBTITLE_ATTRIBUTE, "");
     subtitle.textContent = panel.subtitle;
 
+    heading.replaceChildren(title, subtitle);
+    if (panel.controls !== undefined) {
+        header.replaceChildren(heading, panel.controls);
+    } else {
+        header.replaceChildren(heading);
+    }
+
     const canvas = document.createElement("div");
     canvas.setAttribute(MONTHLY_PROGRESS_PREVIEW_CANVAS_ATTRIBUTE, "");
 
@@ -820,7 +836,7 @@ function createMonthlyProgressPanel(panel: MonthlyProgressPanelModel): HTMLEleme
     const svg = createMonthlyProgressPanelSvg(panel, tooltip);
     canvas.replaceChildren(tooltip, svg);
 
-    panelElement.replaceChildren(title, subtitle, canvas);
+    panelElement.replaceChildren(header, canvas);
     return panelElement;
 }
 
@@ -852,7 +868,7 @@ function createMonthlyProgressPanelSvg(
 
     const width = 360;
     const height = 196;
-    const paddingLeft = 36;
+    const paddingLeft = panel.metric === "sales" ? 72 : panel.metric === "unit-price" ? 52 : 36;
     const paddingRight = 12;
     const paddingTop = 12;
     const paddingBottom = 28;
@@ -1260,6 +1276,7 @@ function ensureMonthlyProgressPreviewStyles(): void {
                 display: inline-flex;
                 align-items: center;
                 gap: 8px;
+                flex: 0 0 auto;
             }
       [${MONTHLY_PROGRESS_PREVIEW_COMPARE_BUTTON_ATTRIBUTE}] {
         border: 1px solid #c8d7ea;
@@ -1330,6 +1347,15 @@ function ensureMonthlyProgressPreviewStyles(): void {
         background: #ffffff;
         padding: 10px 10px 8px;
       }
+            [${MONTHLY_PROGRESS_PREVIEW_PANEL_HEADER_ATTRIBUTE}] {
+                display: flex;
+                align-items: flex-start;
+                justify-content: space-between;
+                gap: 8px;
+            }
+            [${MONTHLY_PROGRESS_PREVIEW_PANEL_HEADING_ATTRIBUTE}] {
+                min-width: 0;
+            }
       [${MONTHLY_PROGRESS_PREVIEW_PANEL_TITLE_ATTRIBUTE}] {
         color: #1f3856;
                 font-size: 12px;
@@ -1343,7 +1369,7 @@ function ensureMonthlyProgressPreviewStyles(): void {
       }
       [${MONTHLY_PROGRESS_PREVIEW_CANVAS_ATTRIBUTE}] {
         position: relative;
-                margin-top: 6px;
+                margin-top: 8px;
       }
       [${MONTHLY_PROGRESS_PREVIEW_SVG_ATTRIBUTE}] {
         display: block;
@@ -1408,6 +1434,10 @@ function ensureMonthlyProgressPreviewStyles(): void {
         [${MONTHLY_PROGRESS_PREVIEW_GRID_ATTRIBUTE}] {
           grid-template-columns: 1fr;
         }
+                [${MONTHLY_PROGRESS_PREVIEW_PANEL_HEADER_ATTRIBUTE}] {
+                    flex-direction: column;
+                    align-items: stretch;
+                }
       }
     `;
     document.head.append(style);
