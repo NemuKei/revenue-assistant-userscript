@@ -4,6 +4,7 @@
 
 ## Decisions
 
+- D-20260424-002 | `repo-template-codex` の共通断片に合わせ、RAU でも `INTENT`、`STATUS`、`DECISIONS`、`tasks_backlog`、`spec` の責務分離を明確化する。次スレッド入口は `STATUS`、実行順は `tasks_backlog`、複数判断に使う優先順位は `INTENT` を正とする | status: active | spec_link: AGENTS.md, docs/context/INTENT.md, docs/context/STATUS.md, docs/tasks_backlog.md, docs/spec_000_overview.md
 - D-20260424-001 | 当面の主線は、RAR 側の本格分析ツールではなく、RAU を `レート調整特化 + 人数なしの簡易フォーキャスト` として進める。Analyze 日付ページの日別 booking curve へ、BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を、ホテル全体と室タイプ別の両方で表示できるようにする | status: active | spec_link: docs/spec_000_overview.md, docs/spec_001_analyze_expansion.md
 - D-20260331-001 | リポジトリ名は `revenue-assistant-userscript` とし、単一機能専用ではなくレベニューアシスタント向け拡張基盤として扱う | status: applied | spec_link: docs/spec_000_overview.md
 - D-20260331-002 | 初回実装は UI 装飾より、`booking_curve` 取得、キャッシュ、再同期の土台を優先する | status: applied | spec_link: docs/spec_001_analyze_expansion.md

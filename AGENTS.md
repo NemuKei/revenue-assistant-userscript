@@ -20,7 +20,9 @@
 ## Task Read (Only When Needed)
 
 - 仕様変更や公開挙動の確認: `docs/spec_*.md`
-- 現在地と残課題の確認: `docs/context/STATUS.md`、`docs/tasks_backlog.md`
+- 判断原則の確認: `docs/context/INTENT.md`
+- 現在地の確認: `docs/context/STATUS.md`
+- 実行順の確認: `docs/tasks_backlog.md`
 - 判断理由の確認: `docs/context/DECISIONS.md`
 - 実装コマンドや運用手順の確認: `README.md`
 - このリポジトリ固有ルールの確認: この `AGENTS.md` の `Local Extension`
@@ -30,30 +32,43 @@
 - root `AGENTS.md` はリポジトリ全体で共通の常設ルールを定義し、特定作業だけで使う補助手順は必要なときだけ Skill で追加する。
 - リポジトリ全体で共通の判断基準や設計原則を Skill へ重複記載しない。
 - このリポジトリでは固有 Skill を常設しない。必要な Skill は共有 Skill から使う。
+- スレッド開始時と終了時には、`thread-contract-handoff` の発火要否を判断し、使う/使わない理由を短く明示する。
+- 本線タスクでは handoff prompt を入口の前提にせず、必要なら `thread-contract-handoff` で正本確認、task bundle、subagent 利用、handoff 要否を判断する。
+- task bundle は Task ID ごとに機械的に切らず、同じ仕様、名称、責務境界を共有する task 群として扱う。
 - 優先して使う共有 Skill:
   - `search-first`: 既存実装、既存依存、外部候補を先に確認するとき
   - `missing-capability-proposal`: 実行中または verify 中に未導入のツール、ライブラリ、Skill、preset が不足能力の原因になったときに、導入提案を短く整理するとき
   - `docs-governance`: 文書の正本配置、新規作成要否、重複整理を判断するとき
   - `spec-governance`: `spec` 更新要否や更新先を判断するとき
+  - `task-add-and-triage`: 新規タスク追加後に棚卸し、統合、実行順更新を同じ変更で行うとき
   - `verification-before-completion`: 完了報告前に verify を整理するとき
   - `thread-contract-handoff`: 長めのスレッドで目的、範囲、handoff 要否を整理するとき
+  - `create-cli`: 新しい CLI、サブコマンド、引数体系、出力契約を設計または変更するとき
   - `playwright`: Chrome remote debugging と画面確認を伴う作業をするとき
 
 ## Source Priority
 
 1. セキュリティ、法令、公開制約
 2. 仕様書 (`docs/spec_*.md`)
-3. 現況と意思決定 (`docs/context/STATUS.md` / `docs/context/DECISIONS.md`)
-4. `AGENTS.md`
-5. `README.md`
+3. 判断原則 (`docs/context/INTENT.md`)
+4. 判断理由 (`docs/context/DECISIONS.md`)
+5. 現在地 (`docs/context/STATUS.md`)
+6. `AGENTS.md`
+7. `README.md`
 
 同順位で矛盾した場合は、より新しい決定を優先する。
 未解決なら `docs/context/DECISIONS.md` に暫定判断を残して進める。
 
 ## Docs Governance
 
-- 仕様は `docs/spec_*.md`、現況は `docs/context/STATUS.md`、判断理由は `docs/context/DECISIONS.md`、利用手順は `README.md` を正本とする。
+- 仕様は `docs/spec_*.md`、判断原則は `docs/context/INTENT.md`、現況は `docs/context/STATUS.md`、判断理由は `docs/context/DECISIONS.md`、実行順は `docs/tasks_backlog.md`、利用手順は `README.md` を正本とする。
 - 新規ドキュメントを作るか、既存文書へ統合するかの判断は `docs-governance` の手順に従う。
+- 会話内容は正本にしない。正本化する場合は、対象ファイルを更新して確定する。
+- 同一ルールの重複記載を残さない。
+- `tasks_backlog` に追加しただけでは `spec` を確定しない。ただし、実装候補 task には `spec-impact`、`spec-checkpoint`、`target-spec`、`open-spec-questions` を持たせてよい。
+- `spec-impact: yes | unknown` の task は、実装開始前に `spec` 更新要否を再判定する。
+- `docs/spec_000_overview.md` は repo-wide の仕様地図と更新規則に限定し、個別画面の詳細仕様を書き溜める場所にしない。
+- 新しい `spec_*.md` は、独立した外部契約、受け入れ条件、更新単位のいずれかがある場合だけ作る。既存 `spec` と同じ責務境界に属する場合は、既存 `spec` への追記を優先する。
 - `AGENTS.md` には常設ルールだけを書く。手順書や一時メモを肥大化させない。
 
 ## Engineering Defaults
