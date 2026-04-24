@@ -121,13 +121,14 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - reference curve は、Phase 1 の `全体 / 個人` 実系列と同じ LT 軸に揃える
 - 最上段のホテル全体 block と、各室タイプ card の両方を対象にする
 - first wave では Revenue Assistant の booking curve 系データだけを使い、PMS データ、人数実績、外部 RMS の保存データを前提にしない
-- baseline 用の履歴系列を複数本持つ必要が出た場合に、`IndexedDB` 導入を再判断する
+- BCL Python 実装を直接呼び出さず、BCL repo の算出ロジックを TypeScript の純粋関数として RAU 向けに再実装する
+- baseline 用の履歴系列と室タイプ別 derived reference curve を複数保持するため、Phase 2 では derived reference curve の保存先を `IndexedDB` とする
 
 #### Phase 2 Pending Decisions
 
 - 2026-04-24 時点の主線では、baseline は `全体 block のみ` ではなく、室タイプ別のレート調整に使えることを主目的として扱う
 - 最初の slice では、Phase 1 の `全体 / 個人` 系列、rank marker overlay、tooltip close、`ACT` 空表示を崩さないことを優先する
-- baseline scope が固まる前に、persistent cache 全体を `IndexedDB` へ移す前提で設計しない。必要になった場合も booking_curve persistent cache を最初の移行対象とする
+- 既存の小さい日次 cache 全体を無条件に `IndexedDB` へ移すことは Phase 2 の必須条件にしない。ただし、BCL 由来の reference curve は比較対象 stay_date が増えるため、表示用に圧縮した derived reference curve を `IndexedDB` へ保存する
 - Phase 2 の最初の受け入れ条件は、baseline 追加後も current-ui supplement portal、overall summary、rank overview、room-group table が維持され、不要 warning を増やさないこととする
 
 ### Candidate: Rooms-only Forecast Curves for Rate Adjustment
@@ -141,9 +142,9 @@ first wave の対象:
 
 - 指標は rooms のみとする。
 - ホテル全体と室タイプ別 card を対象にする。
-- `直近型カーブ` は、Revenue Assistant の booking curve 系データから作る直近傾向の reference curve とする。
-- `季節型カーブ` は、Revenue Assistant の booking curve 系データから作る前年または過去同条件の reference curve とする。
-- どちらも BCL の概念を UI 上の判断軸として再利用するが、BCL の Python 実装や PMS データを直接持ち込まない。
+- `直近型カーブ` は、Revenue Assistant の booking curve 系データから、BCL の `recent90w` 相当の考え方で作る直近傾向の reference curve とする。
+- `季節型カーブ` は、Revenue Assistant の booking curve 系データから、BCL の seasonal component 相当の考え方で作る前年・2 年前同月同曜日の reference curve とする。
+- どちらも BCL の算出ロジックを参照するが、BCL の Python 実装、PMS データ、外部 DB、学習済みパラメータを RAU first wave の必須入力にしない。
 
 first wave の非目標:
 
@@ -157,7 +158,8 @@ first wave の非目標:
 実装前に確認する論点:
 
 1. request 数と表示密度を増やしても、画面内遷移、タブ切替、フォーカス復帰で安定して動くか。
-2. reference curve を室タイプ card まで出した時点で、現行 localStorage headroom のまま進められるか。
+2. reference curve を室タイプ card まで出した時点で、derived reference curve を IndexedDB に保存する範囲をどこまでにするか。
+3. Revenue Assistant の `/api/v4/booking_curve` だけで、BCL seasonal component に必要な final rooms を安定して解決できるか。
 
 2026-04-24 時点で確認済みのこと:
 
@@ -166,17 +168,23 @@ first wave の非目標:
 - 確認時点の 6 室タイプすべてで、同じ response shape が返った。
 - 今日、1 日後、7 日後、30 日後、前年同日に相当する date 指定で 200 応答を確認した。
 
-first wave の定義:
+BCL-tuned first wave の定義:
 
-- `直近型カーブ` は、対象 `stay_date` の直前 7 泊日を比較対象日付とする。
-- `直近型カーブ` の rooms 値は、比較対象日付ごとに `/api/v4/booking_curve?date=YYYYMMDD` または `/api/v4/booking_curve?date=YYYYMMDD&rm_room_group_id=<id>` を取得し、同じ LT tick の非 null 値を中央値で集約する。
-- `直近型カーブ` で 1 つの LT tick に使える非 null 値が 1 件以上ある場合は、その件数で中央値を出す。非 null 値が 0 件の場合、その LT tick は空表示とする。
-- `季節型カーブ` は、対象 `stay_date` の `/api/v4/booking_curve` response に含まれる `last_year_stay_date` と、各 point の `last_year_date`、`last_year_room_sum` を優先して使う。
-- `季節型カーブ` は、`last_year_room_sum` が欠損している point だけ、`two_years_ago_room_sum`、`three_years_ago_room_sum` の順で補う。3 系列すべてが欠損している point は空表示とする。
+- 2026-04-24 に実装した `直近 7 泊日中央値` と `last_year_room_sum` 優先の reference curve は、UI shell 用の仮ロジックとして扱う。今後の仕様ターゲットにはしない。
+- reference curve 算出では、Revenue Assistant の `/api/v4/booking_curve` response 群を `stay_date x LT` の rooms matrix に変換する。`LT` は宿泊日から予約状態の基準日までの日数差とし、既存 booking curve chart の LT tick へ揃える。
+- `直近型カーブ` は、BCL の `recent90w` 相当を第一候補とする。対象は同じ曜日の履歴 stay_date とし、各 LT ごとに `as_of_date - (90 - LT) 日` から `as_of_date + LT 日` までの stay_date を集計対象にする。
+- `直近型カーブ` の重みは、stay_date と `as_of_date` の日数差で決める。0 から 14 日は重み 3、15 から 30 日は重み 2、31 から 90 日は重み 1、範囲外は重み 0 とする。
+- `直近型カーブ` は、同じ LT tick で非 null の rooms 値だけを重み付き平均する。使える値が 0 件の場合、その LT tick は空表示とする。
+- `季節型カーブ` は、対象 stay_date の月に対して、前年同月と 2 年前同月の同じ曜日の stay_date 群を集計対象にする。
+- `季節型カーブ` は、各履歴 stay_date の final rooms を解決し、各 LT の rooms 値を `rooms at LT / final rooms` の比率へ変換する。final rooms が 0 または欠損の履歴 stay_date は、季節型カーブの比率計算から除外する。
+- `季節型カーブ` の final rooms 推定値は、利用できる履歴 stay_date の final rooms の平均を初期実装の既定とする。BCL 側の outlier row weights に相当する補正は、Revenue Assistant から安定して使える除外指標が確認できるまで必須にしない。
+- `季節型カーブ` の LT 比率は 0 から 1 の範囲に丸め、宿泊日に近づくほど rooms が減らない形に補正する。`0日前` の比率は 1 として扱う。
+- `季節型カーブ` の rooms 値は、補正後の LT 比率に final rooms 推定値を掛けて作る。
 - first wave で描画する rooms 系列は `all` と `transient` を標準とする。`group` は response shape と取得可否を確認済みだが、標準 UI へ常時表示するかは reference curve 実装後に再判断する。
 - reference curve は既存の `全体` panel と `個人` panel に追加する。既存の `全体 / 個人` の分離、rank marker、tooltip、`ACT` 空表示は保持する。
 - 初期表示では `現在 / 直近型 / 季節型` を比較できる状態にする。ただし表示密度が上がるため、`直近型カーブ` と `季節型カーブ` は個別に表示切替できるようにする。
 - 室タイプ別 reference curve の追加取得は、初期画面表示時に全室タイプ分を一括で先読みしない。各室タイプ card が開かれたときに、その card に必要な比較対象日付だけを取得する。
+- 必要な履歴 stay_date が不足する場合、旧仮ロジックへ暗黙 fallback しない。該当 reference curve は空表示または取得不可状態として扱い、tooltip または status 表示で不足理由を確認できるようにする。
 
 ## キャッシュと同期のルール
 
@@ -185,6 +193,11 @@ first wave の定義:
 - group 系キャッシュは `最終データ更新` 日付が変わるまで再利用してよい
 - ただしキャッシュキーは施設単位でも分離し、異なる施設間で再利用しない
 - 室タイプ別 booking curve キャッシュは `rm_room_group_id` を含め、ホテル全体キャッシュと分離する
+- BCL-tuned reference curve の derived cache は `IndexedDB` に保存する。保存対象は API 生 response ではなく、表示に必要な LT tick、rooms 値、算出種別、対象 scope、入力日付範囲、算出ロジック version、`as_of_date`、施設識別子、`rm_room_group_id` を含む圧縮済み payload とする
+- derived cache の key は、少なくとも `facility_id`、`scope`、`target_stay_date` または `target_month + weekday`、`as_of_date`、`rm_room_group_id`、`curve_kind`、`algorithm_version` を含める
+- 同じ derived cache key の計算が進行中の場合、重複 request を発行せず、進行中の計算結果を共有する
+- 室タイプ別 reference curve は card が開かれた時点で取得・計算する。初期表示で全室タイプ分の履歴を一括取得しない
+- request 並列数は小さく制限する。初期値は 2 から 3 を候補とし、GUI 確認で体感遅延または API エラーが出る場合は下げる
 
 ### Sync Timing
 
@@ -192,6 +205,7 @@ first wave の定義:
 - analyze 日付ページへの画面内遷移時に再同期する
 - `visibilitychange` と `focus` の復帰時に整合チェックを行う
 - 整合チェックで group 系表示とキャッシュの不整合を検知した場合は、group 系キャッシュを破棄して再同期する
+- reference curve は、画面を開いているだけでは未計算日程が自動的に進むものと扱わない。必要な target と scope に対して userscript が取得キューへ明示的に投入したときだけ計算する
 
 ## Non-Functional Requirements
 
@@ -215,12 +229,12 @@ first wave の定義:
 
 - BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を別系列として重ねる
 - `団体` 系列を標準 UI に含めるかを再判断する
-- baseline や複数比較系列が増える場合に `IndexedDB` 導入要否を再判断する
+- BCL-tuned reference curve の derived cache を `IndexedDB` へ保存し、request fan-out を抑える
 
 ## Open Questions
 
 1. 月送りやタブ切替時の request 数をどこまで減らすべきか
 2. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
-3. `直近型カーブ` を構成する比較対象日付をどの規則で選ぶか
-4. `季節型カーブ` を構成する比較対象日付をどの規則で選ぶか
-5. reference curve を室タイプ card まで出した時点で、現行 localStorage headroom のまま進められるか
+3. Revenue Assistant の `/api/v4/booking_curve` response から、すべての履歴 stay_date で final rooms を安定して解決できるか
+4. BCL の outlier row weights に相当する除外または重み補正を、Revenue Assistant だけで再現すべきか
+5. derived reference curve の IndexedDB 保持期間を、`as_of_date` 単位、`batch-date` 単位、または一定日数の TTL のどれで切るか

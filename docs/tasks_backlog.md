@@ -2,20 +2,72 @@
 
 ## Now
 
-### RAU-AF-03 Analyze booking curve reference curve の UI first wave を実装する
+### RAU-AF-04 BCL-tuned reference curve の算出コアを実装する
 
 - 目的:
-  - ホテル全体 block と室タイプ別 card に、rooms-only reference curve を既存 booking curve と同じ LT 軸で重ねる。
+  - `直近型カーブ` と `季節型カーブ` の算出を、BCL repo の booking curve 画面で使う考え方を参照した RAU 向けロジックへ差し替える。
 - スコープ:
-  - `RAU-AF-02` で固定した定義を使う。
-  - 既存 SVG chart、tooltip、legend、capacity line、rank marker を壊さずに系列を追加する。
-  - 表示過密を避けるための toggle または legend 操作を必要に応じて追加する。
+  - Revenue Assistant の `/api/v4/booking_curve` response 群を、`stay_date x LT` の rooms matrix へ変換する純粋関数を作る。
+  - `直近型カーブ` は、同じ曜日の履歴 stay_date を使い、LT ごとの 90 日窓と直近重みを使う `recent90w` 相当で算出する。
+  - `季節型カーブ` は、前年同月と 2 年前同月の同じ曜日の履歴 stay_date を使い、final rooms に対する LT 比率から rooms-only reference curve を算出する。
+  - 既存の `直近 7 泊日中央値` と `last_year_room_sum` 優先ロジックは、暗黙 fallback として残さない。
 - 非目標:
-  - 月次実績画面の chart 更新。
-  - `団体` 系列の標準表示化。
-  - 競合価格表。
+  - BCL Python 実装を直接呼び出すこと。
+  - PMS データ、外部 DB、人数実績、学習済みパラメータを必須入力にすること。
+  - UI レイアウトをこの task で作り直すこと。
 - 受け入れ条件:
-  - Analyze 日付ページで、ホテル全体と室タイプ別 card に reference curve が表示できる。
+  - 入力 response 群から、ホテル全体と室タイプ別の両方に使える `直近型カーブ` と `季節型カーブ` の表示用データを生成できる。
+  - データ不足時は旧仮ロジックへ自動 fallback せず、空表示または取得不可状態を返せる。
+  - 算出ロジックが UI と API 取得処理から分離され、単体で確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `open-spec-questions`: final rooms の解決規則と BCL outlier row weights 相当の扱いは、実装中に API response の実データで再確認する
+
+## Next
+
+### RAU-AF-05 reference curve の IndexedDB cache と request scheduler を実装する
+
+- 目的:
+  - BCL-tuned reference curve の request 数増加で、Analyze 日付ページと室タイプ別 card の操作が重くならないようにする。
+- スコープ:
+  - derived reference curve を IndexedDB へ保存する。
+  - cache key は `facility_id`、`scope`、`target_stay_date` または `target_month + weekday`、`as_of_date`、`rm_room_group_id`、`curve_kind`、`algorithm_version` を含める。
+  - 同じ key の計算が進行中の場合は in-flight Promise を共有し、重複 request を発行しない。
+  - `/api/v4/booking_curve` の比較対象日付取得に同時 request 数制限を入れる。
+  - 室タイプ別 reference curve は、card が開かれたときに必要分だけ取得する。
+- 非目標:
+  - 既存の小さい日次 localStorage cache 全体を無条件に IndexedDB へ移すこと。
+  - 初期表示時に全室タイプ分の reference curve を一括取得すること。
+- 受け入れ条件:
+  - 同じ target と scope で再表示した場合、保存済み derived reference curve を再利用できる。
+  - 同じ target と scope の計算を短時間に複数回要求しても、同じ API request が重複して増えない。
+  - 室タイプ card を開くまで、その室タイプの reference curve 用履歴取得は始まらない。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `open-spec-questions`: IndexedDB の保持期間を `as_of_date`、`batch-date`、TTL のどれで切るかは初期実装時に暫定値を置く
+
+## After Next
+
+### RAU-AF-06 BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
+
+- 目的:
+  - `RAU-AF-03` で作った reference curve UI shell を維持しつつ、表示データを BCL-tuned 算出結果へ差し替える。
+- スコープ:
+  - ホテル全体 block と、開いた室タイプ card の `現在 / 直近型 / 季節型` 表示を BCL-tuned 算出結果へ接続する。
+  - `全体 / 個人` panel、rank marker、tooltip、`ACT` 空表示、表示切替を維持する。
+  - データ不足、取得中、取得失敗を UI で判別できるようにする。
+- 非目標:
+  - `団体` 系列の標準表示化。
+  - competitor prices 表の導入。
+  - 月次実績画面の chart 更新。
+- 受け入れ条件:
+  - Analyze 日付ページで、ホテル全体と室タイプ別 card に BCL-tuned reference curve が表示できる。
   - 既存の `全体 / 個人` 系列、rank marker、tooltip、`ACT` 空表示、current-ui supplement portal が維持される。
   - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
   - Tampermonkey 再読込後に Analyze 日付ページで GUI 確認できる。
@@ -23,9 +75,9 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: during-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
-  - `open-spec-questions`: 実装中に UI 表示密度または request 数が許容できない場合、toggle と cache 方針を再判断する
+  - `open-spec-questions`: 表示密度が高すぎる場合、reference curve の既定表示状態を再判断する
 
-## Next
+## Later
 
 ### RAU-UX-01 competitor prices と団体系列の導入要否を再判断する
 
@@ -35,8 +87,6 @@
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
-## After Next
 
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
@@ -49,22 +99,42 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_000_overview.md`
 
+## Completed / Superseded Context
+
+### RAU-AF-03 Analyze booking curve reference curve の UI first wave を実装する
+
+- 状態:
+  - UI shell としてはコード実装済み。
+  - 算出ロジックは `直近 7 泊日中央値` と `last_year_room_sum` 優先の仮定義だったため、2026-04-24 の BCL repo 再確認により仕様ターゲットから外す。
+- 残すもの:
+  - ホテル全体 block と室タイプ別 card の reference curve legend、表示切替、参考線の UI shell。
+- 差し替えるもの:
+  - `直近型カーブ` と `季節型カーブ` の算出ロジック。
+  - reference curve 用 cache と request scheduling。
+
 ## Remaining Task Triage
 
 Now:
 
-- `RAU-AF-03` Analyze booking curve reference curve の UI first wave を実装する
+- `RAU-AF-04` BCL-tuned reference curve の算出コアを実装する
 
 Next:
 
-- `RAU-UX-01` competitor prices と団体系列の導入要否を再判断する
+- `RAU-AF-05` reference curve の IndexedDB cache と request scheduler を実装する
 
 After Next:
 
+- `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
+
+Later:
+
+- `RAU-UX-01` competitor prices と団体系列の導入要否を再判断する
 - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 統合判断:
 
-- 旧 backlog の `同月同曜日 baseline`、`baseline scope`、`IndexedDB read path` は、`RAU-AF-01` と `RAU-AF-02` で確認と定義固定を行い、UI 実装は `RAU-AF-03` に統合する。
+- 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
+- `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
+- response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
 - 旧 backlog の月次実績画面関連 task は、`RAU-MP-01` へ束ねて優先度を下げる。
-- 旧 backlog の `団体` 系列、rank marker polish、competitor prices は、Analyze reference curve 実装後の使用感で再判断するため `RAU-UX-01` へ束ねる。
+- 旧 backlog の `団体` 系列、rank marker polish、competitor prices は、BCL-tuned reference curve 実装後の使用感で再判断するため `RAU-UX-01` へ束ねる。
