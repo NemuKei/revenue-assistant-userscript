@@ -4,6 +4,8 @@
 
 ## Decisions
 
+- D-20260424-004 | Analyze booking curve reference curve の first wave では、`直近型カーブ` は対象 `stay_date` の直前 7 泊日を比較対象にし、各 LT tick の rooms 値は非 null 値の中央値で集約する。`季節型カーブ` は `/api/v4/booking_curve` が返す `last_year_stay_date`、各 point の `last_year_date`、`last_year_room_sum` を優先し、欠損時だけ `two_years_ago_room_sum`、`three_years_ago_room_sum` の順で補う。reference curve は `全体` と `個人` の既存 panel に追加し、初期表示では `現在 / 直近型 / 季節型` を比較できる状態にするが、表示密度対策として reference curve 単位の表示切替を持たせる | status: active | spec_link: docs/spec_001_analyze_expansion.md
+- D-20260424-003 | `/api/v4/booking_curve` は、少なくとも 2026-04-24 時点のログイン済み Revenue Assistant 環境では、ホテル全体と全 6 室タイプについて、確認した比較対象 `stay_date` と `rm_room_group_id` の組み合わせで 200 応答を返す。response は `booking_curve`、`stay_date`、`last_year_stay_date`、`max_room_count` を持ち、各 point は `date`、`last_year_date`、`all`、`transient`、`group` を持つ。`batch-date` は response には含まれないため、既存の同期文脈または cache key 側の値として扱う | status: active | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260424-002 | `repo-template-codex` の共通断片に合わせ、RAU でも `INTENT`、`STATUS`、`DECISIONS`、`tasks_backlog`、`spec` の責務分離を明確化する。次スレッド入口は `STATUS`、実行順は `tasks_backlog`、複数判断に使う優先順位は `INTENT` を正とする | status: active | spec_link: AGENTS.md, docs/context/INTENT.md, docs/context/STATUS.md, docs/tasks_backlog.md, docs/spec_000_overview.md
 - D-20260424-001 | 当面の主線は、RAR 側の本格分析ツールではなく、RAU を `レート調整特化 + 人数なしの簡易フォーキャスト` として進める。Analyze 日付ページの日別 booking curve へ、BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を、ホテル全体と室タイプ別の両方で表示できるようにする | status: active | spec_link: docs/spec_000_overview.md, docs/spec_001_analyze_expansion.md
 - D-20260331-001 | リポジトリ名は `revenue-assistant-userscript` とし、単一機能専用ではなくレベニューアシスタント向け拡張基盤として扱う | status: applied | spec_link: docs/spec_000_overview.md

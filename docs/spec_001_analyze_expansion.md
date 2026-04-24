@@ -22,6 +22,11 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - `/api/v4/booking_curve?date=YYYYMMDD&rm_room_group_id=<id>`
   - 室タイプ別の booking curve を取得する
   - `booking_curve[].group.this_year_room_sum` から室タイプ別の団体室数を取る
+- `/api/v4/booking_curve` の response は、ホテル全体と室タイプ別で同じ形として扱う
+  - top-level には `booking_curve`、`stay_date`、`last_year_stay_date`、`max_room_count` がある
+  - `booking_curve[]` の各 point には `date`、`last_year_date`、`all`、`transient`、`group` がある
+  - `all`、`transient`、`group` には少なくとも `this_year_room_sum`、`last_year_room_sum`、`two_years_ago_room_sum`、`three_years_ago_room_sum` がある
+  - `batch-date` は `/api/v4/booking_curve` の response には含まれない。取得時点や cache 分離に必要な `batch-date` は、既存の同期文脈または cache key 側の値として扱う
 - `/api/v1/booking_curve/rm_room_groups`
   - 室タイプ一覧と `rm_room_group_id` を取得する
 - 当日点が `null` の stay_date があるため、表示時は `date <= stay_date` の最新非 null 値へフォールバックする
@@ -151,11 +156,27 @@ first wave の非目標:
 
 実装前に確認する論点:
 
-1. Revenue Assistant の `/api/v4/booking_curve` が、対象 stay_date 以外の比較対象日付をどこまで安定取得できるか。
-2. 室タイプ別 `rm_room_group_id` を指定した比較対象日付の booking curve が、現行と同じ形で返るか。
-3. `直近型カーブ` を、直近何日または何件の comparable stay_date から作るか。
-4. `季節型カーブ` を、前年同日、前年同曜日、同月同曜日、曜日・連休補正なしのどれから始めるか。
-5. reference curve を初期表示で常時表示するか、toggle で表示するか。
+1. request 数と表示密度を増やしても、画面内遷移、タブ切替、フォーカス復帰で安定して動くか。
+2. reference curve を室タイプ card まで出した時点で、現行 localStorage headroom のまま進められるか。
+
+2026-04-24 時点で確認済みのこと:
+
+- `/api/v4/booking_curve` は、ホテル全体と室タイプ別の両方で、対象 `stay_date` 以外の比較対象日付を取得できる。
+- `rm_room_group_id` を指定した場合も、ホテル全体と同じ top-level key、point key、rooms 系列 key が返る。
+- 確認時点の 6 室タイプすべてで、同じ response shape が返った。
+- 今日、1 日後、7 日後、30 日後、前年同日に相当する date 指定で 200 応答を確認した。
+
+first wave の定義:
+
+- `直近型カーブ` は、対象 `stay_date` の直前 7 泊日を比較対象日付とする。
+- `直近型カーブ` の rooms 値は、比較対象日付ごとに `/api/v4/booking_curve?date=YYYYMMDD` または `/api/v4/booking_curve?date=YYYYMMDD&rm_room_group_id=<id>` を取得し、同じ LT tick の非 null 値を中央値で集約する。
+- `直近型カーブ` で 1 つの LT tick に使える非 null 値が 1 件以上ある場合は、その件数で中央値を出す。非 null 値が 0 件の場合、その LT tick は空表示とする。
+- `季節型カーブ` は、対象 `stay_date` の `/api/v4/booking_curve` response に含まれる `last_year_stay_date` と、各 point の `last_year_date`、`last_year_room_sum` を優先して使う。
+- `季節型カーブ` は、`last_year_room_sum` が欠損している point だけ、`two_years_ago_room_sum`、`three_years_ago_room_sum` の順で補う。3 系列すべてが欠損している point は空表示とする。
+- first wave で描画する rooms 系列は `all` と `transient` を標準とする。`group` は response shape と取得可否を確認済みだが、標準 UI へ常時表示するかは reference curve 実装後に再判断する。
+- reference curve は既存の `全体` panel と `個人` panel に追加する。既存の `全体 / 個人` の分離、rank marker、tooltip、`ACT` 空表示は保持する。
+- 初期表示では `現在 / 直近型 / 季節型` を比較できる状態にする。ただし表示密度が上がるため、`直近型カーブ` と `季節型カーブ` は個別に表示切替できるようにする。
+- 室タイプ別 reference curve の追加取得は、初期画面表示時に全室タイプ分を一括で先読みしない。各室タイプ card が開かれたときに、その card に必要な比較対象日付だけを取得する。
 
 ## キャッシュと同期のルール
 

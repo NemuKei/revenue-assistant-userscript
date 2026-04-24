@@ -4,13 +4,12 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-AF-01` Analyze booking curve reference curve のデータ取得可否を確認する
+- 主対象: `RAU-AF-03` Analyze booking curve reference curve の UI first wave を実装する
 - この bundle で扱う Task ID:
-  - `RAU-AF-01` Analyze booking curve reference curve のデータ取得可否を確認する
-  - `RAU-AF-02` 直近型カーブ / 季節型カーブの first wave 定義を固定する
+  - `RAU-AF-03` Analyze booking curve reference curve の UI first wave を実装する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
-  - BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を、Revenue Assistant の booking curve 系データだけで成立させられるか確認する。
+  - BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を、ホテル全体 block と室タイプ別 card の既存 booking curve へ追加する。
 
 ## Current State
 
@@ -21,6 +20,9 @@
 - Phase 1 の booking curve は、custom SVG、hover tooltip、capacity 基準 y 軸、rank 変更履歴 marker、未来 stay_date の観測 LT 打ち切り、`ACT` 空表示を含む。
 - 現行 current UI では、legacy sales-setting card が無い場合でも synthetic room-type host を生成し、overall summary、rank overview、room-group table、室タイプ別 booking curve を表示できる。
 - 月次実績画面の LT 基準 custom booking curve は、Analyze reference curve が一段落するまで優先度を下げる。
+- `RAU-AF-01` は完了。2026-04-24 時点のログイン済み Revenue Assistant 環境で、`/api/v4/booking_curve` はホテル全体と全 6 室タイプについて、対象 `stay_date` 以外の比較対象日付でも 200 応答を返すことを確認した。
+- `/api/v4/booking_curve` の response に `batch-date` は含まれない。`batch-date` は既存の同期文脈または cache key 側で扱う。
+- `RAU-AF-02` は完了。first wave の `直近型カーブ` は対象 `stay_date` の直前 7 泊日を中央値で集約し、`季節型カーブ` は response 内の `last_year_room_sum` を優先して使う。
 
 ## Next Re-entry
 
@@ -36,10 +38,10 @@
 
 最初にやること:
 
-1. `RAU-AF-01` として、`/api/v4/booking_curve` が比較対象 `stay_date` と `rm_room_group_id` の組み合わせで安定取得できるかを確認する。
-2. 取得できる場合は、response のキー、`batch-date`、`all.this_year_room_sum`、`transient.this_year_room_sum`、`group.this_year_room_sum` の有無を、ホテル全体と室タイプ別で比較する。
-3. 取得できない場合は、reference curve first wave を「現在表示中 stay_date の周辺 API 取得」ではなく、既存 cache / monthly-progress snapshot / 別 endpoint のどれで組むかを再判断する。
-4. `RAU-AF-02` として、`直近型カーブ` と `季節型カーブ` の比較対象日付選定を固定する。
+1. `RAU-AF-03` として、既存 booking curve の data model と renderer に reference curve 系列を追加する。
+2. `直近型カーブ` は、対象 `stay_date` の直前 7 泊日を比較対象として取得し、同じ LT tick の非 null rooms 値を中央値で集約する。
+3. `季節型カーブ` は、対象 `stay_date` の booking curve response に含まれる `last_year_room_sum` を優先し、欠損時だけ `two_years_ago_room_sum`、`three_years_ago_room_sum` の順で補う。
+4. 既存の `全体 / 個人` panel、rank marker、tooltip、`ACT` 空表示を維持したまま、`現在 / 直近型 / 季節型` を比較できる UI と表示切替を追加する。
 
 変更しない契約:
 
@@ -48,6 +50,7 @@
 - 自動レート変更は扱わない。
 - 既存の `全体 / 個人` 系列、rank marker、tooltip、`ACT` 空表示、current-ui supplement portal を壊さない。
 - `dist/*.user.js` は手編集しない。
+- 室タイプ別 reference curve の追加取得は、初期画面表示時に全室タイプ分を一括で先読みしない。
 
 ## Verify / Confirmation State
 
@@ -63,11 +66,9 @@
 
 ## Open Questions / Risks
 
-- `/api/v4/booking_curve` が任意の比較対象 `stay_date` と `rm_room_group_id` の組み合わせで安定取得できるか未確認。
-- `直近型カーブ` を直近何日または何件の comparable stay_date から作るか未確定。
-- `季節型カーブ` を前年同日、前年同曜日、同月同曜日のどれから始めるか未確定。
-- reference curve を常時表示にするか、toggle 表示にするか未確定。
-- 室タイプ別 reference curve で request 数と localStorage 使用量が増える可能性がある。
+- `直近型カーブ` は、室タイプ card を開いたタイミングで追加取得するため、連続して複数 card を開いたときの request 数が増える。
+- reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
+- 室タイプ別 reference curve で localStorage 使用量が増える可能性がある。実装中に cache payload の圧縮範囲を確認する。
 
 ## References
 
