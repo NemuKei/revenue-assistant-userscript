@@ -4,9 +4,8 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-AF-04` BCL-tuned reference curve の算出コアを実装する
+- 主対象: `RAU-AF-05` reference curve の IndexedDB cache と request scheduler を実装する
 - この bundle で扱う Task ID:
-  - `RAU-AF-04` BCL-tuned reference curve の算出コアを実装する
   - `RAU-AF-05` reference curve の IndexedDB cache と request scheduler を実装する
   - `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
 - 今回の目的:
@@ -31,6 +30,8 @@
 - `RAU-AF-03` の算出ロジックは仮定義のため、`RAU-AF-04` 以降で BCL-tuned 算出ロジック、IndexedDB derived cache、request scheduler へ差し替える。
 - `RAU-AF-03` の GUI 確認は、Chrome CDP で build 済み `dist` を Analyze 日付ページへ注入して確認済み。Tampermonkey 側で `dist/*.user.js` を正式に再読込しての確認は未実施。
 - `docs/spec_002_curve_core.md` を追加し、canonical input / output、reference curve、将来の forecast extension、将来の evaluation extension の正本とした。
+- `RAU-AF-04` は実装済み。`src/curveCore.ts` に、canonical input / output、Revenue Assistant booking curve response adapter、`recent_weighted_90`、`seasonal_component`、候補 stay_date 生成、diagnostics を追加した。
+- `RAU-AF-04` では UI への接続は行っていない。BCL-tuned reference curve を画面へ接続する前に、`RAU-AF-05` で request scheduler と IndexedDB derived cache を実装する。
 
 ## Next Re-entry
 
@@ -47,11 +48,11 @@
 
 最初にやること:
 
-1. `RAU-AF-04` として、`docs/spec_002_curve_core.md` の canonical input / output を TypeScript 型へ落とす。
-2. Revenue Assistant の `/api/v4/booking_curve` response 群を canonical input と `stay_date x LT` rooms matrix へ変換する adapter / pure function の置き場所を決める。
-3. BCL repo の `recent90w` 相当と seasonal component 相当を、RAU の LT tick と `all / transient` 系列で扱える TypeScript 関数として実装する。
-4. 実装中に final rooms の解決規則、diagnostics、履歴不足時の扱いが仕様本文とずれた場合は、先に `docs/spec_002_curve_core.md` を更新する。
-5. `RAU-AF-04` の verify が通ったら、次は `RAU-AF-05` の IndexedDB derived cache と request scheduler へ進む。
+1. `RAU-AF-05` として、derived reference curve の IndexedDB 保存単位と object store を決める。
+2. `src/curveCore.ts` の `ReferenceCurveResult` を保存できる payload へ変換する adapter を作る。
+3. 同じ key の in-flight Promise を共有し、同時 request 数を 2 から 3 程度に制限する request scheduler を実装する。
+4. 室タイプ別 card が開かれるまで、その室タイプの reference curve 用履歴取得を始めないことを維持する。
+5. `RAU-AF-05` の verify が通ったら、次は `RAU-AF-06` の UI 接続へ進む。
 
 変更しない契約:
 
@@ -89,6 +90,7 @@
 - derived reference curve の IndexedDB 保持期間は未確定。初期実装では `algorithm_version` と `as_of_date` を key に含め、保持期間は `RAU-AF-05` で暫定判断する。
 - reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
+- `RAU-AF-04` の core logic は実装済みだが、実データ GUI での reference curve 表示は未接続。UI 接続前に request 数制限と cache を入れる必要がある。
 
 ## References
 
