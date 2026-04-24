@@ -23,6 +23,8 @@
 - `RAU-AF-01` は完了。2026-04-24 時点のログイン済み Revenue Assistant 環境で、`/api/v4/booking_curve` はホテル全体と全 6 室タイプについて、対象 `stay_date` 以外の比較対象日付でも 200 応答を返すことを確認した。
 - `/api/v4/booking_curve` の response に `batch-date` は含まれない。`batch-date` は既存の同期文脈または cache key 側で扱う。
 - `RAU-AF-02` は完了。first wave の `直近型カーブ` は対象 `stay_date` の直前 7 泊日を中央値で集約し、`季節型カーブ` は response 内の `last_year_room_sum` を優先して使う。
+- `RAU-AF-03` はコード実装済み。ホテル全体 block と開いた室タイプ card に、`現在 / 直近型 / 季節型` の legend、参考線、個別表示切替を追加した。
+- `RAU-AF-03` の GUI 確認は、Chrome CDP で build 済み `dist` を Analyze 日付ページへ注入して確認済み。Tampermonkey 側で `dist/*.user.js` を正式に再読込しての確認は未実施。
 
 ## Next Re-entry
 
@@ -38,10 +40,10 @@
 
 最初にやること:
 
-1. `RAU-AF-03` として、既存 booking curve の data model と renderer に reference curve 系列を追加する。
-2. `直近型カーブ` は、対象 `stay_date` の直前 7 泊日を比較対象として取得し、同じ LT tick の非 null rooms 値を中央値で集約する。
-3. `季節型カーブ` は、対象 `stay_date` の booking curve response に含まれる `last_year_room_sum` を優先し、欠損時だけ `two_years_ago_room_sum`、`three_years_ago_room_sum` の順で補う。
-4. 既存の `全体 / 個人` panel、rank marker、tooltip、`ACT` 空表示を維持したまま、`現在 / 直近型 / 季節型` を比較できる UI と表示切替を追加する。
+1. Tampermonkey 側で `dist/*.user.js` を再読込する。
+2. Analyze 日付ページの販売設定タブを開き、ホテル全体 block で `現在 / 直近型 / 季節型` の legend と参考線が表示されることを確認する。
+3. 室タイプ別 card を 1 つ開き、同じ legend と参考線が表示され、`直近型` と `季節型` の表示切替が効くことを確認する。
+4. 問題がなければ `RAU-AF-03` を完了扱いにし、次は `RAU-UX-01` へ進む。
 
 変更しない契約:
 
@@ -63,6 +65,12 @@
   - 室タイプ別 booking curve card
   - rank marker tooltip
   - current-ui supplement portal、overall summary、rank overview、room-group table
+- 2026-04-24 のコード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - Chrome CDP 注入 GUI 確認: ホテル全体 block、開いた室タイプ card、reference curve legend、破線の参考線、`季節型` toggle は確認済み
+  - Tampermonkey 再読込 GUI 確認: 未実施
 
 ## Open Questions / Risks
 

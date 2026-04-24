@@ -76,6 +76,12 @@ const SALES_SETTING_BOOKING_CURVE_TOGGLE_KEY_ATTRIBUTE = "data-ra-sales-setting-
 const SALES_SETTING_BOOKING_CURVE_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-toggle-active";
 const SALES_SETTING_BOOKING_CURVE_HEADER_ATTRIBUTE = "data-ra-sales-setting-booking-curve-header";
 const SALES_SETTING_BOOKING_CURVE_NOTE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-note";
+const SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_GROUP_ATTRIBUTE = "data-ra-sales-setting-booking-curve-reference-toggle-group";
+const SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-reference-toggle";
+const SALES_SETTING_BOOKING_CURVE_REFERENCE_KIND_ATTRIBUTE = "data-ra-sales-setting-booking-curve-reference-kind";
+const SALES_SETTING_BOOKING_CURVE_REFERENCE_ACTIVE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-reference-active";
+const SALES_SETTING_BOOKING_CURVE_LEGEND_ATTRIBUTE = "data-ra-sales-setting-booking-curve-legend";
+const SALES_SETTING_BOOKING_CURVE_LEGEND_ITEM_ATTRIBUTE = "data-ra-sales-setting-booking-curve-legend-item";
 const SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE = "data-ra-sales-setting-booking-curve-grid";
 const SALES_SETTING_BOOKING_CURVE_PANEL_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel";
 const SALES_SETTING_BOOKING_CURVE_PANEL_TITLE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-panel-title";
@@ -132,23 +138,27 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE}]`
 ].join(", ");
 
+interface BookingCurveScopeCounts {
+    this_year_room_sum?: number;
+    last_year_room_sum?: number;
+    two_years_ago_room_sum?: number;
+    three_years_ago_room_sum?: number;
+}
+
 interface BookingCurvePoint {
     date: string;
-    all?: {
-        this_year_room_sum?: number;
-    };
-    transient?: {
-        this_year_room_sum?: number;
-    };
-    group?: {
-        this_year_room_sum?: number;
-    };
+    last_year_date?: string;
+    all?: BookingCurveScopeCounts;
+    transient?: BookingCurveScopeCounts;
+    group?: BookingCurveScopeCounts;
 }
 
 type BookingCurveCountScope = "all" | "transient" | "group";
 
 interface BookingCurveResponse {
     stay_date: string;
+    last_year_stay_date?: string;
+    max_room_count?: number;
     booking_curve?: BookingCurvePoint[];
 }
 
@@ -201,6 +211,7 @@ interface SalesSettingComparisonDateKeys {
 
 interface SalesSettingBookingCurveMetrics {
     bookingCurveData: BookingCurveResponse | null;
+    referenceCurveData: SalesSettingBookingCurveReferenceData | null;
     allMetrics: SalesSettingComparisonMetrics;
     transientMetrics: SalesSettingComparisonMetrics;
     groupMetrics: SalesSettingComparisonMetrics;
@@ -289,14 +300,42 @@ interface SalesSettingBookingCurveSample {
     y: number | null;
 }
 
+interface SalesSettingBookingCurveTooltipReferenceValue {
+    label: string;
+    value: number | null;
+}
+
 interface SalesSettingBookingCurveSeries {
     values: Array<number | null>;
     signature: string;
 }
 
+type SalesSettingBookingCurveReferenceKind = "recent" | "seasonal";
+type SalesSettingBookingCurveLineKind = "current" | SalesSettingBookingCurveReferenceKind;
+
+interface SalesSettingBookingCurveReferenceData {
+    recentBookingCurveData: BookingCurveResponse[];
+}
+
+interface SalesSettingBookingCurvePanelData {
+    current: SalesSettingBookingCurveSeries;
+    recent: SalesSettingBookingCurveSeries | null;
+    seasonal: SalesSettingBookingCurveSeries | null;
+    signature: string;
+}
+
+interface SalesSettingBookingCurveDrawableSeries {
+    kind: SalesSettingBookingCurveLineKind;
+    label: string;
+    series: SalesSettingBookingCurveSeries;
+    stroke: string;
+    strokeWidth: number;
+    strokeDasharray: string | null;
+}
+
 interface SalesSettingBookingCurveRenderData {
-    overall: SalesSettingBookingCurveSeries;
-    individual: SalesSettingBookingCurveSeries;
+    overall: SalesSettingBookingCurvePanelData;
+    individual: SalesSettingBookingCurvePanelData;
     overallRankMarkers: SalesSettingBookingCurveMarker[];
     individualRankMarkers: SalesSettingBookingCurveMarker[];
     rankSignature: string;
@@ -349,6 +388,7 @@ const lincolnSuggestStatusRangeCache = new Map<string, Promise<LincolnSuggestSta
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
+const salesSettingBookingCurveReferenceVisibilityState = new Map<SalesSettingBookingCurveReferenceKind, boolean>();
 let latestSalesSettingPreparedSnapshot: {
     analysisDate: string;
     batchDateKey: string;
@@ -442,6 +482,21 @@ function installInteractionHooks(): void {
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (target instanceof Element) {
+            const referenceToggleButton = target.closest<HTMLButtonElement>(`[${SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_ATTRIBUTE}]`);
+            if (referenceToggleButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+
+                const referenceKind = parseSalesSettingBookingCurveReferenceKind(
+                    referenceToggleButton.getAttribute(SALES_SETTING_BOOKING_CURVE_REFERENCE_KIND_ATTRIBUTE)
+                );
+                if (referenceKind !== null) {
+                    setSalesSettingBookingCurveReferenceVisible(referenceKind, !isSalesSettingBookingCurveReferenceVisible(referenceKind));
+                    queueCalendarSync({ reason: "booking-curve-reference-toggle" });
+                }
+                return;
+            }
+
             const bookingCurveToggleButton = target.closest<HTMLButtonElement>(`[${SALES_SETTING_BOOKING_CURVE_TOGGLE_BUTTON_ATTRIBUTE}]`);
             if (bookingCurveToggleButton !== null) {
                 event.preventDefault();
@@ -942,32 +997,68 @@ async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promi
     return compactBookingCurveResponse((await response.json()) as BookingCurveResponse);
 }
 
+function compactBookingCurveScopeCounts(counts: BookingCurveScopeCounts | undefined): BookingCurveScopeCounts | undefined {
+    if (counts === undefined) {
+        return undefined;
+    }
+
+    const compactCounts: BookingCurveScopeCounts = {};
+    const countKeys = [
+        "this_year_room_sum",
+        "last_year_room_sum",
+        "two_years_ago_room_sum",
+        "three_years_ago_room_sum"
+    ] as const;
+
+    for (const key of countKeys) {
+        const value = counts[key];
+        if (typeof value === "number") {
+            compactCounts[key] = value;
+        }
+    }
+
+    return Object.keys(compactCounts).length === 0 ? undefined : compactCounts;
+}
+
 function compactBookingCurveResponse(data: BookingCurveResponse): BookingCurveResponse {
-    return {
+    const compactResponse: BookingCurveResponse = {
         stay_date: data.stay_date,
         booking_curve: (data.booking_curve ?? []).map((point) => {
             const compactPoint: BookingCurvePoint = {
                 date: point.date
             };
-
-            const allCount = point.all?.this_year_room_sum;
-            if (typeof allCount === "number") {
-                compactPoint.all = { this_year_room_sum: allCount };
+            if (typeof point.last_year_date === "string") {
+                compactPoint.last_year_date = point.last_year_date;
             }
 
-            const transientCount = point.transient?.this_year_room_sum;
-            if (typeof transientCount === "number") {
-                compactPoint.transient = { this_year_room_sum: transientCount };
+            const allCounts = compactBookingCurveScopeCounts(point.all);
+            if (allCounts !== undefined) {
+                compactPoint.all = allCounts;
             }
 
-            const groupCount = point.group?.this_year_room_sum;
-            if (typeof groupCount === "number") {
-                compactPoint.group = { this_year_room_sum: groupCount };
+            const transientCounts = compactBookingCurveScopeCounts(point.transient);
+            if (transientCounts !== undefined) {
+                compactPoint.transient = transientCounts;
+            }
+
+            const groupCounts = compactBookingCurveScopeCounts(point.group);
+            if (groupCounts !== undefined) {
+                compactPoint.group = groupCounts;
             }
 
             return compactPoint;
         })
     };
+
+    if (typeof data.last_year_stay_date === "string") {
+        compactResponse.last_year_stay_date = data.last_year_stay_date;
+    }
+
+    if (typeof data.max_room_count === "number") {
+        compactResponse.max_room_count = data.max_room_count;
+    }
+
+    return compactResponse;
 }
 
 function findBookingCurveCount(data: BookingCurveResponse, lookupDate: string, countScope: BookingCurveCountScope): number | null {
@@ -1020,6 +1111,54 @@ function resolveSalesSettingBookingCurveMetricAtDate(
     );
 }
 
+function findHistoricalBookingCurveCount(data: BookingCurveResponse, lookupDate: string, countScope: BookingCurveCountScope): number | null {
+    let latestMatchedDate = "";
+    let latestMatchedCount: number | null = null;
+    const historicalKeys = [
+        "last_year_room_sum",
+        "two_years_ago_room_sum",
+        "three_years_ago_room_sum"
+    ] as const;
+
+    for (const point of data.booking_curve ?? []) {
+        const pointDate = point.date;
+        if (pointDate > lookupDate) {
+            continue;
+        }
+
+        for (const key of historicalKeys) {
+            const count = point[countScope]?.[key];
+            if (typeof count !== "number") {
+                continue;
+            }
+
+            if (pointDate >= latestMatchedDate) {
+                latestMatchedDate = pointDate;
+                latestMatchedCount = count;
+            }
+            break;
+        }
+    }
+
+    return latestMatchedCount;
+}
+
+function resolveSalesSettingSeasonalBookingCurveMetricAtDate(
+    data: BookingCurveResponse,
+    lookupDate: string,
+    variant: "overall" | "individual"
+): number | null {
+    if (variant === "overall") {
+        return findHistoricalBookingCurveCount(data, lookupDate, "all");
+    }
+
+    return resolveSalesSettingPrivateRoomCount(
+        findHistoricalBookingCurveCount(data, lookupDate, "transient"),
+        findHistoricalBookingCurveCount(data, lookupDate, "all"),
+        findHistoricalBookingCurveCount(data, lookupDate, "group")
+    );
+}
+
 function resolveSalesSettingBookingCurveActMetric(
     data: BookingCurveResponse,
     stayDate: string,
@@ -1040,6 +1179,14 @@ function resolveSalesSettingBookingCurveActMetric(
         findExactBookingCurveCount(data, batchDateKey, "all"),
         findExactBookingCurveCount(data, batchDateKey, "group")
     );
+}
+
+function resolveSalesSettingSeasonalBookingCurveActMetric(
+    data: BookingCurveResponse,
+    stayDate: string,
+    variant: "overall" | "individual"
+): number | null {
+    return resolveSalesSettingSeasonalBookingCurveMetricAtDate(data, stayDate, variant);
 }
 
 function buildSalesSettingBookingCurveSeries(
@@ -1070,8 +1217,109 @@ function buildSalesSettingBookingCurveSeries(
     };
 }
 
+function buildSalesSettingSeasonalBookingCurveSeries(
+    data: BookingCurveResponse,
+    stayDate: string,
+    variant: "overall" | "individual"
+): SalesSettingBookingCurveSeries {
+    const values = SALES_SETTING_BOOKING_CURVE_TICKS.map((tick) => {
+        if (tick === "ACT") {
+            return resolveSalesSettingSeasonalBookingCurveActMetric(data, stayDate, variant);
+        }
+
+        const targetDate = shiftDate(stayDate, -tick);
+        return resolveSalesSettingSeasonalBookingCurveMetricAtDate(data, targetDate, variant);
+    });
+
+    return {
+        values,
+        signature: values
+            .map((value, index) => `${SALES_SETTING_BOOKING_CURVE_TICKS[index] ?? "ACT"}:${value === null ? "-" : value}`)
+            .join("|")
+    };
+}
+
+function getMedianValue(values: number[]): number | null {
+    if (values.length === 0) {
+        return null;
+    }
+
+    const sortedValues = values.slice().sort((left, right) => left - right);
+    const middleIndex = Math.floor(sortedValues.length / 2);
+    const middleValue = sortedValues[middleIndex];
+    if (middleValue === undefined) {
+        return null;
+    }
+
+    if (sortedValues.length % 2 === 1) {
+        return middleValue;
+    }
+
+    const previousValue = sortedValues[middleIndex - 1];
+    return previousValue === undefined ? middleValue : (previousValue + middleValue) / 2;
+}
+
+function buildMedianSalesSettingBookingCurveSeries(seriesList: SalesSettingBookingCurveSeries[]): SalesSettingBookingCurveSeries | null {
+    if (seriesList.length === 0) {
+        return null;
+    }
+
+    const values = SALES_SETTING_BOOKING_CURVE_TICKS.map((_, index) => {
+        const pointValues = seriesList
+            .map((series) => series.values[index] ?? null)
+            .filter((value): value is number => typeof value === "number");
+        return getMedianValue(pointValues);
+    });
+
+    return {
+        values,
+        signature: values
+            .map((value, index) => `${SALES_SETTING_BOOKING_CURVE_TICKS[index] ?? "ACT"}:${value === null ? "-" : value}`)
+            .join("|")
+    };
+}
+
+function buildSalesSettingRecentBookingCurveSeries(
+    referenceData: SalesSettingBookingCurveReferenceData | null,
+    batchDateKey: string,
+    variant: "overall" | "individual"
+): SalesSettingBookingCurveSeries | null {
+    if (referenceData === null) {
+        return null;
+    }
+
+    return buildMedianSalesSettingBookingCurveSeries(referenceData.recentBookingCurveData.map((data) => (
+        buildSalesSettingBookingCurveSeries(data, data.stay_date, batchDateKey, variant)
+    )));
+}
+
+function buildSalesSettingBookingCurvePanelData(
+    data: BookingCurveResponse,
+    referenceData: SalesSettingBookingCurveReferenceData | null,
+    stayDate: string,
+    batchDateKey: string,
+    variant: "overall" | "individual"
+): SalesSettingBookingCurvePanelData {
+    const current = buildSalesSettingBookingCurveSeries(data, stayDate, batchDateKey, variant);
+    const recent = buildSalesSettingRecentBookingCurveSeries(referenceData, batchDateKey, variant);
+    const seasonal = buildSalesSettingSeasonalBookingCurveSeries(data, stayDate, variant);
+
+    return {
+        current,
+        recent,
+        seasonal,
+        signature: [
+            `current:${current.signature}`,
+            `recent:${recent?.signature ?? "-"}`,
+            `seasonal:${seasonal.signature}`,
+            `visible:${getSalesSettingBookingCurveReferenceVisibilitySignature()}`
+        ].join("|")
+    };
+}
+
 function buildSalesSettingBookingCurveRenderData(
     data: BookingCurveResponse,
+    referenceData: SalesSettingBookingCurveReferenceData | null,
     stayDate: string,
     batchDateKey: string,
     rankHistory: SalesSettingRankHistoryEvent[] = []
@@ -1080,8 +1328,8 @@ function buildSalesSettingBookingCurveRenderData(
     const individualRankMarkers = buildSalesSettingBookingCurveMarkers(data, rankHistory, "individual");
 
     return {
-        overall: buildSalesSettingBookingCurveSeries(data, stayDate, batchDateKey, "overall"),
-        individual: buildSalesSettingBookingCurveSeries(data, stayDate, batchDateKey, "individual"),
+        overall: buildSalesSettingBookingCurvePanelData(data, referenceData, stayDate, batchDateKey, "overall"),
+        individual: buildSalesSettingBookingCurvePanelData(data, referenceData, stayDate, batchDateKey, "individual"),
         overallRankMarkers,
         individualRankMarkers,
         rankSignature: [
@@ -1298,6 +1546,7 @@ function getCalendarSyncSignature(): string {
         `analysis:${analysisDate}`,
         `batch:${batchDateKey}`,
         `calendar-visible:${isGroupRoomCalendarVisible() ? "1" : "0"}`,
+        `reference:${getSalesSettingBookingCurveReferenceVisibilitySignature()}`,
         `toggle-layout:${getGroupRoomToggleLayoutSignature()}`,
         `cells:${calendarState}`,
         `cards:${cardState}`,
@@ -1834,6 +2083,7 @@ async function syncSalesSettingGroupRooms(
                 ? null
                 : buildSalesSettingBookingCurveRenderData(
                     metric.metrics.bookingCurveData,
+                    metric.metrics.referenceCurveData,
                     analysisDate,
                     batchDateKey,
                     rankHistoryByRoomGroupName.get(metric.card.roomGroupName) ?? []
@@ -1921,7 +2171,12 @@ function renderSalesSettingOverallSummaryFromPreparedData(
         showGroupMetrics,
         preparedData.hotelMetrics.bookingCurveData === null
             ? null
-            : buildSalesSettingBookingCurveRenderData(preparedData.hotelMetrics.bookingCurveData, analysisDate, batchDateKey)
+            : buildSalesSettingBookingCurveRenderData(
+                preparedData.hotelMetrics.bookingCurveData,
+                preparedData.hotelMetrics.referenceCurveData,
+                analysisDate,
+                batchDateKey
+            )
     );
 }
 async function syncSalesSettingRankInsights(
@@ -2447,6 +2702,7 @@ function buildSalesSettingComparisonMetrics(
 
 function buildSalesSettingBookingCurveMetrics(
     bookingCurveData: BookingCurveResponse | null,
+    referenceCurveData: SalesSettingBookingCurveReferenceData | null,
     comparisonDateKeys: SalesSettingComparisonDateKeys
 ): SalesSettingBookingCurveMetrics {
     const allMetrics = buildSalesSettingComparisonMetrics(bookingCurveData, comparisonDateKeys, "all");
@@ -2455,6 +2711,7 @@ function buildSalesSettingBookingCurveMetrics(
 
     return {
         bookingCurveData,
+        referenceCurveData,
         allMetrics,
         transientMetrics,
         groupMetrics,
@@ -2467,11 +2724,39 @@ function buildSalesSettingBookingCurveMetrics(
     };
 }
 
+function getSalesSettingRecentReferenceStayDates(stayDate: string): string[] {
+    return Array.from({ length: 7 }, (_, index) => shiftDate(stayDate, -(index + 1)));
+}
+
+async function loadSalesSettingBookingCurveReferenceData(
+    analysisDate: string,
+    batchDateKey: string,
+    rmRoomGroupId?: string
+): Promise<SalesSettingBookingCurveReferenceData | null> {
+    const recentBookingCurveData = (
+        await Promise.all(getSalesSettingRecentReferenceStayDates(analysisDate).map(async (stayDate) => (
+            getBookingCurve(stayDate, batchDateKey, rmRoomGroupId)
+                .catch((error: unknown) => {
+                    console.warn(`[${SCRIPT_NAME}] failed to load recent reference booking curve`, {
+                        analysisDate,
+                        stayDate,
+                        rmRoomGroupId,
+                        error
+                    });
+                    return null;
+                })
+        )))
+    ).filter((data): data is BookingCurveResponse => data !== null);
+
+    return recentBookingCurveData.length === 0 ? null : { recentBookingCurveData };
+}
+
 async function loadSalesSettingBookingCurveMetrics(
     analysisDate: string,
     batchDateKey: string,
     comparisonDateKeys: SalesSettingComparisonDateKeys,
-    rmRoomGroupId?: string
+    rmRoomGroupId?: string,
+    loadReferenceCurve = false
 ): Promise<SalesSettingBookingCurveMetrics> {
     const bookingCurveData = await getBookingCurve(analysisDate, batchDateKey, rmRoomGroupId)
         .catch((error: unknown) => {
@@ -2484,7 +2769,11 @@ async function loadSalesSettingBookingCurveMetrics(
             return null;
         });
 
-    return buildSalesSettingBookingCurveMetrics(bookingCurveData, comparisonDateKeys);
+    const referenceCurveData = bookingCurveData === null || !loadReferenceCurve
+        ? null
+        : await loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey, rmRoomGroupId);
+
+    return buildSalesSettingBookingCurveMetrics(bookingCurveData, referenceCurveData, comparisonDateKeys);
 }
 
 async function prepareSalesSettingSyncData(
@@ -2512,7 +2801,7 @@ async function prepareSalesSettingSyncData(
                 });
                 return [] as RoomGroup[];
             }),
-        loadSalesSettingBookingCurveMetrics(analysisDate, batchDateKey, comparisonDateKeys)
+        loadSalesSettingBookingCurveMetrics(analysisDate, batchDateKey, comparisonDateKeys, undefined, true)
     ]);
     if (isSyncContextStale(syncContext)) {
         return null;
@@ -2532,7 +2821,13 @@ async function prepareSalesSettingSyncData(
         return {
             card,
             roomGroupName: card.roomGroupName,
-            metrics: await loadSalesSettingBookingCurveMetrics(analysisDate, batchDateKey, comparisonDateKeys, rmRoomGroupId)
+            metrics: await loadSalesSettingBookingCurveMetrics(
+                analysisDate,
+                batchDateKey,
+                comparisonDateKeys,
+                rmRoomGroupId,
+                isSalesSettingBookingCurveOpen(card.roomGroupName)
+            )
         };
     }));
     if (isSyncContextStale(syncContext)) {
@@ -3235,6 +3530,25 @@ function setSalesSettingBookingCurveOpen(toggleKey: string, open: boolean): void
     salesSettingBookingCurveOpenState.set(toggleKey, open);
 }
 
+function parseSalesSettingBookingCurveReferenceKind(value: string | null): SalesSettingBookingCurveReferenceKind | null {
+    return value === "recent" || value === "seasonal" ? value : null;
+}
+
+function isSalesSettingBookingCurveReferenceVisible(kind: SalesSettingBookingCurveReferenceKind): boolean {
+    return salesSettingBookingCurveReferenceVisibilityState.get(kind) ?? true;
+}
+
+function setSalesSettingBookingCurveReferenceVisible(kind: SalesSettingBookingCurveReferenceKind, visible: boolean): void {
+    salesSettingBookingCurveReferenceVisibilityState.set(kind, visible);
+}
+
+function getSalesSettingBookingCurveReferenceVisibilitySignature(): string {
+    return [
+        `recent:${isSalesSettingBookingCurveReferenceVisible("recent") ? "1" : "0"}`,
+        `seasonal:${isSalesSettingBookingCurveReferenceVisible("seasonal") ? "1" : "0"}`
+    ].join("|");
+}
+
 function updateSalesSettingBookingCurveToggleButton(buttonElement: HTMLButtonElement, roomGroupName: string, open: boolean): void {
     buttonElement.type = "button";
     buttonElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_BUTTON_ATTRIBUTE, "");
@@ -3249,6 +3563,54 @@ function updateSalesSettingBookingCurveToggleButton(buttonElement: HTMLButtonEle
 
 function getSalesSettingBookingCurveLabel(tick: SalesSettingBookingCurveTick): string {
     return tick === "ACT" ? "ACT" : String(tick);
+}
+
+function getSalesSettingBookingCurveCurrentStroke(variant: "overall" | "individual"): string {
+    return variant === "overall" ? "#1f5fbf" : "#2f8f5b";
+}
+
+function getSalesSettingBookingCurveReferenceLabel(kind: SalesSettingBookingCurveReferenceKind): string {
+    return kind === "recent" ? "直近型" : "季節型";
+}
+
+function getSalesSettingBookingCurveReferenceStroke(kind: SalesSettingBookingCurveReferenceKind): string {
+    return kind === "recent" ? "#b7791f" : "#6f5aa8";
+}
+
+function getSalesSettingBookingCurveReferenceDasharray(kind: SalesSettingBookingCurveReferenceKind): string {
+    return kind === "recent" ? "5 4" : "2 4";
+}
+
+function getSalesSettingBookingCurveDrawableSeries(
+    panelData: SalesSettingBookingCurvePanelData,
+    variant: "overall" | "individual"
+): SalesSettingBookingCurveDrawableSeries[] {
+    const drawableSeries: SalesSettingBookingCurveDrawableSeries[] = [{
+        kind: "current",
+        label: "現在",
+        series: panelData.current,
+        stroke: getSalesSettingBookingCurveCurrentStroke(variant),
+        strokeWidth: 3,
+        strokeDasharray: null
+    }];
+
+    for (const kind of ["recent", "seasonal"] as const) {
+        const series = kind === "recent" ? panelData.recent : panelData.seasonal;
+        if (series === null || !isSalesSettingBookingCurveReferenceVisible(kind)) {
+            continue;
+        }
+
+        drawableSeries.push({
+            kind,
+            label: getSalesSettingBookingCurveReferenceLabel(kind),
+            series,
+            stroke: getSalesSettingBookingCurveReferenceStroke(kind),
+            strokeWidth: 2,
+            strokeDasharray: getSalesSettingBookingCurveReferenceDasharray(kind)
+        });
+    }
+
+    return drawableSeries;
 }
 
 function formatSalesSettingBookingCurveTooltipPointLabel(tick: SalesSettingBookingCurveTick): string {
@@ -3394,6 +3756,18 @@ function buildSalesSettingBookingCurveSamples(
     });
 }
 
+function buildSalesSettingBookingCurveTooltipReferenceValues(
+    drawableSeries: SalesSettingBookingCurveDrawableSeries[],
+    index: number
+): SalesSettingBookingCurveTooltipReferenceValue[] {
+    return drawableSeries
+        .filter((series) => series.kind !== "current")
+        .map((series) => ({
+            label: series.label,
+            value: series.series.values[index] ?? null
+        }));
+}
+
 function resolveSalesSettingBookingCurveMarkerX(
     daysBeforeStay: number,
     samples: SalesSettingBookingCurveSample[]
@@ -3486,6 +3860,7 @@ function showSalesSettingBookingCurveTooltip(
     guideLineElement: SVGLineElement,
     pointElement: SVGCircleElement,
     sample: SalesSettingBookingCurveSample,
+    referenceValues: SalesSettingBookingCurveTooltipReferenceValue[],
     marker: (SalesSettingBookingCurveMarker & { x: number; y: number }) | null,
     width: number,
     height: number,
@@ -3511,7 +3886,7 @@ function showSalesSettingBookingCurveTooltip(
             : `稼働率 ${formatSalesSettingBookingCurveOccupancyRate(sample.occupancyRate)} / 上限 ${formatGroupRoomNumber(capacityValue)}室`;
     }
     if (detailElement !== null) {
-        renderSalesSettingBookingCurveTooltipDetail(detailElement, marker);
+        renderSalesSettingBookingCurveTooltipDetail(detailElement, marker, referenceValues);
     }
 
     if (sample.y === null) {
@@ -3588,7 +3963,7 @@ function showSalesSettingBookingCurveRankMarkerTooltip(
 function createSalesSettingBookingCurveSvg(
     tooltipElement: HTMLElement,
     maxValue: number,
-    series: SalesSettingBookingCurveSeries,
+    panelData: SalesSettingBookingCurvePanelData,
     markers: SalesSettingBookingCurveMarker[],
     variant: "overall" | "individual"
 ): SVGSVGElement {
@@ -3609,9 +3984,10 @@ function createSalesSettingBookingCurveSvg(
     const plotHeight = height - paddingTop - paddingBottom;
     const roundedMaxValue = getSalesSettingBookingCurveRoundedMaxValue(maxValue);
     const safeMaxValue = Math.max(1, roundedMaxValue);
+    const drawableSeries = getSalesSettingBookingCurveDrawableSeries(panelData, variant);
     const samples = buildSalesSettingBookingCurveSamples(
         safeMaxValue,
-        series,
+        panelData.current,
         plotWidth,
         plotHeight,
         paddingLeft,
@@ -3662,15 +4038,32 @@ function createSalesSettingBookingCurveSvg(
         svgElement.append(areaElement);
     }
 
-    const linePath = buildSalesSettingBookingCurveLinePath(samples);
-    if (linePath !== "") {
+    for (const drawable of drawableSeries) {
+        const drawableSamples = drawable.kind === "current"
+            ? samples
+            : buildSalesSettingBookingCurveSamples(
+                safeMaxValue,
+                drawable.series,
+                plotWidth,
+                plotHeight,
+                paddingLeft,
+                paddingTop
+            );
+        const linePath = buildSalesSettingBookingCurveLinePath(drawableSamples);
+        if (linePath === "") {
+            continue;
+        }
+
         const pathElement = document.createElementNS(svgNamespace, "path");
         pathElement.setAttribute("d", linePath);
         pathElement.setAttribute("fill", "none");
-        pathElement.setAttribute("stroke", variant === "overall" ? "#1f5fbf" : "#2f8f5b");
-        pathElement.setAttribute("stroke-width", "3");
+        pathElement.setAttribute("stroke", drawable.stroke);
+        pathElement.setAttribute("stroke-width", String(drawable.strokeWidth));
         pathElement.setAttribute("stroke-linejoin", "round");
         pathElement.setAttribute("stroke-linecap", "round");
+        if (drawable.strokeDasharray !== null) {
+            pathElement.setAttribute("stroke-dasharray", drawable.strokeDasharray);
+        }
         svgElement.append(pathElement);
     }
 
@@ -3682,7 +4075,7 @@ function createSalesSettingBookingCurveSvg(
     const pointElement = document.createElementNS(svgNamespace, "circle");
     pointElement.setAttribute(SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE, "");
     pointElement.setAttribute("r", "4.5");
-    pointElement.setAttribute("stroke", variant === "overall" ? "#1f5fbf" : "#2f8f5b");
+    pointElement.setAttribute("stroke", getSalesSettingBookingCurveCurrentStroke(variant));
     pointElement.setAttribute("visibility", "hidden");
     svgElement.append(pointElement);
 
@@ -3726,12 +4119,14 @@ function createSalesSettingBookingCurveSvg(
             ? `${getSalesSettingBookingCurveLabel(tick)}時点 データなし`
             : `${getSalesSettingBookingCurveLabel(tick)}時点 ${formatGroupRoomNumber(sample.value)}室`);
         const activeMarker = findSalesSettingBookingCurveMarkerInRange(renderedMarkers, leftEdge, rightEdge, sample.x);
+        const referenceValues = buildSalesSettingBookingCurveTooltipReferenceValues(drawableSeries, index);
         hitboxElement.addEventListener("mouseenter", () => {
             showSalesSettingBookingCurveTooltip(
                 tooltipElement,
                 guideLineElement,
                 pointElement,
                 sample,
+                referenceValues,
                 activeMarker,
                 width,
                 height,
@@ -3745,6 +4140,7 @@ function createSalesSettingBookingCurveSvg(
                 guideLineElement,
                 pointElement,
                 sample,
+                referenceValues,
                 activeMarker,
                 width,
                 height,
@@ -3767,7 +4163,7 @@ function createSalesSettingBookingCurveSvg(
         markerElement.setAttribute("cx", marker.x.toFixed(2));
         markerElement.setAttribute("cy", marker.y.toFixed(2));
         markerElement.setAttribute("r", "3.5");
-        markerElement.setAttribute("fill", variant === "overall" ? "#1f5fbf" : "#2f8f5b");
+        markerElement.setAttribute("fill", getSalesSettingBookingCurveCurrentStroke(variant));
         markerElement.setAttribute("stroke", "#ffffff");
         markerElement.setAttribute("stroke-width", "1.5");
         svgElement.append(markerElement);
@@ -3845,10 +4241,19 @@ function findSalesSettingBookingCurveMarkerInRange(
 
 function renderSalesSettingBookingCurveTooltipDetail(
     detailElement: HTMLElement,
-    marker: (SalesSettingBookingCurveMarker & { x: number; y: number }) | null
+    marker: (SalesSettingBookingCurveMarker & { x: number; y: number }) | null,
+    referenceValues: SalesSettingBookingCurveTooltipReferenceValue[] = []
 ): void {
+    const children: Array<Node> = [];
+
+    for (const referenceValue of referenceValues) {
+        const lineElement = document.createElement("div");
+        lineElement.textContent = `${referenceValue.label} ${referenceValue.value === null ? "-" : `${formatGroupRoomNumber(referenceValue.value)}室`}`;
+        children.push(lineElement);
+    }
+
     if (marker === null) {
-        detailElement.replaceChildren();
+        detailElement.replaceChildren(...children);
         return;
     }
 
@@ -3862,14 +4267,16 @@ function renderSalesSettingBookingCurveTooltipDetail(
     ].filter((part): part is string => part !== null && part !== "");
     const tailText = tailParts.length === 0 ? "" : ` / ${tailParts.join(" / ")}`;
 
-    detailElement.replaceChildren(emphasisElement, document.createTextNode(tailText));
+    const markerElement = document.createElement("div");
+    markerElement.replaceChildren(emphasisElement, document.createTextNode(tailText));
+    detailElement.replaceChildren(...children, markerElement);
 }
 
 function createSalesSettingBookingCurvePanel(
     title: string,
     maxValue: number,
     currentValue: number | null,
-    series: SalesSettingBookingCurveSeries,
+    panelData: SalesSettingBookingCurvePanelData,
     markers: SalesSettingBookingCurveMarker[],
     variant: "overall" | "individual"
 ): HTMLDivElement {
@@ -3888,7 +4295,7 @@ function createSalesSettingBookingCurvePanel(
     canvasElement.setAttribute(SALES_SETTING_BOOKING_CURVE_CANVAS_ATTRIBUTE, "");
 
     const tooltipElement = createSalesSettingBookingCurveTooltip();
-    const svgElement = createSalesSettingBookingCurveSvg(tooltipElement, maxValue, series, markers, variant);
+    const svgElement = createSalesSettingBookingCurveSvg(tooltipElement, maxValue, panelData, markers, variant);
     const guideLineElement = svgElement.querySelector<SVGLineElement>(`[${SALES_SETTING_BOOKING_CURVE_ACTIVE_GUIDE_ATTRIBUTE}]`);
     const pointElement = svgElement.querySelector<SVGCircleElement>(`[${SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE}]`);
 
@@ -3918,6 +4325,70 @@ function createSalesSettingBookingCurvePanel(
     return panelElement;
 }
 
+function createSalesSettingBookingCurveReferenceToggleGroup(): HTMLDivElement {
+    const groupElement = document.createElement("div");
+    groupElement.setAttribute(SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_GROUP_ATTRIBUTE, "");
+
+    for (const kind of ["recent", "seasonal"] as const) {
+        const buttonElement = document.createElement("button");
+        buttonElement.type = "button";
+        buttonElement.setAttribute(SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_ATTRIBUTE, "");
+        buttonElement.setAttribute(SALES_SETTING_BOOKING_CURVE_REFERENCE_KIND_ATTRIBUTE, kind);
+        buttonElement.setAttribute(
+            SALES_SETTING_BOOKING_CURVE_REFERENCE_ACTIVE_ATTRIBUTE,
+            isSalesSettingBookingCurveReferenceVisible(kind) ? "true" : "false"
+        );
+        buttonElement.textContent = getSalesSettingBookingCurveReferenceLabel(kind);
+        groupElement.append(buttonElement);
+    }
+
+    return groupElement;
+}
+
+function createSalesSettingBookingCurveLegend(curveData: SalesSettingBookingCurveRenderData): HTMLDivElement {
+    const legendElement = document.createElement("div");
+    legendElement.setAttribute(SALES_SETTING_BOOKING_CURVE_LEGEND_ATTRIBUTE, "");
+
+    const items: Array<{ label: string; stroke: string; dasharray: string | null; visible: boolean }> = [{
+        label: "現在",
+        stroke: "#1f5fbf",
+        dasharray: null,
+        visible: true
+    }];
+
+    for (const kind of ["recent", "seasonal"] as const) {
+        const hasSeries = curveData.overall[kind] !== null || curveData.individual[kind] !== null;
+        if (!hasSeries) {
+            continue;
+        }
+
+        items.push({
+            label: getSalesSettingBookingCurveReferenceLabel(kind),
+            stroke: getSalesSettingBookingCurveReferenceStroke(kind),
+            dasharray: getSalesSettingBookingCurveReferenceDasharray(kind),
+            visible: isSalesSettingBookingCurveReferenceVisible(kind)
+        });
+    }
+
+    for (const item of items) {
+        const itemElement = document.createElement("span");
+        itemElement.setAttribute(SALES_SETTING_BOOKING_CURVE_LEGEND_ITEM_ATTRIBUTE, "");
+        itemElement.setAttribute("aria-disabled", item.visible ? "false" : "true");
+
+        const swatchElement = document.createElement("span");
+        swatchElement.style.backgroundColor = item.stroke;
+        if (item.dasharray !== null) {
+            swatchElement.style.backgroundImage = `repeating-linear-gradient(90deg, ${item.stroke} 0 6px, transparent 6px 10px)`;
+            swatchElement.style.backgroundColor = "transparent";
+        }
+
+        itemElement.replaceChildren(swatchElement, document.createTextNode(item.label));
+        legendElement.append(itemElement);
+    }
+
+    return legendElement;
+}
+
 function createSalesSettingBookingCurveSection(
     kind: "overall" | "card",
     titleLabel: string,
@@ -3938,9 +4409,11 @@ function createSalesSettingBookingCurveSection(
 
     const noteElement = document.createElement("span");
     noteElement.setAttribute(SALES_SETTING_BOOKING_CURVE_NOTE_ATTRIBUTE, "");
-    noteElement.textContent = "booking_curve実データ";
+    noteElement.textContent = "booking_curve実データ + 参考線";
 
-    headerElement.replaceChildren(titleElement, noteElement);
+    headerElement.replaceChildren(titleElement, noteElement, createSalesSettingBookingCurveReferenceToggleGroup());
+
+    const legendElement = createSalesSettingBookingCurveLegend(curveData);
 
     const gridElement = document.createElement("div");
     gridElement.setAttribute(SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE, "");
@@ -3949,7 +4422,7 @@ function createSalesSettingBookingCurveSection(
         createSalesSettingBookingCurvePanel("個人", maxValue, currentIndividualRoomCount, curveData.individual, curveData.individualRankMarkers, "individual")
     );
 
-    sectionElement.replaceChildren(headerElement, gridElement);
+    sectionElement.replaceChildren(headerElement, legendElement, gridElement);
     return sectionElement;
 }
 
@@ -5348,6 +5821,61 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
+        [${SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_GROUP_ATTRIBUTE}] {
+            display: inline-flex;
+            flex-wrap: wrap;
+            justify-content: flex-end;
+            gap: 4px;
+            margin-left: auto;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_ATTRIBUTE}] {
+            border: 1px solid #d4deed;
+            border-radius: 999px;
+            background: #ffffff;
+            color: #58708f;
+            cursor: pointer;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1;
+            padding: 5px 8px;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_REFERENCE_ACTIVE_ATTRIBUTE}="true"] {
+            background: #f7fbff;
+            border-color: #9fb7d4;
+            color: #243447;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_LEGEND_ATTRIBUTE}] {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            color: #58708f;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_LEGEND_ITEM_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_LEGEND_ITEM_ATTRIBUTE}][aria-disabled="true"] {
+            opacity: 0.42;
+        }
+
+        [${SALES_SETTING_BOOKING_CURVE_LEGEND_ITEM_ATTRIBUTE}] > span {
+            display: inline-block;
+            width: 18px;
+            height: 3px;
+            border-radius: 999px;
+        }
+
         [${SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE}] {
             display: grid;
             gap: 12px;
@@ -5471,7 +5999,6 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_BOOKING_CURVE_ACTIVE_POINT_ATTRIBUTE}] {
             fill: #ffffff;
-            stroke: #1f5fbf;
             stroke-width: 2.5;
         }
 
