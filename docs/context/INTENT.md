@@ -15,16 +15,19 @@
 - `月次実績画面の分析表示を進めること` と `Analyze 日付ページで部屋タイプ別レート調整の判断基準を増やすこと` が競合する場合は、後者を優先する。
 - `表示系列を増やすこと` と `既存の全体 / 個人系列、rank marker、tooltip、ACT 空表示を壊さないこと` が競合する場合は、後者を優先する。
 - `request 数を増やして比較系列を豊かにすること` と `画面遷移、タブ切替、フォーカス復帰で安定して動くこと` が競合する場合は、後者を優先する。
+- `Analyze 画面へ最短で直置きすること` と `booking curve core logic を UI、API 取得、storage から分離して再利用可能にすること` が競合する場合は、first wave の進行を大きく遅らせない範囲で後者を優先する。
+- `予測モデルを早く表示すること` と `予測評価に使える入力、出力、diagnostics を先に固定すること` が競合する場合は、後者を優先する。
 
 ## Non-Goals
 
 - 当面は、RAU で人数 forecast を成立させることを目標にしない。
 - 当面は、RAU から Revenue Assistant のレート変更を自動実行することを目標にしない。
 - 当面は、RAU の first wave に PMS データ、DWH データ、BCL Python 実装、RAR 同期を必須化しない。
+- 当面は、予測モデルの採用、学習済みパラメータの固定、予測評価の合格基準固定を first wave の完了条件にしない。
 - 当面は、月次実績画面の custom booking curve を Analyze reference curve より優先しない。
 
 ## How To Use
 
-- reference curve、baseline、cache、request 数、表示密度の判断で迷った場合は、この文書の優先順位を先に確認する。
+- reference curve、baseline、core logic、forecast、evaluation、cache、request 数、表示密度の判断で迷った場合は、この文書の優先順位を先に確認する。
 - 判断原則を変える場合だけ、この文書を更新する。
 - 単発の採否判断は `docs/context/DECISIONS.md` に記録する。

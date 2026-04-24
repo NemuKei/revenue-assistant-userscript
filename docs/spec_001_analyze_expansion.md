@@ -122,6 +122,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 最上段のホテル全体 block と、各室タイプ card の両方を対象にする
 - first wave では Revenue Assistant の booking curve 系データだけを使い、PMS データ、人数実績、外部 RMS の保存データを前提にしない
 - BCL Python 実装を直接呼び出さず、BCL repo の算出ロジックを TypeScript の純粋関数として RAU 向けに再実装する
+- reference curve の core logic、input、output、diagnostics、将来の予測モデル、将来の予測評価の契約は `docs/spec_002_curve_core.md` を正本とする
 - baseline 用の履歴系列と室タイプ別 derived reference curve を複数保持するため、Phase 2 では derived reference curve の保存先を `IndexedDB` とする
 
 #### Phase 2 Pending Decisions
@@ -145,6 +146,7 @@ first wave の対象:
 - `直近型カーブ` は、Revenue Assistant の booking curve 系データから、BCL の `recent90w` 相当の考え方で作る直近傾向の reference curve とする。
 - `季節型カーブ` は、Revenue Assistant の booking curve 系データから、BCL の seasonal component 相当の考え方で作る前年・2 年前同月同曜日の reference curve とする。
 - どちらも BCL の算出ロジックを参照するが、BCL の Python 実装、PMS データ、外部 DB、学習済みパラメータを RAU first wave の必須入力にしない。
+- 算出ロジックの詳細は `docs/spec_002_curve_core.md` を正本とし、この仕様では Analyze 画面への接続、表示、取得タイミング、cache 連携だけを扱う。
 
 first wave の非目標:
 
@@ -171,15 +173,10 @@ first wave の非目標:
 BCL-tuned first wave の定義:
 
 - 2026-04-24 に実装した `直近 7 泊日中央値` と `last_year_room_sum` 優先の reference curve は、UI shell 用の仮ロジックとして扱う。今後の仕様ターゲットにはしない。
-- reference curve 算出では、Revenue Assistant の `/api/v4/booking_curve` response 群を `stay_date x LT` の rooms matrix に変換する。`LT` は宿泊日から予約状態の基準日までの日数差とし、既存 booking curve chart の LT tick へ揃える。
-- `直近型カーブ` は、BCL の `recent90w` 相当を第一候補とする。対象は同じ曜日の履歴 stay_date とし、各 LT ごとに `as_of_date - (90 - LT) 日` から `as_of_date + LT 日` までの stay_date を集計対象にする。
-- `直近型カーブ` の重みは、stay_date と `as_of_date` の日数差で決める。0 から 14 日は重み 3、15 から 30 日は重み 2、31 から 90 日は重み 1、範囲外は重み 0 とする。
-- `直近型カーブ` は、同じ LT tick で非 null の rooms 値だけを重み付き平均する。使える値が 0 件の場合、その LT tick は空表示とする。
-- `季節型カーブ` は、対象 stay_date の月に対して、前年同月と 2 年前同月の同じ曜日の stay_date 群を集計対象にする。
-- `季節型カーブ` は、各履歴 stay_date の final rooms を解決し、各 LT の rooms 値を `rooms at LT / final rooms` の比率へ変換する。final rooms が 0 または欠損の履歴 stay_date は、季節型カーブの比率計算から除外する。
-- `季節型カーブ` の final rooms 推定値は、利用できる履歴 stay_date の final rooms の平均を初期実装の既定とする。BCL 側の outlier row weights に相当する補正は、Revenue Assistant から安定して使える除外指標が確認できるまで必須にしない。
-- `季節型カーブ` の LT 比率は 0 から 1 の範囲に丸め、宿泊日に近づくほど rooms が減らない形に補正する。`0日前` の比率は 1 として扱う。
-- `季節型カーブ` の rooms 値は、補正後の LT 比率に final rooms 推定値を掛けて作る。
+- reference curve 算出では、Revenue Assistant の `/api/v4/booking_curve` response 群を canonical input へ変換し、`docs/spec_002_curve_core.md` の core logic へ渡す。
+- `直近型カーブ` は `docs/spec_002_curve_core.md` の `recent_weighted_90` を使う。
+- `季節型カーブ` は `docs/spec_002_curve_core.md` の `seasonal_component` を使う。
+- core logic の結果に含まれる `rooms=null`、`missingReason`、`warnings` は、Analyze 画面で空表示、取得不可状態、または tooltip/status 表示に使う。
 - first wave で描画する rooms 系列は `all` と `transient` を標準とする。`group` は response shape と取得可否を確認済みだが、標準 UI へ常時表示するかは reference curve 実装後に再判断する。
 - reference curve は既存の `全体` panel と `個人` panel に追加する。既存の `全体 / 個人` の分離、rank marker、tooltip、`ACT` 空表示は保持する。
 - 初期表示では `現在 / 直近型 / 季節型` を比較できる状態にする。ただし表示密度が上がるため、`直近型カーブ` と `季節型カーブ` は個別に表示切替できるようにする。
