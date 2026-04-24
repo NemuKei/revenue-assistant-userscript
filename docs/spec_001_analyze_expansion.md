@@ -112,16 +112,50 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 
 #### Phase 2
 
-- `同月同曜日` の reference curve を baseline として重ねる
+- BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を、描画用の別系列として重ねる
+- reference curve は、Phase 1 の `全体 / 個人` 実系列と同じ LT 軸に揃える
+- 最上段のホテル全体 block と、各室タイプ card の両方を対象にする
+- first wave では Revenue Assistant の booking curve 系データだけを使い、PMS データ、人数実績、外部 RMS の保存データを前提にしない
 - baseline 用の履歴系列を複数本持つ必要が出た場合に、`IndexedDB` 導入を再判断する
-- baseline は `rm-booking-curve-lab` の `comparison_curves` と同様に、描画用の別系列として扱う
 
 #### Phase 2 Pending Decisions
 
-- 2026-04-18 時点で未確定なのは、baseline を `全体 block のみ` で先に入れるか、室タイプ card まで同時に入れるか
+- 2026-04-24 時点の主線では、baseline は `全体 block のみ` ではなく、室タイプ別のレート調整に使えることを主目的として扱う
 - 最初の slice では、Phase 1 の `全体 / 個人` 系列、rank marker overlay、tooltip close、`ACT` 空表示を崩さないことを優先する
 - baseline scope が固まる前に、persistent cache 全体を `IndexedDB` へ移す前提で設計しない。必要になった場合も booking_curve persistent cache を最初の移行対象とする
 - Phase 2 の最初の受け入れ条件は、baseline 追加後も current-ui supplement portal、overall summary、rank overview、room-group table が維持され、不要 warning を増やさないこととする
+
+### Candidate: Rooms-only Forecast Curves for Rate Adjustment
+
+目的:
+
+- 部屋タイプ別のレート調整時に、現在の booking curve が `直近型` の基準より速いのか遅いのか、また `季節型` の基準より速いのか遅いのかを同じ画面で判断できるようにする。
+- 利用者が、室タイプごとの販売室数、ランク変更履歴、現在の booking curve、reference curve を 1 画面で比較できるようにし、レート調整前の判断コストを下げる。
+
+first wave の対象:
+
+- 指標は rooms のみとする。
+- ホテル全体と室タイプ別 card を対象にする。
+- `直近型カーブ` は、Revenue Assistant の booking curve 系データから作る直近傾向の reference curve とする。
+- `季節型カーブ` は、Revenue Assistant の booking curve 系データから作る前年または過去同条件の reference curve とする。
+- どちらも BCL の概念を UI 上の判断軸として再利用するが、BCL の Python 実装や PMS データを直接持ち込まない。
+
+first wave の非目標:
+
+- 人数 forecast
+- 宿泊売上 forecast
+- Revenue Assistant 外の DB を必須にすること
+- `revenue-assistant-rms` との同期を前提にすること
+- 自動レート変更
+- BCL の評価ロジックや学習済みパラメータを userscript へ直接移植すること
+
+実装前に確認する論点:
+
+1. Revenue Assistant の `/api/v4/booking_curve` が、対象 stay_date 以外の比較対象日付をどこまで安定取得できるか。
+2. 室タイプ別 `rm_room_group_id` を指定した比較対象日付の booking curve が、現行と同じ形で返るか。
+3. `直近型カーブ` を、直近何日または何件の comparable stay_date から作るか。
+4. `季節型カーブ` を、前年同日、前年同曜日、同月同曜日、曜日・連休補正なしのどれから始めるか。
+5. reference curve を初期表示で常時表示するか、toggle で表示するか。
 
 ## キャッシュと同期のルール
 
@@ -158,7 +192,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 
 ### Candidate 3: Booking Curve Phase 2
 
-- `同月同曜日` baseline を別系列として重ねる
+- BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を別系列として重ねる
 - `団体` 系列を標準 UI に含めるかを再判断する
 - baseline や複数比較系列が増える場合に `IndexedDB` 導入要否を再判断する
 
@@ -166,5 +200,6 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 
 1. 月送りやタブ切替時の request 数をどこまで減らすべきか
 2. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
-3. baseline は `全体 block のみ` から始めるべきか、それとも室タイプ card まで同時に出すべきか
-4. baseline scope を決めた時点で、現行 localStorage headroom のまま進められるか
+3. `直近型カーブ` を構成する比較対象日付をどの規則で選ぶか
+4. `季節型カーブ` を構成する比較対象日付をどの規則で選ぶか
+5. reference curve を室タイプ card まで出した時点で、現行 localStorage headroom のまま進められるか

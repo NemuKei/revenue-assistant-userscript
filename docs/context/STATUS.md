@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-04-20
+最終更新: 2026-04-24
 
 ## Done
 
@@ -70,15 +70,16 @@
 
 ## Doing
 
-- 月次実績画面の LT 基準 custom booking curve を、追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart の上でどこまで本実装へ寄せるかを切り分ける
+- Analyze 日付ページの日別 booking curve へ、BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を表示する方針へ優先順位を戻す
+- RAU は当面 `レート調整特化 + 人数なしの簡易フォーキャスト` として進め、RAR 側の本格 RMS 実装は保留する
 
 ## Next
 
-1. 追加済み reservation basis chart 直下の 2 カラム multi-month chart を、final の custom graph へ置き換えるか、同 chart を段階拡張するか決める
-2. 追加済み LT バケット集約系列の月別色分け、compare 見せ方、tooltip 詳細粒度をどこまで本実装へ寄せるか決める
-3. 追加済み monthly-progress 専用起動境界、storage namespace、kill switch を前提に、verify 境界と DOM 差し込み責務を決める
-4. write-only で保存し始めた IndexedDB snapshot を、どの時点で baseline や過去比較の read path に繋ぐか判断する
-5. booking curve の標準 UI に `団体` 系列を含めるかを、実装後の使用感ベースで再判断する
+1. `/api/v4/booking_curve` が、比較対象 stay_date と `rm_room_group_id` の組み合わせで安定取得できるかを確認する
+2. Analyze 日別 booking curve の `直近型カーブ` と `季節型カーブ` の初期定義を、Revenue Assistant の booking curve 系データだけで固定する
+3. ホテル全体 block と室タイプ別 card へ reference curve を重ねる最小 UI を決める
+4. 既存の `全体 / 個人` 系列、rank marker、tooltip、ACT 空表示、current-ui supplement portal を壊さない実装境界を決める
+5. 月次実績画面の LT 基準 custom booking curve は、Analyze 日別の rooms-only reference curve が一段落するまで優先度を下げる
 
 ## Thread Handoff
 
@@ -94,8 +95,8 @@
 
 ## Resume From Here
 
-- 現在地は、月次実績画面の LT 基準 custom booking curve を、追加済み route-scoped slice、write-only IndexedDB snapshot、2 カラム multi-month chart の上でどこまで本実装へ寄せるかを切り分ける段階
-- 直近の判断対象は、baseline を `全体 block のみ` で始めるか、どの時点で write-only 保存済み snapshot を read 利用へ切り替えるか
+- 現在地は、Analyze 日付ページの日別 booking curve を `レート調整特化 + 人数なしの簡易フォーキャスト` の主導線として強化する段階
+- 直近の判断対象は、BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を、Revenue Assistant の booking curve 系データだけでどう定義するか
 - GUI verify を再開する場合は、Tampermonkey 側の userscript 再読込を済ませてから判断する。build 結果と画面表示がずれた場合は `dist/*.user.js` を正とする
 
 ## Notes For Next Thread
@@ -134,13 +135,14 @@
 
 Now:
 
-- 月次実績画面の LT 基準 custom booking curve の graph 化範囲と、軽量 curve chart をどこまで段階拡張するかを決める
+- Analyze 日別 booking curve の rooms-only reference curve として、`直近型カーブ` と `季節型カーブ` の初期定義、取得範囲、表示切替を決める
+- 比較対象日付と `rm_room_group_id` を指定した `/api/v4/booking_curve` の取得可否を確認する
 
 Next:
 
-- `同月同曜日` baseline の対象範囲と `IndexedDB` 導入要否を判断する
+- ホテル全体 block と室タイプ別 card へ reference curve を重ねる実装に入る
 - `competitor_prices` と `団体` 系列 UI の導入要否を判断する
 
 After Next:
 
-- baseline 実装後の使用感を見て、室タイプ card まで baseline を広げるか、`団体` 系列を標準 UI に含めるかを再判断する
+- Analyze 日別の reference curve 実装後の使用感を見て、月次実績画面の LT chart、`団体` 系列、`competitor_prices` の優先順位を再判断する

@@ -4,6 +4,7 @@
 
 ## Decisions
 
+- D-20260424-001 | 当面の主線は、RAR 側の本格分析ツールではなく、RAU を `レート調整特化 + 人数なしの簡易フォーキャスト` として進める。Analyze 日付ページの日別 booking curve へ、BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を、ホテル全体と室タイプ別の両方で表示できるようにする | status: active | spec_link: docs/spec_000_overview.md, docs/spec_001_analyze_expansion.md
 - D-20260331-001 | リポジトリ名は `revenue-assistant-userscript` とし、単一機能専用ではなくレベニューアシスタント向け拡張基盤として扱う | status: applied | spec_link: docs/spec_000_overview.md
 - D-20260331-002 | 初回実装は UI 装飾より、`booking_curve` 取得、キャッシュ、再同期の土台を優先する | status: applied | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260411-001 | 個別リポジトリ側の文書構成は `repo-template-codex` の現行 `AGENTS.md` / `STATUS.md` / `DECISIONS.md` 形式へ寄せ、リポジトリ固有ルールは `Local Extension` と `docs/spec_*.md` に残す | status: applied | spec_link: AGENTS.md
