@@ -2,6 +2,23 @@
     "version": "2.0.0",
     "tasks": [
         {
+            "label": "Chrome: Dedicated Debug Profile",
+            "detail": "専用プロファイルで remote debugging 付き Chrome を起動",
+            "type": "shell",
+            "command": "npm",
+            "args": [
+                "run",
+                "chrome:debug"
+            ],
+            "isBackground": false,
+            "presentation": {
+                "reveal": "always",
+                "panel": "dedicated",
+                "clear": false
+            },
+            "group": "build"
+        },
+        {
             "label": "Chrome: Resume Default Profile",
             "detail": "Default プロファイルを前回セッション復元付きで remote debugging 起動",
             "type": "shell",

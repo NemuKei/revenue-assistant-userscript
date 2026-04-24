@@ -44,7 +44,7 @@ if ($UseChromeUserData) {
     $chromeProcesses = Get-Process chrome -ErrorAction SilentlyContinue
 
     if ($chromeProcesses) {
-        throw "既存の Chrome プロファイルを使う場合は、Chrome を完全に閉じてから再実行してください。"
+        throw "既存の Chrome プロファイルを使う場合は、Chrome を完全に閉じてから再実行してください。Chrome を閉じずに起動したい場合は、Run and Debug の 'Chrome: Dedicated Debug Profile' か npm run chrome:debug を使ってください。"
     }
 }
 
