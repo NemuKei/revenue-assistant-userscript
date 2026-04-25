@@ -2,32 +2,6 @@
 
 ## Now
 
-### RAU-AF-05 reference curve の IndexedDB cache と request scheduler を実装する
-
-- 目的:
-  - BCL-tuned reference curve の request 数増加で、Analyze 日付ページと室タイプ別 card の操作が重くならないようにする。
-- スコープ:
-  - derived reference curve を IndexedDB へ保存する。
-  - cache key は `facility_id`、`scope`、`target_stay_date` または `target_month + weekday`、`as_of_date`、`rm_room_group_id`、`curve_kind`、`algorithm_version` を含める。
-  - 同じ key の計算が進行中の場合は in-flight Promise を共有し、重複 request を発行しない。
-  - `/api/v4/booking_curve` の比較対象日付取得に同時 request 数制限を入れる。
-  - 室タイプ別 reference curve は、card が開かれたときに必要分だけ取得する。
-- 非目標:
-  - 既存の小さい日次 localStorage cache 全体を無条件に IndexedDB へ移すこと。
-  - 初期表示時に全室タイプ分の reference curve を一括取得すること。
-- 受け入れ条件:
-  - 同じ target と scope で再表示した場合、保存済み derived reference curve を再利用できる。
-  - 同じ target と scope の計算を短時間に複数回要求しても、同じ API request が重複して増えない。
-  - 室タイプ card を開くまで、その室タイプの reference curve 用履歴取得は始まらない。
-  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-  - `open-spec-questions`: IndexedDB の保持期間を `as_of_date`、`batch-date`、TTL のどれで切るかは初期実装時に暫定値を置く
-
-## Next
-
 ### RAU-AF-06 BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
 
 - 目的:
@@ -51,7 +25,7 @@
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
   - `open-spec-questions`: 表示密度が高すぎる場合、reference curve の既定表示状態を再判断する
 
-## After Next
+## Next
 
 ### RAU-UX-01 competitor prices と団体系列の導入要否を再判断する
 
@@ -107,6 +81,23 @@
 
 ## Completed / Superseded Context
 
+### RAU-AF-05 reference curve の IndexedDB cache と request scheduler を実装する
+
+- 状態:
+  - 実装済み。
+- 実装内容:
+  - `src/referenceCurveStore.ts` に、derived reference curve の IndexedDB store を追加した。
+  - `ReferenceCurveResult` を保存する record adapter と cache key builder を追加した。
+  - 同じ cache key の計算を共有する in-flight compute dedupe を追加した。
+  - 同じ request key の API 取得を共有する request-level dedupe を追加した。
+  - reference curve 用 request scheduler を追加し、同時 request 数の初期値を 3 にした。
+- 非目標として維持したこと:
+  - 既存の小さい日次 localStorage cache 全体は IndexedDB へ移していない。
+  - 初期表示時に全室タイプ分の reference curve を一括取得する処理は追加していない。
+- 保持期間:
+  - first wave では TTL を設けず、`asOfDate` と `algorithmVersion` を key に含めて分離する。
+  - 古い key の削除は、保存量または再計算頻度が問題になった時点で別 task として判断する。
+
 ### RAU-AF-04 BCL-tuned reference curve の算出コアを実装する
 
 - 状態:
@@ -137,19 +128,18 @@
 
 Now:
 
-- `RAU-AF-05` reference curve の IndexedDB cache と request scheduler を実装する
+- `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
 
 Next:
 
-- `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
+- `RAU-UX-01` competitor prices と団体系列の導入要否を再判断する
 
 After Next:
 
-- `RAU-UX-01` competitor prices と団体系列の導入要否を再判断する
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 Later:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 - `RAU-FC-02` 予測評価 dataset と metrics を設計する
 

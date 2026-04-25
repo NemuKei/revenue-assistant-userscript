@@ -4,9 +4,8 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-AF-05` reference curve の IndexedDB cache と request scheduler を実装する
+- 主対象: `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
 - この bundle で扱う Task ID:
-  - `RAU-AF-05` reference curve の IndexedDB cache と request scheduler を実装する
   - `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
@@ -32,6 +31,8 @@
 - `docs/spec_002_curve_core.md` を追加し、canonical input / output、reference curve、将来の forecast extension、将来の evaluation extension の正本とした。
 - `RAU-AF-04` は実装済み。`src/curveCore.ts` に、canonical input / output、Revenue Assistant booking curve response adapter、`recent_weighted_90`、`seasonal_component`、候補 stay_date 生成、diagnostics を追加した。
 - `RAU-AF-04` では UI への接続は行っていない。BCL-tuned reference curve を画面へ接続する前に、`RAU-AF-05` で request scheduler と IndexedDB derived cache を実装する。
+- `RAU-AF-05` は実装済み。`src/referenceCurveStore.ts` に、derived reference curve の IndexedDB store、cache key builder、`ReferenceCurveResult` record adapter、in-flight compute dedupe、request-level dedupe、同時 request 数制限 scheduler を追加した。
+- `RAU-AF-05` の cache 保持は、TTL ではなく `asOfDate` と `algorithmVersion` を key に含めて分離する。古い key の削除は、保存量または再計算頻度が問題になった時点で別判断とする。
 
 ## Next Re-entry
 
@@ -48,11 +49,11 @@
 
 最初にやること:
 
-1. `RAU-AF-05` として、derived reference curve の IndexedDB 保存単位と object store を決める。
-2. `src/curveCore.ts` の `ReferenceCurveResult` を保存できる payload へ変換する adapter を作る。
-3. 同じ key の in-flight Promise を共有し、同時 request 数を 2 から 3 程度に制限する request scheduler を実装する。
-4. 室タイプ別 card が開かれるまで、その室タイプの reference curve 用履歴取得を始めないことを維持する。
-5. `RAU-AF-05` の verify が通ったら、次は `RAU-AF-06` の UI 接続へ進む。
+1. `RAU-AF-06` として、既存 `SalesSettingBookingCurveReferenceData` を BCL-tuned `ReferenceCurveResult` ベースへ差し替える。
+2. `src/curveCore.ts` の候補 stay_date 生成、`src/referenceCurveStore.ts` の scheduler、既存 `getBookingCurve()` を組み合わせて、ホテル全体と開いた室タイプ card の reference curve を計算する。
+3. 既存 UI shell の `現在 / 直近型 / 季節型` legend、toggle、tooltip、`ACT` 空表示を維持したまま、series の入力だけを BCL-tuned result へ差し替える。
+4. データ不足、取得中、取得失敗を空表示または status 表示として扱い、旧仮ロジックへ暗黙 fallback しない。
+5. verify が通ったら、Tampermonkey 再読込後に Analyze 日付ページで GUI 確認する。
 
 変更しない契約:
 
@@ -87,10 +88,10 @@
 
 - BCL-tuned `直近型カーブ` は、同じ曜日の履歴 stay_date を LT ごとに集計するため、仮実装より request 数が増える。
 - BCL-tuned `季節型カーブ` は、前年同月と 2 年前同月の同じ曜日の履歴 stay_date から final rooms と LT 比率を解決する必要がある。Revenue Assistant response だけで final rooms を常に解決できるかは実装中に確認する。
-- derived reference curve の IndexedDB 保持期間は未確定。初期実装では `algorithm_version` と `as_of_date` を key に含め、保持期間は `RAU-AF-05` で暫定判断する。
+- derived reference curve の IndexedDB 保持は、初期実装では `algorithmVersion` と `asOfDate` を key に含めて分離する。TTL や古い key の削除はまだ実装しない。
 - reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
-- `RAU-AF-04` の core logic は実装済みだが、実データ GUI での reference curve 表示は未接続。UI 接続前に request 数制限と cache を入れる必要がある。
+- `RAU-AF-04` と `RAU-AF-05` は実装済みだが、実データ GUI での BCL-tuned reference curve 表示は未接続。
 
 ## References
 

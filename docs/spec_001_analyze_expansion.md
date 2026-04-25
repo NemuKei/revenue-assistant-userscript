@@ -192,6 +192,7 @@ BCL-tuned first wave の定義:
 - 室タイプ別 booking curve キャッシュは `rm_room_group_id` を含め、ホテル全体キャッシュと分離する
 - BCL-tuned reference curve の derived cache は `IndexedDB` に保存する。保存対象は API 生 response ではなく、表示に必要な LT tick、rooms 値、算出種別、対象 scope、入力日付範囲、算出ロジック version、`as_of_date`、施設識別子、`rm_room_group_id` を含む圧縮済み payload とする
 - derived cache の key は、少なくとも `facility_id`、`scope`、`target_stay_date` または `target_month + weekday`、`as_of_date`、`rm_room_group_id`、`curve_kind`、`algorithm_version` を含める
+- first wave の derived cache は、TTL による自動失効ではなく、`as_of_date` と `algorithm_version` を key に含めて分離する。表示側は現在の key だけを読む。古い key の削除は、保存量または再計算頻度が問題になった時点で別 task として判断する
 - 同じ derived cache key の計算が進行中の場合、重複 request を発行せず、進行中の計算結果を共有する
 - 室タイプ別 reference curve は card が開かれた時点で取得・計算する。初期表示で全室タイプ分の履歴を一括取得しない
 - request 並列数は小さく制限する。初期値は 2 から 3 を候補とし、GUI 確認で体感遅延または API エラーが出る場合は下げる
@@ -234,4 +235,4 @@ BCL-tuned first wave の定義:
 2. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
 3. Revenue Assistant の `/api/v4/booking_curve` response から、すべての履歴 stay_date で final rooms を安定して解決できるか
 4. BCL の outlier row weights に相当する除外または重み補正を、Revenue Assistant だけで再現すべきか
-5. derived reference curve の IndexedDB 保持期間を、`as_of_date` 単位、`batch-date` 単位、または一定日数の TTL のどれで切るか
+5. 古い derived reference curve cache を削除する条件を、保存量または再計算頻度のどちらを基準に決めるか
