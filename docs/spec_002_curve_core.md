@@ -41,7 +41,8 @@
 - `stay_date`: 宿泊日。
 - `as_of_date`: 予約状態を評価する基準日。Revenue Assistant の `batch-date` が response に無い場合は、既存同期文脈または取得側の key から渡す。
 - `LT`: lead time。宿泊日から予約状態の基準日までの日数差。例: 宿泊日の 7 日前は `LT=7` とする。
-- `ACT`: 宿泊日着地後の最終実績を表す点。core logic では表示用 tick として扱い、必要に応じて `lt=-1` 相当へ正規化してよい。
+- `ACT`: 宿泊日着地後の最終実績を表す点。`0日前` は宿泊日当日時点で観測した予約状態、`ACT` は宿泊日後に確定した最終実績として扱い、同じ値であっても同一概念として扱わない。
+- `raw source`: Revenue Assistant API から取得した `/api/v4/booking_curve` response と、取得時点を復元するための key 情報を合わせた保存単位。core logic は raw source を直接保存しないが、adapter へ渡される前の入力証跡として扱う。
 - `scope`: ホテル全体または室タイプ別を区別する対象範囲。
 - `segment`: rooms 系列の区分。初期対象は `all` と `transient`。`group` は入力可能だが標準表示は別判断とする。
 - `final_rooms`: 履歴 stay_date の最終販売室数。季節型カーブの比率計算で分母になる。
@@ -105,6 +106,20 @@ type CurveInput = {
 ```
 
 Revenue Assistant 固有の field 名、例えば `this_year_room_sum`、`last_year_room_sum`、`two_years_ago_room_sum` は adapter 側で解釈する。core logic は、それらの field 名へ直接依存しない。
+
+`0日前` と `ACT` を分離して扱うには、Revenue Assistant API response だけでなく、取得時点も入力証跡として必要になる。過去の stay_date について、API が実績確定後の値で過去 point を上書きして返す場合、後から当日時点の `0日前` を復元できない。そのため、raw source 保存では少なくとも次の key を保持する。
+
+- 施設識別子。
+- `stay_date`。
+- `as_of_date`。Revenue Assistant の `batch-date` またはユーザーが見ている画面上の最終データ更新日を指す。
+- `fetched_at`。userscript が API response を取得した日時を指す。
+- scope。ホテル全体か室タイプ別かを区別する。
+- `rm_room_group_id`。室タイプ別の場合だけ必須とする。
+- segment 解決に必要な response 全体。
+- API endpoint と query。少なくとも `/api/v4/booking_curve` の `date` と `rm_room_group_id` を復元できること。
+- 保存 schema version。
+
+既に実績確定後の response しか取得できない過去 stay_date では、本当の `0日前` と `ACT` の差分は確定できない。この制約は欠損として扱い、推測で補完しない。分離保存が有効になるのは、raw source 保存開始後に観測した stay_date 以降である。
 
 ## Canonical Output
 
@@ -170,6 +185,13 @@ type ReferenceCurveResult = {
 - LT tick ごとの sourceCount。
 - 使用した履歴 stay_date 数。
 
+`ACT` の扱い:
+
+- `ACT` は `0日前` とは別の出力点として扱う。
+- `ACT` を出力する場合は、各履歴 stay_date の final rooms に相当する観測値から作る。
+- Revenue Assistant API response 上で `0日前` と final rooms の区別ができない履歴 stay_date は、diagnostics で区別不能として数えられるようにする。
+- `0日前` と `ACT` の値が同じ履歴だけで構成される場合、`0日前` から `ACT` への線は平坦になるはずである。値が下がる、または不自然に跳ねる場合は、final rooms 解決、source stay_date の混在、segment 解決、または API response の上書き仕様を調査対象にする。
+
 ### Seasonal Component
 
 `seasonal_component` は、BCL の seasonal baseline 相当の季節型カーブである。
@@ -205,6 +227,13 @@ type ReferenceCurveResult = {
 - 使用した履歴 stay_date 数。
 
 BCL 側の outlier row weights に相当する補正は、Revenue Assistant から安定して使える除外指標が確認できるまで必須にしない。
+
+`ACT` の扱い:
+
+- `ACT` は `seasonal_component` の final rooms 推定値として出力する。
+- `0日前` は final rooms 推定値に対する比率 1.0 の LT point として扱う。
+- `0日前` と `ACT` は結果として同じ値になる場合があるが、意味は分ける。
+- `0日前` と `ACT` の間に不自然な段差が出る場合は、final rooms 推定値、`0日前` 比率の固定、履歴 stay_date の final rooms 解決方法を調査対象にする。
 
 ## Forecast Extension
 
