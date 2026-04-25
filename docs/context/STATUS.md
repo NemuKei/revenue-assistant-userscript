@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-04-24
+最終更新: 2026-04-25
 
 ## Current Task Bundle
 
@@ -33,6 +33,8 @@
 - `RAU-AF-04` では UI への接続は行っていない。BCL-tuned reference curve を画面へ接続する前に、`RAU-AF-05` で request scheduler と IndexedDB derived cache を実装する。
 - `RAU-AF-05` は実装済み。`src/referenceCurveStore.ts` に、derived reference curve の IndexedDB store、cache key builder、`ReferenceCurveResult` record adapter、in-flight compute dedupe、request-level dedupe、同時 request 数制限 scheduler を追加した。
 - `RAU-AF-05` の cache 保持は、TTL ではなく `asOfDate` と `algorithmVersion` を key に含めて分離する。古い key の削除は、保存量または再計算頻度が問題になった時点で別判断とする。
+- `RAU-AF-06` はコード接続まで実装済み。既存 UI shell の `現在 / 直近型 / 季節型` に、`src/curveCore.ts` と `src/referenceCurveStore.ts` 由来の BCL-tuned reference curve を接続した。
+- `RAU-AF-06` の GUI 確認は未実施。2026-04-25 時点では Chrome CDP 接続は可能だが、開いているページは root と Tampermonkey dashboard であり、Analyze 日付ページでの確認はまだ行っていない。
 
 ## Next Re-entry
 
@@ -49,11 +51,11 @@
 
 最初にやること:
 
-1. `RAU-AF-06` として、既存 `SalesSettingBookingCurveReferenceData` を BCL-tuned `ReferenceCurveResult` ベースへ差し替える。
-2. `src/curveCore.ts` の候補 stay_date 生成、`src/referenceCurveStore.ts` の scheduler、既存 `getBookingCurve()` を組み合わせて、ホテル全体と開いた室タイプ card の reference curve を計算する。
-3. 既存 UI shell の `現在 / 直近型 / 季節型` legend、toggle、tooltip、`ACT` 空表示を維持したまま、series の入力だけを BCL-tuned result へ差し替える。
-4. データ不足、取得中、取得失敗を空表示または status 表示として扱い、旧仮ロジックへ暗黙 fallback しない。
-5. verify が通ったら、Tampermonkey 再読込後に Analyze 日付ページで GUI 確認する。
+1. Tampermonkey 側で `dist/*.user.js` を再読込する。
+2. Analyze 日付ページを開き、販売設定タブでホテル全体 block の `現在 / 直近型 / 季節型` が表示されることを確認する。
+3. 室タイプ別 card を 1 つ開き、開いた card だけ reference curve 取得が走り、`直近型` と `季節型` の toggle が効くことを確認する。
+4. 120 日より遠い reference curve 点が空表示になっても、既存 current curve と横軸が壊れないことを確認する。
+5. GUI 確認で問題がなければ、`RAU-AF-06` を完了扱いにして `RAU-UX-01` へ進む。
 
 変更しない契約:
 
@@ -83,6 +85,12 @@
   - `npm run build`: passed
   - Chrome CDP 注入 GUI 確認: ホテル全体 block、開いた室タイプ card、reference curve legend、破線の参考線、`季節型` toggle は確認済み
   - Tampermonkey 再読込 GUI 確認: 未実施
+- 2026-04-25 の `RAU-AF-06` コード接続 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `npm run chrome:pages`: CDP 接続は成功。open pages は root と Tampermonkey dashboard
+  - Analyze 日付ページ GUI 確認: 未実施
 
 ## Open Questions / Risks
 
@@ -91,7 +99,7 @@
 - derived reference curve の IndexedDB 保持は、初期実装では `algorithmVersion` と `asOfDate` を key に含めて分離する。TTL や古い key の削除はまだ実装しない。
 - reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
-- `RAU-AF-04` と `RAU-AF-05` は実装済みだが、実データ GUI での BCL-tuned reference curve 表示は未接続。
+- `RAU-AF-06` はコード接続済みだが、実データ GUI での BCL-tuned reference curve 表示は未確認。
 
 ## References
 

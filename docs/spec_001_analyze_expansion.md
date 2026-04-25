@@ -179,6 +179,7 @@ BCL-tuned first wave の定義:
 - core logic の結果に含まれる `rooms=null`、`missingReason`、`warnings` は、Analyze 画面で空表示、取得不可状態、または tooltip/status 表示に使う。
 - first wave で描画する rooms 系列は `all` と `transient` を標準とする。`group` は response shape と取得可否を確認済みだが、標準 UI へ常時表示するかは reference curve 実装後に再判断する。
 - reference curve は既存の `全体` panel と `個人` panel に追加する。既存の `全体 / 個人` の分離、rank marker、tooltip、`ACT` 空表示は保持する。
+- first wave の reference curve 算出対象 LT は、request 数を抑えるため `ACT` と `0〜120日前` に限定する。既存 chart の横軸は維持し、120 日より遠い reference curve 点は空表示にする
 - 初期表示では `現在 / 直近型 / 季節型` を比較できる状態にする。ただし表示密度が上がるため、`直近型カーブ` と `季節型カーブ` は個別に表示切替できるようにする。
 - 室タイプ別 reference curve の追加取得は、初期画面表示時に全室タイプ分を一括で先読みしない。各室タイプ card が開かれたときに、その card に必要な比較対象日付だけを取得する。
 - 必要な履歴 stay_date が不足する場合、旧仮ロジックへ暗黙 fallback しない。該当 reference curve は空表示または取得不可状態として扱い、tooltip または status 表示で不足理由を確認できるようにする。

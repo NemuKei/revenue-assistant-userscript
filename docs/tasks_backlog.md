@@ -6,10 +6,14 @@
 
 - 目的:
   - `RAU-AF-03` で作った reference curve UI shell を維持しつつ、表示データを BCL-tuned 算出結果へ差し替える。
+- 状態:
+  - コード接続は実装済み。
+  - Analyze 日付ページでの GUI 確認は未実施。
 - スコープ:
   - ホテル全体 block と、開いた室タイプ card の `現在 / 直近型 / 季節型` 表示を BCL-tuned 算出結果へ接続する。
   - `全体 / 個人` panel、rank marker、tooltip、`ACT` 空表示、表示切替を維持する。
   - データ不足、取得中、取得失敗を UI で判別できるようにする。
+  - first wave では reference curve 算出対象 LT を `ACT` と `0〜120日前` に限定し、120 日より遠い reference curve 点は空表示にする。
 - 非目標:
   - `団体` 系列の標準表示化。
   - competitor prices 表の導入。
