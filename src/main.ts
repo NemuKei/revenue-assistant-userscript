@@ -455,6 +455,7 @@ let completedCalendarSyncSignature = "";
 let queuedCalendarSyncForce = false;
 let pendingCalendarSyncSignature = "";
 let pendingCalendarSyncForce = false;
+let pendingCalendarScrollRestore: { x: number; y: number } | null = null;
 const calendarSyncDebugCounters = new Map<string, CalendarSyncDebugCounters>();
 let calendarSyncDebugDirty = false;
 let calendarSyncDebugRunId = 0;
@@ -534,6 +535,7 @@ function installInteractionHooks(): void {
                 );
                 if (referenceKind !== null) {
                     setSalesSettingBookingCurveReferenceVisible(referenceKind, !isSalesSettingBookingCurveReferenceVisible(referenceKind));
+                    requestCalendarScrollRestore();
                     queueCalendarSync({ force: true, reason: "booking-curve-reference-toggle" });
                 }
                 return;
@@ -549,6 +551,7 @@ function installInteractionHooks(): void {
                 );
                 if (segment !== null && segment !== getSalesSettingBookingCurveSecondarySegment()) {
                     setSalesSettingBookingCurveSecondarySegment(segment);
+                    requestCalendarScrollRestore();
                     queueCalendarSync({ force: true, reason: "booking-curve-segment-toggle" });
                 }
                 return;
@@ -1773,6 +1776,25 @@ function queueCalendarSync(options: { force?: boolean; reason?: string } = {}): 
     });
 }
 
+function requestCalendarScrollRestore(): void {
+    pendingCalendarScrollRestore = {
+        x: window.scrollX,
+        y: window.scrollY
+    };
+}
+
+function restorePendingCalendarScrollPosition(): void {
+    const scrollRestore = pendingCalendarScrollRestore;
+    pendingCalendarScrollRestore = null;
+    if (scrollRestore === null) {
+        return;
+    }
+
+    window.requestAnimationFrame(() => {
+        window.scrollTo(scrollRestore.x, scrollRestore.y);
+    });
+}
+
 async function runCalendarSync(): Promise<void> {
     calendarSyncRunning = true;
     calendarSyncQueued = false;
@@ -1835,6 +1857,8 @@ async function runCalendarSync(): Promise<void> {
 
         if (pendingForce || (pendingSignature !== "" && pendingSignature !== completedCalendarSyncSignature)) {
             queueCalendarSync({ force: pendingForce, reason: "pending-flush" });
+        } else {
+            restorePendingCalendarScrollPosition();
         }
     }
 }
@@ -5130,12 +5154,12 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
     }
 
     const overallSummaryElement = findDirectChildByAttribute(sectionContainer, SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE);
-    const rankInsertionAnchor = overallSummaryElement?.nextSibling ?? insertionAnchor;
+    const rankInsertionAnchor = overallSummaryElement ?? insertionAnchor;
     if (rankInsertionAnchor === null) {
         if (containerElement.parentElement !== sectionContainer || sectionContainer.lastElementChild !== containerElement) {
             sectionContainer.append(containerElement);
         }
-    } else if (containerElement !== rankInsertionAnchor.previousSibling) {
+    } else if (containerElement !== rankInsertionAnchor) {
         sectionContainer.insertBefore(containerElement, rankInsertionAnchor);
     }
 }
