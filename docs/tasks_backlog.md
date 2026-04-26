@@ -2,6 +2,39 @@
 
 ## Now
 
+### RAU-WC-01 booking_curve warm cache queue と indicator を実装する
+
+- 目的:
+  - Analyze 日付ページを開いた状態で、近い stay_date からホテル全体と全室タイプの booking curve raw source を少しずつ IndexedDB に保存し、次回以降の current、reference curve、同曜日補助線の表示待ちを減らす。
+  - API request 数を時間と間隔で制限し、取得状況を indicator で明示する。
+- スコープ:
+  - 対象 stay_date は初期実装では `today + 0日` から `today + 30日` までとする。
+  - 取得順は stay_date が近い順とし、同じ stay_date 内ではホテル全体、全室タイプの順に取得する。
+  - warm cache の差分更新は、現在の `asOfDate` で未保存の raw source key だけを取得することとする。
+  - 同じ `facilityId + stayDate + asOfDate + scope + roomGroupId + endpoint + query + schema` が IndexedDB に存在する場合は skip する。
+  - 同時取得数は 1、request 間隔は 2.5 秒以上、1 回の自動稼働は最大 5 分、1 日の合計自動稼働は最大 30 分を初期値にする。
+  - document hidden 中は一時停止し、連続エラー時も一時停止する。
+  - Indicator に `待機中`、`取得中 current / total`、`一時停止中`、`上限到達`、`エラー n` を表示する。
+- 非目標:
+  - 全過去日程を一括取得すること。
+  - reference curve の derived cache を warm cache 側で直接作成すること。
+  - 競合価格 snapshot を同じ task で扱うこと。
+  - 自動レート変更へ接続すること。
+- 受け入れ条件:
+  - IndexedDB に現在の `asOfDate` で未保存のホテル全体と室タイプ別 raw source だけが順番に保存される。
+  - 既存 raw source がある key では API request を発行しない。
+  - request が同時に 2 本以上走らない。
+  - request 間隔、1 回稼働時間、1 日稼働時間の上限が守られる。
+  - Indicator で現在の状態、進捗、停止理由、エラー数を確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+  - Tampermonkey 再読込後に Analyze 日付ページで、通常の current 表示、reference curve、同曜日 toggle、個人/団体 toggle が維持される。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+## Next
+
 ### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
 
 - 目的:
@@ -18,7 +51,7 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
-## Next
+## After Next
 
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
@@ -198,15 +231,15 @@
 
 Now:
 
-- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+- `RAU-WC-01` booking_curve warm cache queue と indicator を実装する
 
 Next:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 
 After Next:
 
-- なし
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 Later:
 
@@ -225,4 +258,5 @@ Later:
 - `RAU-AF-08` を先に行う理由は、既存 booking curve panel の segment 表示切替だけで実装でき、直近同曜日補助線より表示構造への影響が小さいため。
 - `RAU-AF-09` は線の本数と凡例、hover 表示が増えるため、`個人 / 団体` toggle の表示構造を固めた後に実装する。
 - `RAU-CP-01` は `/api/v5/competitor_prices` の現在値表を複製しない。価格推移を扱うには snapshot 保存設計が必要なため、表示実装より先に保存単位を設計する。
+- `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。

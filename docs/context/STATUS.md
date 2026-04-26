@@ -4,9 +4,9 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+- 主対象: `RAU-WC-01` booking_curve warm cache queue と indicator を実装する
 - この bundle で扱う Task ID:
-  - `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+  - `RAU-WC-01` booking_curve warm cache queue と indicator を実装する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
   - BCL repo の booking curve 画面で使う算出ロジックを参照し、RAU の `/api/v4/booking_curve` response だけで成立する rooms-only reference curve へチューニングする。
@@ -49,6 +49,7 @@
 - `RAU-UX-01` は判断済み。`団体` は常時3枚目の panel ではなく、`個人 / 団体` toggle として追加する。競合価格は現在値表を複製せず、価格推移 snapshot として後続候補にする。`直近同曜日カーブ` は既定 OFF の補助線として追加候補にする。
 - `RAU-AF-08` はコード実装済み。booking curve の second panel は既定 `個人`、必要時 `団体` に切り替えられる。`団体` 選択時は current、直近型、季節型、rank marker tooltip の対象 segment が `group` になる。toggle 状態は画面内 memory で保持し、Revenue Assistant 側の再描画や本 userscript の再同期では維持する。
 - `RAU-AF-09` はコード実装済み。booking curve header に `同曜日` toggle を追加し、既定 OFF にした。ON のときだけ target stay_date の `-14日`、`-7日`、`+7日`、`+14日` の booking curve を取得し、薄いグレーの細い破線で補助線として表示する。ホテル全体 block は ON 時に取得し、室タイプ別 card は開いている card だけ取得する。
+- booking_curve warm cache は次の主対象とする。取得順は部屋タイプ別優先ではなく、近い stay_date からホテル全体と全室タイプを揃える。差分更新は、現在の `as_of_date` で未保存の raw source key だけを取得することとし、同じ key は再取得しない。
 
 ## Next Re-entry
 
@@ -65,10 +66,10 @@
 
 最初にやること:
 
-1. `RAU-CP-01` の実装前に `docs/spec_001_analyze_expansion.md` の競合価格 snapshot 方針を確認する。
-2. Revenue Assistant の競合価格 API response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
-3. IndexedDB に保存する snapshot key、保持期間、既存 raw source cache との責務差分を設計する。
-4. Analyze 画面に表示する場合の最小表示と、表示実装へ進むかどうかを判断する。
+1. `RAU-WC-01` の実装前に `docs/spec_001_analyze_expansion.md` の `Warm Cache Queue` 仕様を確認する。
+2. 既存の `/api/v4/booking_curve` raw source IndexedDB read/write path と request scheduler を確認する。
+3. 近い stay_date から、ホテル全体と全室タイプを queue に積む処理を実装する。
+4. 取得状況 indicator を追加し、通常の current 表示、reference curve、同曜日 toggle、個人/団体 toggle が維持されることを verify する。
 
 変更しない契約:
 
@@ -79,6 +80,7 @@
 - 既存の `全体 / 個人` 系列、rank marker、tooltip、`ACT` 空表示、current-ui supplement portal を壊さない。
 - `dist/*.user.js` は手編集しない。
 - 室タイプ別 reference curve の追加取得は、初期画面表示時に全室タイプ分を一括で先読みしない。
+- warm cache は、表示同期の待ち時間に入れず、低優先度 queue として時間制限つきで進める。
 - 旧 `直近 7 泊日中央値` と `last_year_room_sum` 優先ロジックへ、データ不足時に暗黙 fallback しない。
 - raw source 保存開始前の過去 stay_date について、本当の `0日前` を推測で復元しない。
 
@@ -134,6 +136,7 @@
 - `RAU-AF-08` では、`個人 / 団体` toggle を chart header に追加した。既存の `直近型 / 季節型` toggle と役割が混ざらないかは Tampermonkey 再読込後の GUI 目視で確認する必要がある。
 - 現行コードでは `recent_weighted_90` の `ACT` は `as_of_date` より前に宿泊済みの履歴 stay_date から final rooms 相当を作り、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
 - `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。Tampermonkey 再読込後、ON/OFF、hover 表示、室タイプ別 card を開いたときの追加取得を GUI 目視で確認する必要がある。
+- `RAU-WC-01` では、API 負荷と IndexedDB 保存量が増えるため、同時取得 1、request 間隔、1 回稼働時間、1 日稼働時間、hidden 時の一時停止、連続エラー停止を verify 対象にする。
 - 競合価格は現在値表ではなく、価格推移 snapshot の保存単位を設計してから表示判断する。
 
 ## References

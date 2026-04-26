@@ -218,6 +218,46 @@ BCL-tuned first wave の定義:
 - 室タイプ別 booking curve は、まず current の実系列を表示し、reference curve は IndexedDB raw source と derived cache を優先して非同期で補う。これにより、室タイプ card を開く操作が reference curve 用の複数 API request の完了待ちで止まらないようにする。
 - request 並列数は小さく制限する。初期値は 2 から 3 を候補とし、GUI 確認で体感遅延または API エラーが出る場合は下げる
 
+### Warm Cache Queue
+
+目的:
+
+- Analyze 日付ページを開いたときに、近い宿泊日のホテル全体と室タイプ別 booking curve を IndexedDB raw source に少しずつ保存し、次回以降の current、reference curve、同曜日補助線の表示待ちを減らす。
+- Revenue Assistant API への負荷を抑えるため、取得対象、取得順、同時取得数、取得時間、日次上限を明示的に制限する。
+- 取得状況を画面上に表示し、利用者が「取得中」「一時停止中」「上限到達」「エラーあり」を区別できるようにする。
+
+取得対象:
+
+- 初期対象は、現在の `as_of_date` で見た `today + 0日` から `today + 30日` までの stay_date とする。
+- 各 stay_date について、ホテル全体と全室タイプの `/api/v4/booking_curve` raw source を対象にする。
+- 取得順は、stay_date が近い順とする。同じ stay_date 内では、ホテル全体を先に取得し、その後に全室タイプを取得する。
+- 施設識別子、stay_date、as_of_date、scope、rm_room_group_id が揃わないものは queue に入れない。
+
+差分更新:
+
+- warm cache における差分更新とは、前回 response との差分だけを保存することではなく、現在の `as_of_date` で未保存の raw source key だけを取得することを指す。
+- 同じ `facilityId + stayDate + asOfDate + scope + roomGroupId + endpoint + query + schema` の raw source が IndexedDB に存在する場合、warm cache では API request を発行しない。
+- `as_of_date` が変わった場合は、同じ stay_date と roomGroupId でも新しい観測 snapshot として別 key で保存する。
+- 同じ key の response を通常経路で取得済みの場合も warm cache では skip する。
+- 同じ key を上書き更新するのは、手動 refresh、schema version 変更、保存破損検知など明示的な理由がある場合だけとする。
+
+負荷制限:
+
+- 初期実装の同時取得数は 1 とする。
+- 初期実装の request 間隔は 2.5 秒以上とする。
+- 1 回の自動 warm cache 稼働時間は最大 5 分とする。
+- 1 日の合計自動 warm cache 稼働時間は最大 30 分とする。
+- document が hidden の間は自動取得を一時停止する。
+- 連続エラーが発生した場合は一時停止し、indicator でエラー件数と停止状態を表示する。
+- 利用者が Analyze 画面で操作している間も、既存表示やクリック操作を妨げないように、取得は低優先度の queue として扱う。
+
+Indicator:
+
+- Analyze 日付ページ上に、warm cache の状態を小さく表示する。
+- 最小表示は `待機中`、`取得中 current / total`、`一時停止中`、`上限到達`、`エラー n` を区別する。
+- 詳細表示では、対象範囲、取得順、完了済み stay_date 範囲、現在取得中の stay_date と scope、今日の稼働時間、残り queue 数、エラー数、最終取得時刻を確認できるようにする。
+- Indicator は取得を開始したこと、停止したこと、上限に達したことを利用者が把握するための表示であり、初期実装では取得対象の細かい編集 UI は持たせない。
+
 ### Sync Timing
 
 - 初回起動時に同期する
