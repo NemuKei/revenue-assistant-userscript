@@ -29,6 +29,12 @@ import {
     getOrComputeReferenceCurve,
     scheduleReferenceCurveRequest
 } from "./referenceCurveStore";
+import {
+    buildBookingCurveRawSourceCacheKey,
+    buildBookingCurveRawSourceRecord,
+    readBookingCurveRawSourceRecord,
+    writeBookingCurveRawSourceRecord
+} from "./bookingCurveRawSourceStore";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Userscript"
@@ -138,7 +144,7 @@ const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
 const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
 const SALES_SETTING_SUPPLEMENT_CLEANUP_DELAY_MS = 1500;
 const SALES_SETTING_SUPPLEMENT_RETRY_DELAYS_MS = [150, 600, 1500, 3000, 6000] as const;
-const SALES_SETTING_REFERENCE_CURVE_TICKS = SALES_SETTING_BOOKING_CURVE_TICKS.filter((tick) => tick === "ACT" || tick <= 120);
+const SALES_SETTING_REFERENCE_CURVE_TICKS = SALES_SETTING_BOOKING_CURVE_TICKS;
 const CALENDAR_SYNC_DEBUG_STORAGE_KEY = "revenue-assistant:debug:calendar-sync";
 const CALENDAR_SYNC_DEBUG_LAST_STORAGE_KEY = `${CALENDAR_SYNC_DEBUG_STORAGE_KEY}:last`;
 const CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE = "data-ra-calendar-sync-debug-snapshot";
@@ -243,6 +249,7 @@ interface SalesSettingBookingCurveMetrics {
 interface SalesSettingPreparedCardMetric {
     card: SalesSettingCard;
     roomGroupName: string;
+    rmRoomGroupId?: string;
     metrics: SalesSettingBookingCurveMetrics | null;
 }
 
@@ -985,7 +992,7 @@ function getBookingCurve(stayDate: string, batchDateKey: string, rmRoomGroupId?:
             return request;
         }
 
-        const request = loadBookingCurve(stayDate, rmRoomGroupId)
+        const request = readOrLoadBookingCurveRawSource(facilityCacheKey, stayDate, batchDateKey, rmRoomGroupId)
             .then((data) => {
                 writePersistedBookingCurve(facilityCacheKey, cacheKey, data);
                 return data;
@@ -998,6 +1005,66 @@ function getBookingCurve(stayDate: string, batchDateKey: string, rmRoomGroupId?:
         bookingCurveCache.set(cacheKey, request);
         return request;
     });
+}
+
+async function readOrLoadBookingCurveRawSource(
+    facilityCacheKey: string,
+    stayDate: string,
+    batchDateKey: string,
+    rmRoomGroupId?: string
+): Promise<BookingCurveResponse> {
+    const scope: CurveScope = rmRoomGroupId === undefined ? "hotel" : "roomGroup";
+    const query = buildBookingCurveQuerySignature(stayDate, rmRoomGroupId);
+    const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+        facilityId: facilityCacheKey,
+        stayDate,
+        asOfDate: batchDateKey,
+        scope,
+        ...(rmRoomGroupId === undefined ? {} : { roomGroupId: rmRoomGroupId }),
+        endpoint: BOOKING_CURVE_ENDPOINT,
+        query
+    });
+
+    const storedRawSource = await readBookingCurveRawSourceRecord(rawSourceKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read booking curve raw source`, {
+                stayDate,
+                batchDateKey,
+                rmRoomGroupId,
+                error
+            });
+            return undefined;
+        });
+    if (storedRawSource !== undefined) {
+        return storedRawSource.response as BookingCurveResponse;
+    }
+
+    const response = await loadBookingCurve(stayDate, rmRoomGroupId);
+    await writeBookingCurveRawSourceRecord(buildBookingCurveRawSourceRecord({
+        facilityId: facilityCacheKey,
+        stayDate,
+        asOfDate: batchDateKey,
+        scope,
+        ...(rmRoomGroupId === undefined ? {} : { roomGroupId: rmRoomGroupId }),
+        endpoint: BOOKING_CURVE_ENDPOINT,
+        query
+    }, response)).catch((error: unknown) => {
+        console.warn(`[${SCRIPT_NAME}] failed to write booking curve raw source`, {
+            stayDate,
+            batchDateKey,
+            rmRoomGroupId,
+            error
+        });
+    });
+
+    return response;
+}
+
+function buildBookingCurveQuerySignature(stayDate: string, rmRoomGroupId?: string): string {
+    return [
+        `date=${stayDate}`,
+        ...(rmRoomGroupId === undefined ? [] : [`rm_room_group_id=${rmRoomGroupId}`])
+    ].join("&");
 }
 
 async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promise<BookingCurveResponse> {
@@ -2008,6 +2075,14 @@ async function syncSalesSettingGroupRooms(
         );
     }
 
+    hydrateOpenSalesSettingRoomReferenceCurves(
+        preparedData,
+        analysisDate,
+        batchDateKey,
+        syncContext,
+        rankHistoryByRoomGroupName
+    );
+
     if (hasCurrentSalesSettingUi()) {
         const latestCards = collectSalesSettingCards();
         const firstCard = latestCards[0];
@@ -2015,6 +2090,66 @@ async function syncSalesSettingGroupRooms(
             renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
             renderSalesSettingRankInsightsFromStatuses(latestCards, statuses, firstCard, preparedData);
         }
+    }
+}
+
+function hydrateOpenSalesSettingRoomReferenceCurves(
+    preparedData: SalesSettingPreparedData,
+    analysisDate: string,
+    batchDateKey: string,
+    syncContext: SyncContext,
+    rankHistoryByRoomGroupName: Map<string, SalesSettingRankHistoryEvent[]>
+): void {
+    for (const metric of preparedData.cardMetrics) {
+        if (
+            metric.metrics === null
+            || metric.rmRoomGroupId === undefined
+            || metric.metrics.bookingCurveData === null
+            || metric.metrics.referenceCurveData !== null
+            || !isSalesSettingBookingCurveOpen(metric.roomGroupName)
+        ) {
+            continue;
+        }
+
+        void loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey, metric.rmRoomGroupId)
+            .then((referenceCurveData) => {
+                if (
+                    referenceCurveData === null
+                    || isSyncContextStale(syncContext)
+                    || !isSalesSettingBookingCurveOpen(metric.roomGroupName)
+                ) {
+                    return;
+                }
+
+                const currentCard = collectSalesSettingCards()
+                    .find((card) => card.roomGroupName === metric.roomGroupName) ?? metric.card;
+                if (!currentCard.cardElement.isConnected || metric.metrics === null || metric.metrics.bookingCurveData === null) {
+                    return;
+                }
+
+                metric.metrics.referenceCurveData = referenceCurveData;
+                renderSalesSettingBookingCurveCard(
+                    currentCard,
+                    metric.metrics.allMetrics.currentValue,
+                    metric.metrics.privateMetrics.currentValue,
+                    buildSalesSettingBookingCurveRenderData(
+                        metric.metrics.bookingCurveData,
+                        referenceCurveData,
+                        analysisDate,
+                        batchDateKey,
+                        rankHistoryByRoomGroupName.get(metric.roomGroupName) ?? []
+                    )
+                );
+            })
+            .catch((error: unknown) => {
+                console.warn(`[${SCRIPT_NAME}] failed to hydrate room booking curve reference data`, {
+                    analysisDate,
+                    batchDateKey,
+                    roomGroupName: metric.roomGroupName,
+                    rmRoomGroupId: metric.rmRoomGroupId,
+                    error
+                });
+            });
     }
 }
 
@@ -2043,6 +2178,7 @@ async function syncSalesSettingOverallSummary(
     }
 
     renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
+    hydrateSalesSettingOverallReferenceCurve(preparedData, analysisDate, batchDateKey, syncContext, firstCard);
 }
 
 function renderSalesSettingOverallSummaryFromPreparedData(
@@ -2096,6 +2232,44 @@ function renderSalesSettingOverallSummaryFromPreparedData(
             )
     );
 }
+
+function hydrateSalesSettingOverallReferenceCurve(
+    preparedData: SalesSettingPreparedData,
+    analysisDate: string,
+    batchDateKey: string,
+    syncContext: SyncContext,
+    firstCard: SalesSettingCard
+): void {
+    if (
+        preparedData.hotelMetrics.bookingCurveData === null
+        || preparedData.hotelMetrics.referenceCurveData !== null
+    ) {
+        return;
+    }
+
+    void loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey)
+        .then((referenceCurveData) => {
+            if (
+                referenceCurveData === null
+                || isSyncContextStale(syncContext)
+                || !firstCard.cardElement.isConnected
+                || preparedData.hotelMetrics.bookingCurveData === null
+            ) {
+                return;
+            }
+
+            preparedData.hotelMetrics.referenceCurveData = referenceCurveData;
+            renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
+        })
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to hydrate overall booking curve reference data`, {
+                analysisDate,
+                batchDateKey,
+                error
+            });
+        });
+}
+
 async function syncSalesSettingRankInsights(
     analysisDate: string,
     syncContext: SyncContext,
@@ -2843,7 +3017,7 @@ async function prepareSalesSettingSyncData(
                 });
                 return [] as RoomGroup[];
             }),
-        loadSalesSettingBookingCurveMetrics(analysisDate, batchDateKey, comparisonDateKeys, undefined, true)
+        loadSalesSettingBookingCurveMetrics(analysisDate, batchDateKey, comparisonDateKeys, undefined, false)
     ]);
     if (isSyncContextStale(syncContext)) {
         return null;
@@ -2863,12 +3037,13 @@ async function prepareSalesSettingSyncData(
         return {
             card,
             roomGroupName: card.roomGroupName,
+            rmRoomGroupId,
             metrics: await loadSalesSettingBookingCurveMetrics(
                 analysisDate,
                 batchDateKey,
                 comparisonDateKeys,
                 rmRoomGroupId,
-                isSalesSettingBookingCurveOpen(card.roomGroupName)
+                false
             )
         };
     }));

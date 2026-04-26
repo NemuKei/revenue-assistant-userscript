@@ -4,14 +4,14 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
+- 主対象: `RAU-AF-07` booking_curve raw source IndexedDB cache と ACT/0日前分離を GUI 確認する
 - この bundle で扱う Task ID:
-  - `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
+  - `RAU-AF-07` booking_curve raw source IndexedDB cache と ACT/0日前分離を GUI 確認する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
   - BCL repo の booking curve 画面で使う算出ロジックを参照し、RAU の `/api/v4/booking_curve` response だけで成立する rooms-only reference curve へチューニングする。
   - booking curve core logic を UI、API 取得、storage から分離し、将来の別プロジェクト、予測モデル、予測評価でも再利用できる形にする。
-  - request 数増加で画面操作が重くならないよう、derived reference curve cache と request scheduling を設計する。
+  - request 数増加で画面操作が重くならないよう、raw source cache、derived reference curve cache、request scheduling を組み合わせる。
 
 ## Current State
 
@@ -34,10 +34,13 @@
 - `RAU-AF-05` は実装済み。`src/referenceCurveStore.ts` に、derived reference curve の IndexedDB store、cache key builder、`ReferenceCurveResult` record adapter、in-flight compute dedupe、request-level dedupe、同時 request 数制限 scheduler を追加した。
 - `RAU-AF-05` の cache 保持は、TTL ではなく `asOfDate` と `algorithmVersion` を key に含めて分離する。古い key の削除は、保存量または再計算頻度が問題になった時点で別判断とする。
 - `RAU-AF-06` はコード接続まで実装済み。既存 UI shell の `現在 / 直近型 / 季節型` に、`src/curveCore.ts` と `src/referenceCurveStore.ts` 由来の BCL-tuned reference curve を接続した。
-- `RAU-AF-06` の GUI 確認は未実施。2026-04-25 時点では Chrome CDP 接続は可能だが、開いているページは root と Tampermonkey dashboard であり、Analyze 日付ページでの確認はまだ行っていない。
-- 2026-04-26 に、reference curve の表示範囲は current と同じ `0〜360日前 + ACT` を目標にする方針へ更新した。旧 first wave の `ACT と 0〜120日前` 限定は、実装済みの暫定制限として扱い、次 task で見直す。
+- `RAU-AF-06` の GUI 確認は、`RAU-AF-07` の raw source cache、360 日表示、非同期補完を含む GUI 確認へ吸収する。
+- 2026-04-26 に、reference curve の表示範囲は current と同じ `0〜360日前 + ACT` を目標にする方針へ更新した。旧 first wave の `ACT と 0〜120日前` 限定は、`RAU-AF-07` のコード実装で解除した。
 - `0日前` と `ACT` は、値が同じ場合でも別概念として扱う。raw source 保存開始前の過去 stay_date では、API 側で `0日前` が実績確定後の値へ上書きされている場合、本当の `0日前` を後から復元できない。
-- 次の実装候補として `RAU-AF-07` を追加した。目的は `/api/v4/booking_curve` raw source の IndexedDB 保存、`0日前` と `ACT` の分離、reference curve の `ACT` スパイク原因確認、部屋タイプ別 card のレスポンス改善である。
+- `RAU-AF-07` はコード実装済み。`src/bookingCurveRawSourceStore.ts` に `/api/v4/booking_curve` raw source 用 IndexedDB store を追加し、`src/main.ts` の booking curve 取得経路へ接続した。
+- `RAU-AF-07` では、reference curve の LT 対象を current と同じ `0〜360日前 + ACT` へ戻した。既存 derived cache との混在を避けるため、`recent_weighted_90` と `seasonal_component` の algorithm version を v2 に上げた。
+- `RAU-AF-07` では、ホテル全体と室タイプ別 card の reference curve を初期同期の待ち時間から外し、current curve を先に描画してから reference curve を非同期で補うようにした。
+- `RAU-AF-07` では、`ReferenceCurveDiagnostics.actComparison` を追加し、`0日前` と `ACT` の rooms、sourceCount、差分を保存できるようにした。`ACT` が `0日前` より低い場合は warning を追加する。
 
 ## Next Re-entry
 
@@ -57,9 +60,10 @@
 1. Tampermonkey 側で `dist/*.user.js` を再読込する。
 2. Analyze 日付ページを開き、販売設定タブでホテル全体 block の `現在 / 直近型 / 季節型` が表示されることを確認する。
 3. 室タイプ別 card を 1 つ開き、開いた card だけ reference curve 取得が走り、`直近型` と `季節型` の toggle が効くことを確認する。
-4. 現行コードでは reference curve が `ACT と 0〜120日前` に限定されていることを確認し、`0日前` から `ACT` へ不自然な段差が出るかを観察する。
-5. GUI 確認で問題がなければ、`RAU-AF-06` のコード接続確認を完了扱いにし、次は `RAU-AF-07` へ進む。
-6. `RAU-AF-07` では、raw source IndexedDB store、raw source 優先 read path、`0日前` と `ACT` の diagnostics、部屋タイプ別 reference curve の非同期補完、reference curve の 360 日表示を扱う。
+4. reference curve が `0〜360日前 + ACT` の LT 軸で current と同じ範囲に表示されることを確認する。
+5. 室タイプ別 card を 1 つ開き、current curve が先に表示され、reference curve が後から補完されることを確認する。
+6. 同じ Analyze 日付と同じ室タイプ card を再表示し、IndexedDB raw source または derived cache により API request が減ることを DevTools network または debug log で確認する。
+7. `0日前` から `ACT` へ不自然な段差が残る場合は、`ReferenceCurveDiagnostics.actComparison` と warning を確認する。
 
 変更しない契約:
 
@@ -96,6 +100,12 @@
   - `npm run build`: passed
   - `npm run chrome:pages`: CDP 接続は成功。open pages は root と Tampermonkey dashboard
   - Analyze 日付ページ GUI 確認: 未実施
+- 2026-04-26 の `RAU-AF-07` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `npm run chrome:pages`: CDP 接続は成功。open pages は Tampermonkey dashboard と Analyze 日付ページ
+  - Analyze 日付ページ GUI 確認: Tampermonkey 再読込を伴う確認は未実施
 
 ## Open Questions / Risks
 
@@ -104,9 +114,9 @@
 - derived reference curve の IndexedDB 保持は、初期実装では `algorithmVersion` と `asOfDate` を key に含めて分離する。TTL や古い key の削除はまだ実装しない。
 - reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
-- `RAU-AF-06` はコード接続済みだが、実データ GUI での BCL-tuned reference curve 表示は未確認。
-- 現行コードでは `recent_weighted_90` の `ACT` は履歴 stay_date ごとの final rooms 相当、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`0日前` と final rooms の入力差、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
-- 部屋タイプ別 booking curve が重い主因は、計算処理よりも reference curve 用の `/api/v4/booking_curve` 複数取得である可能性が高い。raw source IndexedDB 保存と不足分のみ取得する read path が主要な改善候補である。
+- `RAU-AF-07` はコード実装済みだが、実データ GUI での raw source 再利用、360 日 reference curve、非同期補完、`ACT` スパイク diagnostics は未確認。
+- 現行コードでは `recent_weighted_90` の `ACT` は履歴 stay_date ごとの final rooms 相当、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
+- 部屋タイプ別 booking curve が重い主因は、計算処理よりも reference curve 用の `/api/v4/booking_curve` 複数取得である可能性が高い。`RAU-AF-07` では raw source IndexedDB 保存と不足分のみ取得する read path を入れたため、GUI で network request 数と体感速度を確認する。
 
 ## References
 

@@ -2,49 +2,22 @@
 
 ## Now
 
-### RAU-AF-06 BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
-
-- 目的:
-  - `RAU-AF-03` で作った reference curve UI shell を維持しつつ、表示データを BCL-tuned 算出結果へ差し替える。
-- 状態:
-  - コード接続は実装済み。
-  - Analyze 日付ページでの GUI 確認は未実施。
-- スコープ:
-  - ホテル全体 block と、開いた室タイプ card の `現在 / 直近型 / 季節型` 表示を BCL-tuned 算出結果へ接続する。
-  - `全体 / 個人` panel、rank marker、tooltip、`ACT` 空表示、表示切替を維持する。
-  - データ不足、取得中、取得失敗を UI で判別できるようにする。
-  - 現行 slice では reference curve 算出対象 LT が `ACT` と `0〜120日前` に限定されていることを前提に GUI 確認する。
-  - reference curve を current と同じ `0〜360日前 + ACT` の LT 軸へ広げる作業は、raw source cache と同じ取得経路変更が必要なため `RAU-AF-07` で扱う。
-- 非目標:
-  - `団体` 系列の標準表示化。
-  - competitor prices 表の導入。
-  - 月次実績画面の chart 更新。
-- 受け入れ条件:
-  - Analyze 日付ページで、ホテル全体と室タイプ別 card に BCL-tuned reference curve が表示できる。
-  - 既存の `全体 / 個人` 系列、rank marker、tooltip、`ACT` 空表示、current-ui supplement portal が維持される。
-  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
-  - Tampermonkey 再読込後に Analyze 日付ページで GUI 確認できる。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: during-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-  - `open-spec-questions`: 表示密度が高すぎる場合、reference curve の既定表示状態を再判断する
-
-## Next
-
-### RAU-AF-07 booking_curve raw source IndexedDB cache と ACT/0日前分離を実装する
+### RAU-AF-07 booking_curve raw source IndexedDB cache と ACT/0日前分離を GUI 確認する
 
 - 目的:
   - `/api/v4/booking_curve` の raw source を IndexedDB に保存し、同じ施設、宿泊日、取得基準日、scope、室タイプの再取得を減らす。
   - raw source 保存開始後の stay_date について、宿泊日当日時点の `0日前` と宿泊日後に確定した `ACT` を別データとして扱えるようにする。
   - `直近型カーブ` と `季節型カーブ` の `ACT` がどの入力値から作られているかを確認し、`0日前` から `ACT` へ不自然な段差が出る原因を特定できるようにする。
+- 状態:
+  - コード実装済み。
+  - Analyze 日付ページでの GUI 確認は未実施。
 - スコープ:
   - raw source の IndexedDB store、cache key、record adapter を追加する。
   - key には施設識別子、`stay_date`、`as_of_date`、`fetched_at`、scope、`rm_room_group_id`、endpoint、query、schema version を含める。
   - reference curve の source 取得は IndexedDB raw source を先に読み、不足分だけ API request する。
   - 部屋タイプ別 card は current curve を先に表示し、reference curve は raw source / derived cache を使って非同期で補う。
   - current と reference curve の表示範囲は `0〜360日前 + ACT` を目標に揃える。
-  - `recent_weighted_90` と `seasonal_component` の `ACT` sourceCount、`0日前` sourceCount、rooms 差分を確認できる diagnostics または debug log を追加する。
+  - `recent_weighted_90` と `seasonal_component` の `ACT` sourceCount、`0日前` sourceCount、rooms 差分を確認できる diagnostics を追加する。
 - 非目標:
   - raw source 保存開始前の過去日程について、本当の `0日前` を推測で復元すること。
   - 外部 DB、PMS データ、DWH データを必須にすること。
@@ -54,12 +27,16 @@
   - raw source 保存開始後の stay_date では、`0日前` と `ACT` を別 key または別観測時点として追跡できる。
   - `直近型カーブ` と `季節型カーブ` の `ACT` が、`0日前` と同じ入力値なのか、final rooms 相当の入力値なのかを確認できる。
   - `0日前` と `ACT` が同じ値から作られている場合に線が平坦になるかを確認でき、不自然な段差が残る場合は原因候補を diagnostics に残せる。
+  - 既存の `全体 / 個人` 系列、rank marker、tooltip、current-ui supplement portal が維持される。
   - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+  - Tampermonkey 再読込後に Analyze 日付ページで GUI 確認できる。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_002_curve_core.md`
   - `open-spec-questions`: raw source の保存期間、容量上限、手動削除導線をどの段階で入れるか
+
+## Next
 
 ### RAU-UX-01 competitor prices と団体系列の導入要否を再判断する
 
@@ -87,7 +64,7 @@
   - BCL-tuned reference curve 実装後に、現在観測値、`直近型カーブ`、`季節型カーブ` から最終販売室数または将来 booking curve を予測する価値があるか判断する。
 - 前提:
   - `RAU-AF-04` で core logic の input / output / diagnostics が実装済みであること。
-  - `RAU-AF-06` で reference curve の GUI 使用感を確認済みであること。
+  - `RAU-AF-07` で raw source cache、360 日 reference curve、ACT diagnostics の GUI 使用感を確認済みであること。
 - 非目標:
   - 人数 forecast。
   - PMS データ、DWH データ、学習済み外部モデルを必須にすること。
@@ -162,11 +139,10 @@
 
 Now:
 
-- `RAU-AF-06` BCL-tuned reference curve を既存 UI shell へ接続して GUI 確認する
+- `RAU-AF-07` booking_curve raw source IndexedDB cache と ACT/0日前分離を GUI 確認する
 
 Next:
 
-- `RAU-AF-07` booking_curve raw source IndexedDB cache と ACT/0日前分離を実装する
 - `RAU-UX-01` competitor prices と団体系列の導入要否を再判断する
 
 After Next:
@@ -183,6 +159,7 @@ Later:
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
+- `RAU-AF-06` の GUI 確認は、`RAU-AF-07` で raw source cache と 360 日表示へ変更した後の画面確認に吸収する。
 - raw source 保存、`0日前` と `ACT` の分離、部屋タイプ別 card の体感速度改善、reference curve の 360 日表示は、取得証跡と read path の変更を共有するため `RAU-AF-07` として束ねる。
 - 旧 backlog の月次実績画面関連 task は、`RAU-MP-01` へ束ねて優先度を下げる。
 - 旧 backlog の `団体` 系列、rank marker polish、competitor prices は、BCL-tuned reference curve 実装後の使用感で再判断するため `RAU-UX-01` へ束ねる。

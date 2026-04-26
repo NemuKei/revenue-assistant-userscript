@@ -3,8 +3,8 @@ export type CurveSegment = "all" | "transient" | "group";
 export type CurveTick = number | "ACT";
 export type ReferenceCurveKind = "recent_weighted_90" | "seasonal_component";
 
-export const RECENT_WEIGHTED_90_ALGORITHM_VERSION = "recent_weighted_90:v1";
-export const SEASONAL_COMPONENT_ALGORITHM_VERSION = "seasonal_component:v1";
+export const RECENT_WEIGHTED_90_ALGORITHM_VERSION = "recent_weighted_90:v2";
+export const SEASONAL_COMPONENT_ALGORITHM_VERSION = "seasonal_component:v2";
 
 export interface CurveObservation {
     scope: CurveScope;
@@ -33,6 +33,15 @@ export interface ReferenceCurveDiagnostics {
     sourceStayDateCount: number;
     missingReason?: string;
     warnings: string[];
+    actComparison?: ReferenceCurveActComparisonDiagnostics;
+}
+
+export interface ReferenceCurveActComparisonDiagnostics {
+    zeroLeadRooms: number | null;
+    zeroLeadSourceCount: number;
+    actRooms: number | null;
+    actSourceCount: number;
+    differenceRooms: number | null;
 }
 
 export interface ReferenceCurveResult {
@@ -59,6 +68,7 @@ export interface BookingCurveApiScopeCounts {
 
 export interface BookingCurveApiPoint {
     date: string;
+    last_year_date?: string;
     all?: BookingCurveApiScopeCounts;
     transient?: BookingCurveApiScopeCounts;
     group?: BookingCurveApiScopeCounts;
@@ -66,6 +76,7 @@ export interface BookingCurveApiPoint {
 
 export interface BookingCurveApiResponse {
     stay_date: string;
+    last_year_stay_date?: string;
     max_room_count?: number;
     booking_curve?: BookingCurveApiPoint[];
 }
@@ -206,6 +217,10 @@ export function buildRecentWeighted90ReferenceCurve(input: CurveInput, options: 
     if (scopedObservations.length === 0) {
         warnings.push("no_matching_recent_observations");
     }
+    const actComparison = buildActComparisonDiagnostics(points);
+    if (actComparison.differenceRooms !== null && actComparison.differenceRooms < 0) {
+        warnings.push("act_below_zero_lead_recent_reference");
+    }
 
     return {
         curveKind: "recent_weighted_90",
@@ -220,7 +235,8 @@ export function buildRecentWeighted90ReferenceCurve(input: CurveInput, options: 
         diagnostics: {
             sourceStayDateCount: sourceStayDates.size,
             ...(scopedObservations.length === 0 ? { missingReason: "no_matching_recent_observations" } : {}),
-            warnings
+            warnings,
+            actComparison
         }
     };
 }
@@ -275,6 +291,10 @@ export function buildSeasonalComponentReferenceCurve(input: CurveInput, options:
             sourceCount: bucket?.sourceCount ?? 0
         };
     });
+    const actComparison = buildActComparisonDiagnostics(points);
+    if (actComparison.differenceRooms !== null && actComparison.differenceRooms < 0) {
+        warnings.push("act_below_zero_lead_seasonal_reference");
+    }
 
     return {
         curveKind: "seasonal_component",
@@ -290,7 +310,8 @@ export function buildSeasonalComponentReferenceCurve(input: CurveInput, options:
         diagnostics: {
             sourceStayDateCount: finalRoomsByStayDate.size,
             ...(finalRooms.length === 0 ? { missingReason: "no_seasonal_final_rooms" } : {}),
-            warnings
+            warnings,
+            actComparison
         }
     };
 }
@@ -438,6 +459,21 @@ function selectObservations(observations: CurveObservation[], options: Reference
         && observation.segment === options.segment
         && (options.scope === "hotel" || observation.roomGroupId === options.roomGroupId)
     ));
+}
+
+function buildActComparisonDiagnostics(points: CurvePoint[]): ReferenceCurveActComparisonDiagnostics {
+    const zeroLeadPoint = points.find((point) => point.lt === 0);
+    const actPoint = points.find((point) => point.lt === "ACT");
+    const zeroLeadRooms = zeroLeadPoint?.rooms ?? null;
+    const actRooms = actPoint?.rooms ?? null;
+
+    return {
+        zeroLeadRooms,
+        zeroLeadSourceCount: zeroLeadPoint?.sourceCount ?? 0,
+        actRooms,
+        actSourceCount: actPoint?.sourceCount ?? 0,
+        differenceRooms: zeroLeadRooms === null || actRooms === null ? null : actRooms - zeroLeadRooms
+    };
 }
 
 function buildRecentWeightedSamplesForLt(observations: CurveObservation[], asOfDate: string, lt: number): WeightedSample[] {
