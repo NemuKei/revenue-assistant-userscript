@@ -4034,9 +4034,7 @@ function getSalesSettingBookingCurveReferenceDasharray(kind: SalesSettingBooking
 }
 
 function formatSalesSettingSameWeekdayCurveLabel(result: SalesSettingSameWeekdayCurveData): string {
-    const prefix = result.offsetDays > 0 ? "+" : "";
-    const dateLabel = `${result.stayDate.slice(0, 4)}-${result.stayDate.slice(4, 6)}-${result.stayDate.slice(6, 8)}`;
-    return `同曜日 ${prefix}${result.offsetDays}日 ${dateLabel}`;
+    return `${result.stayDate.slice(0, 4)}-${result.stayDate.slice(4, 6)}-${result.stayDate.slice(6, 8)}`;
 }
 
 function getSalesSettingSameWeekdayCurveStroke(offsetDays: number): string {
