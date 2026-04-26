@@ -363,6 +363,7 @@ interface SalesSettingSameWeekdayCurveData {
 interface SalesSettingBookingCurveHelperSeries {
     kind: SalesSettingBookingCurveHelperKind;
     label: string;
+    offsetDays: number;
     series: SalesSettingBookingCurveSeries;
 }
 
@@ -390,6 +391,7 @@ interface SalesSettingBookingCurveDrawableSeries {
     stroke: string;
     strokeWidth: number;
     strokeDasharray: string | null;
+    opacity?: number;
 }
 
 interface SalesSettingBookingCurveRenderData {
@@ -1351,6 +1353,7 @@ function buildSalesSettingSameWeekdayBookingCurveSeries(
     return {
         kind: "sameWeekday",
         label: formatSalesSettingSameWeekdayCurveLabel(result),
+        offsetDays: result.offsetDays,
         series: buildSalesSettingBookingCurveSeries(result.bookingCurveData, result.stayDate, batchDateKey, variant)
     };
 }
@@ -4036,6 +4039,26 @@ function formatSalesSettingSameWeekdayCurveLabel(result: SalesSettingSameWeekday
     return `同曜日 ${prefix}${result.offsetDays}日 ${dateLabel}`;
 }
 
+function getSalesSettingSameWeekdayCurveStroke(offsetDays: number): string {
+    if (offsetDays === -7) {
+        return "#475569";
+    }
+
+    if (offsetDays === -14) {
+        return "#64748b";
+    }
+
+    if (offsetDays === 7) {
+        return "#5f7f61";
+    }
+
+    return "#7c8f7a";
+}
+
+function getSalesSettingSameWeekdayCurveOpacity(offsetDays: number): number {
+    return Math.abs(offsetDays) === 7 ? 0.66 : 0.54;
+}
+
 function getSalesSettingBookingCurveDrawableSeries(
     panelData: SalesSettingBookingCurvePanelData,
     variant: SalesSettingBookingCurvePanelVariant
@@ -4048,9 +4071,10 @@ function getSalesSettingBookingCurveDrawableSeries(
                 kind: helper.kind,
                 label: helper.label,
                 series: helper.series,
-                stroke: "#6f7d90",
+                stroke: getSalesSettingSameWeekdayCurveStroke(helper.offsetDays),
                 strokeWidth: 1.5,
-                strokeDasharray: "10 6"
+                strokeDasharray: null,
+                opacity: getSalesSettingSameWeekdayCurveOpacity(helper.offsetDays)
             });
         }
     }
@@ -4536,8 +4560,8 @@ function createSalesSettingBookingCurveSvg(
         pathElement.setAttribute("stroke-width", String(drawable.strokeWidth));
         pathElement.setAttribute("stroke-linejoin", "round");
         pathElement.setAttribute("stroke-linecap", "round");
-        if (drawable.kind === "sameWeekday") {
-            pathElement.setAttribute("opacity", "0.62");
+        if (drawable.opacity !== undefined) {
+            pathElement.setAttribute("opacity", String(drawable.opacity));
         }
         if (drawable.strokeDasharray !== null) {
             pathElement.setAttribute("stroke-dasharray", drawable.strokeDasharray);
@@ -4893,8 +4917,8 @@ function createSalesSettingBookingCurveLegend(curveData: SalesSettingBookingCurv
     ) {
         items.push({
             label: "同曜日",
-            stroke: "#6f7d90",
-            dasharray: "10 6",
+            stroke: "#64748b",
+            dasharray: null,
             visible: true
         });
     }
