@@ -2,6 +2,37 @@
 
 ## Now
 
+### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
+
+- 目的:
+  - Revenue Assistant 標準タブで見られる現在値ではなく、競合価格が直近で上がったか、下がったか、自館の価格変更や booking curve 変化と前後関係があるかを確認できるようにする。
+- スコープ:
+  - `/api/v5/competitor_prices` の response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
+  - IndexedDB に保存する snapshot key と保持期間を設計する。
+  - Analyze 画面へ表示する場合の最小表示を設計する。
+- 非目標:
+  - 競合価格の現在値表だけを販売設定タブへ複製すること。
+  - 自動レート変更へ接続すること。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+## Next
+
+### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
+
+- 目的:
+  - 追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart を、どこまで final graph へ寄せるか判断する。
+- 保留理由:
+  - 現時点では Analyze 日別の rooms-only reference curve のほうが、部屋タイプ別レート調整の判断コストを直接下げるため優先度が高い。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_000_overview.md`
+
+## Completed
+
 ### RAU-AF-09 直近同曜日カーブを既定OFFの補助線として追加する
 
 - 目的:
@@ -26,26 +57,18 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
-## Next
-
-### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
-
-- 目的:
-  - Revenue Assistant 標準タブで見られる現在値ではなく、競合価格が直近で上がったか、下がったか、自館の価格変更や booking curve 変化と前後関係があるかを確認できるようにする。
-- スコープ:
-  - `/api/v5/competitor_prices` の response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
-  - IndexedDB に保存する snapshot key と保持期間を設計する。
-  - Analyze 画面へ表示する場合の最小表示を設計する。
-- 非目標:
-  - 競合価格の現在値表だけを販売設定タブへ複製すること。
-  - 自動レート変更へ接続すること。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
-## Completed
+- 実装内容:
+  - booking curve header に `同曜日` toggle を追加した。
+  - toggle は既定 OFF とし、OFF の間は前後2週の追加 booking_curve 取得を行わない。
+  - toggle ON のとき、target stay_date の `-14日`、`-7日`、`+7日`、`+14日` の同曜日 booking curve を補助線として表示する。
+  - 補助線は薄いグレーの細い破線とし、current と reference curve より先に描画することで主判断線を邪魔しないようにした。
+  - ホテル全体 block は toggle ON 時に取得し、室タイプ別 card は開いている card だけ取得する。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+- 未確認:
+  - Tampermonkey 再読込後の GUI 目視確認
 
 ### RAU-AF-08 booking curve の個人/団体 toggle を実装する
 
@@ -64,17 +87,6 @@
   - Tampermonkey 再読込後の GUI 目視確認
 
 ## Later
-
-### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
-
-- 目的:
-  - 追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart を、どこまで final graph へ寄せるか判断する。
-- 保留理由:
-  - 現時点では Analyze 日別の rooms-only reference curve のほうが、部屋タイプ別レート調整の判断コストを直接下げるため優先度が高い。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_000_overview.md`
 
 ### RAU-FC-01 rooms-only 予測モデルの導入要否を判断する
 
@@ -186,15 +198,15 @@
 
 Now:
 
-- `RAU-AF-09` 直近同曜日カーブを既定OFFの補助線として追加する
+- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 
 Next:
 
-- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 After Next:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- なし
 
 Later:
 

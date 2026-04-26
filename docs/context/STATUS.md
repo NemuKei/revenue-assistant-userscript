@@ -4,9 +4,9 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-AF-09` 直近同曜日カーブを既定OFFの補助線として追加する
+- 主対象: `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 - この bundle で扱う Task ID:
-  - `RAU-AF-09` 直近同曜日カーブを既定OFFの補助線として追加する
+  - `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
   - BCL repo の booking curve 画面で使う算出ロジックを参照し、RAU の `/api/v4/booking_curve` response だけで成立する rooms-only reference curve へチューニングする。
@@ -48,6 +48,7 @@
 - 直近型が 165日前付近など途中の LT から始まる場合があるのは、API取得失敗ではなく、その LT の recent90w window 内に非 null 観測値が不足するためと整理した。
 - `RAU-UX-01` は判断済み。`団体` は常時3枚目の panel ではなく、`個人 / 団体` toggle として追加する。競合価格は現在値表を複製せず、価格推移 snapshot として後続候補にする。`直近同曜日カーブ` は既定 OFF の補助線として追加候補にする。
 - `RAU-AF-08` はコード実装済み。booking curve の second panel は既定 `個人`、必要時 `団体` に切り替えられる。`団体` 選択時は current、直近型、季節型、rank marker tooltip の対象 segment が `group` になる。toggle 状態は画面内 memory で保持し、Revenue Assistant 側の再描画や本 userscript の再同期では維持する。
+- `RAU-AF-09` はコード実装済み。booking curve header に `同曜日` toggle を追加し、既定 OFF にした。ON のときだけ target stay_date の `-14日`、`-7日`、`+7日`、`+14日` の booking curve を取得し、薄いグレーの細い破線で補助線として表示する。ホテル全体 block は ON 時に取得し、室タイプ別 card は開いている card だけ取得する。
 
 ## Next Re-entry
 
@@ -64,10 +65,10 @@
 
 最初にやること:
 
-1. `RAU-AF-09` の実装前に `docs/spec_001_analyze_expansion.md` の `直近同曜日カーブ` 仕様を確認する。
-2. current の前後2週の同曜日 stay_date について、既存 `bookingCurveData` と raw source cache から取得できる範囲を確認する。
-3. 同曜日補助線を既定 OFF の toggle として追加し、薄いグレー破線で current、直近型、季節型より視覚優先度を下げる。
-4. `個人 / 団体` toggle、reference curve toggle、rank marker、tooltip、current-ui supplement portal が維持されることを verify する。
+1. `RAU-CP-01` の実装前に `docs/spec_001_analyze_expansion.md` の競合価格 snapshot 方針を確認する。
+2. Revenue Assistant の競合価格 API response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
+3. IndexedDB に保存する snapshot key、保持期間、既存 raw source cache との責務差分を設計する。
+4. Analyze 画面に表示する場合の最小表示と、表示実装へ進むかどうかを判断する。
 
 変更しない契約:
 
@@ -117,6 +118,11 @@
   - `npm run build`: passed
   - `npm run chrome:pages`: CDP 接続は成功。open pages は Tampermonkey dashboard と Analyze 日付ページ
   - Tampermonkey 再読込 GUI 確認: 未実施
+- 2026-04-26 の `RAU-AF-09` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - Tampermonkey 再読込 GUI 確認: 未実施
 
 ## Open Questions / Risks
 
@@ -127,7 +133,7 @@
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
 - `RAU-AF-08` では、`個人 / 団体` toggle を chart header に追加した。既存の `直近型 / 季節型` toggle と役割が混ざらないかは Tampermonkey 再読込後の GUI 目視で確認する必要がある。
 - 現行コードでは `recent_weighted_90` の `ACT` は `as_of_date` より前に宿泊済みの履歴 stay_date から final rooms 相当を作り、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
-- `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。
+- `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。Tampermonkey 再読込後、ON/OFF、hover 表示、室タイプ別 card を開いたときの追加取得を GUI 目視で確認する必要がある。
 - 競合価格は現在値表ではなく、価格推移 snapshot の保存単位を設計してから表示判断する。
 
 ## References
