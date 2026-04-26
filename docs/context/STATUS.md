@@ -4,9 +4,9 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-WC-01` booking_curve warm cache queue と indicator を実装する
+- 主対象: `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 - この bundle で扱う Task ID:
-  - `RAU-WC-01` booking_curve warm cache queue と indicator を実装する
+  - `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
   - BCL repo の booking curve 画面で使う算出ロジックを参照し、RAU の `/api/v4/booking_curve` response だけで成立する rooms-only reference curve へチューニングする。
@@ -49,7 +49,8 @@
 - `RAU-UX-01` は判断済み。`団体` は常時3枚目の panel ではなく、`個人 / 団体` toggle として追加する。競合価格は現在値表を複製せず、価格推移 snapshot として後続候補にする。`直近同曜日カーブ` は既定 OFF の補助線として追加候補にする。
 - `RAU-AF-08` はコード実装済み。booking curve の second panel は既定 `個人`、必要時 `団体` に切り替えられる。`団体` 選択時は current、直近型、季節型、rank marker tooltip の対象 segment が `group` になる。toggle 状態は画面内 memory で保持し、Revenue Assistant 側の再描画や本 userscript の再同期では維持する。
 - `RAU-AF-09` はコード実装済み。booking curve header に `同曜日` toggle を追加し、既定 OFF にした。ON のときだけ target stay_date の `-14日`、`-7日`、`+7日`、`+14日` の booking curve を取得し、薄いグレーの細い破線で補助線として表示する。ホテル全体 block は ON 時に取得し、室タイプ別 card は開いている card だけ取得する。
-- booking_curve warm cache は次の主対象とする。取得順は部屋タイプ別優先ではなく、近い stay_date からホテル全体と全室タイプを揃える。差分更新は、現在の `as_of_date` で未保存の raw source key だけを取得することとし、同じ key は再取得しない。
+- booking_curve warm cache の取得順は部屋タイプ別優先ではなく、近い stay_date からホテル全体と全室タイプを揃える。差分更新は、現在の `as_of_date` で未保存の raw source key だけを取得することとし、同じ key は再取得しない。
+- `RAU-WC-01` はコード実装済み。Analyze 日付ページ同期後に warm cache queue を作成し、`today + 0日` から `today + 30日` まで、各 stay_date でホテル全体、全室タイプの順に raw source を保存する。IndexedDB に同じ key がある場合は skip する。初期制限は同時取得 1、request 間隔 2.5 秒以上、1 回最大 5 分、1 日合計最大 30 分とし、右下に取得状況 indicator を表示する。
 
 ## Next Re-entry
 
@@ -66,10 +67,10 @@
 
 最初にやること:
 
-1. `RAU-WC-01` の実装前に `docs/spec_001_analyze_expansion.md` の `Warm Cache Queue` 仕様を確認する。
-2. 既存の `/api/v4/booking_curve` raw source IndexedDB read/write path と request scheduler を確認する。
-3. 近い stay_date から、ホテル全体と全室タイプを queue に積む処理を実装する。
-4. 取得状況 indicator を追加し、通常の current 表示、reference curve、同曜日 toggle、個人/団体 toggle が維持されることを verify する。
+1. `RAU-CP-01` の実装前に `docs/spec_001_analyze_expansion.md` の競合価格 snapshot 方針を確認する。
+2. Revenue Assistant の競合価格 API response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
+3. IndexedDB に保存する snapshot key、保持期間、既存 raw source cache との責務差分を設計する。
+4. Analyze 画面に表示する場合の最小表示と、表示実装へ進むかどうかを判断する。
 
 変更しない契約:
 
@@ -125,6 +126,12 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - Tampermonkey 再読込 GUI 確認: 未実施
+- 2026-04-26 の `RAU-WC-01` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - Tampermonkey 再読込 GUI 確認: 未実施
+  - 実ブラウザ上で request 間隔、skip、日次上限、hidden pause の挙動確認: 未実施
 
 ## Open Questions / Risks
 

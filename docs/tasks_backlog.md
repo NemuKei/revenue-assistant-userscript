@@ -2,6 +2,37 @@
 
 ## Now
 
+### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
+
+- 目的:
+  - Revenue Assistant 標準タブで見られる現在値ではなく、競合価格が直近で上がったか、下がったか、自館の価格変更や booking curve 変化と前後関係があるかを確認できるようにする。
+- スコープ:
+  - `/api/v5/competitor_prices` の response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
+  - IndexedDB に保存する snapshot key と保持期間を設計する。
+  - Analyze 画面へ表示する場合の最小表示を設計する。
+- 非目標:
+  - 競合価格の現在値表だけを販売設定タブへ複製すること。
+  - 自動レート変更へ接続すること。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+## Next
+
+### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
+
+- 目的:
+  - 追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart を、どこまで final graph へ寄せるか判断する。
+- 保留理由:
+  - 現時点では Analyze 日別の rooms-only reference curve のほうが、部屋タイプ別レート調整の判断コストを直接下げるため優先度が高い。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_000_overview.md`
+
+## Completed
+
 ### RAU-WC-01 booking_curve warm cache queue と indicator を実装する
 
 - 目的:
@@ -32,39 +63,21 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
-## Next
-
-### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
-
-- 目的:
-  - Revenue Assistant 標準タブで見られる現在値ではなく、競合価格が直近で上がったか、下がったか、自館の価格変更や booking curve 変化と前後関係があるかを確認できるようにする。
-- スコープ:
-  - `/api/v5/competitor_prices` の response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
-  - IndexedDB に保存する snapshot key と保持期間を設計する。
-  - Analyze 画面へ表示する場合の最小表示を設計する。
-- 非目標:
-  - 競合価格の現在値表だけを販売設定タブへ複製すること。
-  - 自動レート変更へ接続すること。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
-## After Next
-
-### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
-
-- 目的:
-  - 追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart を、どこまで final graph へ寄せるか判断する。
-- 保留理由:
-  - 現時点では Analyze 日別の rooms-only reference curve のほうが、部屋タイプ別レート調整の判断コストを直接下げるため優先度が高い。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_000_overview.md`
-
-## Completed
+- 実装内容:
+  - Analyze 日付ページ同期後に warm cache queue を作成する。
+  - queue は `today + 0日` から `today + 30日` まで、各 stay_date でホテル全体、全室タイプの順に並べる。
+  - IndexedDB raw source に同じ key が存在する場合は skip する。
+  - 未保存 key は既存の raw source read/write path を使って取得し、IndexedDB に保存する。
+  - 同時取得数は 1、request 間隔は 2.5 秒以上、1 回稼働時間は最大 5 分、1 日合計は最大 30 分とする。
+  - document hidden 中は一時停止し、連続エラー時も一時停止する。
+  - 画面右下に取得状況 indicator を表示する。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+- 未確認:
+  - Tampermonkey 再読込後の GUI 目視確認
+  - 実ブラウザ上で request 間隔、skip、日次上限、hidden pause の挙動確認
 
 ### RAU-AF-09 直近同曜日カーブを既定OFFの補助線として追加する
 
@@ -231,15 +244,15 @@
 
 Now:
 
-- `RAU-WC-01` booking_curve warm cache queue と indicator を実装する
+- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 
 Next:
 
-- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 After Next:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- なし
 
 Later:
 
