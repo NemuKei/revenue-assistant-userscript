@@ -41,6 +41,8 @@
 - `RAU-AF-07` では、reference curve の LT 対象を current と同じ `0〜360日前 + ACT` へ戻した。既存 derived cache との混在を避けるため、`recent_weighted_90` と `seasonal_component` の algorithm version を v2 に上げた。
 - `RAU-AF-07` では、ホテル全体と室タイプ別 card の reference curve を初期同期の待ち時間から外し、current curve を先に描画してから reference curve を非同期で補うようにした。
 - `RAU-AF-07` では、`ReferenceCurveDiagnostics.actComparison` を追加し、`0日前` と `ACT` の rooms、sourceCount、差分を保存できるようにした。`ACT` が `0日前` より低い場合は warning を追加する。
+- 2026-04-26 の GUI 確認で、current が先に表示され、reference curve が後から補完されることを確認した。ホテル全体とシングル card で v2 reference curve が表示され、raw source IndexedDB に 142 件、derived reference curve IndexedDB に 36 件の保存を確認した。
+- 同じ確認で、`recent_weighted_90:v2` の `ACT` が `0日前` より低くなる warning を確認した。原因は、直近型 ACT 算出で `as_of_date` 以降の未着地 stay_date を final rooms 候補に含めていたことだったため、`recent_weighted_90:v3` では `stayDate < asOfDate` の履歴だけを ACT final sample に使うよう修正した。
 
 ## Next Re-entry
 
@@ -105,7 +107,8 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `npm run chrome:pages`: CDP 接続は成功。open pages は Tampermonkey dashboard と Analyze 日付ページ
-  - Analyze 日付ページ GUI 確認: Tampermonkey 再読込を伴う確認は未実施
+  - Analyze 日付ページ GUI 確認: Tampermonkey 再読込後、current 先行表示、reference curve 非同期補完、360 日 reference curve、IndexedDB 保存件数を確認
+  - `recent_weighted_90:v3` 修正後の Tampermonkey 再読込 GUI 確認: 未実施
 
 ## Open Questions / Risks
 
@@ -114,8 +117,8 @@
 - derived reference curve の IndexedDB 保持は、初期実装では `algorithmVersion` と `asOfDate` を key に含めて分離する。TTL や古い key の削除はまだ実装しない。
 - reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
-- `RAU-AF-07` はコード実装済みだが、実データ GUI での raw source 再利用、360 日 reference curve、非同期補完、`ACT` スパイク diagnostics は未確認。
-- 現行コードでは `recent_weighted_90` の `ACT` は履歴 stay_date ごとの final rooms 相当、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
+- `RAU-AF-07` はコード実装済みだが、`recent_weighted_90:v3` 修正後の実データ GUI で、直近型 `0日前 -> ACT` の段差が解消したかは未確認。
+- 現行コードでは `recent_weighted_90` の `ACT` は `as_of_date` より前に宿泊済みの履歴 stay_date から final rooms 相当を作り、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
 - 部屋タイプ別 booking curve が重い主因は、計算処理よりも reference curve 用の `/api/v4/booking_curve` 複数取得である可能性が高い。`RAU-AF-07` では raw source IndexedDB 保存と不足分のみ取得する read path を入れたため、GUI で network request 数と体感速度を確認する。
 
 ## References

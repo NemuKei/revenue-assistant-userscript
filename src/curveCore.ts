@@ -3,7 +3,7 @@ export type CurveSegment = "all" | "transient" | "group";
 export type CurveTick = number | "ACT";
 export type ReferenceCurveKind = "recent_weighted_90" | "seasonal_component";
 
-export const RECENT_WEIGHTED_90_ALGORITHM_VERSION = "recent_weighted_90:v2";
+export const RECENT_WEIGHTED_90_ALGORITHM_VERSION = "recent_weighted_90:v3";
 export const SEASONAL_COMPONENT_ALGORITHM_VERSION = "seasonal_component:v2";
 
 export interface CurveObservation {
@@ -493,7 +493,7 @@ function buildRecentWeightedSamplesForLt(observations: CurveObservation[], asOfD
 function buildRecentFinalWeightedSamples(observations: CurveObservation[], asOfDate: string): WeightedSample[] {
     const finalObservationsByStayDate = new Map<string, CurveObservation>();
     for (const observation of observations) {
-        if (typeof observation.rooms !== "number" || observation.lt < 0) {
+        if (typeof observation.rooms !== "number" || observation.lt < 0 || observation.stayDate >= asOfDate) {
             continue;
         }
 
