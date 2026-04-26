@@ -534,7 +534,7 @@ function installInteractionHooks(): void {
                 );
                 if (referenceKind !== null) {
                     setSalesSettingBookingCurveReferenceVisible(referenceKind, !isSalesSettingBookingCurveReferenceVisible(referenceKind));
-                    queueCalendarSync({ reason: "booking-curve-reference-toggle" });
+                    queueCalendarSync({ force: true, reason: "booking-curve-reference-toggle" });
                 }
                 return;
             }
@@ -549,7 +549,7 @@ function installInteractionHooks(): void {
                 );
                 if (segment !== null && segment !== getSalesSettingBookingCurveSecondarySegment()) {
                     setSalesSettingBookingCurveSecondarySegment(segment);
-                    queueCalendarSync({ reason: "booking-curve-segment-toggle" });
+                    queueCalendarSync({ force: true, reason: "booking-curve-segment-toggle" });
                 }
                 return;
             }
