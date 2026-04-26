@@ -2,36 +2,6 @@
 
 ## Now
 
-### RAU-AF-08 booking curve の個人/団体 toggle を実装する
-
-- 目的:
-  - booking curve の標準表示は `全体` と `個人` を維持しつつ、必要なときだけ `個人` を `団体` に切り替えられるようにする。
-  - 全体カーブの伸びが個人由来か団体由来かを、同じ画面で確認できるようにする。
-- スコープ:
-  - ホテル全体 block と室タイプ別 card の second panel を、`個人 / 団体` toggle で切り替える。
-  - 既定は `個人` とする。
-  - `団体` 選択時は、current、直近型、季節型、rank marker tooltip の対象 segment を `group` に切り替える。
-  - `全体` panel は常時表示のまま維持する。
-  - toggle 状態は画面再同期で維持する。
-- 非目標:
-  - `全体 / 個人 / 団体` の3 panelを常時並べること。
-  - competitor prices を追加すること。
-  - 直近同曜日カーブを追加すること。
-- 受け入れ条件:
-  - 初期表示では `全体` と `個人` が表示される。
-  - toggle で `団体` に切り替えると、second panel の current と reference curve が団体系列になる。
-  - toggle を戻すと `個人` 系列へ戻る。
-  - 既存の `全体` 系列、rank marker、tooltip、current-ui supplement portal が維持される。
-  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
-  - Tampermonkey 再読込後に Analyze 日付ページで GUI 確認できる。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-  - `open-spec-questions`: toggle 状態を localStorage に保持するか、画面内 memory のみにするか
-
-## Next
-
 ### RAU-AF-09 直近同曜日カーブを既定OFFの補助線として追加する
 
 - 目的:
@@ -57,6 +27,8 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
+## Next
+
 ### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
 
 - 目的:
@@ -72,6 +44,26 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+## Completed
+
+### RAU-AF-08 booking curve の個人/団体 toggle を実装する
+
+- 完了日: 2026-04-26
+- 実施内容:
+  - booking curve の second panel を、既定 `個人`、必要時 `団体` に切り替える toggle として実装した。
+  - `団体` 選択時は、current、直近型、季節型、rank marker tooltip の対象 segment を `group` に切り替える。
+  - `全体` panel は常時表示のまま維持した。
+  - toggle 状態は画面内 memory で保持し、Revenue Assistant 側の再描画や本 userscript の再同期では維持する。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `npm run chrome:pages`: CDP 接続で Analyze 日付ページが開いていることを確認
+- 未確認:
+  - Tampermonkey 再読込後の GUI 目視確認
+
+## Later
 
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
@@ -194,15 +186,14 @@
 
 Now:
 
-- `RAU-AF-08` booking curve の個人/団体 toggle を実装する
+- `RAU-AF-09` 直近同曜日カーブを既定OFFの補助線として追加する
 
 Next:
 
-- `RAU-AF-09` 直近同曜日カーブを既定OFFの補助線として追加する
+- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 
 After Next:
 
-- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 Later:

@@ -71,13 +71,13 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 #### Phase 1
 
 - 最上段の全体サマリー直下に、ホテル全体の booking curve を常時展開で表示する
-- 全体 block の標準表示は `全体` と `個人` の 2 系列とし、横並びで同時に見られる構成を優先する
+- 全体 block の標準表示は `全体` と `個人` の 2 panel とし、`個人 / 団体` toggle で second panel を `団体` に切り替えられる構成を正とする
 - 各室タイプカードへ、同じ室タイプの booking curve を 1 枚ずつ表示する
 - 各室タイプカードの booking curve は、カードごとに独立して開閉できるようにする
 - 各室タイプカードの開閉トリガーは、そのカード自身の block 内に置く
 - booking curve の見出しは対象を含めて表示し、`ブッキングカーブ（全体）`、`ブッキングカーブ（シングル）` のように判別できる形を正とする
-- 各室タイプカードの標準表示は `全体` と `個人` の 2 系列とし、横並びで同時に見られる構成を優先する
-- `団体` 系列は Phase 1 の標準 UI では必須としない
+- 各室タイプカードの標準表示は `全体` と `個人` の 2 panel とし、`個人 / 団体` toggle で second panel を `団体` に切り替えられる構成を正とする
+- `団体` 系列は常時3枚目の panel として表示せず、必要なときだけ `個人` panel の代わりに表示する
 - rank 変更履歴 marker は、Phase 1 では各室タイプ card の booking curve にだけ重ねる。最上段の全体 block へは載せない
 - baseline は初期実装では入れない
 - 生データ保存は日次のまま維持し、圧縮するのは表示だけとする
@@ -104,9 +104,8 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - tooltip は point 詳細と rank 変更履歴を 1 つにまとめ、line hover 側でも同じ区間の rank marker 情報を拾えるようにする。point 側の `何日前 / 室数 / 稼働率 / 上限` に加えて、rank marker では `ランク A→B / 反映日 / 反映者` を追記する
 - tooltip は point または marker の hover / focus 中だけ表示し、カーソルまたはフォーカスが外れたら非表示にする
 - 同じ部屋タイプで同じ日に複数回 rank 変更がある場合、Phase 1 ではその日の最後の 1 件だけを marker として表示する
-- Phase 1 では `localStorage` へ booking curve の生 JSON を persistent 保存しない
-- persistent cache が必要なら、`date / all / transient / group` だけの最小系列へ圧縮した payload を優先する
-- `IndexedDB` は Phase 1 では前提にしない
+- `/api/v4/booking_curve` の raw source は `stayDate`、`asOfDate`、`fetchedAt`、scope、roomGroupId、endpoint、query、schema を key 情報として IndexedDB に保存する
+- 既存の short-lived cache は画面応答のために維持するが、`0日前` と `ACT` の分離や future reference curve の再計算に使う正本は raw source IndexedDB とする
 
 #### Phase 1 Verification Notes
 
@@ -118,7 +117,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 #### Phase 2
 
 - BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を、描画用の別系列として重ねる
-- reference curve は、Phase 1 の `全体 / 個人` 実系列と同じ LT 軸に揃える
+- reference curve は、Phase 1 の `全体` panel と `個人 / 団体` toggle 対象 panel の実系列と同じ LT 軸に揃える
 - 最上段のホテル全体 block と、各室タイプ card の両方を対象にする
 - first wave では Revenue Assistant の booking curve 系データだけを使い、PMS データ、人数実績、外部 RMS の保存データを前提にしない
 - BCL Python 実装を直接呼び出さず、BCL repo の算出ロジックを TypeScript の純粋関数として RAU 向けに再実装する
@@ -128,7 +127,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 #### Phase 2 Pending Decisions
 
 - 2026-04-24 時点の主線では、baseline は `全体 block のみ` ではなく、室タイプ別のレート調整に使えることを主目的として扱う
-- 最初の slice では、Phase 1 の `全体 / 個人` 系列、rank marker overlay、tooltip close、`ACT` 空表示を崩さないことを優先する
+- 最初の slice では、Phase 1 の `全体` panel、`個人 / 団体` toggle 対象 panel、rank marker overlay、tooltip close、`ACT` 空表示を崩さないことを優先する
 - 既存の小さい日次 cache 全体を無条件に `IndexedDB` へ移すことは Phase 2 の必須条件にしない。ただし、BCL 由来の reference curve は比較対象 stay_date が増えるため、表示用に圧縮した derived reference curve を `IndexedDB` へ保存する
 - Phase 2 の最初の受け入れ条件は、baseline 追加後も current-ui supplement portal、overall summary、rank overview、room-group table が維持され、不要 warning を増やさないこととする
 
@@ -177,8 +176,9 @@ BCL-tuned first wave の定義:
 - `直近型カーブ` は `docs/spec_002_curve_core.md` の `recent_weighted_90` を使う。
 - `季節型カーブ` は `docs/spec_002_curve_core.md` の `seasonal_component` を使う。
 - core logic の結果に含まれる `rooms=null`、`missingReason`、`warnings` は、Analyze 画面で空表示、取得不可状態、または tooltip/status 表示に使う。
-- first wave で描画する rooms 系列は `all` と `transient` を標準とする。`group` は response shape と取得可否を確認済みであり、次段階では `個人` と切り替え可能な `団体` 表示として追加する。
-- reference curve は既存の `全体` panel と `個人` panel に追加する。次段階で `団体` を追加する場合は、常時3枚目の panel を増やすのではなく、`個人 / 団体` toggle によって `個人` panel の比較対象 segment を切り替える。既定は `個人` とし、`団体` は全体カーブの伸びが団体由来かを確認するときに使う。
+- 描画する rooms 系列は、常時表示の `全体` panel と、`個人 / 団体` toggle で切り替える second panel で構成する。
+- `個人 / 団体` toggle の既定は `個人` とする。`団体` 選択時は、current、`直近型カーブ`、`季節型カーブ`、rank marker tooltip の対象 segment を `group` に切り替える。`全体` panel は常時表示のまま維持する。
+- `個人 / 団体` toggle 状態は、初期実装では画面内 memory に保持する。Revenue Assistant 側の再描画や本 userscript の再同期では維持するが、ページ再読み込みや別タブをまたぐ永続化は必須要件にしない。
 - reference curve の表示範囲は、current の booking curve と同じ LT 軸に揃える。標準の横軸は `0〜360日前` と `ACT` を対象にし、表示ラベルは既存の間引きルールを使う。
 - request 数が問題になる場合でも、仕様上の目標表示範囲は `0〜360日前` と `ACT` のままとする。短期の性能対策で一時的に取得範囲を狭める場合は、取得中、未取得、算出不能を区別して表示する。
 - 初期表示では `現在 / 直近型 / 季節型` を比較できる状態にする。ただし表示密度が上がるため、`直近型カーブ` と `季節型カーブ` は個別に表示切替できるようにする。

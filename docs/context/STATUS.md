@@ -4,9 +4,9 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-AF-08` booking curve の個人/団体 toggle を実装する
+- 主対象: `RAU-AF-09` 直近同曜日カーブを既定OFFの補助線として追加する
 - この bundle で扱う Task ID:
-  - `RAU-AF-08` booking curve の個人/団体 toggle を実装する
+  - `RAU-AF-09` 直近同曜日カーブを既定OFFの補助線として追加する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
   - BCL repo の booking curve 画面で使う算出ロジックを参照し、RAU の `/api/v4/booking_curve` response だけで成立する rooms-only reference curve へチューニングする。
@@ -18,7 +18,7 @@
 - RAU の当面の主線は、`レート調整特化 + 人数なしの簡易フォーキャスト` とする。
 - RAR の本格 RMS 実装は一旦保留し、人数データまたは DWH 連携の見通しが立った時点で再開判断する。
 - Analyze 日付ページの booking curve Phase 1 は実装済み。
-- Phase 1 では、ホテル全体 block と室タイプ別 card に `全体 / 個人` の rooms 系列を表示する。
+- Phase 1 では、ホテル全体 block と室タイプ別 card に、常時表示の `全体` 系列と、`個人 / 団体` toggle で切り替える second panel を表示する。
 - Phase 1 の booking curve は、custom SVG、hover tooltip、capacity 基準 y 軸、rank 変更履歴 marker、未来 stay_date の観測 LT 打ち切り、`ACT` 空表示を含む。
 - 現行 current UI では、legacy sales-setting card が無い場合でも synthetic room-type host を生成し、overall summary、rank overview、room-group table、室タイプ別 booking curve を表示できる。
 - 月次実績画面の LT 基準 custom booking curve は、Analyze reference curve が一段落するまで優先度を下げる。
@@ -47,6 +47,7 @@
 - 直近型は BCL の `recent90w` 相当で進める。LT ごとに `asOfDate - (90 - LT)` から `asOfDate + LT` までの stay_date window を取り、その window 内の観測値を直近ほど重くして平均する。
 - 直近型が 165日前付近など途中の LT から始まる場合があるのは、API取得失敗ではなく、その LT の recent90w window 内に非 null 観測値が不足するためと整理した。
 - `RAU-UX-01` は判断済み。`団体` は常時3枚目の panel ではなく、`個人 / 団体` toggle として追加する。競合価格は現在値表を複製せず、価格推移 snapshot として後続候補にする。`直近同曜日カーブ` は既定 OFF の補助線として追加候補にする。
+- `RAU-AF-08` はコード実装済み。booking curve の second panel は既定 `個人`、必要時 `団体` に切り替えられる。`団体` 選択時は current、直近型、季節型、rank marker tooltip の対象 segment が `group` になる。toggle 状態は画面内 memory で保持し、Revenue Assistant 側の再描画や本 userscript の再同期では維持する。
 
 ## Next Re-entry
 
@@ -63,10 +64,10 @@
 
 最初にやること:
 
-1. `RAU-AF-08` の実装前に `docs/spec_001_analyze_expansion.md` の `個人 / 団体` toggle 仕様を確認する。
-2. 既存の booking curve panel data builder が `overall` と `individual` を固定している箇所を確認する。
-3. second panel の segment を `transient` または `group` で切り替えられるようにする。
-4. `全体` panel、rank marker、tooltip、reference curve toggle、current-ui supplement portal が維持されることを verify する。
+1. `RAU-AF-09` の実装前に `docs/spec_001_analyze_expansion.md` の `直近同曜日カーブ` 仕様を確認する。
+2. current の前後2週の同曜日 stay_date について、既存 `bookingCurveData` と raw source cache から取得できる範囲を確認する。
+3. 同曜日補助線を既定 OFF の toggle として追加し、薄いグレー破線で current、直近型、季節型より視覚優先度を下げる。
+4. `個人 / 団体` toggle、reference curve toggle、rank marker、tooltip、current-ui supplement portal が維持されることを verify する。
 
 変更しない契約:
 
@@ -110,6 +111,12 @@
   - `npm run chrome:pages`: CDP 接続は成功。open pages は Tampermonkey dashboard と Analyze 日付ページ
   - Analyze 日付ページ GUI 確認: Tampermonkey 再読込後、current 先行表示、reference curve 非同期補完、360 日 reference curve、IndexedDB 保存件数を確認
   - `recent_weighted_90:v3` 修正後の Tampermonkey 再読込 GUI 確認: 利用者確認により `0日前 -> ACT` スパイク解消を確認
+- 2026-04-26 の `RAU-AF-08` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `npm run chrome:pages`: CDP 接続は成功。open pages は Tampermonkey dashboard と Analyze 日付ページ
+  - Tampermonkey 再読込 GUI 確認: 未実施
 
 ## Open Questions / Risks
 
@@ -118,7 +125,7 @@
 - derived reference curve の IndexedDB 保持は、初期実装では `algorithmVersion` と `asOfDate` を key に含めて分離する。TTL や古い key の削除はまだ実装しない。
 - reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
-- `RAU-AF-08` では、`個人 / 団体` toggle を増やすことで chart header と legend の情報密度が上がる。既存の `直近型 / 季節型` toggle と役割が混ざらないようにする必要がある。
+- `RAU-AF-08` では、`個人 / 団体` toggle を chart header に追加した。既存の `直近型 / 季節型` toggle と役割が混ざらないかは Tampermonkey 再読込後の GUI 目視で確認する必要がある。
 - 現行コードでは `recent_weighted_90` の `ACT` は `as_of_date` より前に宿泊済みの履歴 stay_date から final rooms 相当を作り、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
 - `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。
 - 競合価格は現在値表ではなく、価格推移 snapshot の保存単位を設計してから表示判断する。
