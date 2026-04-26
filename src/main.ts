@@ -4023,11 +4023,11 @@ function getSalesSettingBookingCurveReferenceLabel(kind: SalesSettingBookingCurv
 }
 
 function getSalesSettingBookingCurveReferenceStroke(kind: SalesSettingBookingCurveReferenceKind): string {
-    return kind === "recent" ? "#b7791f" : "#6f5aa8";
+    return kind === "recent" ? "#b7791f" : "#c2415d";
 }
 
 function getSalesSettingBookingCurveReferenceDasharray(kind: SalesSettingBookingCurveReferenceKind): string {
-    return kind === "recent" ? "5 4" : "2 4";
+    return kind === "recent" ? "8 5" : "2 6";
 }
 
 function formatSalesSettingSameWeekdayCurveLabel(result: SalesSettingSameWeekdayCurveData): string {
@@ -4048,9 +4048,9 @@ function getSalesSettingBookingCurveDrawableSeries(
                 kind: helper.kind,
                 label: helper.label,
                 series: helper.series,
-                stroke: "#8c98a8",
-                strokeWidth: 1.2,
-                strokeDasharray: "4 5"
+                stroke: "#6f7d90",
+                strokeWidth: 1.5,
+                strokeDasharray: "10 6"
             });
         }
     }
@@ -4075,7 +4075,7 @@ function getSalesSettingBookingCurveDrawableSeries(
             label: getSalesSettingBookingCurveReferenceLabel(kind),
             series,
             stroke: getSalesSettingBookingCurveReferenceStroke(kind),
-            strokeWidth: 2,
+            strokeWidth: 2.4,
             strokeDasharray: getSalesSettingBookingCurveReferenceDasharray(kind)
         });
     }
@@ -4536,6 +4536,9 @@ function createSalesSettingBookingCurveSvg(
         pathElement.setAttribute("stroke-width", String(drawable.strokeWidth));
         pathElement.setAttribute("stroke-linejoin", "round");
         pathElement.setAttribute("stroke-linecap", "round");
+        if (drawable.kind === "sameWeekday") {
+            pathElement.setAttribute("opacity", "0.62");
+        }
         if (drawable.strokeDasharray !== null) {
             pathElement.setAttribute("stroke-dasharray", drawable.strokeDasharray);
         }
@@ -4890,8 +4893,8 @@ function createSalesSettingBookingCurveLegend(curveData: SalesSettingBookingCurv
     ) {
         items.push({
             label: "同曜日",
-            stroke: "#8c98a8",
-            dasharray: "4 5",
+            stroke: "#6f7d90",
+            dasharray: "10 6",
             visible: true
         });
     }
