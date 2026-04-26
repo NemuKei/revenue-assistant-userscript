@@ -177,8 +177,8 @@ BCL-tuned first wave の定義:
 - `直近型カーブ` は `docs/spec_002_curve_core.md` の `recent_weighted_90` を使う。
 - `季節型カーブ` は `docs/spec_002_curve_core.md` の `seasonal_component` を使う。
 - core logic の結果に含まれる `rooms=null`、`missingReason`、`warnings` は、Analyze 画面で空表示、取得不可状態、または tooltip/status 表示に使う。
-- first wave で描画する rooms 系列は `all` と `transient` を標準とする。`group` は response shape と取得可否を確認済みだが、標準 UI へ常時表示するかは reference curve 実装後に再判断する。
-- reference curve は既存の `全体` panel と `個人` panel に追加する。既存の `全体 / 個人` の分離、rank marker、tooltip、`ACT` 空表示は保持する。
+- first wave で描画する rooms 系列は `all` と `transient` を標準とする。`group` は response shape と取得可否を確認済みであり、次段階では `個人` と切り替え可能な `団体` 表示として追加する。
+- reference curve は既存の `全体` panel と `個人` panel に追加する。次段階で `団体` を追加する場合は、常時3枚目の panel を増やすのではなく、`個人 / 団体` toggle によって `個人` panel の比較対象 segment を切り替える。既定は `個人` とし、`団体` は全体カーブの伸びが団体由来かを確認するときに使う。
 - reference curve の表示範囲は、current の booking curve と同じ LT 軸に揃える。標準の横軸は `0〜360日前` と `ACT` を対象にし、表示ラベルは既存の間引きルールを使う。
 - request 数が問題になる場合でも、仕様上の目標表示範囲は `0〜360日前` と `ACT` のままとする。短期の性能対策で一時的に取得範囲を狭める場合は、取得中、未取得、算出不能を区別して表示する。
 - 初期表示では `現在 / 直近型 / 季節型` を比較できる状態にする。ただし表示密度が上がるため、`直近型カーブ` と `季節型カーブ` は個別に表示切替できるようにする。
@@ -187,6 +187,15 @@ BCL-tuned first wave の定義:
 - `0日前` と `ACT` は、current と reference curve の両方で別 tick として扱う。`0日前` は宿泊日当日時点の観測値、`ACT` は宿泊日後に確定した最終実績を指す。
 - Revenue Assistant API が過去 stay_date の `0日前` 値を実績確定後の値で上書きして返す場合、raw source 保存開始前の過去日程については本当の `0日前` と `ACT` を後から分離できない。この制約は仕様上の欠損として扱い、推測で補完しない。
 - `直近型カーブ` と `季節型カーブ` の `ACT` がどの入力値から作られているかを diagnostics または調査ログで確認できるようにする。`0日前` と `ACT` が同じ値から作られているなら、`0日前` から `ACT` への線は平坦になるはずである。値が下がる、または不自然に跳ねる場合は、算出ロジック、入力 source の混在、segment 解決、API response の上書き仕様を調査対象にする。
+
+同曜日補助線:
+
+- `直近同曜日カーブ` は、`直近型カーブ` の平均線が実在した近い宿泊日の動きと大きくずれていないかを確認する補助線とする。
+- 初期候補は target stay_date の前後2週、つまり `-14日`、`-7日`、`+7日`、`+14日` の同曜日 stay_date とする。
+- 既定表示は OFF とし、利用者が必要なときだけ toggle で表示する。
+- `直近同曜日カーブ` は主判断線ではないため、現在線や reference curve より目立たない薄いグレーの細い破線を既定とする。
+- `直近型カーブ` と `季節型カーブ` は、同曜日補助線より優先度の高い reference curve として扱い、同曜日補助線より少し太く、必要に応じて透過を使う。
+- 凡例上は同曜日補助線をまとめて `同曜日` として扱い、hover 時に対象 stay_date と `-14日`、`-7日`、`+7日`、`+14日` の区別を確認できるようにする。
 
 ## キャッシュと同期のルール
 
@@ -230,13 +239,14 @@ BCL-tuned first wave の定義:
 
 ### Candidate 2: Competitor Price Table
 
-- `/api/v5/competitor_prices` を使った競合価格表を販売設定タブへ埋め込むか判断する
-- 実装する場合は、表示位置、比較単位、列数、既存タブとの役割分担を先に仕様化する
+- `/api/v5/competitor_prices` の現在値を販売設定タブへ埋め込むだけでは、Revenue Assistant 標準の競合価格タブと役割が重複するため、優先しない
+- RAU で競合価格を扱う場合は、取得時点つきの競合価格 snapshot を IndexedDB に保存し、直近で競合価格が上がったか、下がったか、自館の価格変更や booking curve 変化と前後関係があるかを追跡できる形を候補にする
 
 ### Candidate 3: Booking Curve Phase 2
 
 - BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を別系列として重ねる
-- `団体` 系列を標準 UI に含めるかを再判断する
+- `団体` 系列は `個人 / 団体` toggle として追加し、既定は `個人` とする
+- `直近同曜日カーブ` を、既定 OFF の補助線として追加する
 - BCL-tuned reference curve の derived cache を `IndexedDB` へ保存し、request fan-out を抑える
 
 ## Open Questions

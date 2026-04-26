@@ -4,9 +4,9 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-AF-07` booking_curve raw source IndexedDB cache と ACT/0日前分離を GUI 確認する
+- 主対象: `RAU-AF-08` booking curve の個人/団体 toggle を実装する
 - この bundle で扱う Task ID:
-  - `RAU-AF-07` booking_curve raw source IndexedDB cache と ACT/0日前分離を GUI 確認する
+  - `RAU-AF-08` booking curve の個人/団体 toggle を実装する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
   - BCL repo の booking curve 画面で使う算出ロジックを参照し、RAU の `/api/v4/booking_curve` response だけで成立する rooms-only reference curve へチューニングする。
@@ -43,6 +43,10 @@
 - `RAU-AF-07` では、`ReferenceCurveDiagnostics.actComparison` を追加し、`0日前` と `ACT` の rooms、sourceCount、差分を保存できるようにした。`ACT` が `0日前` より低い場合は warning を追加する。
 - 2026-04-26 の GUI 確認で、current が先に表示され、reference curve が後から補完されることを確認した。ホテル全体とシングル card で v2 reference curve が表示され、raw source IndexedDB に 142 件、derived reference curve IndexedDB に 36 件の保存を確認した。
 - 同じ確認で、`recent_weighted_90:v2` の `ACT` が `0日前` より低くなる warning を確認した。原因は、直近型 ACT 算出で `as_of_date` 以降の未着地 stay_date を final rooms 候補に含めていたことだったため、`recent_weighted_90:v3` では `stayDate < asOfDate` の履歴だけを ACT final sample に使うよう修正した。
+- `recent_weighted_90:v3` 修正後、利用者確認により直近型の `0日前 -> ACT` スパイク解消を確認した。
+- 直近型は BCL の `recent90w` 相当で進める。LT ごとに `asOfDate - (90 - LT)` から `asOfDate + LT` までの stay_date window を取り、その window 内の観測値を直近ほど重くして平均する。
+- 直近型が 165日前付近など途中の LT から始まる場合があるのは、API取得失敗ではなく、その LT の recent90w window 内に非 null 観測値が不足するためと整理した。
+- `RAU-UX-01` は判断済み。`団体` は常時3枚目の panel ではなく、`個人 / 団体` toggle として追加する。競合価格は現在値表を複製せず、価格推移 snapshot として後続候補にする。`直近同曜日カーブ` は既定 OFF の補助線として追加候補にする。
 
 ## Next Re-entry
 
@@ -59,13 +63,10 @@
 
 最初にやること:
 
-1. Tampermonkey 側で `dist/*.user.js` を再読込する。
-2. Analyze 日付ページを開き、販売設定タブでホテル全体 block の `現在 / 直近型 / 季節型` が表示されることを確認する。
-3. 室タイプ別 card を 1 つ開き、開いた card だけ reference curve 取得が走り、`直近型` と `季節型` の toggle が効くことを確認する。
-4. reference curve が `0〜360日前 + ACT` の LT 軸で current と同じ範囲に表示されることを確認する。
-5. 室タイプ別 card を 1 つ開き、current curve が先に表示され、reference curve が後から補完されることを確認する。
-6. 同じ Analyze 日付と同じ室タイプ card を再表示し、IndexedDB raw source または derived cache により API request が減ることを DevTools network または debug log で確認する。
-7. `0日前` から `ACT` へ不自然な段差が残る場合は、`ReferenceCurveDiagnostics.actComparison` と warning を確認する。
+1. `RAU-AF-08` の実装前に `docs/spec_001_analyze_expansion.md` の `個人 / 団体` toggle 仕様を確認する。
+2. 既存の booking curve panel data builder が `overall` と `individual` を固定している箇所を確認する。
+3. second panel の segment を `transient` または `group` で切り替えられるようにする。
+4. `全体` panel、rank marker、tooltip、reference curve toggle、current-ui supplement portal が維持されることを verify する。
 
 変更しない契約:
 
@@ -108,7 +109,7 @@
   - `npm run build`: passed
   - `npm run chrome:pages`: CDP 接続は成功。open pages は Tampermonkey dashboard と Analyze 日付ページ
   - Analyze 日付ページ GUI 確認: Tampermonkey 再読込後、current 先行表示、reference curve 非同期補完、360 日 reference curve、IndexedDB 保存件数を確認
-  - `recent_weighted_90:v3` 修正後の Tampermonkey 再読込 GUI 確認: 未実施
+  - `recent_weighted_90:v3` 修正後の Tampermonkey 再読込 GUI 確認: 利用者確認により `0日前 -> ACT` スパイク解消を確認
 
 ## Open Questions / Risks
 
@@ -117,9 +118,10 @@
 - derived reference curve の IndexedDB 保持は、初期実装では `algorithmVersion` と `asOfDate` を key に含めて分離する。TTL や古い key の削除はまだ実装しない。
 - reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
-- `RAU-AF-07` はコード実装済みだが、`recent_weighted_90:v3` 修正後の実データ GUI で、直近型 `0日前 -> ACT` の段差が解消したかは未確認。
+- `RAU-AF-08` では、`個人 / 団体` toggle を増やすことで chart header と legend の情報密度が上がる。既存の `直近型 / 季節型` toggle と役割が混ざらないようにする必要がある。
 - 現行コードでは `recent_weighted_90` の `ACT` は `as_of_date` より前に宿泊済みの履歴 stay_date から final rooms 相当を作り、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
-- 部屋タイプ別 booking curve が重い主因は、計算処理よりも reference curve 用の `/api/v4/booking_curve` 複数取得である可能性が高い。`RAU-AF-07` では raw source IndexedDB 保存と不足分のみ取得する read path を入れたため、GUI で network request 数と体感速度を確認する。
+- `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。
+- 競合価格は現在値表ではなく、価格推移 snapshot の保存単位を設計してから表示判断する。
 
 ## References
 

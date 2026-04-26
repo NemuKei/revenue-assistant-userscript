@@ -2,48 +2,74 @@
 
 ## Now
 
-### RAU-AF-07 booking_curve raw source IndexedDB cache と ACT/0日前分離を GUI 確認する
+### RAU-AF-08 booking curve の個人/団体 toggle を実装する
 
 - 目的:
-  - `/api/v4/booking_curve` の raw source を IndexedDB に保存し、同じ施設、宿泊日、取得基準日、scope、室タイプの再取得を減らす。
-  - raw source 保存開始後の stay_date について、宿泊日当日時点の `0日前` と宿泊日後に確定した `ACT` を別データとして扱えるようにする。
-  - `直近型カーブ` と `季節型カーブ` の `ACT` がどの入力値から作られているかを確認し、`0日前` から `ACT` へ不自然な段差が出る原因を特定できるようにする。
-- 状態:
-  - コード実装済み。
-  - Analyze 日付ページでの GUI 確認は未実施。
+  - booking curve の標準表示は `全体` と `個人` を維持しつつ、必要なときだけ `個人` を `団体` に切り替えられるようにする。
+  - 全体カーブの伸びが個人由来か団体由来かを、同じ画面で確認できるようにする。
 - スコープ:
-  - raw source の IndexedDB store、cache key、record adapter を追加する。
-  - key には施設識別子、`stay_date`、`as_of_date`、`fetched_at`、scope、`rm_room_group_id`、endpoint、query、schema version を含める。
-  - reference curve の source 取得は IndexedDB raw source を先に読み、不足分だけ API request する。
-  - 部屋タイプ別 card は current curve を先に表示し、reference curve は raw source / derived cache を使って非同期で補う。
-  - current と reference curve の表示範囲は `0〜360日前 + ACT` を目標に揃える。
-  - `recent_weighted_90` と `seasonal_component` の `ACT` sourceCount、`0日前` sourceCount、rooms 差分を確認できる diagnostics を追加する。
+  - ホテル全体 block と室タイプ別 card の second panel を、`個人 / 団体` toggle で切り替える。
+  - 既定は `個人` とする。
+  - `団体` 選択時は、current、直近型、季節型、rank marker tooltip の対象 segment を `group` に切り替える。
+  - `全体` panel は常時表示のまま維持する。
+  - toggle 状態は画面再同期で維持する。
 - 非目標:
-  - raw source 保存開始前の過去日程について、本当の `0日前` を推測で復元すること。
-  - 外部 DB、PMS データ、DWH データを必須にすること。
-  - 予測モデルの採用をこの task で決めること。
+  - `全体 / 個人 / 団体` の3 panelを常時並べること。
+  - competitor prices を追加すること。
+  - 直近同曜日カーブを追加すること。
 - 受け入れ条件:
-  - 同じ Analyze 日付、同じ施設、同じ室タイプ card を再表示したとき、保存済み raw source を優先して API request 数が減る。
-  - raw source 保存開始後の stay_date では、`0日前` と `ACT` を別 key または別観測時点として追跡できる。
-  - `直近型カーブ` と `季節型カーブ` の `ACT` が、`0日前` と同じ入力値なのか、final rooms 相当の入力値なのかを確認できる。
-  - `0日前` と `ACT` が同じ値から作られている場合に線が平坦になるかを確認でき、不自然な段差が残る場合は原因候補を diagnostics に残せる。
-  - 既存の `全体 / 個人` 系列、rank marker、tooltip、current-ui supplement portal が維持される。
+  - 初期表示では `全体` と `個人` が表示される。
+  - toggle で `団体` に切り替えると、second panel の current と reference curve が団体系列になる。
+  - toggle を戻すと `個人` 系列へ戻る。
+  - 既存の `全体` 系列、rank marker、tooltip、current-ui supplement portal が維持される。
   - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
   - Tampermonkey 再読込後に Analyze 日付ページで GUI 確認できる。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_002_curve_core.md`
-  - `open-spec-questions`: raw source の保存期間、容量上限、手動削除導線をどの段階で入れるか
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `open-spec-questions`: toggle 状態を localStorage に保持するか、画面内 memory のみにするか
 
 ## Next
 
-### RAU-UX-01 competitor prices と団体系列の導入要否を再判断する
+### RAU-AF-09 直近同曜日カーブを既定OFFの補助線として追加する
 
 - 目的:
-  - Analyze reference curve 実装後の使用感を見て、`/api/v5/competitor_prices` と `団体` 系列を標準 UI に含めるか判断する。
+  - `直近型カーブ` の平均線が、実在した近い同曜日 stay_date の booking curve と大きくずれていないかを確認できるようにする。
+  - current の前後2週の同曜日カーブを、必要なときだけ補助線として重ねる。
+- スコープ:
+  - 対象 stay_date は `-14日`、`-7日`、`+7日`、`+14日` を初期候補にする。
+  - 既定表示は OFF とし、toggle で表示する。
+  - 同曜日補助線は薄いグレーの細い破線にする。
+  - 凡例ではまとめて `同曜日` と表示し、hover 時に対象 stay_date と前後何週かを確認できるようにする。
+  - current、直近型、季節型より視覚優先度を下げる。
+- 非目標:
+  - 同曜日補助線を既定 ON にすること。
+  - 直近型または季節型の算出ロジックを置き換えること。
+  - 競合価格や予測モデルを追加すること。
+- 受け入れ条件:
+  - 初期表示では同曜日補助線が表示されない。
+  - toggle ON で、取得可能な前後2週の同曜日カーブが重なる。
+  - 同曜日補助線は current と reference curve の判読を妨げない。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
 - metadata:
-  - `spec-impact`: unknown
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
+
+- 目的:
+  - Revenue Assistant 標準タブで見られる現在値ではなく、競合価格が直近で上がったか、下がったか、自館の価格変更や booking curve 変化と前後関係があるかを確認できるようにする。
+- スコープ:
+  - `/api/v5/competitor_prices` の response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
+  - IndexedDB に保存する snapshot key と保持期間を設計する。
+  - Analyze 画面へ表示する場合の最小表示を設計する。
+- 非目標:
+  - 競合価格の現在値表だけを販売設定タブへ複製すること。
+  - 自動レート変更へ接続すること。
+- metadata:
+  - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
@@ -92,6 +118,35 @@
 
 ## Completed / Superseded Context
 
+### RAU-AF-07 booking_curve raw source IndexedDB cache と ACT/0日前分離を実装する
+
+- 状態:
+  - 実装済み。
+  - Tampermonkey 再読込後の GUI 確認で、current が先に表示され、reference curve が後から補完されることを確認した。
+  - `recent_weighted_90:v3` で `0日前 -> ACT` の不自然なスパイク解消を確認した。
+- 実装内容:
+  - `src/bookingCurveRawSourceStore.ts` に `/api/v4/booking_curve` raw source 用 IndexedDB store を追加した。
+  - `src/main.ts` の booking curve 取得経路を、memory、localStorage、IndexedDB raw source、API の順にした。
+  - reference curve の表示範囲を current と同じ `0〜360日前 + ACT` へ広げた。
+  - ホテル全体と室タイプ別 card で、current curve を先に描画し、reference curve を非同期で補完するようにした。
+  - `ReferenceCurveDiagnostics.actComparison` を追加し、`0日前` と `ACT` の rooms、sourceCount、差分を記録できるようにした。
+  - 直近型 ACT 算出では、`as_of_date` より前に宿泊済みの履歴 stay_date だけを final rooms 候補にするよう修正した。
+- GUI確認:
+  - raw source IndexedDB に保存されることを確認した。
+  - derived reference curve IndexedDB に保存されることを確認した。
+  - 直近型は `recent90w` 相当で進めることを確認した。
+  - 直近型が遠い LT で空になる場合があるのは、API取得失敗ではなく、recent90w の LT 別 window 内に非 null 観測が不足するためと整理した。
+
+### RAU-UX-01 competitor prices と団体系列の導入要否を再判断する
+
+- 状態:
+  - 判断済み。
+- 判断結果:
+  - `団体` は標準で扱うが、常時3枚目の panel として増やさず、`個人 / 団体` toggle として追加する。
+  - 競合価格は現在値表だけなら Revenue Assistant 標準タブと重複するため、現在値表の複製は実装しない。
+  - 競合価格を扱う場合は、取得時点つき snapshot を IndexedDB に保存し、価格推移を追跡する後続候補にする。
+  - `直近同曜日カーブ` は、`直近型カーブ` の妥当性確認に使う補助線として追加候補にする。
+
 ### RAU-AF-05 reference curve の IndexedDB cache と request scheduler を実装する
 
 - 状態:
@@ -139,14 +194,15 @@
 
 Now:
 
-- `RAU-AF-07` booking_curve raw source IndexedDB cache と ACT/0日前分離を GUI 確認する
+- `RAU-AF-08` booking curve の個人/団体 toggle を実装する
 
 Next:
 
-- `RAU-UX-01` competitor prices と団体系列の導入要否を再判断する
+- `RAU-AF-09` 直近同曜日カーブを既定OFFの補助線として追加する
 
 After Next:
 
+- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 Later:
@@ -162,5 +218,8 @@ Later:
 - `RAU-AF-06` の GUI 確認は、`RAU-AF-07` で raw source cache と 360 日表示へ変更した後の画面確認に吸収する。
 - raw source 保存、`0日前` と `ACT` の分離、部屋タイプ別 card の体感速度改善、reference curve の 360 日表示は、取得証跡と read path の変更を共有するため `RAU-AF-07` として束ねる。
 - 旧 backlog の月次実績画面関連 task は、`RAU-MP-01` へ束ねて優先度を下げる。
-- 旧 backlog の `団体` 系列、rank marker polish、competitor prices は、BCL-tuned reference curve 実装後の使用感で再判断するため `RAU-UX-01` へ束ねる。
+- `RAU-UX-01` の判断結果により、`団体` は `RAU-AF-08` の `個人 / 団体` toggle へ、直近同曜日比較は `RAU-AF-09` へ、競合価格は現在値表ではなく `RAU-CP-01` の価格推移 snapshot 設計へ分割する。
+- `RAU-AF-08` を先に行う理由は、既存 booking curve panel の segment 表示切替だけで実装でき、直近同曜日補助線より表示構造への影響が小さいため。
+- `RAU-AF-09` は線の本数と凡例、hover 表示が増えるため、`個人 / 団体` toggle の表示構造を固めた後に実装する。
+- `RAU-CP-01` は `/api/v5/competitor_prices` の現在値表を複製しない。価格推移を扱うには snapshot 保存設計が必要なため、表示実装より先に保存単位を設計する。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。
