@@ -1,7 +1,5 @@
 # tasks_backlog
 
-## Now
-
 ### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
 
 - 目的:
@@ -32,6 +30,49 @@
   - `target-spec`: `docs/spec_000_overview.md`
 
 ## Completed
+
+### RAU-WC-02 warm cache indicator をトップカレンダーと日付単位進捗に広げる
+
+- 目的:
+  - Analyze 日付ページを開く前でも、トップカレンダーを開いている状態で booking_curve raw source の warm cache を進められるようにする。
+  - 取得状況 indicator で、task 件数だけでなく stay_date 単位の取得済み範囲を確認できるようにする。
+  - 1 回の自動稼働上限に達した場合でも、日次上限に達していなければクールダウン後に自動再開できるようにする。
+- スコープ:
+  - warm cache の対象日付、取得順、IndexedDB raw source key、request 間隔、日次上限は `RAU-WC-01` の仕様を維持する。
+  - 起動条件を Analyze 日付ページだけでなく、トップカレンダーを含む calendar 表示中にも広げる。
+  - indicator は完了済み stay_date の連続範囲、現在取得中の stay_date と scope、保存数、skip 数、今日の稼働時間、クールダウン再開目安を表示する。
+  - stay_date 単位の完了は、その stay_date のホテル全体と全室タイプが取得済みまたは skip 済みになった状態を指す。
+- 非目標:
+  - 取得対象日付や部屋タイプを画面上で編集できる UI を追加すること。
+  - 日次上限到達後に同日中の自動再開を行うこと。
+  - 全過去日程や競合価格 snapshot を同じ queue に含めること。
+- 受け入れ条件:
+  - トップカレンダー表示中でも warm cache indicator が表示され、queue が進む。
+  - Analyze 日付ページでも既存の current、reference curve、同曜日補助線、個人/団体 toggle を妨げない。
+  - indicator で完了済み stay_date 範囲を確認できる。
+  - 1 回の自動稼働上限に達した場合は、クールダウン中表示になり、日次上限未満なら自動再開する。
+  - 日次上限到達、hidden、連続エラー停止の既存制限は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - warm cache の起動対象をトップカレンダーにも広げた。
+  - queue の対象日付は `asOfDate + 0日` から `asOfDate + 30日` までに揃えた。
+  - indicator の進捗を task 件数ではなく、完了済み stay_date 数と完了済み stay_date 範囲で表示するようにした。
+  - 1 回の自動稼働上限に達した場合は、10 分クールダウン後に自動再開するようにした。
+  - 日次上限、document hidden、連続エラー停止は停止条件として維持した。
+  - hidden pause 後に `visibilitychange` が発火しない復帰ケースへ対応するため、`pageshow` と `focus` でも warm cache drain を再開するようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+- 未確認:
+  - 修正後 dist を Tampermonkey へ再読込した後の GUI 目視確認
+  - 実ブラウザ上でトップカレンダー表示中に indicator が `取得中` へ復帰し、日付単位完了範囲が進むこと
+  - クールダウン後自動再開の確認
 
 ### RAU-WC-01 booking_curve warm cache queue と indicator を実装する
 

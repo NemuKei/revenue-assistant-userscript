@@ -49,6 +49,7 @@ const SALES_SETTING_WARM_CACHE_TARGET_DAYS = 30;
 const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 2500;
 const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 5 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_DAILY_LIMIT_MS = 30 * 60 * 1000;
+const SALES_SETTING_WARM_CACHE_COOLDOWN_MS = 10 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
@@ -219,7 +220,7 @@ interface RoomGroup {
 }
 
 type SalesSettingWarmCacheScope = "hotel" | "roomGroup";
-type SalesSettingWarmCacheStatus = "idle" | "building" | "running" | "paused" | "limitReached" | "error" | "complete";
+type SalesSettingWarmCacheStatus = "idle" | "building" | "running" | "paused" | "cooldown" | "limitReached" | "error" | "complete";
 
 interface SalesSettingWarmCacheTask {
     stayDate: string;
@@ -228,11 +229,20 @@ interface SalesSettingWarmCacheTask {
     roomGroupName?: string;
 }
 
+interface SalesSettingWarmCacheDateProgress {
+    total: number;
+    done: number;
+    errors: number;
+}
+
 interface SalesSettingWarmCacheState {
     status: SalesSettingWarmCacheStatus;
     facilityId: string | null;
     asOfDate: string | null;
     queue: SalesSettingWarmCacheTask[];
+    dateProgress: Record<string, SalesSettingWarmCacheDateProgress>;
+    targetFromDate: string | null;
+    targetToDate: string | null;
     total: number;
     processed: number;
     fetched: number;
@@ -243,6 +253,7 @@ interface SalesSettingWarmCacheState {
     startedAt: number | null;
     runElapsedMs: number;
     dailyUsedMs: number;
+    cooldownUntil: number | null;
     lastFetchedAt: string | null;
     pauseReason: string | null;
 }
@@ -552,10 +563,12 @@ function boot(): void {
 function installLifecycleConsistencyHooks(): void {
     window.addEventListener("pageshow", () => {
         scheduleConsistencyCheck("pageshow");
+        scheduleSalesSettingWarmCacheDrain(0);
     });
 
     window.addEventListener("focus", () => {
         scheduleConsistencyCheck("focus");
+        scheduleSalesSettingWarmCacheDrain(0);
     });
 
     document.addEventListener("visibilitychange", () => {
@@ -1173,6 +1186,9 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
         facilityId: null,
         asOfDate: null,
         queue: [],
+        dateProgress: {},
+        targetFromDate: null,
+        targetToDate: null,
         total: 0,
         processed: 0,
         fetched: 0,
@@ -1183,22 +1199,25 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
         startedAt: null,
         runElapsedMs: 0,
         dailyUsedMs: readSalesSettingWarmCacheDailyUsedMs(),
+        cooldownUntil: null,
         lastFetchedAt: null,
         pauseReason: null
     };
 }
 
-function scheduleSalesSettingWarmCache(analysisDate: string, batchDateKey: string, facilityCacheKey: string): void {
-    if (!hasVisibleSalesSettingUi()) {
+function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, facilityCacheKey: string): void {
+    if (!hasSalesSettingWarmCacheEligiblePage()) {
         renderSalesSettingWarmCacheIndicator();
         return;
     }
 
     const sameContext = salesSettingWarmCacheState.facilityId === facilityCacheKey
         && salesSettingWarmCacheState.asOfDate === batchDateKey;
-    if (sameContext && salesSettingWarmCacheState.status !== "idle") {
+    if (sameContext && (salesSettingWarmCacheState.total > 0 || salesSettingWarmCacheState.status === "building")) {
         renderSalesSettingWarmCacheIndicator();
-        scheduleSalesSettingWarmCacheDrain(0);
+        if (canResumeSalesSettingWarmCache()) {
+            scheduleSalesSettingWarmCacheDrain(0);
+        }
         return;
     }
 
@@ -1207,11 +1226,13 @@ function scheduleSalesSettingWarmCache(analysisDate: string, batchDateKey: strin
         status: "building",
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
+        targetFromDate: startDate,
+        targetToDate: shiftDate(startDate, SALES_SETTING_WARM_CACHE_TARGET_DAYS),
         dailyUsedMs: readSalesSettingWarmCacheDailyUsedMs()
     };
     renderSalesSettingWarmCacheIndicator();
 
-    void buildSalesSettingWarmCacheQueue(analysisDate)
+    void buildSalesSettingWarmCacheQueue(startDate)
         .then((queue) => {
             if (
                 salesSettingWarmCacheState.facilityId !== facilityCacheKey
@@ -1224,6 +1245,7 @@ function scheduleSalesSettingWarmCache(analysisDate: string, batchDateKey: strin
                 ...salesSettingWarmCacheState,
                 status: queue.length === 0 ? "complete" : "idle",
                 queue,
+                dateProgress: buildSalesSettingWarmCacheDateProgress(queue),
                 total: queue.length,
                 pauseReason: null
             };
@@ -1232,7 +1254,7 @@ function scheduleSalesSettingWarmCache(analysisDate: string, batchDateKey: strin
         })
         .catch((error: unknown) => {
             console.warn(`[${SCRIPT_NAME}] failed to build sales-setting warm cache queue`, {
-                analysisDate,
+                startDate,
                 batchDateKey,
                 error
             });
@@ -1270,6 +1292,43 @@ async function buildSalesSettingWarmCacheQueue(analysisDate: string): Promise<Sa
     return tasks;
 }
 
+function buildSalesSettingWarmCacheDateProgress(tasks: SalesSettingWarmCacheTask[]): Record<string, SalesSettingWarmCacheDateProgress> {
+    return tasks.reduce<Record<string, SalesSettingWarmCacheDateProgress>>((progressByDate, task) => {
+        const progress = progressByDate[task.stayDate] ?? { total: 0, done: 0, errors: 0 };
+        progressByDate[task.stayDate] = {
+            ...progress,
+            total: progress.total + 1
+        };
+        return progressByDate;
+    }, {});
+}
+
+function markSalesSettingWarmCacheDateProgress(task: SalesSettingWarmCacheTask, hasError: boolean): void {
+    const currentProgress = salesSettingWarmCacheState.dateProgress[task.stayDate];
+    if (currentProgress === undefined) {
+        return;
+    }
+
+    salesSettingWarmCacheState = {
+        ...salesSettingWarmCacheState,
+        dateProgress: {
+            ...salesSettingWarmCacheState.dateProgress,
+            [task.stayDate]: {
+                ...currentProgress,
+                done: Math.min(currentProgress.total, currentProgress.done + 1),
+                errors: currentProgress.errors + (hasError ? 1 : 0)
+            }
+        }
+    };
+}
+
+function canResumeSalesSettingWarmCache(): boolean {
+    return salesSettingWarmCacheState.status === "idle"
+        || salesSettingWarmCacheState.status === "running"
+        || salesSettingWarmCacheState.status === "paused"
+        || salesSettingWarmCacheState.status === "cooldown";
+}
+
 function scheduleSalesSettingWarmCacheDrain(delayMs = SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS): void {
     if (salesSettingWarmCacheTimeoutId !== null) {
         return;
@@ -1293,6 +1352,28 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
         return;
     }
 
+    const cooldownUntil = salesSettingWarmCacheState.cooldownUntil;
+    const now = Date.now();
+    if (cooldownUntil !== null && cooldownUntil > now) {
+        salesSettingWarmCacheState = {
+            ...salesSettingWarmCacheState,
+            status: "cooldown",
+            pauseReason: salesSettingWarmCacheState.pauseReason ?? "今回上限到達"
+        };
+        renderSalesSettingWarmCacheIndicator();
+        scheduleSalesSettingWarmCacheDrain(cooldownUntil - now);
+        return;
+    }
+
+    if (cooldownUntil !== null) {
+        salesSettingWarmCacheState = {
+            ...salesSettingWarmCacheState,
+            status: "idle",
+            cooldownUntil: null,
+            pauseReason: null
+        };
+    }
+
     const dailyUsedMs = readSalesSettingWarmCacheDailyUsedMs() + getActiveSalesSettingWarmCacheRunElapsedMs();
     if (dailyUsedMs >= SALES_SETTING_WARM_CACHE_DAILY_LIMIT_MS) {
         pauseSalesSettingWarmCache("日次上限到達", "limitReached");
@@ -1300,7 +1381,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
     }
 
     if (getActiveSalesSettingWarmCacheRunElapsedMs() >= SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS) {
-        pauseSalesSettingWarmCache("今回上限到達", "limitReached");
+        startSalesSettingWarmCacheCooldown("今回上限到達");
         return;
     }
 
@@ -1324,6 +1405,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
     try {
         const exists = await hasSalesSettingWarmCacheRawSource(task);
         if (exists) {
+            markSalesSettingWarmCacheDateProgress(task, false);
             salesSettingWarmCacheState = {
                 ...salesSettingWarmCacheState,
                 processed: salesSettingWarmCacheState.processed + 1,
@@ -1338,6 +1420,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
                 asOfDate,
                 task.roomGroupId
             );
+            markSalesSettingWarmCacheDateProgress(task, false);
             salesSettingWarmCacheState = {
                 ...salesSettingWarmCacheState,
                 processed: salesSettingWarmCacheState.processed + 1,
@@ -1352,6 +1435,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
             task,
             error
         });
+        markSalesSettingWarmCacheDateProgress(task, true);
         salesSettingWarmCacheState = {
             ...salesSettingWarmCacheState,
             processed: salesSettingWarmCacheState.processed + 1,
@@ -1398,6 +1482,17 @@ async function hasSalesSettingWarmCacheRawSource(task: SalesSettingWarmCacheTask
 
 function pauseSalesSettingWarmCache(reason: string, status: SalesSettingWarmCacheStatus = "paused"): void {
     finalizeSalesSettingWarmCacheRun(status, reason);
+}
+
+function startSalesSettingWarmCacheCooldown(reason: string): void {
+    const cooldownUntil = Date.now() + SALES_SETTING_WARM_CACHE_COOLDOWN_MS;
+    finalizeSalesSettingWarmCacheRun("cooldown", reason);
+    salesSettingWarmCacheState = {
+        ...salesSettingWarmCacheState,
+        cooldownUntil
+    };
+    renderSalesSettingWarmCacheIndicator();
+    scheduleSalesSettingWarmCacheDrain(SALES_SETTING_WARM_CACHE_COOLDOWN_MS);
 }
 
 function resetSalesSettingWarmCache(reason: string): void {
@@ -1479,23 +1574,26 @@ function renderSalesSettingWarmCacheIndicator(): void {
 }
 
 function getSalesSettingWarmCacheStatusLabel(): string {
+    const dayProgress = getSalesSettingWarmCacheDayProgressSummary();
     switch (salesSettingWarmCacheState.status) {
         case "building":
             return "データ取得: 準備中";
         case "running":
-            return `データ取得: 取得中 ${salesSettingWarmCacheState.processed} / ${salesSettingWarmCacheState.total}`;
+            return `データ取得: 取得中 ${dayProgress.completed} / ${dayProgress.total}日`;
         case "paused":
             return "データ取得: 一時停止中";
+        case "cooldown":
+            return "データ取得: クールダウン中";
         case "limitReached":
             return "データ取得: 上限到達";
         case "error":
             return `データ取得: エラー ${salesSettingWarmCacheState.errors}`;
         case "complete":
-            return `データ取得: 完了 ${salesSettingWarmCacheState.processed} / ${salesSettingWarmCacheState.total}`;
+            return `データ取得: 完了 ${dayProgress.completed} / ${dayProgress.total}日`;
         case "idle":
         default:
             return salesSettingWarmCacheState.total > 0
-                ? `データ取得: 待機中 ${salesSettingWarmCacheState.processed} / ${salesSettingWarmCacheState.total}`
+                ? `データ取得: 待機中 ${dayProgress.completed} / ${dayProgress.total}日`
                 : "データ取得: 待機中";
     }
 }
@@ -1504,16 +1602,84 @@ function getSalesSettingWarmCacheDetailLabel(): string {
     const task = salesSettingWarmCacheState.currentTask;
     const taskLabel = task === null
         ? salesSettingWarmCacheState.pauseReason
-        : `${task.stayDate} ${task.scope === "hotel" ? "全体" : task.roomGroupName ?? task.roomGroupId ?? "室タイプ"}`;
+        : `取得中 ${formatCompactDateForDisplay(task.stayDate)} ${task.scope === "hotel" ? "全体" : task.roomGroupName ?? task.roomGroupId ?? "室タイプ"}`;
     const dailyMinutes = Math.floor((readSalesSettingWarmCacheDailyUsedMs() + getActiveSalesSettingWarmCacheRunElapsedMs()) / 60000);
+    const completedDateRange = getSalesSettingWarmCacheCompletedDateRangeLabel();
+    const cooldownLabel = salesSettingWarmCacheState.status === "cooldown"
+        ? getSalesSettingWarmCacheCooldownLabel()
+        : null;
     const parts = [
+        `完了 ${completedDateRange}`,
         taskLabel,
+        cooldownLabel,
         `保存 ${salesSettingWarmCacheState.fetched}`,
         `skip ${salesSettingWarmCacheState.skipped}`,
         `今日 ${dailyMinutes}/30分`
     ].filter((part): part is string => part !== null && part !== "");
 
     return parts.join(" / ");
+}
+
+function getSalesSettingWarmCacheDayProgressSummary(): { total: number; completed: number } {
+    const progressList = Object.values(salesSettingWarmCacheState.dateProgress);
+    return {
+        total: progressList.length,
+        completed: progressList.filter((progress) => progress.total > 0 && progress.done >= progress.total && progress.errors === 0).length
+    };
+}
+
+function getSalesSettingWarmCacheCompletedDateRangeLabel(): string {
+    const dateKeys = Object.keys(salesSettingWarmCacheState.dateProgress).sort();
+    if (dateKeys.length === 0) {
+        return "なし";
+    }
+
+    let rangeStart: string | null = null;
+    let rangeEnd: string | null = null;
+    for (const dateKey of dateKeys) {
+        const progress = salesSettingWarmCacheState.dateProgress[dateKey];
+        if (progress === undefined || progress.total === 0 || progress.done < progress.total || progress.errors > 0) {
+            if (rangeStart !== null) {
+                break;
+            }
+            continue;
+        }
+
+        if (rangeStart === null) {
+            rangeStart = dateKey;
+        }
+        rangeEnd = dateKey;
+    }
+
+    if (rangeStart === null || rangeEnd === null) {
+        return "なし";
+    }
+
+    return rangeStart === rangeEnd
+        ? formatCompactDateForDisplay(rangeStart)
+        : `${formatCompactDateForDisplay(rangeStart)}〜${formatCompactDateForDisplay(rangeEnd)}`;
+}
+
+function getSalesSettingWarmCacheCooldownLabel(): string | null {
+    if (salesSettingWarmCacheState.cooldownUntil === null) {
+        return null;
+    }
+
+    const remainingMs = salesSettingWarmCacheState.cooldownUntil - Date.now();
+    if (remainingMs <= 0) {
+        return "再開待ち";
+    }
+
+    const remainingMinutes = Math.max(1, Math.ceil(remainingMs / 60000));
+    return `約${remainingMinutes}分後に再開`;
+}
+
+function formatCompactDateForDisplay(dateKey: string): string {
+    if (!/^\d{8}$/.test(dateKey)) {
+        return dateKey;
+    }
+
+    return `${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`;
 }
 
 function buildBookingCurveQuerySignature(stayDate: string, rmRoomGroupId?: string): string {
@@ -2290,9 +2456,12 @@ async function runCalendarSync(): Promise<void> {
 
         if (analysisDate !== null) {
             await salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingRankInsights(analysisDate, syncContext, preparedData));
-            scheduleSalesSettingWarmCache(analysisDate, batchDateKey, facilityCacheKey);
+        }
+
+        if (hasSalesSettingWarmCacheEligiblePage()) {
+            scheduleSalesSettingWarmCache(batchDateKey, batchDateKey, facilityCacheKey);
         } else {
-            resetSalesSettingWarmCache("Analyze画面外");
+            resetSalesSettingWarmCache("対象画面外");
         }
     } finally {
         calendarSyncRunning = false;
@@ -3250,6 +3419,10 @@ function findCurrentUiSalesSettingContentElement(): HTMLElement | null {
 
 function hasVisibleSalesSettingUi(): boolean {
     return collectSalesSettingCards().length > 0 || hasCurrentSalesSettingUi();
+}
+
+function hasSalesSettingWarmCacheEligiblePage(): boolean {
+    return hasVisibleSalesSettingUi() || collectMonthlyCalendarCells().length > 0;
 }
 
 function hasCurrentSalesSettingUi(): boolean {
@@ -6716,9 +6889,7 @@ function ensureGroupRoomStyles(): void {
             color: #5b6d86;
             font-size: 11px;
             font-weight: 600;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            white-space: nowrap;
+            white-space: normal;
         }
 
         [${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}] {

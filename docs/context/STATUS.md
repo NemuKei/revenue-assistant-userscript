@@ -51,6 +51,9 @@
 - `RAU-AF-09` はコード実装済み。booking curve header に `同曜日` toggle を追加し、既定 OFF にした。ON のときだけ target stay_date の `-14日`、`-7日`、`+7日`、`+14日` の booking curve を取得し、薄いグレーの細い破線で補助線として表示する。ホテル全体 block は ON 時に取得し、室タイプ別 card は開いている card だけ取得する。
 - booking_curve warm cache の取得順は部屋タイプ別優先ではなく、近い stay_date からホテル全体と全室タイプを揃える。差分更新は、現在の `as_of_date` で未保存の raw source key だけを取得することとし、同じ key は再取得しない。
 - `RAU-WC-01` はコード実装済み。Analyze 日付ページ同期後に warm cache queue を作成し、`today + 0日` から `today + 30日` まで、各 stay_date でホテル全体、全室タイプの順に raw source を保存する。IndexedDB に同じ key がある場合は skip する。初期制限は同時取得 1、request 間隔 2.5 秒以上、1 回最大 5 分、1 日合計最大 30 分とし、右下に取得状況 indicator を表示する。
+- `RAU-WC-02` はコード実装済み。warm cache の起動対象をトップカレンダーにも広げ、indicator で stay_date 単位の完了範囲とクールダウン後の自動再開目安を表示する。日次上限、document hidden、連続エラー停止の制限は維持する。
+- `RAU-WC-02` では、hidden pause 後に `visibilitychange` が発火しない復帰ケースへ対応するため、`pageshow` と `focus` でも warm cache drain を再開する。
+- `RAU-WC-02` の `dist/*.user.js` は `npm run build` で再生成済み。Tampermonkey 再読込後の GUI 目視確認が必要。
 
 ## Next Re-entry
 
@@ -132,6 +135,16 @@
   - `npm run build`: passed
   - Tampermonkey 再読込 GUI 確認: 未実施
   - 実ブラウザ上で request 間隔、skip、日次上限、hidden pause の挙動確認: 未実施
+- 2026-04-29 の `RAU-WC-02` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+  - `npm run chrome:pages`: passed。open pages は Tampermonkey dashboard、chrome-error tab、Revenue Assistant root
+  - トップカレンダー GUI 確認: indicator 表示は確認済み。CDP 操作中は対象タブが hidden 扱いになり、`タブ非表示` 一時停止表示になることを確認
+  - hidden pause 復帰補正: `pageshow` と `focus` でも warm cache drain を再開する修正を追加し、`npm run typecheck`、`npm run lint`、`npm run build` は再通過
+  - Tampermonkey 再読込 GUI 確認: 未実施
+  - 実ブラウザ上でトップカレンダー表示中の indicator、日付単位完了範囲、クールダウン後自動再開の確認: 未実施
 
 ## Open Questions / Risks
 
