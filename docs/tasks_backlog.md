@@ -1,5 +1,56 @@
 # tasks_backlog
 
+## Now
+
+### RAU-WC-03 Analyze 日付優先 warm cache と reference 完了定義を実装する
+
+- 目的:
+  - Analyze 日付ページを開いたときに、利用者が見ている stay_date の booking curve 表示待ちを最優先で減らす。
+  - warm cache の完了を current raw source だけでなく、直近型、季節型、同曜日補助線まで表示できる状態として扱う。
+  - Indicator で対象月または対象範囲と、Analyze 日付の取得状況を percentage と件数で確認できるようにする。
+- スコープ:
+  - Analyze 日付ページでは、開いている stay_date、その週、その月、通常 warm cache 範囲の順に queue を並べる。
+  - 同じ raw source key または derived reference curve key は重複 queue に入れない。
+  - stay_date 単位の完了には、current 用 raw source、reference source raw source、直近型 derived reference curve、季節型 derived reference curve、同曜日 raw source を含める。
+  - 同曜日補助線は、前後2週の raw source が IndexedDB に揃っていれば表示時に整形して描画する。derived cache は必須にしない。
+  - Analyze 日付ページの indicator には、`この日 raw x% / 参考線 y% / 同曜日 z%` のように不足段階が分かる表示を出す。
+  - Indicator には、対象範囲が単月なら対象月、複数月なら対象月の範囲を表示する。
+  - request 間隔 2.5 秒以上、1 回最大 5 分、10 分クールダウン、document hidden 中の一時停止、連続エラー停止は維持する。
+- 非目標:
+  - 全過去日程を一括取得すること。
+  - 同曜日補助線の derived cache を新設すること。
+  - 競合価格 snapshot を同じ queue に含めること。
+  - 自動レート変更へ接続すること。
+- 受け入れ条件:
+  - Analyze 日付ページを開いた直後、その stay_date の取得が通常範囲より優先される。
+  - その stay_date、同週、同月、通常範囲の順に取得優先度が変わる。
+  - current raw source だけでなく、直近型、季節型、同曜日補助線まで揃った日付を完了として indicator に表示できる。
+  - Analyze 日付ページで、その日の raw source、reference curve、同曜日 raw source の取得状況を percentage と件数で確認できる。
+  - 既存の current 先行表示、reference curve 非同期補完、同曜日 toggle、個人/団体 toggle を壊さない。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - warm cache task を `current raw`、`reference curve`、`same weekday raw` に分けた。
+  - Analyze 日付ページでは、開いている stay_date、その週、その月、通常 warm cache 範囲の順に target stay_date を並べるようにした。
+  - 同じ task key は queue 作成時に重複排除するようにした。
+  - reference curve task は既存の reference curve core logic と derived cache store を使い、直近型と季節型を segment 別に計算保存するようにした。
+  - 同曜日 task は前後2週の raw source を保存し、derived cache は作らない方針を維持した。
+  - Indicator に対象月または対象範囲と、Analyze 日付の `raw / 参考線 / 同曜日` 取得率を表示するようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+- 未確認:
+  - Tampermonkey 再読込後の GUI 目視確認
+  - Analyze 日付ページで、その日、同週、同月の順に取得が優先されること
+  - Indicator の `raw / 参考線 / 同曜日` 取得率が実データに応じて進むこと
+
+## Next
+
 ### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
 
 - 目的:
@@ -15,8 +66,6 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
-## Next
 
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
@@ -110,7 +159,7 @@
   - queue は `today + 0日` から `today + 30日` まで、各 stay_date でホテル全体、全室タイプの順に並べる。
   - IndexedDB raw source に同じ key が存在する場合は skip する。
   - 未保存 key は既存の raw source read/write path を使って取得し、IndexedDB に保存する。
-  - 同時取得数は 1、request 間隔は 2.5 秒以上、1 回稼働時間は最大 5 分、1 日合計は最大 30 分とする。
+  - 同時取得数は 1、request 間隔は 2.5 秒以上、1 回稼働時間は最大 5 分とする。日次合計稼働時間の上限は後続の `RAU-WC-02` で撤廃した。
   - document hidden 中は一時停止し、連続エラー時も一時停止する。
   - 画面右下に取得状況 indicator を表示する。
 - verify:

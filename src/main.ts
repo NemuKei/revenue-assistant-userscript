@@ -22,6 +22,7 @@ import {
     type BookingCurveResponseSource,
     type CurveSegment,
     type CurveScope,
+    type ReferenceCurveKind,
     type ReferenceCurveResult
 } from "./curveCore";
 import {
@@ -219,17 +220,28 @@ interface RoomGroup {
 
 type SalesSettingWarmCacheScope = "hotel" | "roomGroup";
 type SalesSettingWarmCacheStatus = "idle" | "building" | "running" | "paused" | "cooldown" | "limitReached" | "error" | "complete";
+type SalesSettingWarmCacheTaskKind = "currentRaw" | "referenceCurve" | "sameWeekdayRaw";
+type SalesSettingWarmCacheProgressKind = "raw" | "reference" | "sameWeekday";
 
 interface SalesSettingWarmCacheTask {
+    kind: SalesSettingWarmCacheTaskKind;
+    progressKind: SalesSettingWarmCacheProgressKind;
+    targetStayDate: string;
     stayDate: string;
     scope: SalesSettingWarmCacheScope;
     roomGroupId?: string;
     roomGroupName?: string;
+    segment?: CurveSegment;
+    curveKind?: ReferenceCurveKind;
 }
 
 interface SalesSettingWarmCacheDateProgress {
-    total: number;
-    done: number;
+    rawTotal: number;
+    rawDone: number;
+    referenceTotal: number;
+    referenceDone: number;
+    sameWeekdayTotal: number;
+    sameWeekdayDone: number;
     errors: number;
 }
 
@@ -237,6 +249,7 @@ interface SalesSettingWarmCacheState {
     status: SalesSettingWarmCacheStatus;
     facilityId: string | null;
     asOfDate: string | null;
+    priorityStayDate: string | null;
     queue: SalesSettingWarmCacheTask[];
     dateProgress: Record<string, SalesSettingWarmCacheDateProgress>;
     targetFromDate: string | null;
@@ -1182,6 +1195,7 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
         status: "idle",
         facilityId: null,
         asOfDate: null,
+        priorityStayDate: null,
         queue: [],
         dateProgress: {},
         targetFromDate: null,
@@ -1201,14 +1215,15 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
     };
 }
 
-function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, facilityCacheKey: string): void {
+function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, facilityCacheKey: string, priorityStayDate: string | null): void {
     if (!hasSalesSettingWarmCacheEligiblePage()) {
         renderSalesSettingWarmCacheIndicator();
         return;
     }
 
     const sameContext = salesSettingWarmCacheState.facilityId === facilityCacheKey
-        && salesSettingWarmCacheState.asOfDate === batchDateKey;
+        && salesSettingWarmCacheState.asOfDate === batchDateKey
+        && salesSettingWarmCacheState.priorityStayDate === priorityStayDate;
     if (sameContext && (salesSettingWarmCacheState.total > 0 || salesSettingWarmCacheState.status === "building")) {
         renderSalesSettingWarmCacheIndicator();
         if (canResumeSalesSettingWarmCache()) {
@@ -1222,12 +1237,13 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
         status: "building",
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
+        priorityStayDate,
         targetFromDate: startDate,
         targetToDate: shiftDate(startDate, SALES_SETTING_WARM_CACHE_TARGET_DAYS)
     };
     renderSalesSettingWarmCacheIndicator();
 
-    void buildSalesSettingWarmCacheQueue(startDate)
+    void buildSalesSettingWarmCacheQueue(startDate, priorityStayDate)
         .then((queue) => {
             if (
                 salesSettingWarmCacheState.facilityId !== facilityCacheKey
@@ -1241,6 +1257,7 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
                 status: queue.length === 0 ? "complete" : "idle",
                 queue,
                 dateProgress: buildSalesSettingWarmCacheDateProgress(queue),
+                ...getSalesSettingWarmCacheTargetBounds(queue, startDate),
                 total: queue.length,
                 pauseReason: null
             };
@@ -1263,54 +1280,202 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
         });
 }
 
-async function buildSalesSettingWarmCacheQueue(analysisDate: string): Promise<SalesSettingWarmCacheTask[]> {
+async function buildSalesSettingWarmCacheQueue(startDate: string, priorityStayDate: string | null): Promise<SalesSettingWarmCacheTask[]> {
     const roomGroups = await getRoomGroups();
     const tasks: SalesSettingWarmCacheTask[] = [];
+    const taskKeys = new Set<string>();
+    const targetStayDates = buildSalesSettingWarmCacheTargetStayDates(startDate, priorityStayDate);
 
-    for (let offsetDays = 0; offsetDays <= SALES_SETTING_WARM_CACHE_TARGET_DAYS; offsetDays += 1) {
-        const stayDate = shiftDate(analysisDate, offsetDays);
-        tasks.push({
-            stayDate,
-            scope: "hotel"
-        });
-
-        for (const roomGroup of roomGroups) {
-            tasks.push({
-                stayDate,
-                scope: "roomGroup",
-                roomGroupId: roomGroup.id,
-                roomGroupName: roomGroup.name
+    for (const targetStayDate of targetStayDates) {
+        const scopeTasks = buildSalesSettingWarmCacheScopeTasks(targetStayDate, roomGroups);
+        for (const scopeTask of scopeTasks) {
+            addSalesSettingWarmCacheTask(tasks, taskKeys, {
+                ...scopeTask,
+                kind: "currentRaw",
+                progressKind: "raw",
+                targetStayDate,
+                stayDate: targetStayDate
             });
+        }
+
+        for (const { stayDate } of getSalesSettingSameWeekdayStayDates(targetStayDate)) {
+            for (const scopeTask of scopeTasks) {
+                addSalesSettingWarmCacheTask(tasks, taskKeys, {
+                    ...scopeTask,
+                    kind: "sameWeekdayRaw",
+                    progressKind: "sameWeekday",
+                    targetStayDate,
+                    stayDate
+                });
+            }
+        }
+
+        for (const scopeTask of scopeTasks) {
+            for (const segment of SALES_SETTING_WARM_CACHE_REFERENCE_SEGMENTS) {
+                for (const curveKind of SALES_SETTING_WARM_CACHE_REFERENCE_KINDS) {
+                    addSalesSettingWarmCacheTask(tasks, taskKeys, {
+                        ...scopeTask,
+                        kind: "referenceCurve",
+                        progressKind: "reference",
+                        targetStayDate,
+                        stayDate: targetStayDate,
+                        segment,
+                        curveKind
+                    });
+                }
+            }
         }
     }
 
     return tasks;
 }
 
+const SALES_SETTING_WARM_CACHE_REFERENCE_SEGMENTS = ["all", "transient", "group"] as const satisfies readonly CurveSegment[];
+const SALES_SETTING_WARM_CACHE_REFERENCE_KINDS = ["recent_weighted_90", "seasonal_component"] as const satisfies readonly ReferenceCurveKind[];
+
+function buildSalesSettingWarmCacheScopeTasks(targetStayDate: string, roomGroups: RoomGroup[]): Array<Pick<SalesSettingWarmCacheTask, "targetStayDate" | "stayDate" | "scope" | "roomGroupId" | "roomGroupName">> {
+    return [
+        {
+            targetStayDate,
+            stayDate: targetStayDate,
+            scope: "hotel"
+        },
+        ...roomGroups.map((roomGroup) => ({
+            targetStayDate,
+            stayDate: targetStayDate,
+            scope: "roomGroup" as const,
+            roomGroupId: roomGroup.id,
+            roomGroupName: roomGroup.name
+        }))
+    ];
+}
+
+function addSalesSettingWarmCacheTask(tasks: SalesSettingWarmCacheTask[], taskKeys: Set<string>, task: SalesSettingWarmCacheTask): void {
+    const taskKey = buildSalesSettingWarmCacheTaskKey(task);
+    if (taskKeys.has(taskKey)) {
+        return;
+    }
+
+    taskKeys.add(taskKey);
+    tasks.push(task);
+}
+
+function buildSalesSettingWarmCacheTaskKey(task: SalesSettingWarmCacheTask): string {
+    return [
+        task.kind,
+        task.progressKind,
+        `target:${task.targetStayDate}`,
+        `stay:${task.stayDate}`,
+        `scope:${task.scope}`,
+        `roomGroup:${task.roomGroupId ?? "-"}`,
+        `segment:${task.segment ?? "-"}`,
+        `curve:${task.curveKind ?? "-"}`
+    ].join("|");
+}
+
+function buildSalesSettingWarmCacheTargetStayDates(startDate: string, priorityStayDate: string | null): string[] {
+    const targetStayDates: string[] = [];
+    const seen = new Set<string>();
+    const addDate = (stayDate: string | null): void => {
+        if (stayDate === null || seen.has(stayDate)) {
+            return;
+        }
+        seen.add(stayDate);
+        targetStayDates.push(stayDate);
+    };
+
+    if (priorityStayDate !== null) {
+        addDate(priorityStayDate);
+        for (const stayDate of getSalesSettingWarmCacheWeekStayDates(priorityStayDate)) {
+            addDate(stayDate);
+        }
+        for (const stayDate of getSalesSettingWarmCacheMonthStayDates(priorityStayDate)) {
+            addDate(stayDate);
+        }
+    }
+
+    for (let offsetDays = 0; offsetDays <= SALES_SETTING_WARM_CACHE_TARGET_DAYS; offsetDays += 1) {
+        addDate(shiftDate(startDate, offsetDays));
+    }
+
+    return targetStayDates;
+}
+
+function getSalesSettingWarmCacheWeekStayDates(stayDate: string): string[] {
+    const normalizedDate = normalizeDateKey(stayDate);
+    if (normalizedDate === null) {
+        return [];
+    }
+
+    const weekday = getUtcWeekday(normalizedDate);
+    if (weekday === null) {
+        return [];
+    }
+
+    return Array.from({ length: 7 }, (_, index) => shiftDate(normalizedDate, index - weekday));
+}
+
+function getSalesSettingWarmCacheMonthStayDates(stayDate: string): string[] {
+    const normalizedDate = normalizeDateKey(stayDate);
+    if (normalizedDate === null) {
+        return [];
+    }
+
+    const year = Number(normalizedDate.slice(0, 4));
+    const month = Number(normalizedDate.slice(4, 6));
+    const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    return Array.from({ length: lastDay }, (_, index) => `${normalizedDate.slice(0, 6)}${String(index + 1).padStart(2, "0")}`);
+}
+
 function buildSalesSettingWarmCacheDateProgress(tasks: SalesSettingWarmCacheTask[]): Record<string, SalesSettingWarmCacheDateProgress> {
     return tasks.reduce<Record<string, SalesSettingWarmCacheDateProgress>>((progressByDate, task) => {
-        const progress = progressByDate[task.stayDate] ?? { total: 0, done: 0, errors: 0 };
-        progressByDate[task.stayDate] = {
+        const progress = progressByDate[task.targetStayDate] ?? createEmptySalesSettingWarmCacheDateProgress();
+        progressByDate[task.targetStayDate] = {
             ...progress,
-            total: progress.total + 1
+            ...(task.progressKind === "raw" ? { rawTotal: progress.rawTotal + 1 } : {}),
+            ...(task.progressKind === "reference" ? { referenceTotal: progress.referenceTotal + 1 } : {}),
+            ...(task.progressKind === "sameWeekday" ? { sameWeekdayTotal: progress.sameWeekdayTotal + 1 } : {})
         };
         return progressByDate;
     }, {});
 }
 
+function getSalesSettingWarmCacheTargetBounds(tasks: SalesSettingWarmCacheTask[], fallbackStartDate: string): Pick<SalesSettingWarmCacheState, "targetFromDate" | "targetToDate"> {
+    const targetStayDates = Array.from(new Set(tasks.map((task) => task.targetStayDate))).sort();
+    return {
+        targetFromDate: targetStayDates[0] ?? fallbackStartDate,
+        targetToDate: targetStayDates[targetStayDates.length - 1] ?? shiftDate(fallbackStartDate, SALES_SETTING_WARM_CACHE_TARGET_DAYS)
+    };
+}
+
+function createEmptySalesSettingWarmCacheDateProgress(): SalesSettingWarmCacheDateProgress {
+    return {
+        rawTotal: 0,
+        rawDone: 0,
+        referenceTotal: 0,
+        referenceDone: 0,
+        sameWeekdayTotal: 0,
+        sameWeekdayDone: 0,
+        errors: 0
+    };
+}
+
 function markSalesSettingWarmCacheDateProgress(task: SalesSettingWarmCacheTask, hasError: boolean): void {
-    const currentProgress = salesSettingWarmCacheState.dateProgress[task.stayDate];
+    const currentProgress = salesSettingWarmCacheState.dateProgress[task.targetStayDate];
     if (currentProgress === undefined) {
         return;
     }
 
+    const doneDelta = hasError ? 0 : 1;
     salesSettingWarmCacheState = {
         ...salesSettingWarmCacheState,
         dateProgress: {
             ...salesSettingWarmCacheState.dateProgress,
-            [task.stayDate]: {
+            [task.targetStayDate]: {
                 ...currentProgress,
-                done: Math.min(currentProgress.total, currentProgress.done + 1),
+                ...(task.progressKind === "raw" ? { rawDone: Math.min(currentProgress.rawTotal, currentProgress.rawDone + doneDelta) } : {}),
+                ...(task.progressKind === "reference" ? { referenceDone: Math.min(currentProgress.referenceTotal, currentProgress.referenceDone + doneDelta) } : {}),
+                ...(task.progressKind === "sameWeekday" ? { sameWeekdayDone: Math.min(currentProgress.sameWeekdayTotal, currentProgress.sameWeekdayDone + doneDelta) } : {}),
                 errors: currentProgress.errors + (hasError ? 1 : 0)
             }
         }
@@ -1392,33 +1557,17 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
     renderSalesSettingWarmCacheIndicator();
 
     try {
-        const exists = await hasSalesSettingWarmCacheRawSource(task);
-        if (exists) {
-            markSalesSettingWarmCacheDateProgress(task, false);
-            salesSettingWarmCacheState = {
-                ...salesSettingWarmCacheState,
-                processed: salesSettingWarmCacheState.processed + 1,
-                skipped: salesSettingWarmCacheState.skipped + 1,
-                consecutiveErrors: 0,
-                currentTask: null
-            };
-        } else {
-            await readOrLoadBookingCurveRawSource(
-                facilityId,
-                task.stayDate,
-                asOfDate,
-                task.roomGroupId
-            );
-            markSalesSettingWarmCacheDateProgress(task, false);
-            salesSettingWarmCacheState = {
-                ...salesSettingWarmCacheState,
-                processed: salesSettingWarmCacheState.processed + 1,
-                fetched: salesSettingWarmCacheState.fetched + 1,
-                consecutiveErrors: 0,
-                currentTask: null,
-                lastFetchedAt: new Date().toISOString()
-            };
-        }
+        const taskResult = await runSalesSettingWarmCacheTask(task, facilityId, asOfDate);
+        markSalesSettingWarmCacheDateProgress(task, false);
+        salesSettingWarmCacheState = {
+            ...salesSettingWarmCacheState,
+            processed: salesSettingWarmCacheState.processed + 1,
+            fetched: salesSettingWarmCacheState.fetched + (taskResult === "fetched" ? 1 : 0),
+            skipped: salesSettingWarmCacheState.skipped + (taskResult === "skipped" ? 1 : 0),
+            consecutiveErrors: 0,
+            currentTask: null,
+            ...(taskResult === "fetched" ? { lastFetchedAt: new Date().toISOString() } : {})
+        };
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to warm booking curve raw source`, {
             task,
@@ -1441,6 +1590,43 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
 
     renderSalesSettingWarmCacheIndicator();
     scheduleSalesSettingWarmCacheDrain();
+}
+
+async function runSalesSettingWarmCacheTask(
+    task: SalesSettingWarmCacheTask,
+    facilityId: string,
+    asOfDate: string
+): Promise<"fetched" | "skipped"> {
+    if (task.kind === "referenceCurve") {
+        if (task.segment === undefined || task.curveKind === undefined) {
+            throw new Error("reference warm cache task is missing segment or curveKind");
+        }
+
+        const result = await loadSalesSettingReferenceCurveResult(
+            task.targetStayDate,
+            asOfDate,
+            task.segment,
+            task.curveKind,
+            task.roomGroupId
+        );
+        if (result === null) {
+            throw new Error("reference curve warm cache task returned no result");
+        }
+        return "fetched";
+    }
+
+    const exists = await hasSalesSettingWarmCacheRawSource(task);
+    if (exists) {
+        return "skipped";
+    }
+
+    await readOrLoadBookingCurveRawSource(
+        facilityId,
+        task.stayDate,
+        asOfDate,
+        task.roomGroupId
+    );
+    return "fetched";
 }
 
 async function hasSalesSettingWarmCacheRawSource(task: SalesSettingWarmCacheTask): Promise<boolean> {
@@ -1566,13 +1752,15 @@ function getSalesSettingWarmCacheDetailLabel(): string {
     const task = salesSettingWarmCacheState.currentTask;
     const taskLabel = task === null
         ? salesSettingWarmCacheState.pauseReason
-        : `取得中 ${formatCompactDateForDisplay(task.stayDate)} ${task.scope === "hotel" ? "全体" : task.roomGroupName ?? task.roomGroupId ?? "室タイプ"}`;
+        : `取得中 ${formatSalesSettingWarmCacheTaskLabel(task)}`;
     const completedDateRange = getSalesSettingWarmCacheCompletedDateRangeLabel();
     const cooldownLabel = salesSettingWarmCacheState.status === "cooldown"
         ? getSalesSettingWarmCacheCooldownLabel()
         : null;
     const parts = [
+        getSalesSettingWarmCacheTargetRangeLabel(),
         `完了 ${completedDateRange}`,
+        getSalesSettingWarmCachePriorityProgressLabel(),
         taskLabel,
         cooldownLabel,
         `保存 ${salesSettingWarmCacheState.fetched}`,
@@ -1582,12 +1770,37 @@ function getSalesSettingWarmCacheDetailLabel(): string {
     return parts.join(" / ");
 }
 
+function formatSalesSettingWarmCacheTaskLabel(task: SalesSettingWarmCacheTask): string {
+    const scopeLabel = task.scope === "hotel" ? "全体" : task.roomGroupName ?? task.roomGroupId ?? "室タイプ";
+    if (task.kind === "referenceCurve") {
+        const curveLabel = task.curveKind === "recent_weighted_90" ? "直近型" : "季節型";
+        const segmentLabel = task.segment === "all" ? "全体" : task.segment === "transient" ? "個人" : "団体";
+        return `${formatCompactDateForDisplay(task.targetStayDate)} ${scopeLabel} ${curveLabel}/${segmentLabel}`;
+    }
+
+    if (task.kind === "sameWeekdayRaw") {
+        return `${formatCompactDateForDisplay(task.targetStayDate)} 同曜日 ${formatCompactDateForDisplay(task.stayDate)} ${scopeLabel}`;
+    }
+
+    return `${formatCompactDateForDisplay(task.stayDate)} ${scopeLabel}`;
+}
+
 function getSalesSettingWarmCacheDayProgressSummary(): { total: number; completed: number } {
     const progressList = Object.values(salesSettingWarmCacheState.dateProgress);
     return {
         total: progressList.length,
-        completed: progressList.filter((progress) => progress.total > 0 && progress.done >= progress.total && progress.errors === 0).length
+        completed: progressList.filter(isSalesSettingWarmCacheDateComplete).length
     };
+}
+
+function isSalesSettingWarmCacheDateComplete(progress: SalesSettingWarmCacheDateProgress): boolean {
+    return progress.errors === 0
+        && progress.rawTotal > 0
+        && progress.rawDone >= progress.rawTotal
+        && progress.referenceTotal > 0
+        && progress.referenceDone >= progress.referenceTotal
+        && progress.sameWeekdayTotal > 0
+        && progress.sameWeekdayDone >= progress.sameWeekdayTotal;
 }
 
 function getSalesSettingWarmCacheCompletedDateRangeLabel(): string {
@@ -1600,7 +1813,7 @@ function getSalesSettingWarmCacheCompletedDateRangeLabel(): string {
     let rangeEnd: string | null = null;
     for (const dateKey of dateKeys) {
         const progress = salesSettingWarmCacheState.dateProgress[dateKey];
-        if (progress === undefined || progress.total === 0 || progress.done < progress.total || progress.errors > 0) {
+        if (progress === undefined || !isSalesSettingWarmCacheDateComplete(progress)) {
             if (rangeStart !== null) {
                 break;
             }
@@ -1620,6 +1833,51 @@ function getSalesSettingWarmCacheCompletedDateRangeLabel(): string {
     return rangeStart === rangeEnd
         ? formatCompactDateForDisplay(rangeStart)
         : `${formatCompactDateForDisplay(rangeStart)}〜${formatCompactDateForDisplay(rangeEnd)}`;
+}
+
+function getSalesSettingWarmCacheTargetRangeLabel(): string | null {
+    const fromDate = salesSettingWarmCacheState.targetFromDate;
+    const toDate = salesSettingWarmCacheState.targetToDate;
+    if (fromDate === null || toDate === null) {
+        return null;
+    }
+
+    const fromMonth = formatCompactYearMonthForDisplay(fromDate);
+    const toMonth = formatCompactYearMonthForDisplay(toDate);
+    if (fromMonth === null || toMonth === null) {
+        return null;
+    }
+
+    return fromMonth === toMonth
+        ? `対象 ${fromMonth}`
+        : `対象 ${fromMonth}-${toMonth.replace(/^\d{4}年/, "")}`;
+}
+
+function getSalesSettingWarmCachePriorityProgressLabel(): string | null {
+    const priorityStayDate = salesSettingWarmCacheState.priorityStayDate;
+    if (priorityStayDate === null) {
+        return null;
+    }
+
+    const progress = salesSettingWarmCacheState.dateProgress[priorityStayDate];
+    if (progress === undefined) {
+        return `この日 ${formatCompactDateForDisplay(priorityStayDate)} 準備中`;
+    }
+
+    return [
+        `この日 ${formatCompactDateForDisplay(priorityStayDate)}`,
+        `raw ${formatSalesSettingWarmCacheProgressPercent(progress.rawDone, progress.rawTotal)}`,
+        `参考線 ${formatSalesSettingWarmCacheProgressPercent(progress.referenceDone, progress.referenceTotal)}`,
+        `同曜日 ${formatSalesSettingWarmCacheProgressPercent(progress.sameWeekdayDone, progress.sameWeekdayTotal)}`
+    ].join(" ");
+}
+
+function formatSalesSettingWarmCacheProgressPercent(done: number, total: number): string {
+    if (total <= 0) {
+        return "0%（0/0）";
+    }
+
+    return `${Math.floor((done / total) * 100)}%（${done}/${total}）`;
 }
 
 function getSalesSettingWarmCacheCooldownLabel(): string | null {
@@ -1642,6 +1900,14 @@ function formatCompactDateForDisplay(dateKey: string): string {
     }
 
     return `${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`;
+}
+
+function formatCompactYearMonthForDisplay(dateKey: string): string | null {
+    if (!/^\d{8}$/.test(dateKey)) {
+        return null;
+    }
+
+    return `${dateKey.slice(0, 4)}年${Number(dateKey.slice(4, 6))}月`;
 }
 
 function buildBookingCurveQuerySignature(stayDate: string, rmRoomGroupId?: string): string {
@@ -2421,7 +2687,7 @@ async function runCalendarSync(): Promise<void> {
         }
 
         if (hasSalesSettingWarmCacheEligiblePage()) {
-            scheduleSalesSettingWarmCache(batchDateKey, batchDateKey, facilityCacheKey);
+            scheduleSalesSettingWarmCache(batchDateKey, batchDateKey, facilityCacheKey, analysisDate);
         } else {
             resetSalesSettingWarmCache("対象画面外");
         }

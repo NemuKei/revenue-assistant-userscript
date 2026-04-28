@@ -50,10 +50,12 @@
 - `RAU-AF-08` はコード実装済み。booking curve の second panel は既定 `個人`、必要時 `団体` に切り替えられる。`団体` 選択時は current、直近型、季節型、rank marker tooltip の対象 segment が `group` になる。toggle 状態は画面内 memory で保持し、Revenue Assistant 側の再描画や本 userscript の再同期では維持する。
 - `RAU-AF-09` はコード実装済み。booking curve header に `同曜日` toggle を追加し、既定 OFF にした。ON のときだけ target stay_date の `-14日`、`-7日`、`+7日`、`+14日` の booking curve を取得し、薄いグレーの細い破線で補助線として表示する。ホテル全体 block は ON 時に取得し、室タイプ別 card は開いている card だけ取得する。
 - booking_curve warm cache の取得順は部屋タイプ別優先ではなく、近い stay_date からホテル全体と全室タイプを揃える。差分更新は、現在の `as_of_date` で未保存の raw source key だけを取得することとし、同じ key は再取得しない。
-- `RAU-WC-01` はコード実装済み。Analyze 日付ページ同期後に warm cache queue を作成し、`today + 0日` から `today + 30日` まで、各 stay_date でホテル全体、全室タイプの順に raw source を保存する。IndexedDB に同じ key がある場合は skip する。初期制限は同時取得 1、request 間隔 2.5 秒以上、1 回最大 5 分、1 日合計最大 30 分とし、右下に取得状況 indicator を表示する。
+- `RAU-WC-01` はコード実装済み。Analyze 日付ページ同期後に warm cache queue を作成し、`today + 0日` から `today + 30日` まで、各 stay_date でホテル全体、全室タイプの順に raw source を保存する。IndexedDB に同じ key がある場合は skip する。初期制限は同時取得 1、request 間隔 2.5 秒以上、1 回最大 5 分とし、右下に取得状況 indicator を表示する。日次合計稼働時間の上限は `RAU-WC-02` で撤廃済み。
 - `RAU-WC-02` はコード実装済み。warm cache の起動対象をトップカレンダーにも広げ、indicator で stay_date 単位の完了範囲とクールダウン後の自動再開目安を表示する。日次合計稼働時間の上限は撤廃し、document hidden、連続エラー停止の制限は維持する。
 - `RAU-WC-02` では、hidden pause 後に `visibilitychange` が発火しない復帰ケースへ対応するため、`pageshow` と `focus` でも warm cache drain を再開する。
 - `RAU-WC-02` の `dist/*.user.js` は `npm run build` で再生成済み。Tampermonkey 再読込後の GUI 目視確認が必要。
+- `RAU-WC-03` はコード実装済み。Analyze 日付ページを開いた場合は、開いている stay_date、その週、その月、通常 warm cache 範囲の順に取得を優先する。warm cache の完了定義は current raw source だけではなく、reference source raw source、直近型 derived reference curve、季節型 derived reference curve、同曜日 raw source まで含める。
+- `RAU-WC-03` では、indicator に対象月または対象範囲と、Analyze 日付の `raw / 参考線 / 同曜日` 取得率を表示する。`dist/*.user.js` は `npm run build` で再生成済み。Tampermonkey 再読込後の GUI 目視確認が必要。
 
 ## Next Re-entry
 
@@ -70,10 +72,9 @@
 
 最初にやること:
 
-1. `RAU-CP-01` の実装前に `docs/spec_001_analyze_expansion.md` の競合価格 snapshot 方針を確認する。
-2. Revenue Assistant の競合価格 API response shape、取得対象日、施設単位、競合施設単位、取得時点を確認する。
-3. IndexedDB に保存する snapshot key、保持期間、既存 raw source cache との責務差分を設計する。
-4. Analyze 画面に表示する場合の最小表示と、表示実装へ進むかどうかを判断する。
+1. Tampermonkey へ最新 `dist/*.user.js` を反映し、Analyze 日付ページで `RAU-WC-03` の GUI 挙動を確認する。
+2. Indicator の `raw / 参考線 / 同曜日` 取得率が進むことと、開いている stay_date、その週、その月の順に取得されることを確認する。
+3. `RAU-WC-03` GUI 確認後に、`RAU-CP-01` の競合価格 snapshot 設計へ戻る。
 
 変更しない契約:
 
@@ -146,6 +147,14 @@
   - 日次合計稼働時間の上限撤廃後、`npm run typecheck`、`npm run lint`、`npm run build` は再通過
   - Tampermonkey 再読込 GUI 確認: 未実施
   - 実ブラウザ上でトップカレンダー表示中の indicator、日付単位完了範囲、クールダウン後自動再開の確認: 未実施
+- 2026-04-29 の `RAU-WC-03` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+  - Tampermonkey 再読込 GUI 確認: 未実施
+  - Analyze 日付ページで、その日、同週、同月の順に取得が優先されること: 未実施
+  - Indicator の `raw / 参考線 / 同曜日` 取得率が実データに応じて進むこと: 未実施
 
 ## Open Questions / Risks
 

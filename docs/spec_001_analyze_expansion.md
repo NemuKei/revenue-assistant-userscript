@@ -230,8 +230,21 @@ BCL-tuned first wave の定義:
 
 - 初期対象は、現在の `as_of_date` で見た `today + 0日` から `today + 30日` までの stay_date とする。
 - 各 stay_date について、ホテル全体と全室タイプの `/api/v4/booking_curve` raw source を対象にする。
-- 取得順は、stay_date が近い順とする。同じ stay_date 内では、ホテル全体を先に取得し、その後に全室タイプを取得する。
+- Analyze 日付ページを開いていない場合の取得順は、stay_date が近い順とする。同じ stay_date 内では、ホテル全体を先に取得し、その後に全室タイプを取得する。
+- Analyze 日付ページを開いている場合は、利用者が見ている stay_date を最優先し、次にその stay_date を含む週、その次にその stay_date を含む月、その次に通常 warm cache 範囲を取得する。
+- 優先 queue で同じ `facilityId + stayDate + asOfDate + scope + roomGroupId + endpoint + query + schema` が重複する場合は 1 件にまとめる。
 - 施設識別子、stay_date、as_of_date、scope、rm_room_group_id が揃わないものは queue に入れない。
+
+完了定義:
+
+- warm cache の stay_date 単位の完了は、current 用 raw source だけではなく、reference curve と同曜日補助線の表示に必要な保存状態まで含めて判定する。
+- `current raw source` は、対象 stay_date のホテル全体と全室タイプの `/api/v4/booking_curve` raw source を指す。
+- `reference source raw source` は、対象 stay_date の `直近型カーブ` と `季節型カーブ` を算出するために必要な候補 stay_date の `/api/v4/booking_curve` raw source を指す。対象 scope はホテル全体と全室タイプとする。
+- `derived reference curve` は、対象 stay_date、scope、rm_room_group_id、curve_kind、algorithm_version、as_of_date が一致する `直近型カーブ` と `季節型カーブ` の計算済み IndexedDB record を指す。
+- `同曜日 raw source` は、対象 stay_date の `-14日`、`-7日`、`+7日`、`+14日` のホテル全体と全室タイプの `/api/v4/booking_curve` raw source を指す。
+- 同曜日補助線は derived cache を必須にしない。同曜日 raw source が IndexedDB に揃っていれば、表示時に raw source を LT 軸へ整形して描画する。
+- reference source raw source が不足している場合は、不足分だけ API から取得する。derived reference curve が不足している場合は、既存の reference curve core logic と derived cache store を使って計算し、IndexedDB に保存する。
+- raw source、derived reference curve、同曜日 raw source のいずれかが不足している stay_date は、indicator 上では未完了または部分完了として扱う。
 
 差分更新:
 
@@ -256,8 +269,11 @@ Indicator:
 
 - トップカレンダーと Analyze 日付ページ上に、warm cache の状態を小さく表示する。
 - 最小表示は `待機中`、`取得中 完了日数 / 対象日数`、`一時停止中`、`クールダウン中`、`エラー n` を区別する。
-- 詳細表示では、対象範囲、取得順、完了済み stay_date 範囲、現在取得中の stay_date と scope、保存数、skip 数、エラー数、最終取得時刻を確認できるようにする。
-- 完了済み stay_date 範囲は、同じ stay_date 内のホテル全体と全室タイプの raw source がすべて取得済みまたは既存 raw source として skip 済みになった日付を、連続範囲として表示する。
+- 詳細表示では、対象月または対象範囲、取得順、完了済み stay_date 範囲、現在取得中の stay_date と scope、保存数、skip 数、エラー数、最終取得時刻を確認できるようにする。
+- 対象範囲が単月に収まる場合は `対象 2026年4月` のように表示する。複数月にまたがる場合は `対象 2026年4月-5月` のように表示する。
+- 完了済み stay_date 範囲は、current raw source、reference source raw source、derived reference curve、同曜日 raw source がすべて揃った日付を、連続範囲として表示する。
+- Analyze 日付ページでは、利用者が開いている stay_date の取得状況を percentage と件数で表示する。例: `この日 71%（5/7）`。
+- Analyze 日付ページの percentage は、少なくとも `raw source`、`reference curve`、`同曜日` の内訳を区別できる形にする。初期表示では `この日 raw 100% / 参考線 60% / 同曜日 100%` のように、どの段階が不足しているか分かる表示を優先する。
 - `クールダウン中` の詳細表示では、自動再開までのおおよその残り時間を表示する。
 - Indicator は取得を開始したこと、停止したこと、上限に達したことを利用者が把握するための表示であり、初期実装では取得対象の細かい編集 UI は持たせない。
 
@@ -267,7 +283,7 @@ Indicator:
 - analyze 日付ページへの画面内遷移時に再同期する
 - `visibilitychange` と `focus` の復帰時に整合チェックを行う
 - 整合チェックで group 系表示とキャッシュの不整合を検知した場合は、group 系キャッシュを破棄して再同期する
-- reference curve は、画面を開いているだけでは未計算日程が自動的に進むものと扱わない。必要な target と scope に対して userscript が取得キューへ明示的に投入したときだけ計算する
+- reference curve は、必要な target と scope に対して userscript が取得キューへ明示的に投入したときだけ計算する。Analyze 日付優先 warm cache は、この明示的な取得キュー投入の一種として扱う
 
 ## Non-Functional Requirements
 
