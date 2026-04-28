@@ -48,7 +48,6 @@ const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
 const SALES_SETTING_WARM_CACHE_TARGET_DAYS = 30;
 const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 2500;
 const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 5 * 60 * 1000;
-const SALES_SETTING_WARM_CACHE_DAILY_LIMIT_MS = 30 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_COOLDOWN_MS = 10 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
@@ -151,7 +150,6 @@ const SALES_SETTING_BOOKING_CURVE_HITBOX_ATTRIBUTE = "data-ra-sales-setting-book
 const SALES_SETTING_CURRENT_UI_HEADER_TEST_ID = "booking-curve-main-chart-header";
 const SALES_SETTING_CURRENT_UI_ROOM_GROUP_SELECTOR_TEST_ID = "highlight-filter-price-rank-rm-room-group-pulldown-form";
 const GROUP_ROOM_STORAGE_PREFIX = "revenue-assistant:group-room-count:v4:";
-const SALES_SETTING_WARM_CACHE_STORAGE_PREFIX = "revenue-assistant:sales-setting-warm-cache:v1:";
 const LEGACY_GROUP_ROOM_STORAGE_PREFIXES = [
     "revenue-assistant:group-room-count:v1:",
     "revenue-assistant:group-room-count:v2:",
@@ -252,7 +250,6 @@ interface SalesSettingWarmCacheState {
     currentTask: SalesSettingWarmCacheTask | null;
     startedAt: number | null;
     runElapsedMs: number;
-    dailyUsedMs: number;
     cooldownUntil: number | null;
     lastFetchedAt: string | null;
     pauseReason: string | null;
@@ -1198,7 +1195,6 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
         currentTask: null,
         startedAt: null,
         runElapsedMs: 0,
-        dailyUsedMs: readSalesSettingWarmCacheDailyUsedMs(),
         cooldownUntil: null,
         lastFetchedAt: null,
         pauseReason: null
@@ -1227,8 +1223,7 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
         targetFromDate: startDate,
-        targetToDate: shiftDate(startDate, SALES_SETTING_WARM_CACHE_TARGET_DAYS),
-        dailyUsedMs: readSalesSettingWarmCacheDailyUsedMs()
+        targetToDate: shiftDate(startDate, SALES_SETTING_WARM_CACHE_TARGET_DAYS)
     };
     renderSalesSettingWarmCacheIndicator();
 
@@ -1374,12 +1369,6 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
         };
     }
 
-    const dailyUsedMs = readSalesSettingWarmCacheDailyUsedMs() + getActiveSalesSettingWarmCacheRunElapsedMs();
-    if (dailyUsedMs >= SALES_SETTING_WARM_CACHE_DAILY_LIMIT_MS) {
-        pauseSalesSettingWarmCache("日次上限到達", "limitReached");
-        return;
-    }
-
     if (getActiveSalesSettingWarmCacheRunElapsedMs() >= SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS) {
         startSalesSettingWarmCacheCooldown("今回上限到達");
         return;
@@ -1507,16 +1496,11 @@ function resetSalesSettingWarmCache(reason: string): void {
 
 function finalizeSalesSettingWarmCacheRun(status: SalesSettingWarmCacheStatus, pauseReason: string | null): void {
     const elapsedMs = getActiveSalesSettingWarmCacheRunElapsedMs();
-    if (elapsedMs > 0) {
-        writeSalesSettingWarmCacheDailyUsedMs(readSalesSettingWarmCacheDailyUsedMs() + elapsedMs);
-    }
-
     salesSettingWarmCacheState = {
         ...salesSettingWarmCacheState,
         status,
         startedAt: null,
         runElapsedMs: salesSettingWarmCacheState.runElapsedMs + elapsedMs,
-        dailyUsedMs: readSalesSettingWarmCacheDailyUsedMs(),
         currentTask: null,
         pauseReason
     };
@@ -1525,26 +1509,6 @@ function finalizeSalesSettingWarmCacheRun(status: SalesSettingWarmCacheStatus, p
 
 function getActiveSalesSettingWarmCacheRunElapsedMs(): number {
     return salesSettingWarmCacheState.startedAt === null ? 0 : Date.now() - salesSettingWarmCacheState.startedAt;
-}
-
-function getSalesSettingWarmCacheDailyStorageKey(): string {
-    const now = new Date();
-    const dateKey = `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, "0")}${String(now.getDate()).padStart(2, "0")}`;
-    return `${SALES_SETTING_WARM_CACHE_STORAGE_PREFIX}daily-ms:${dateKey}`;
-}
-
-function readSalesSettingWarmCacheDailyUsedMs(): number {
-    const value = window.localStorage.getItem(getSalesSettingWarmCacheDailyStorageKey());
-    if (value === null) {
-        return 0;
-    }
-
-    const parsed = Number(value);
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
-}
-
-function writeSalesSettingWarmCacheDailyUsedMs(value: number): void {
-    window.localStorage.setItem(getSalesSettingWarmCacheDailyStorageKey(), String(Math.max(0, Math.round(value))));
 }
 
 function renderSalesSettingWarmCacheIndicator(): void {
@@ -1603,7 +1567,6 @@ function getSalesSettingWarmCacheDetailLabel(): string {
     const taskLabel = task === null
         ? salesSettingWarmCacheState.pauseReason
         : `取得中 ${formatCompactDateForDisplay(task.stayDate)} ${task.scope === "hotel" ? "全体" : task.roomGroupName ?? task.roomGroupId ?? "室タイプ"}`;
-    const dailyMinutes = Math.floor((readSalesSettingWarmCacheDailyUsedMs() + getActiveSalesSettingWarmCacheRunElapsedMs()) / 60000);
     const completedDateRange = getSalesSettingWarmCacheCompletedDateRangeLabel();
     const cooldownLabel = salesSettingWarmCacheState.status === "cooldown"
         ? getSalesSettingWarmCacheCooldownLabel()
@@ -1613,8 +1576,7 @@ function getSalesSettingWarmCacheDetailLabel(): string {
         taskLabel,
         cooldownLabel,
         `保存 ${salesSettingWarmCacheState.fetched}`,
-        `skip ${salesSettingWarmCacheState.skipped}`,
-        `今日 ${dailyMinutes}/30分`
+        `skip ${salesSettingWarmCacheState.skipped}`
     ].filter((part): part is string => part !== null && part !== "");
 
     return parts.join(" / ");

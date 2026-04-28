@@ -36,22 +36,22 @@
 - 目的:
   - Analyze 日付ページを開く前でも、トップカレンダーを開いている状態で booking_curve raw source の warm cache を進められるようにする。
   - 取得状況 indicator で、task 件数だけでなく stay_date 単位の取得済み範囲を確認できるようにする。
-  - 1 回の自動稼働上限に達した場合でも、日次上限に達していなければクールダウン後に自動再開できるようにする。
+  - 1 回の自動稼働上限に達した場合でも、クールダウン後に自動再開できるようにする。
 - スコープ:
-  - warm cache の対象日付、取得順、IndexedDB raw source key、request 間隔、日次上限は `RAU-WC-01` の仕様を維持する。
+  - warm cache の対象日付、取得順、IndexedDB raw source key、request 間隔は `RAU-WC-01` の仕様を維持する。
   - 起動条件を Analyze 日付ページだけでなく、トップカレンダーを含む calendar 表示中にも広げる。
-  - indicator は完了済み stay_date の連続範囲、現在取得中の stay_date と scope、保存数、skip 数、今日の稼働時間、クールダウン再開目安を表示する。
+  - indicator は完了済み stay_date の連続範囲、現在取得中の stay_date と scope、保存数、skip 数、クールダウン再開目安を表示する。
   - stay_date 単位の完了は、その stay_date のホテル全体と全室タイプが取得済みまたは skip 済みになった状態を指す。
 - 非目標:
   - 取得対象日付や部屋タイプを画面上で編集できる UI を追加すること。
-  - 日次上限到達後に同日中の自動再開を行うこと。
+  - 日次合計稼働時間を制限すること。
   - 全過去日程や競合価格 snapshot を同じ queue に含めること。
 - 受け入れ条件:
   - トップカレンダー表示中でも warm cache indicator が表示され、queue が進む。
   - Analyze 日付ページでも既存の current、reference curve、同曜日補助線、個人/団体 toggle を妨げない。
   - indicator で完了済み stay_date 範囲を確認できる。
-  - 1 回の自動稼働上限に達した場合は、クールダウン中表示になり、日次上限未満なら自動再開する。
-  - 日次上限到達、hidden、連続エラー停止の既存制限は維持される。
+  - 1 回の自動稼働上限に達した場合は、クールダウン中表示になり、自動再開する。
+  - hidden、連続エラー停止の既存制限は維持される。
   - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
 - metadata:
   - `spec-impact`: yes
@@ -62,7 +62,8 @@
   - queue の対象日付は `asOfDate + 0日` から `asOfDate + 30日` までに揃えた。
   - indicator の進捗を task 件数ではなく、完了済み stay_date 数と完了済み stay_date 範囲で表示するようにした。
   - 1 回の自動稼働上限に達した場合は、10 分クールダウン後に自動再開するようにした。
-  - 日次上限、document hidden、連続エラー停止は停止条件として維持した。
+  - 日次合計稼働時間の上限を撤廃した。
+  - document hidden、連続エラー停止は停止条件として維持した。
   - hidden pause 後に `visibilitychange` が発火しない復帰ケースへ対応するため、`pageshow` と `focus` でも warm cache drain を再開するようにした。
 - verify:
   - `npm run typecheck`: passed
@@ -84,7 +85,7 @@
   - 取得順は stay_date が近い順とし、同じ stay_date 内ではホテル全体、全室タイプの順に取得する。
   - warm cache の差分更新は、現在の `asOfDate` で未保存の raw source key だけを取得することとする。
   - 同じ `facilityId + stayDate + asOfDate + scope + roomGroupId + endpoint + query + schema` が IndexedDB に存在する場合は skip する。
-  - 同時取得数は 1、request 間隔は 2.5 秒以上、1 回の自動稼働は最大 5 分、1 日の合計自動稼働は最大 30 分を初期値にする。
+  - 同時取得数は 1、request 間隔は 2.5 秒以上、1 回の自動稼働は最大 5 分を初期値にする。
   - document hidden 中は一時停止し、連続エラー時も一時停止する。
   - Indicator に `待機中`、`取得中 current / total`、`一時停止中`、`上限到達`、`エラー n` を表示する。
 - 非目標:
@@ -118,7 +119,7 @@
   - `npm run build`: passed
 - 未確認:
   - Tampermonkey 再読込後の GUI 目視確認
-  - 実ブラウザ上で request 間隔、skip、日次上限、hidden pause の挙動確認
+  - 実ブラウザ上で request 間隔、skip、hidden pause の挙動確認
 
 ### RAU-AF-09 直近同曜日カーブを既定OFFの補助線として追加する
 
