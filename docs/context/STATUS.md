@@ -4,14 +4,14 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-AF-10` reference curve の 0日前表示補間を実装する
+- 主対象: `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 - この bundle で扱う Task ID:
-  - `RAU-AF-10` reference curve の 0日前表示補間を実装する
+  - `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
 - 今回の目的:
-  - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
-  - BCL repo の booking curve 画面で使う算出ロジックを参照し、RAU の `/api/v4/booking_curve` response だけで成立する rooms-only reference curve へチューニングする。
-  - booking curve core logic を UI、API 取得、storage から分離し、将来の別プロジェクト、予測モデル、予測評価でも再利用できる形にする。
-  - request 数増加で画面操作が重くならないよう、raw source cache、derived reference curve cache、request scheduling を組み合わせる。
+  - 競合価格の現在値表を複製するのではなく、取得時点つき snapshot を保存し、競合価格が直近で上がったか、下がったかを追跡できる形を設計する。
+  - 全件取得を前提にせず、Analyze 日付ページを開いた日付や、料金判断のために繰り返し確認された日付ほど snapshot 履歴が厚くなる設計にする。
+  - 最初の作業は、絞り込みなし、空条件、または初期条件に近い request で競合価格 data を取得できるかを調査することに限定する。
+  - response に人数、食事条件、部屋タイプ、プラン名、在庫状態が含まれるかを確認し、保存後に RAU 側で絞り込みできるかを判断する。
 
 ## Current State
 
@@ -60,6 +60,7 @@
 - `RAU-AF-10` はコード実装済み。reference curve の `0日前` は core logic と IndexedDB derived cache では推測補完せず、表示層だけで `1日前` と `ACT` の線形補間値を使う。初期実装では `round(1日前 + (ACT - 1日前) * 0.5)` とし、整数室数に丸める。Tooltip では補間値であることを `（補間）` として明示する。
 - `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル下端に、一部取得済み、完了、エラーの line を表示する。
 - `RAU-WC-06` はコード実装済み。warm cache の通常対象を `as_of_date - 1日` から `as_of_date + 3か月` までへ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
+- `RAU-CP-01` は次の本線。最初の調査は、Chrome CDP で競合価格タブまたは Analyze 日付ページの network を確認し、競合価格 endpoint、request 条件、response shape、絞り込みなし取得可否を整理する。調査が終わるまで IndexedDB store と UI は実装しない。
 
 ## Next Re-entry
 
@@ -76,10 +77,11 @@
 
 最初にやること:
 
-1. Tampermonkey へ最新 `dist/*.user.js` を反映し、Analyze 日付ページで `RAU-AF-10` の GUI 挙動を確認する。
-2. reference curve の `0日前` に補間が入る実データでは、Tooltip に `（補間）` が出ることを確認する。
-3. Indicator の `raw / 参考線 / 同曜日` 取得率が進むことと、開いている stay_date、その週、その月の順に取得されることを確認する。
-4. GUI 確認後に、`RAU-CP-01` の競合価格 snapshot 設計へ戻る。
+1. Chrome CDP で Revenue Assistant の競合価格タブを開き、Network request を確認する。
+2. 競合価格 endpoint、request method、query/payload、検索条件、response shape を記録する。
+3. 絞り込みなし、空条件、または初期条件に近い request で競合価格 data を取得できるかを確認する。
+4. response に人数、食事条件、部屋タイプ、プラン名、在庫状態、満室、販売停止、価格が含まれるかを確認する。
+5. 調査結果を `docs/tasks_backlog.md` の `RAU-CP-01` と `docs/context/DECISIONS.md` へ反映し、次の実装 slice を決める。
 
 変更しない契約:
 
@@ -202,6 +204,7 @@
 - `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。Tampermonkey 再読込後、ON/OFF、hover 表示、室タイプ別 card を開いたときの追加取得を GUI 目視で確認する必要がある。
 - `RAU-WC-01` では、API 負荷と IndexedDB 保存量が増えるため、同時取得 1、request 間隔、1 回稼働時間、1 日稼働時間、hidden 時の一時停止、連続エラー停止を verify 対象にする。
 - 競合価格は現在値表ではなく、価格推移 snapshot の保存単位を設計してから表示判断する。
+- `RAU-CP-01` では、絞り込みなし取得が可能かを調査するまで、検索条件 signature、IndexedDB schema、表示 UI を確定しない。
 
 ## References
 
