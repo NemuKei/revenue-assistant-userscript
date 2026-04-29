@@ -4,6 +4,7 @@
 
 ## Decisions
 
+- D-20260429-006 | warm cache の通常対象は、31 日では短いため、トップカレンダーでは `as_of_date` を含む月、翌月、翌々月の 3 か月分へ広げる。API 負荷は、同時取得 1、request 間隔 1.0 秒以上、1 回最大 10 分、3 分クールダウン、document hidden pause、連続エラー 3 回停止で抑える。一時的な失敗に対しては同じ task を最大 2 回まで queue 末尾へ戻して retry する。トップカレンダー由来のクールダウン中でも、Analyze 日付ページを開いた場合は、利用者が見ている stay_date を優先する queue を作り直して取得を再開する | status: active | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260429-005 | warm cache indicator の対象日数は、数値だけでは対象期間を誤読しやすいため、最小表示にも対象日付範囲を含める。完了日数は reference curve と同曜日補助線まで含む重い完了定義を維持するが、完了前でも進行中の日付が分かるように `進行 n日` とカレンダーセル下端の細い色 line を追加する。line は、一部取得済みを青、完了を緑、取得エラーありを赤とする | status: active | spec_link: docs/spec_001_analyze_expansion.md
 - D-20260429-004 | reference curve の `0日前` は、raw source 保存開始前の過去 stay_date では `ACT` と分離できない場合があるため、core logic、derived reference curve cache、予測評価用の入力値では推測補完しない。一方で画面上の参考線としては、`0日前` が欠損している、または `ACT` と同値で API 側の実績上書き混入が疑われる場合に限り、表示層で `1日前` と `ACT` の線形補間値を整数室数に丸めて描画してよい。この値は保存せず、Tooltip では補完値であることを明示する | status: active | spec_link: docs/spec_001_analyze_expansion.md, docs/spec_002_curve_core.md
 - D-20260429-003 | booking_curve warm cache は、参考線込みの完了定義に対して従来設定が安全寄りすぎるため、request 間隔を 1.0 秒以上、1 回の自動稼働を最大 10 分、クールダウンを 3 分以上へ緩和する。安全弁として、同時 warm cache task 実行は 1、reference curve request scheduler の同時数制限、有限 queue、document hidden 中の一時停止、連続エラー 3 回停止を維持する。IndexedDB または derived cache の既存 record で skip できる task は API request を発行しないため、次 task へ即時に進める | status: active | spec_link: docs/spec_001_analyze_expansion.md

@@ -231,10 +231,11 @@ BCL-tuned first wave の定義:
 
 取得対象:
 
-- 初期対象は、現在の `as_of_date` で見た `today + 0日` から `today + 30日` までの stay_date とする。
+- Analyze 日付ページを開いていない場合の初期対象は、現在の `as_of_date` を含む月、翌月、翌々月の 3 か月分の stay_date とする。
 - 各 stay_date について、ホテル全体と全室タイプの `/api/v4/booking_curve` raw source を対象にする。
 - Analyze 日付ページを開いていない場合の取得順は、stay_date が近い順とする。同じ stay_date 内では、ホテル全体を先に取得し、その後に全室タイプを取得する。
 - Analyze 日付ページを開いている場合は、利用者が見ている stay_date を最優先し、次にその stay_date を含む週、その次にその stay_date を含む月、その次に通常 warm cache 範囲を取得する。
+- トップカレンダー由来の warm cache がクールダウン中または 1 回の稼働時間上限到達中でも、Analyze 日付ページを開いた場合は、Analyze 日付ページの priority queue を作り直して取得を開始する。Analyze 日付ページで利用者が見ている stay_date は、バックグラウンド取得より優先する。
 - 優先 queue で同じ `facilityId + stayDate + asOfDate + scope + roomGroupId + endpoint + query + schema` が重複する場合は 1 件にまとめる。
 - 施設識別子、stay_date、as_of_date、scope、rm_room_group_id が揃わないものは queue に入れない。
 
@@ -256,6 +257,14 @@ BCL-tuned first wave の定義:
 - `as_of_date` が変わった場合は、同じ stay_date と roomGroupId でも新しい観測 snapshot として別 key で保存する。
 - 同じ key の response を通常経路で取得済みの場合も warm cache では skip する。
 - 同じ key を上書き更新するのは、手動 refresh、schema version 変更、保存破損検知など明示的な理由がある場合だけとする。
+
+エラーと再試行:
+
+- warm cache task が失敗した場合、同じ task を即時連続再試行せず、retry 回数を増やした task として queue 末尾へ戻す。
+- 同じ task の自動 retry は最大 2 回までとする。
+- retry 予定が残っている失敗は、その stay_date を最終エラー扱いにしない。最大 retry 回数を超えた場合に、その stay_date をエラーありとして扱う。
+- 連続エラー 3 回で warm cache 全体を一時停止する安全弁は維持する。
+- indicator では、通常のエラー数とは別に、retry 待ち task 数を確認できるようにする。
 
 負荷制限:
 

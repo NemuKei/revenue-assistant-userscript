@@ -2,6 +2,49 @@
 
 ## Now
 
+### RAU-WC-06 warm cache の retry、3ヶ月対象、Analyze 優先再開を実装する
+
+- 目的:
+  - 一時的な API 失敗で赤ラインが残り続ける状態を減らす。
+  - トップカレンダーで放置したときに、当月を含む 3 か月分の booking_curve data が少しずつ貯まるようにする。
+  - トップカレンダーのバックグラウンド取得がクールダウン中でも、Analyze 日付ページを開いた場合は見ている日付を優先して取得できるようにする。
+- スコープ:
+  - failed task は最大 2 回まで queue 末尾へ戻して自動 retry する。
+  - retry 予定がある失敗は、stay_date の最終エラー扱いにしない。
+  - トップカレンダーの通常対象を、`as_of_date` を含む月、翌月、翌々月の 3 か月分に広げる。
+  - Analyze 日付ページに入った場合は、既存 cooldown より Analyze priority queue を優先する。
+- 非目標:
+  - 同時取得数を 2 以上へ増やすこと。
+  - request 間隔 1.0 秒以上、1 回最大 10 分、連続エラー 3 回停止を外すこと。
+  - 競合価格 snapshot を同じ queue に含めること。
+- 受け入れ条件:
+  - failed task が retry 回数つきで最大 2 回まで再投入される。
+  - retry 待ち task 数が indicator で確認できる。
+  - トップカレンダー通常表示時の対象期間が当月を含む 3 か月分になる。
+  - Analyze 日付ページを開いた場合は、トップカレンダー側の cooldown 中でも、開いている stay_date を優先した queue が開始される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - 通常 warm cache 対象を `as_of_date` を含む月、翌月、翌々月の 3 か月分へ変更した。
+  - queue に投入する target stay_date を `YYYYMMDD` に正規化し、日付形式混在による indicator 表示崩れを避けるようにした。
+  - failed task は `retryCount` を付けて最大 2 回まで queue 末尾へ戻すようにした。
+  - retry 予定がある失敗は stay_date の最終エラー扱いにせず、最大 retry 回数を超えた場合だけ date progress の `errors` に反映するようにした。
+  - indicator 詳細に `再試行待ち n` を表示するようにした。
+  - Analyze 日付ページを開いた場合は `priorityStayDate` が変わるため、トップカレンダー由来の cooldown state を引き継がず priority queue を作り直す。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+- 未確認:
+  - Tampermonkey 再読込後の GUI 目視確認
+  - 実ブラウザ上で、通常対象が当月含む 3 か月になること
+  - retry 発生時に `再試行待ち n` が表示され、成功時に赤 line にならないこと
+  - トップカレンダー cooldown 中に Analyze 日付ページを開いたとき、priority queue が動き始めること
+
 ### RAU-WC-05 warm cache indicator の対象期間表示とカレンダー marker を改善する
 
 - 目的:
