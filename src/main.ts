@@ -57,6 +57,9 @@ const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
 const GROUP_ROOM_INDICATOR_ATTRIBUTE = "data-ra-group-room-indicator";
+const SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-cell";
+const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker";
+const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker-state";
 const CALENDAR_LAST_CHANGE_ATTRIBUTE = "data-ra-calendar-last-change";
 const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
 const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
@@ -277,6 +280,8 @@ interface MonthlyCalendarCell {
     roomElement: HTMLElement;
     indicatorElement: HTMLElement | null;
 }
+
+type SalesSettingWarmCacheDateMarkerState = "partial" | "complete" | "error";
 
 interface SalesSettingCard {
     roomGroupName: string;
@@ -1710,6 +1715,7 @@ function renderSalesSettingWarmCacheIndicator(): void {
     const existingElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE}]`);
     if (salesSettingWarmCacheState.status === "idle" && salesSettingWarmCacheState.total === 0) {
         existingElement?.remove();
+        renderSalesSettingWarmCacheCalendarMarkers();
         return;
     }
 
@@ -1729,15 +1735,21 @@ function renderSalesSettingWarmCacheIndicator(): void {
     if (indicatorElement.parentElement !== document.body) {
         document.body.append(indicatorElement);
     }
+
+    renderSalesSettingWarmCacheCalendarMarkers();
 }
 
 function getSalesSettingWarmCacheStatusLabel(): string {
     const dayProgress = getSalesSettingWarmCacheDayProgressSummary();
+    const progressText = dayProgress.partial > 0
+        ? `${dayProgress.completed} / ${dayProgress.total}日・進行 ${dayProgress.partial}日`
+        : `${dayProgress.completed} / ${dayProgress.total}日`;
+    const targetRangeText = getSalesSettingWarmCacheTargetDateRangeLabel("short");
     switch (salesSettingWarmCacheState.status) {
         case "building":
             return "データ取得: 準備中";
         case "running":
-            return `データ取得: 取得中 ${dayProgress.completed} / ${dayProgress.total}日`;
+            return `データ取得: 取得中 ${progressText}${targetRangeText === null ? "" : `（${targetRangeText}）`}`;
         case "paused":
             return "データ取得: 一時停止中";
         case "cooldown":
@@ -1747,11 +1759,11 @@ function getSalesSettingWarmCacheStatusLabel(): string {
         case "error":
             return `データ取得: エラー ${salesSettingWarmCacheState.errors}`;
         case "complete":
-            return `データ取得: 完了 ${dayProgress.completed} / ${dayProgress.total}日`;
+            return `データ取得: 完了 ${progressText}${targetRangeText === null ? "" : `（${targetRangeText}）`}`;
         case "idle":
         default:
             return salesSettingWarmCacheState.total > 0
-                ? `データ取得: 待機中 ${dayProgress.completed} / ${dayProgress.total}日`
+                ? `データ取得: 待機中 ${progressText}${targetRangeText === null ? "" : `（${targetRangeText}）`}`
                 : "データ取得: 待機中";
     }
 }
@@ -1793,11 +1805,12 @@ function formatSalesSettingWarmCacheTaskLabel(task: SalesSettingWarmCacheTask): 
     return `${formatCompactDateForDisplay(task.stayDate)} ${scopeLabel}`;
 }
 
-function getSalesSettingWarmCacheDayProgressSummary(): { total: number; completed: number } {
+function getSalesSettingWarmCacheDayProgressSummary(): { total: number; completed: number; partial: number } {
     const progressList = Object.values(salesSettingWarmCacheState.dateProgress);
     return {
         total: progressList.length,
-        completed: progressList.filter(isSalesSettingWarmCacheDateComplete).length
+        completed: progressList.filter(isSalesSettingWarmCacheDateComplete).length,
+        partial: progressList.filter(isSalesSettingWarmCacheDatePartial).length
     };
 }
 
@@ -1809,6 +1822,88 @@ function isSalesSettingWarmCacheDateComplete(progress: SalesSettingWarmCacheDate
         && progress.referenceDone >= progress.referenceTotal
         && progress.sameWeekdayTotal > 0
         && progress.sameWeekdayDone >= progress.sameWeekdayTotal;
+}
+
+function isSalesSettingWarmCacheDatePartial(progress: SalesSettingWarmCacheDateProgress): boolean {
+    return !isSalesSettingWarmCacheDateComplete(progress)
+        && progress.errors === 0
+        && (progress.rawDone > 0 || progress.referenceDone > 0 || progress.sameWeekdayDone > 0);
+}
+
+function getSalesSettingWarmCacheDateMarkerState(progress: SalesSettingWarmCacheDateProgress | undefined): SalesSettingWarmCacheDateMarkerState | null {
+    if (progress === undefined) {
+        return null;
+    }
+
+    if (progress.errors > 0) {
+        return "error";
+    }
+
+    if (isSalesSettingWarmCacheDateComplete(progress)) {
+        return "complete";
+    }
+
+    if (isSalesSettingWarmCacheDatePartial(progress)) {
+        return "partial";
+    }
+
+    return null;
+}
+
+function renderSalesSettingWarmCacheCalendarMarkers(): void {
+    const cells = collectMonthlyCalendarCells();
+    const renderedStayDates = new Set<string>();
+    const shouldShowMarkers = salesSettingWarmCacheState.total > 0;
+
+    for (const cell of cells) {
+        renderedStayDates.add(cell.stayDate);
+        const progress = shouldShowMarkers ? salesSettingWarmCacheState.dateProgress[cell.stayDate] : undefined;
+        renderSalesSettingWarmCacheCalendarMarker(cell, getSalesSettingWarmCacheDateMarkerState(progress));
+    }
+
+    for (const markerElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE}]`))) {
+        const ownerElement = markerElement.closest<HTMLElement>(`[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`);
+        const testId = ownerElement?.getAttribute("data-testid") ?? null;
+        const stayDate = testId?.startsWith(CALENDAR_DATE_TEST_ID_PREFIX) === true
+            ? testId.slice(CALENDAR_DATE_TEST_ID_PREFIX.length).replaceAll("-", "")
+            : null;
+        if (stayDate === null || !renderedStayDates.has(stayDate) || !shouldShowMarkers) {
+            markerElement.remove();
+        }
+    }
+}
+
+function renderSalesSettingWarmCacheCalendarMarker(cell: MonthlyCalendarCell, state: SalesSettingWarmCacheDateMarkerState | null): void {
+    const existingMarker = cell.anchorElement.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE}]`);
+    if (state === null) {
+        existingMarker?.remove();
+        cell.anchorElement.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE);
+        return;
+    }
+
+    cell.anchorElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE, "");
+    const markerElement = existingMarker ?? document.createElement("span");
+    markerElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE, "");
+    markerElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE, state);
+    markerElement.setAttribute("title", getSalesSettingWarmCacheCalendarMarkerTitle(state));
+    markerElement.setAttribute("aria-hidden", "true");
+    markerElement.textContent = state === "complete" ? "✓" : "";
+
+    if (existingMarker === null) {
+        cell.anchorElement.append(markerElement);
+    }
+}
+
+function getSalesSettingWarmCacheCalendarMarkerTitle(state: SalesSettingWarmCacheDateMarkerState): string {
+    switch (state) {
+        case "complete":
+            return "booking_curve 取得完了";
+        case "error":
+            return "booking_curve 取得エラーあり";
+        case "partial":
+        default:
+            return "booking_curve 一部取得済み";
+    }
 }
 
 function getSalesSettingWarmCacheCompletedDateRangeLabel(): string {
@@ -1844,21 +1939,33 @@ function getSalesSettingWarmCacheCompletedDateRangeLabel(): string {
 }
 
 function getSalesSettingWarmCacheTargetRangeLabel(): string | null {
+    const dateRangeLabel = getSalesSettingWarmCacheTargetDateRangeLabel("long");
+    if (dateRangeLabel === null) {
+        return null;
+    }
+
+    return `対象 ${dateRangeLabel}`;
+}
+
+function getSalesSettingWarmCacheTargetDateRangeLabel(format: "short" | "long"): string | null {
     const fromDate = salesSettingWarmCacheState.targetFromDate;
     const toDate = salesSettingWarmCacheState.targetToDate;
     if (fromDate === null || toDate === null) {
         return null;
     }
 
-    const fromMonth = formatCompactYearMonthForDisplay(fromDate);
-    const toMonth = formatCompactYearMonthForDisplay(toDate);
-    if (fromMonth === null || toMonth === null) {
+    const fromLabel = format === "short"
+        ? formatCompactMonthDayForDisplay(fromDate)
+        : formatCompactDateForDisplay(fromDate);
+    const toLabel = format === "short"
+        ? formatCompactMonthDayForDisplay(toDate)
+        : formatCompactDateForDisplay(toDate);
+
+    if (fromLabel === null || toLabel === null) {
         return null;
     }
 
-    return fromMonth === toMonth
-        ? `対象 ${fromMonth}`
-        : `対象 ${fromMonth}-${toMonth.replace(/^\d{4}年/, "")}`;
+    return fromDate === toDate ? fromLabel : `${fromLabel}〜${toLabel}`;
 }
 
 function getSalesSettingWarmCachePriorityProgressLabel(): string | null {
@@ -1910,12 +2017,12 @@ function formatCompactDateForDisplay(dateKey: string): string {
     return `${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`;
 }
 
-function formatCompactYearMonthForDisplay(dateKey: string): string | null {
+function formatCompactMonthDayForDisplay(dateKey: string): string | null {
     if (!/^\d{8}$/.test(dateKey)) {
         return null;
     }
 
-    return `${dateKey.slice(0, 4)}年${Number(dateKey.slice(4, 6))}月`;
+    return `${Number(dateKey.slice(4, 6))}/${Number(dateKey.slice(6, 8))}`;
 }
 
 function buildBookingCurveQuerySignature(stayDate: string, rmRoomGroupId?: string): string {
@@ -7174,6 +7281,42 @@ function ensureGroupRoomStyles(): void {
             font-size: 11px;
             font-weight: 600;
             white-space: normal;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE}] {
+            position: relative;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE}] {
+            position: absolute;
+            right: 3px;
+            bottom: 3px;
+            z-index: 2;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 12px;
+            height: 12px;
+            border-radius: 999px;
+            border: 1px solid rgba(255, 255, 255, 0.92);
+            box-shadow: 0 1px 3px rgba(32, 50, 76, 0.18);
+            font-size: 9px;
+            font-weight: 900;
+            line-height: 1;
+            pointer-events: none;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="partial"] {
+            background: #5b8def;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="complete"] {
+            background: #2f8f5b;
+            color: #ffffff;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="error"] {
+            background: #d04f4f;
         }
 
         [${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}] {

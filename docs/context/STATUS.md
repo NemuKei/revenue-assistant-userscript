@@ -58,6 +58,7 @@
 - `RAU-WC-03` では、indicator に対象月または対象範囲と、Analyze 日付の `raw / 参考線 / 同曜日` 取得率を表示する。`dist/*.user.js` は `npm run build` で再生成済み。Tampermonkey 再読込後の GUI 目視確認が必要。
 - `RAU-WC-04` はコード実装済み。request 間隔を 1.0 秒、1 回の自動稼働を 10 分、クールダウンを 3 分へ緩和した。IndexedDB raw source が既存で skip できる task は API request を発行しないため即時に次 task へ進める。
 - `RAU-AF-10` はコード実装済み。reference curve の `0日前` は core logic と IndexedDB derived cache では推測補完せず、表示層だけで `1日前` と `ACT` の線形補間値を使う。初期実装では `round(1日前 + (ACT - 1日前) * 0.5)` とし、整数室数に丸める。Tooltip では補間値であることを `（補間）` として明示する。
+- `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル右下に、一部取得済み、完了、エラーの marker を表示する。
 
 ## Next Re-entry
 
@@ -171,6 +172,13 @@
   - `git diff --check`: passed
   - Tampermonkey 再読込 GUI 確認: 未実施
   - 実データで `0日前` Tooltip に `（補間）` が表示されること: 未実施
+- 2026-04-29 の `RAU-WC-05` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+  - Tampermonkey 再読込 GUI 確認: 未実施
+  - トップカレンダー上で一部取得済み、完了、エラー marker が実データに応じて表示されること: 未実施
 
 ## Open Questions / Risks
 
