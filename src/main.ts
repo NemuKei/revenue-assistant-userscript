@@ -58,7 +58,6 @@ const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
 const GROUP_ROOM_INDICATOR_ATTRIBUTE = "data-ra-group-room-indicator";
 const SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-cell";
-const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker";
 const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker-state";
 const CALENDAR_LAST_CHANGE_ATTRIBUTE = "data-ra-calendar-last-change";
 const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
@@ -1861,37 +1860,30 @@ function renderSalesSettingWarmCacheCalendarMarkers(): void {
         renderSalesSettingWarmCacheCalendarMarker(cell, getSalesSettingWarmCacheDateMarkerState(progress));
     }
 
-    for (const markerElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE}]`))) {
-        const ownerElement = markerElement.closest<HTMLElement>(`[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`);
-        const testId = ownerElement?.getAttribute("data-testid") ?? null;
+    for (const markedCell of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE}]`))) {
+        const testId = markedCell.getAttribute("data-testid");
         const stayDate = testId?.startsWith(CALENDAR_DATE_TEST_ID_PREFIX) === true
             ? testId.slice(CALENDAR_DATE_TEST_ID_PREFIX.length).replaceAll("-", "")
             : null;
         if (stayDate === null || !renderedStayDates.has(stayDate) || !shouldShowMarkers) {
-            markerElement.remove();
+            markedCell.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE);
+            markedCell.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE);
+            markedCell.removeAttribute("title");
         }
     }
 }
 
 function renderSalesSettingWarmCacheCalendarMarker(cell: MonthlyCalendarCell, state: SalesSettingWarmCacheDateMarkerState | null): void {
-    const existingMarker = cell.anchorElement.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE}]`);
     if (state === null) {
-        existingMarker?.remove();
         cell.anchorElement.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE);
+        cell.anchorElement.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE);
+        cell.anchorElement.removeAttribute("title");
         return;
     }
 
     cell.anchorElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE, "");
-    const markerElement = existingMarker ?? document.createElement("span");
-    markerElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE, "");
-    markerElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE, state);
-    markerElement.setAttribute("title", getSalesSettingWarmCacheCalendarMarkerTitle(state));
-    markerElement.setAttribute("aria-hidden", "true");
-    markerElement.textContent = "";
-
-    if (existingMarker === null) {
-        cell.anchorElement.append(markerElement);
-    }
+    cell.anchorElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE, state);
+    cell.anchorElement.setAttribute("title", getSalesSettingWarmCacheCalendarMarkerTitle(state));
 }
 
 function getSalesSettingWarmCacheCalendarMarkerTitle(state: SalesSettingWarmCacheDateMarkerState): string {
@@ -7283,41 +7275,16 @@ function ensureGroupRoomStyles(): void {
             white-space: normal;
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE}] {
-            position: relative;
-        }
-
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE}] {
-            position: absolute;
-            right: 2px;
-            bottom: 2px;
-            z-index: 2;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 7px;
-            height: 7px;
-            border-radius: 999px;
-            border: 0;
-            box-shadow: none;
-            font-size: 0;
-            font-weight: 0;
-            line-height: 1;
-            opacity: 0.86;
-            pointer-events: none;
-        }
-
         [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="partial"] {
-            background: #5b8def;
+            box-shadow: inset 0 -3px 0 rgba(91, 141, 239, 0.78);
         }
 
         [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="complete"] {
-            background: #2f8f5b;
-            color: #ffffff;
+            box-shadow: inset 0 -3px 0 rgba(47, 143, 91, 0.82);
         }
 
         [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="error"] {
-            background: #d04f4f;
+            box-shadow: inset 0 -3px 0 rgba(208, 79, 79, 0.82);
         }
 
         [${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}] {

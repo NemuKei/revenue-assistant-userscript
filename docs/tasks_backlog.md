@@ -10,16 +10,16 @@
 - スコープ:
   - indicator の status に `4/29〜5/29` のような対象日付範囲を表示する。
   - indicator に、完了日数とは別に一部取得済みの日数を `進行 n日` として表示する。
-  - トップカレンダーの日付セル右下に、warm cache の状態 marker を表示する。
-  - marker は、一部取得済みを青、完了を緑、取得エラーありを赤とする。
+  - トップカレンダーの日付セル下端に、warm cache の状態 line を表示する。
+  - line は、一部取得済みを青、完了を緑、取得エラーありを赤とする。
 - 非目標:
   - warm cache の取得対象、取得順、request 間隔、完了定義を変更すること。
   - 取得対象を画面上で編集する UI を追加すること。
   - IndexedDB schema を変更すること。
 - 受け入れ条件:
   - indicator で対象日数だけでなく対象日付範囲を確認できる。
-  - 取得が一部進んだ stay_date が、完了前でもカレンダー上で marker 表示される。
-  - 完了した stay_date がカレンダー上で別色 marker 表示される。
+  - 取得が一部進んだ stay_date が、完了前でもカレンダー上で line 表示される。
+  - 完了した stay_date がカレンダー上で別色 line 表示される。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
 - metadata:
   - `spec-impact`: yes
@@ -28,8 +28,8 @@
 - 実装内容:
   - indicator の status に `4/29〜5/29` 形式の対象日付範囲を表示するようにした。
   - 完了日数とは別に、完了前でも一部取得済みの日付数を `進行 n日` として表示するようにした。
-  - カレンダー日付セル右下に warm cache marker を追加した。
-  - marker は、一部取得済みを青、完了を緑、取得エラーありを赤で表示する。
+  - カレンダー日付セル下端に warm cache line を追加した。
+  - line は、一部取得済みを青、完了を緑、取得エラーありを赤で表示する。
 - verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
@@ -37,7 +37,7 @@
   - `git diff --check`: passed
 - 未確認:
   - Tampermonkey 再読込後の GUI 目視確認
-  - トップカレンダー上で一部取得済み、完了、エラー marker が実データに応じて表示されること
+  - トップカレンダー上で一部取得済み、完了、エラー line が実データに応じて表示されること
 
 ### RAU-AF-10 reference curve の 0日前表示補間を実装する
 
