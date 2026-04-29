@@ -2002,19 +2002,21 @@ function getSalesSettingWarmCacheCooldownLabel(): string | null {
 }
 
 function formatCompactDateForDisplay(dateKey: string): string {
-    if (!/^\d{8}$/.test(dateKey)) {
+    const compactDateKey = dateKey.trim().replace(/-/g, "");
+    if (!/^\d{8}$/.test(compactDateKey)) {
         return dateKey;
     }
 
-    return `${dateKey.slice(0, 4)}-${dateKey.slice(4, 6)}-${dateKey.slice(6, 8)}`;
+    return `${compactDateKey.slice(0, 4)}-${compactDateKey.slice(4, 6)}-${compactDateKey.slice(6, 8)}`;
 }
 
 function formatCompactMonthDayForDisplay(dateKey: string): string | null {
-    if (!/^\d{8}$/.test(dateKey)) {
+    const compactDateKey = dateKey.trim().replace(/-/g, "");
+    if (!/^\d{8}$/.test(compactDateKey)) {
         return null;
     }
 
-    return `${Number(dateKey.slice(4, 6))}/${Number(dateKey.slice(6, 8))}`;
+    return `${Number(compactDateKey.slice(4, 6))}/${Number(compactDateKey.slice(6, 8))}`;
 }
 
 function buildBookingCurveQuerySignature(stayDate: string, rmRoomGroupId?: string): string {
@@ -3815,9 +3817,10 @@ function getLookupDate(stayDate: string): string {
 }
 
 function shiftDate(date: string, offsetDays: number): string {
-    const year = Number(date.slice(0, 4));
-    const month = Number(date.slice(4, 6));
-    const day = Number(date.slice(6, 8));
+    const compactDateKey = date.trim().replace(/-/g, "");
+    const year = Number(compactDateKey.slice(0, 4));
+    const month = Number(compactDateKey.slice(4, 6));
+    const day = Number(compactDateKey.slice(6, 8));
     const value = new Date(Date.UTC(year, month - 1, day));
     value.setUTCDate(value.getUTCDate() + offsetDays);
 
