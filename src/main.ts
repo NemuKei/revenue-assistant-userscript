@@ -46,7 +46,8 @@ const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
 const CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const LINCOLN_SUGGEST_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
-const SALES_SETTING_WARM_CACHE_TARGET_MONTHS = 3;
+const SALES_SETTING_WARM_CACHE_LOOKBACK_DAYS = 1;
+const SALES_SETTING_WARM_CACHE_LOOKAHEAD_MONTHS = 3;
 const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 1000;
 const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 10 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_COOLDOWN_MS = 3 * 60 * 1000;
@@ -1418,18 +1419,15 @@ function getSalesSettingWarmCacheDefaultStayDates(startDate: string): string[] {
         return [];
     }
 
-    const year = Number(compactStartDate.slice(0, 4));
-    const monthIndex = Number(compactStartDate.slice(4, 6)) - 1;
+    const fromDate = shiftDate(compactStartDate, -SALES_SETTING_WARM_CACHE_LOOKBACK_DAYS);
+    const toDate = shiftMonth(compactStartDate, SALES_SETTING_WARM_CACHE_LOOKAHEAD_MONTHS);
+    if (fromDate === null || toDate === null) {
+        return [];
+    }
+
     const dates: string[] = [];
-    for (let monthOffset = 0; monthOffset < SALES_SETTING_WARM_CACHE_TARGET_MONTHS; monthOffset += 1) {
-        const targetMonthDate = new Date(Date.UTC(year, monthIndex + monthOffset, 1));
-        const targetYear = targetMonthDate.getUTCFullYear();
-        const targetMonth = targetMonthDate.getUTCMonth() + 1;
-        const lastDay = new Date(Date.UTC(targetYear, targetMonth, 0)).getUTCDate();
-        const monthPrefix = `${targetYear}${String(targetMonth).padStart(2, "0")}`;
-        for (let day = 1; day <= lastDay; day += 1) {
-            dates.push(`${monthPrefix}${String(day).padStart(2, "0")}`);
-        }
+    for (let stayDate: string | null = fromDate; stayDate !== null && stayDate <= toDate; stayDate = shiftDate(stayDate, 1)) {
+        dates.push(stayDate);
     }
 
     return dates;
@@ -3881,6 +3879,24 @@ function shiftDate(date: string, offsetDays: number): string {
     value.setUTCDate(value.getUTCDate() + offsetDays);
 
     return `${value.getUTCFullYear()}${String(value.getUTCMonth() + 1).padStart(2, "0")}${String(value.getUTCDate()).padStart(2, "0")}`;
+}
+
+function shiftMonth(date: string, offsetMonths: number): string | null {
+    const compactDateKey = toCompactDateKey(date);
+    if (compactDateKey === null) {
+        return null;
+    }
+
+    const year = Number(compactDateKey.slice(0, 4));
+    const monthIndex = Number(compactDateKey.slice(4, 6)) - 1;
+    const day = Number(compactDateKey.slice(6, 8));
+    const targetMonthFirstDate = new Date(Date.UTC(year, monthIndex + offsetMonths, 1));
+    const targetYear = targetMonthFirstDate.getUTCFullYear();
+    const targetMonthIndex = targetMonthFirstDate.getUTCMonth();
+    const lastDay = new Date(Date.UTC(targetYear, targetMonthIndex + 1, 0)).getUTCDate();
+    const clampedDay = Math.min(day, lastDay);
+
+    return `${targetYear}${String(targetMonthIndex + 1).padStart(2, "0")}${String(clampedDay).padStart(2, "0")}`;
 }
 
 function getRevenueAssistantComparisonDates(batchDateKey: string): { previousDay: string; previousWeek: string; previousMonth: string } {

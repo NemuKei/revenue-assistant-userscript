@@ -59,7 +59,7 @@
 - `RAU-WC-04` はコード実装済み。request 間隔を 1.0 秒、1 回の自動稼働を 10 分、クールダウンを 3 分へ緩和した。IndexedDB raw source が既存で skip できる task は API request を発行しないため即時に次 task へ進める。
 - `RAU-AF-10` はコード実装済み。reference curve の `0日前` は core logic と IndexedDB derived cache では推測補完せず、表示層だけで `1日前` と `ACT` の線形補間値を使う。初期実装では `round(1日前 + (ACT - 1日前) * 0.5)` とし、整数室数に丸める。Tooltip では補間値であることを `（補間）` として明示する。
 - `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル下端に、一部取得済み、完了、エラーの line を表示する。
-- `RAU-WC-06` はコード実装済み。warm cache の通常対象を当月含む 3 か月へ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
+- `RAU-WC-06` はコード実装済み。warm cache の通常対象を `as_of_date - 1日` から `as_of_date + 3か月` までへ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
 
 ## Next Re-entry
 
@@ -186,7 +186,7 @@
   - `npm run build`: passed
   - `git diff --check`: passed
   - Tampermonkey 再読込 GUI 確認: 未実施
-  - 通常対象が当月含む 3 か月になること: 未実施
+  - 通常対象が `as_of_date - 1日` から `as_of_date + 3か月` までになること: 未実施
   - retry 発生時に `再試行待ち n` が表示されること: 未実施
   - トップカレンダー cooldown 中に Analyze 日付ページを開いたとき priority queue が動き始めること: 未実施
 

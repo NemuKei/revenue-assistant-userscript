@@ -231,7 +231,7 @@ BCL-tuned first wave の定義:
 
 取得対象:
 
-- Analyze 日付ページを開いていない場合の初期対象は、現在の `as_of_date` を含む月、翌月、翌々月の 3 か月分の stay_date とする。
+- Analyze 日付ページを開いていない場合の初期対象は、現在の `as_of_date - 1日` から `as_of_date + 3か月` までの stay_date とする。`as_of_date - 1日` を含める理由は、直近で実績確定した ACT を raw source として保存し、`0日前` と `ACT` の分離や reference curve 評価に使える証跡を増やすためである。
 - 各 stay_date について、ホテル全体と全室タイプの `/api/v4/booking_curve` raw source を対象にする。
 - Analyze 日付ページを開いていない場合の取得順は、stay_date が近い順とする。同じ stay_date 内では、ホテル全体を先に取得し、その後に全室タイプを取得する。
 - Analyze 日付ページを開いている場合は、利用者が見ている stay_date を最優先し、次にその stay_date を含む週、その次にその stay_date を含む月、その次に通常 warm cache 範囲を取得する。
