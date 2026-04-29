@@ -1887,7 +1887,7 @@ function renderSalesSettingWarmCacheCalendarMarker(cell: MonthlyCalendarCell, st
     markerElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE, state);
     markerElement.setAttribute("title", getSalesSettingWarmCacheCalendarMarkerTitle(state));
     markerElement.setAttribute("aria-hidden", "true");
-    markerElement.textContent = state === "complete" ? "✓" : "";
+    markerElement.textContent = "";
 
     if (existingMarker === null) {
         cell.anchorElement.append(markerElement);
@@ -7289,20 +7289,21 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_ATTRIBUTE}] {
             position: absolute;
-            right: 3px;
-            bottom: 3px;
+            right: 2px;
+            bottom: 2px;
             z-index: 2;
             display: inline-flex;
             align-items: center;
             justify-content: center;
-            width: 12px;
-            height: 12px;
+            width: 7px;
+            height: 7px;
             border-radius: 999px;
-            border: 1px solid rgba(255, 255, 255, 0.92);
-            box-shadow: 0 1px 3px rgba(32, 50, 76, 0.18);
-            font-size: 9px;
-            font-weight: 900;
+            border: 0;
+            box-shadow: none;
+            font-size: 0;
+            font-weight: 0;
             line-height: 1;
+            opacity: 0.86;
             pointer-events: none;
         }
 
