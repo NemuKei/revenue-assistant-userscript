@@ -162,7 +162,7 @@ const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
 const SALES_SETTING_SUPPLEMENT_CLEANUP_DELAY_MS = 1500;
 const SALES_SETTING_SUPPLEMENT_RETRY_DELAYS_MS = [150, 600, 1500, 3000, 6000] as const;
 const SALES_SETTING_REFERENCE_CURVE_TICKS = SALES_SETTING_BOOKING_CURVE_TICKS;
-const SALES_SETTING_REFERENCE_ZERO_DAY_DISPLAY_INTERPOLATION_RATIO = 0.3;
+const SALES_SETTING_REFERENCE_ZERO_DAY_DISPLAY_INTERPOLATION_RATIO = 0.5;
 const SALES_SETTING_REFERENCE_ZERO_DAY_EQUALITY_EPSILON = 0.0001;
 const CALENDAR_SYNC_DEBUG_STORAGE_KEY = "revenue-assistant:debug:calendar-sync";
 const CALENDAR_SYNC_DEBUG_LAST_STORAGE_KEY = `${CALENDAR_SYNC_DEBUG_STORAGE_KEY}:last`;
@@ -2163,10 +2163,9 @@ function applySalesSettingReferenceZeroDayDisplayInterpolation(values: Array<num
     }
 
     if (values[zeroDayIndex] === null && typeof oneDayValue === "number" && typeof actValue === "number") {
-        values[zeroDayIndex] = Math.max(
-            0,
-            oneDayValue + ((actValue - oneDayValue) * SALES_SETTING_REFERENCE_ZERO_DAY_DISPLAY_INTERPOLATION_RATIO)
-        );
+        const interpolatedValue = oneDayValue
+            + ((actValue - oneDayValue) * SALES_SETTING_REFERENCE_ZERO_DAY_DISPLAY_INTERPOLATION_RATIO);
+        values[zeroDayIndex] = Math.max(0, Math.round(interpolatedValue));
         interpolated[zeroDayIndex] = true;
     }
 

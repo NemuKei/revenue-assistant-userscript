@@ -9,7 +9,7 @@
   - core logic、derived reference curve cache、予測評価 dataset には推測補完値を入れず、画面表示だけで補間値を使う。
 - スコープ:
   - 対象は `直近型カーブ` と `季節型カーブ` の reference curve 表示だけとする。
-  - `0日前` が欠損している、または `0日前` と `ACT` が同値で `1日前` と `ACT` に差がある場合、表示層で `1日前 + (ACT - 1日前) * 0.3` を描画する。
+  - `0日前` が欠損している、または `0日前` と `ACT` が同値で `1日前` と `ACT` に差がある場合、表示層で `1日前` と `ACT` の線形補間値を整数に丸めて描画する。
   - 補間値は Tooltip で補間値と分かるように表示する。
 - 非目標:
   - current curve、直近同曜日補助線、core logic、derived reference curve cache の値を変更すること。
@@ -25,7 +25,7 @@
   - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_002_curve_core.md`
 - 実装内容:
   - reference curve の表示用 series 生成時だけ、`0日前` の補間値を作るようにした。
-  - `0日前` が欠損している場合、または `0日前` と `ACT` が同値で `1日前` と `ACT` に差がある場合に、`1日前 + (ACT - 1日前) * 0.3` を表示値として使う。
+  - `0日前` が欠損している場合、または `0日前` と `ACT` が同値で `1日前` と `ACT` に差がある場合に、`round(1日前 + (ACT - 1日前) * 0.5)` を表示値として使う。
   - 補間値は `SalesSettingBookingCurveSeries.interpolated` に表示用 marker として保持し、Tooltip に `（補間）` を出すようにした。
   - core logic、derived reference curve cache、raw source cache、current curve、直近同曜日補助線は変更していない。
 - verify:
