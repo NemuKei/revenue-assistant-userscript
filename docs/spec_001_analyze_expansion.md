@@ -187,6 +187,9 @@ BCL-tuned first wave の定義:
 - `0日前` と `ACT` は、current と reference curve の両方で別 tick として扱う。`0日前` は宿泊日当日時点の観測値、`ACT` は宿泊日後に確定した最終実績を指す。
 - Revenue Assistant API が過去 stay_date の `0日前` 値を実績確定後の値で上書きして返す場合、raw source 保存開始前の過去日程については本当の `0日前` と `ACT` を後から分離できない。この制約は仕様上の欠損として扱い、推測で補完しない。
 - `直近型カーブ` と `季節型カーブ` の `ACT` がどの入力値から作られているかを diagnostics または調査ログで確認できるようにする。`0日前` と `ACT` が同じ値から作られているなら、`0日前` から `ACT` への線は平坦になるはずである。値が下がる、または不自然に跳ねる場合は、算出ロジック、入力 source の混在、segment 解決、API response の上書き仕様を調査対象にする。
+- reference curve の `0日前` は、core logic と IndexedDB の derived reference curve cache では推測補完しない。真の `0日前` を分離できない場合は、算出値としては欠損または diagnostics 上の制約として扱う。
+- 画面表示では、参考線の `0日前` が欠損している、または `0日前` と `ACT` が同値で `1日前` と `ACT` に差があるため API 側の実績上書き混入が疑われる場合に限り、表示層で `1日前 + (ACT - 1日前) * 0.3` を補間して描画してよい。この補間値は current、直近同曜日補助線、core logic、derived reference curve cache、予測評価 dataset には使わない。
+- 表示補間した `0日前` は、Tooltip または diagnostics 表示で補間値であることを明示する。利用者が実観測値、core 算出値、表示補間値を混同しないことを優先する。
 
 同曜日補助線:
 

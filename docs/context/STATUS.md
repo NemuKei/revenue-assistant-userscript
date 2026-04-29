@@ -1,12 +1,12 @@
 # STATUS
 
-最終更新: 2026-04-26
+最終更新: 2026-04-29
 
 ## Current Task Bundle
 
-- 主対象: `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+- 主対象: `RAU-AF-10` reference curve の 0日前表示補間を実装する
 - この bundle で扱う Task ID:
-  - `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+  - `RAU-AF-10` reference curve の 0日前表示補間を実装する
 - 今回の目的:
   - Analyze 日付ページの日別 booking curve を、部屋タイプ別のレート調整に使える判断画面へ拡張する。
   - BCL repo の booking curve 画面で使う算出ロジックを参照し、RAU の `/api/v4/booking_curve` response だけで成立する rooms-only reference curve へチューニングする。
@@ -57,6 +57,7 @@
 - `RAU-WC-03` はコード実装済み。Analyze 日付ページを開いた場合は、開いている stay_date、その週、その月、通常 warm cache 範囲の順に取得を優先する。warm cache の完了定義は current raw source だけではなく、reference source raw source、直近型 derived reference curve、季節型 derived reference curve、同曜日 raw source まで含める。
 - `RAU-WC-03` では、indicator に対象月または対象範囲と、Analyze 日付の `raw / 参考線 / 同曜日` 取得率を表示する。`dist/*.user.js` は `npm run build` で再生成済み。Tampermonkey 再読込後の GUI 目視確認が必要。
 - `RAU-WC-04` はコード実装済み。request 間隔を 1.0 秒、1 回の自動稼働を 10 分、クールダウンを 3 分へ緩和した。IndexedDB raw source が既存で skip できる task は API request を発行しないため即時に次 task へ進める。
+- `RAU-AF-10` はコード実装済み。reference curve の `0日前` は core logic と IndexedDB derived cache では推測補完せず、表示層だけで `1日前 + (ACT - 1日前) * 0.3` の補間値を使う。Tooltip では補間値であることを `（補間）` として明示する。
 
 ## Next Re-entry
 
@@ -73,9 +74,10 @@
 
 最初にやること:
 
-1. Tampermonkey へ最新 `dist/*.user.js` を反映し、Analyze 日付ページで `RAU-WC-03` の GUI 挙動を確認する。
-2. Indicator の `raw / 参考線 / 同曜日` 取得率が進むことと、開いている stay_date、その週、その月の順に取得されることを確認する。
-3. `RAU-WC-03` GUI 確認後に、`RAU-CP-01` の競合価格 snapshot 設計へ戻る。
+1. Tampermonkey へ最新 `dist/*.user.js` を反映し、Analyze 日付ページで `RAU-AF-10` の GUI 挙動を確認する。
+2. reference curve の `0日前` に補間が入る実データでは、Tooltip に `（補間）` が出ることを確認する。
+3. Indicator の `raw / 参考線 / 同曜日` 取得率が進むことと、開いている stay_date、その週、その月の順に取得されることを確認する。
+4. GUI 確認後に、`RAU-CP-01` の競合価格 snapshot 設計へ戻る。
 
 変更しない契約:
 
@@ -162,6 +164,13 @@
   - `npm run build`: passed
   - `git diff --check`: passed
   - Tampermonkey 再読込 GUI 確認: 未実施
+- 2026-04-29 の `RAU-AF-10` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+  - Tampermonkey 再読込 GUI 確認: 未実施
+  - 実データで `0日前` Tooltip に `（補間）` が表示されること: 未実施
 
 ## Open Questions / Risks
 

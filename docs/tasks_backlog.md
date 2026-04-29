@@ -2,6 +2,41 @@
 
 ## Now
 
+### RAU-AF-10 reference curve の 0日前表示補間を実装する
+
+- 目的:
+  - raw source 保存開始前の過去 stay_date で本当の `0日前` と `ACT` を分離できない場合でも、参考線の見た目が `ACT` 混入値に引っ張られすぎないようにする。
+  - core logic、derived reference curve cache、予測評価 dataset には推測補完値を入れず、画面表示だけで補間値を使う。
+- スコープ:
+  - 対象は `直近型カーブ` と `季節型カーブ` の reference curve 表示だけとする。
+  - `0日前` が欠損している、または `0日前` と `ACT` が同値で `1日前` と `ACT` に差がある場合、表示層で `1日前 + (ACT - 1日前) * 0.3` を描画する。
+  - 補間値は Tooltip で補間値と分かるように表示する。
+- 非目標:
+  - current curve、直近同曜日補助線、core logic、derived reference curve cache の値を変更すること。
+  - raw source 保存開始前の過去 stay_date について、本当の `0日前` を復元すること。
+  - 予測モデルまたは予測評価ロジックを追加すること。
+- 受け入れ条件:
+  - reference curve の `0日前` が表示補間された場合でも、IndexedDB に保存される derived reference curve result は変更されない。
+  - Tooltip で、表示補間された reference curve の値が補間値であることを確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_002_curve_core.md`
+- 実装内容:
+  - reference curve の表示用 series 生成時だけ、`0日前` の補間値を作るようにした。
+  - `0日前` が欠損している場合、または `0日前` と `ACT` が同値で `1日前` と `ACT` に差がある場合に、`1日前 + (ACT - 1日前) * 0.3` を表示値として使う。
+  - 補間値は `SalesSettingBookingCurveSeries.interpolated` に表示用 marker として保持し、Tooltip に `（補間）` を出すようにした。
+  - core logic、derived reference curve cache、raw source cache、current curve、直近同曜日補助線は変更していない。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+- 未確認:
+  - Tampermonkey 再読込後の GUI 目視確認
+  - 実データで `0日前` Tooltip に `（補間）` が表示されること
+
 ### RAU-WC-03 Analyze 日付優先 warm cache と reference 完了定義を実装する
 
 - 目的:

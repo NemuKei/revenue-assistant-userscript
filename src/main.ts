@@ -162,6 +162,8 @@ const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
 const SALES_SETTING_SUPPLEMENT_CLEANUP_DELAY_MS = 1500;
 const SALES_SETTING_SUPPLEMENT_RETRY_DELAYS_MS = [150, 600, 1500, 3000, 6000] as const;
 const SALES_SETTING_REFERENCE_CURVE_TICKS = SALES_SETTING_BOOKING_CURVE_TICKS;
+const SALES_SETTING_REFERENCE_ZERO_DAY_DISPLAY_INTERPOLATION_RATIO = 0.3;
+const SALES_SETTING_REFERENCE_ZERO_DAY_EQUALITY_EPSILON = 0.0001;
 const CALENDAR_SYNC_DEBUG_STORAGE_KEY = "revenue-assistant:debug:calendar-sync";
 const CALENDAR_SYNC_DEBUG_LAST_STORAGE_KEY = `${CALENDAR_SYNC_DEBUG_STORAGE_KEY}:last`;
 const CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE = "data-ra-calendar-sync-debug-snapshot";
@@ -400,10 +402,12 @@ interface SalesSettingBookingCurveSample {
 interface SalesSettingBookingCurveTooltipReferenceValue {
     label: string;
     value: number | null;
+    interpolated: boolean;
 }
 
 interface SalesSettingBookingCurveSeries {
     values: Array<number | null>;
+    interpolated?: boolean[];
     signature: string;
 }
 
@@ -2122,17 +2126,63 @@ function buildSalesSettingReferenceBookingCurveSeries(result: ReferenceCurveResu
 
     const valueByTick = new Map(result.points.map((point) => [point.lt, point.rooms]));
     const values = SALES_SETTING_BOOKING_CURVE_TICKS.map((tick) => valueByTick.get(tick) ?? null);
+    const interpolated = applySalesSettingReferenceZeroDayDisplayInterpolation(values);
 
     return {
         values,
+        interpolated,
         signature: [
             result.curveKind,
             result.algorithmVersion,
             result.diagnostics.sourceStayDateCount,
             result.diagnostics.missingReason ?? "-",
-            ...values.map((value, index) => `${SALES_SETTING_BOOKING_CURVE_TICKS[index] ?? "ACT"}:${value === null ? "-" : value}`)
+            ...values.map((value, index) => {
+                const interpolationSignature = interpolated[index] === true ? ":display-interpolated" : "";
+                return `${SALES_SETTING_BOOKING_CURVE_TICKS[index] ?? "ACT"}:${value === null ? "-" : value}${interpolationSignature}`;
+            })
         ].join("|")
     };
+}
+
+function applySalesSettingReferenceZeroDayDisplayInterpolation(values: Array<number | null>): boolean[] {
+    const interpolated = values.map(() => false);
+    const zeroDayIndex = SALES_SETTING_BOOKING_CURVE_TICKS.indexOf(0);
+    const oneDayIndex = SALES_SETTING_BOOKING_CURVE_TICKS.indexOf(1);
+    const actIndex = SALES_SETTING_BOOKING_CURVE_TICKS.indexOf("ACT");
+
+    if (zeroDayIndex < 0 || oneDayIndex < 0 || actIndex < 0) {
+        return interpolated;
+    }
+
+    const zeroDayValue = values[zeroDayIndex] ?? null;
+    const oneDayValue = values[oneDayIndex] ?? null;
+    const actValue = values[actIndex] ?? null;
+
+    if (shouldSuppressReferenceZeroDayForDisplay(zeroDayValue, oneDayValue, actValue)) {
+        values[zeroDayIndex] = null;
+    }
+
+    if (values[zeroDayIndex] === null && typeof oneDayValue === "number" && typeof actValue === "number") {
+        values[zeroDayIndex] = Math.max(
+            0,
+            oneDayValue + ((actValue - oneDayValue) * SALES_SETTING_REFERENCE_ZERO_DAY_DISPLAY_INTERPOLATION_RATIO)
+        );
+        interpolated[zeroDayIndex] = true;
+    }
+
+    return interpolated;
+}
+
+function shouldSuppressReferenceZeroDayForDisplay(
+    zeroDayValue: number | null,
+    oneDayValue: number | null,
+    actValue: number | null
+): boolean {
+    return typeof zeroDayValue === "number"
+        && typeof oneDayValue === "number"
+        && typeof actValue === "number"
+        && Math.abs(zeroDayValue - actValue) <= SALES_SETTING_REFERENCE_ZERO_DAY_EQUALITY_EPSILON
+        && Math.abs(oneDayValue - actValue) > SALES_SETTING_REFERENCE_ZERO_DAY_EQUALITY_EPSILON;
 }
 
 function buildSalesSettingSameWeekdayBookingCurveSeries(
@@ -5056,7 +5106,8 @@ function buildSalesSettingBookingCurveTooltipReferenceValues(
         .filter((series) => series.kind !== "current")
         .map((series) => ({
             label: series.label,
-            value: series.series.values[index] ?? null
+            value: series.series.values[index] ?? null,
+            interpolated: series.series.interpolated?.[index] === true
         }));
 }
 
@@ -5548,7 +5599,9 @@ function renderSalesSettingBookingCurveTooltipDetail(
 
     for (const referenceValue of referenceValues) {
         const lineElement = document.createElement("div");
-        lineElement.textContent = `${referenceValue.label} ${referenceValue.value === null ? "-" : `${formatGroupRoomNumber(referenceValue.value)}室`}`;
+        const valueText = referenceValue.value === null ? "-" : `${formatGroupRoomNumber(referenceValue.value)}室`;
+        const interpolationText = referenceValue.interpolated ? "（補間）" : "";
+        lineElement.textContent = `${referenceValue.label} ${valueText}${interpolationText}`;
         children.push(lineElement);
     }
 
