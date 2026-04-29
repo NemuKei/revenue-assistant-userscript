@@ -1246,8 +1246,8 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
         priorityStayDate,
-        targetFromDate: startDate,
-        targetToDate: shiftDate(startDate, SALES_SETTING_WARM_CACHE_TARGET_DAYS)
+        targetFromDate: null,
+        targetToDate: null
     };
     renderSalesSettingWarmCacheIndicator();
 
@@ -1385,11 +1385,12 @@ function buildSalesSettingWarmCacheTargetStayDates(startDate: string, prioritySt
     const targetStayDates: string[] = [];
     const seen = new Set<string>();
     const addDate = (stayDate: string | null): void => {
-        if (stayDate === null || seen.has(stayDate)) {
+        const compactStayDate = stayDate === null ? null : toCompactDateKey(stayDate);
+        if (compactStayDate === null || seen.has(compactStayDate)) {
             return;
         }
-        seen.add(stayDate);
-        targetStayDates.push(stayDate);
+        seen.add(compactStayDate);
+        targetStayDates.push(compactStayDate);
     };
 
     if (priorityStayDate !== null) {
@@ -1424,15 +1425,15 @@ function getSalesSettingWarmCacheWeekStayDates(stayDate: string): string[] {
 }
 
 function getSalesSettingWarmCacheMonthStayDates(stayDate: string): string[] {
-    const normalizedDate = normalizeDateKey(stayDate);
-    if (normalizedDate === null) {
+    const compactDate = toCompactDateKey(stayDate);
+    if (compactDate === null) {
         return [];
     }
 
-    const year = Number(normalizedDate.slice(0, 4));
-    const month = Number(normalizedDate.slice(4, 6));
+    const year = Number(compactDate.slice(0, 4));
+    const month = Number(compactDate.slice(4, 6));
     const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
-    return Array.from({ length: lastDay }, (_, index) => `${normalizedDate.slice(0, 6)}${String(index + 1).padStart(2, "0")}`);
+    return Array.from({ length: lastDay }, (_, index) => `${compactDate.slice(0, 6)}${String(index + 1).padStart(2, "0")}`);
 }
 
 function buildSalesSettingWarmCacheDateProgress(tasks: SalesSettingWarmCacheTask[]): Record<string, SalesSettingWarmCacheDateProgress> {
@@ -1449,10 +1450,16 @@ function buildSalesSettingWarmCacheDateProgress(tasks: SalesSettingWarmCacheTask
 }
 
 function getSalesSettingWarmCacheTargetBounds(tasks: SalesSettingWarmCacheTask[], fallbackStartDate: string): Pick<SalesSettingWarmCacheState, "targetFromDate" | "targetToDate"> {
-    const targetStayDates = Array.from(new Set(tasks.map((task) => task.targetStayDate))).sort();
+    const targetStayDates = Array.from(new Set(tasks.flatMap((task) => {
+        const compactStayDate = toCompactDateKey(task.targetStayDate);
+        return compactStayDate === null ? [] : [compactStayDate];
+    }))).sort();
+    const fallbackCompactStartDate = toCompactDateKey(fallbackStartDate);
     return {
-        targetFromDate: targetStayDates[0] ?? fallbackStartDate,
-        targetToDate: targetStayDates[targetStayDates.length - 1] ?? shiftDate(fallbackStartDate, SALES_SETTING_WARM_CACHE_TARGET_DAYS)
+        targetFromDate: targetStayDates[0] ?? fallbackCompactStartDate,
+        targetToDate: targetStayDates[targetStayDates.length - 1] ?? (fallbackCompactStartDate === null
+            ? null
+            : shiftDate(fallbackCompactStartDate, SALES_SETTING_WARM_CACHE_TARGET_DAYS))
     };
 }
 
