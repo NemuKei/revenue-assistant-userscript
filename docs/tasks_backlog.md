@@ -80,6 +80,39 @@
 
 ## Completed
 
+### RAU-WC-04 warm cache の取得速度を安全弁つきで引き上げる
+
+- 目的:
+  - 参考線込みの warm cache 完了までの時間を短縮する。
+  - API 負荷が危険にならないよう、停止条件とクールダウンを残したまま速度を上げる。
+- スコープ:
+  - request 間隔を 2.5 秒から 1.0 秒へ短縮する。
+  - 1 回の自動稼働時間を 5 分から 10 分へ延ばす。
+  - クールダウンを 10 分から 3 分へ短縮する。
+  - IndexedDB raw source が既存のため skip できる task は、API request を発行しないため次 task へ即時に進める。
+  - 同時 warm cache task 実行 1、reference curve request scheduler の同時数制限、document hidden 中の一時停止、連続エラー 3 回停止は維持する。
+- 非目標:
+  - 同時 warm cache task 実行数を 2 以上に増やすこと。
+  - 連続エラー停止や hidden pause を外すこと。
+  - Revenue Assistant API の response を無制限に取りに行くこと。
+- 受け入れ条件:
+  - skip task は 1 秒待たずに進む。
+  - API request を伴う task は 1.0 秒以上の間隔を置く。
+  - 10 分稼働後は 3 分以上クールダウンしてから再開する。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+- 未確認:
+  - Tampermonkey 再読込後の GUI 目視確認
+  - skip task が即時に進み、API request を伴う task が 1.0 秒以上の間隔を保つこと
+
 ### RAU-WC-02 warm cache indicator をトップカレンダーと日付単位進捗に広げる
 
 - 目的:

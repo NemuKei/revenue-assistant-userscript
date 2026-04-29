@@ -47,9 +47,9 @@ const CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const LINCOLN_SUGGEST_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
 const SALES_SETTING_WARM_CACHE_TARGET_DAYS = 30;
-const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 2500;
-const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 5 * 60 * 1000;
-const SALES_SETTING_WARM_CACHE_COOLDOWN_MS = 10 * 60 * 1000;
+const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 1000;
+const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 10 * 60 * 1000;
+const SALES_SETTING_WARM_CACHE_COOLDOWN_MS = 3 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
@@ -1558,6 +1558,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
 
     try {
         const taskResult = await runSalesSettingWarmCacheTask(task, facilityId, asOfDate);
+        const nextDelayMs = taskResult === "skipped" ? 0 : SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS;
         markSalesSettingWarmCacheDateProgress(task, false);
         salesSettingWarmCacheState = {
             ...salesSettingWarmCacheState,
@@ -1568,6 +1569,9 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
             currentTask: null,
             ...(taskResult === "fetched" ? { lastFetchedAt: new Date().toISOString() } : {})
         };
+        renderSalesSettingWarmCacheIndicator();
+        scheduleSalesSettingWarmCacheDrain(nextDelayMs);
+        return;
     } catch (error: unknown) {
         console.warn(`[${SCRIPT_NAME}] failed to warm booking curve raw source`, {
             task,

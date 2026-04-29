@@ -257,9 +257,10 @@ BCL-tuned first wave の定義:
 負荷制限:
 
 - 初期実装の同時取得数は 1 とする。
-- 初期実装の request 間隔は 2.5 秒以上とする。
-- 1 回の自動 warm cache 稼働時間は最大 5 分とする。
-- 1 回の自動 warm cache 稼働時間に達した場合は、クールダウン時間を置いた後に自動再開する。
+- request 間隔は 1.0 秒以上とする。
+- IndexedDB または derived cache の既存 record により skip できる task は、API request を発行しないため、次 task へ即時に進めてよい。
+- 1 回の自動 warm cache 稼働時間は最大 10 分とする。
+- 1 回の自動 warm cache 稼働時間に達した場合は、3 分以上のクールダウン時間を置いた後に自動再開する。
 - 日次合計稼働時間の上限は設けない。負荷制御は、有限 queue、request 間隔、1 回の稼働時間、クールダウン、document hidden 中の一時停止、連続エラー停止で行う。
 - document が hidden の間は自動取得を一時停止する。
 - 連続エラーが発生した場合は一時停止し、indicator でエラー件数と停止状態を表示する。

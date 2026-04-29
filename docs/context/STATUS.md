@@ -56,6 +56,7 @@
 - `RAU-WC-02` の `dist/*.user.js` は `npm run build` で再生成済み。Tampermonkey 再読込後の GUI 目視確認が必要。
 - `RAU-WC-03` はコード実装済み。Analyze 日付ページを開いた場合は、開いている stay_date、その週、その月、通常 warm cache 範囲の順に取得を優先する。warm cache の完了定義は current raw source だけではなく、reference source raw source、直近型 derived reference curve、季節型 derived reference curve、同曜日 raw source まで含める。
 - `RAU-WC-03` では、indicator に対象月または対象範囲と、Analyze 日付の `raw / 参考線 / 同曜日` 取得率を表示する。`dist/*.user.js` は `npm run build` で再生成済み。Tampermonkey 再読込後の GUI 目視確認が必要。
+- `RAU-WC-04` はコード実装済み。request 間隔を 1.0 秒、1 回の自動稼働を 10 分、クールダウンを 3 分へ緩和した。IndexedDB raw source が既存で skip できる task は API request を発行しないため即時に次 task へ進める。
 
 ## Next Re-entry
 
@@ -155,6 +156,12 @@
   - Tampermonkey 再読込 GUI 確認: 未実施
   - Analyze 日付ページで、その日、同週、同月の順に取得が優先されること: 未実施
   - Indicator の `raw / 参考線 / 同曜日` 取得率が実データに応じて進むこと: 未実施
+- 2026-04-29 の `RAU-WC-04` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+  - Tampermonkey 再読込 GUI 確認: 未実施
 
 ## Open Questions / Risks
 
