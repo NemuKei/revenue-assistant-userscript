@@ -38,8 +38,7 @@ import {
 } from "./bookingCurveRawSourceStore";
 import {
     persistCompetitorPriceSnapshot,
-    readLatestCompetitorPriceSnapshotPairForStayDate,
-    type CompetitorPriceSnapshotPair,
+    readCompetitorPriceSnapshotSeriesForStayDate,
     type CompetitorPriceSnapshotPlan,
     type CompetitorPriceSnapshotRecord
 } from "./competitorPriceSnapshotStore";
@@ -103,10 +102,18 @@ const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE = "data-ra-sales-setting
 const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview-signature";
 const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_TITLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview-title";
 const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview-meta";
-const SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-table";
-const SALES_SETTING_COMPETITOR_PRICE_ROW_ATTRIBUTE = "data-ra-sales-setting-competitor-price-row";
-const SALES_SETTING_COMPETITOR_PRICE_PLAN_ATTRIBUTE = "data-ra-sales-setting-competitor-price-plan";
-const SALES_SETTING_COMPETITOR_PRICE_DELTA_ATTRIBUTE = "data-ra-sales-setting-competitor-price-delta";
+const SALES_SETTING_COMPETITOR_PRICE_CONTROLS_ATTRIBUTE = "data-ra-sales-setting-competitor-price-controls";
+const SALES_SETTING_COMPETITOR_PRICE_SELECT_ATTRIBUTE = "data-ra-sales-setting-competitor-price-select";
+const SALES_SETTING_COMPETITOR_PRICE_LEGEND_ATTRIBUTE = "data-ra-sales-setting-competitor-price-legend";
+const SALES_SETTING_COMPETITOR_PRICE_LEGEND_ITEM_ATTRIBUTE = "data-ra-sales-setting-competitor-price-legend-item";
+const SALES_SETTING_COMPETITOR_PRICE_LEGEND_SWATCH_ATTRIBUTE = "data-ra-sales-setting-competitor-price-legend-swatch";
+const SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-grid";
+const SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-panel";
+const SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-title";
+const SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-svg";
+const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
+const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
+const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -298,6 +305,7 @@ interface CompetitorPriceSnapshotUiState {
     facilityId: string | null;
     stayDate: string | null;
     source: "analyze-open" | "competitor-tab" | null;
+    records: CompetitorPriceSnapshotRecord[];
     latestRecord: CompetitorPriceSnapshotRecord | null;
     previousRecord: CompetitorPriceSnapshotRecord | null;
     reason: string | null;
@@ -569,6 +577,8 @@ let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let salesSettingWarmCacheTimeoutId: number | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
 let competitorPriceSnapshotUiState: CompetitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+let competitorPriceRoomTypeFilter: string | null = null;
+let competitorPriceMealTypeFilter: string | null = null;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
@@ -1292,6 +1302,7 @@ function createInitialCompetitorPriceSnapshotUiState(): CompetitorPriceSnapshotU
         facilityId: null,
         stayDate: null,
         source: null,
+        records: [],
         latestRecord: null,
         previousRecord: null,
         reason: null,
@@ -2222,44 +2233,12 @@ function formatDateTimeForDisplay(value: string): string {
     return `${month}/${day} ${hours}:${minutes}`;
 }
 
-function formatNullableText(value: string | null): string {
-    return value === null || value.trim() === "" ? "-" : value;
-}
-
 function formatPriceForDisplay(value: number | null): string {
     return value === null ? "-" : `${value.toLocaleString("ja-JP")}円`;
 }
 
-function formatPriceDeltaForDisplay(value: number | null): string {
-    if (value === null) {
-        return "-";
-    }
-
-    if (value > 0) {
-        return `+${value.toLocaleString("ja-JP")}円`;
-    }
-
-    return `${value.toLocaleString("ja-JP")}円`;
-}
-
 function shortenConditionSignature(value: string): string {
     return value.length <= 24 ? value : `${value.slice(0, 24)}...`;
-}
-
-function compareNullableNumber(left: number | null, right: number | null): number {
-    if (left === right) {
-        return 0;
-    }
-
-    if (left === null) {
-        return 1;
-    }
-
-    if (right === null) {
-        return -1;
-    }
-
-    return left - right;
 }
 
 function formatCompetitorPriceSnapshotSkipReason(reason: string | null): string {
@@ -3178,7 +3157,7 @@ function scheduleCompetitorPriceSnapshot(
     };
     renderSalesSettingWarmCacheIndicator();
     renderCompetitorPriceOverviewFromState();
-    void refreshCompetitorPriceSnapshotPair(facilityCacheKey, analysisDate);
+    void refreshCompetitorPriceSnapshotSeries(facilityCacheKey, analysisDate);
 
     void persistCompetitorPriceSnapshot({
         facilityId: facilityCacheKey,
@@ -3193,6 +3172,7 @@ function scheduleCompetitorPriceSnapshot(
                     facilityId: facilityCacheKey,
                     stayDate: analysisDate,
                     source,
+                    records: [],
                     latestRecord: null,
                     previousRecord: null,
                     reason: result.reason ?? "unknown",
@@ -3216,6 +3196,7 @@ function scheduleCompetitorPriceSnapshot(
                 facilityId: facilityCacheKey,
                 stayDate: analysisDate,
                 source,
+                records: mergeCompetitorPriceSnapshotRecords(competitorPriceSnapshotUiState.records, result.record),
                 latestRecord: result.record,
                 previousRecord: result.previousRecord,
                 reason: null,
@@ -3255,17 +3236,17 @@ function scheduleCompetitorPriceSnapshot(
         });
 }
 
-async function refreshCompetitorPriceSnapshotPair(facilityCacheKey: string, analysisDate: string): Promise<void> {
-    const snapshotPair = await readLatestCompetitorPriceSnapshotPairForStayDate(facilityCacheKey, analysisDate)
+async function refreshCompetitorPriceSnapshotSeries(facilityCacheKey: string, analysisDate: string): Promise<void> {
+    const snapshotSeries = await readCompetitorPriceSnapshotSeriesForStayDate(facilityCacheKey, analysisDate)
         .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to read competitor price snapshot pair`, {
+            console.warn(`[${SCRIPT_NAME}] failed to read competitor price snapshot series`, {
                 analysisDate,
                 facilityCacheKey,
                 error
             });
             return null;
         });
-    if (snapshotPair === null || snapshotPair.latestRecord === null) {
+    if (snapshotSeries === null || snapshotSeries.latestRecord === null) {
         return;
     }
 
@@ -3278,8 +3259,9 @@ async function refreshCompetitorPriceSnapshotPair(facilityCacheKey: string, anal
 
     competitorPriceSnapshotUiState = {
         ...competitorPriceSnapshotUiState,
-        latestRecord: snapshotPair.latestRecord,
-        previousRecord: snapshotPair.previousRecord
+        records: snapshotSeries.records,
+        latestRecord: snapshotSeries.latestRecord,
+        previousRecord: snapshotSeries.previousRecord
     };
     renderSalesSettingWarmCacheIndicator();
     renderCompetitorPriceOverviewFromState();
@@ -4119,13 +4101,13 @@ function restoreCurrentUiSalesSettingSupplements(cards: SalesSettingCard[]): voi
             firstCard,
             preparedData
         );
-        renderCompetitorPriceOverviewFromState(firstCard);
+        renderCompetitorPriceOverviewFromState();
         return;
     }
 
     cleanupSalesSettingRankOverview();
     cleanupSalesSettingRankDetails();
-    renderCompetitorPriceOverviewFromState(firstCard);
+    renderCompetitorPriceOverviewFromState();
 }
 
 function scheduleSalesSettingSupplementCleanup(): void {
@@ -6509,7 +6491,9 @@ function cleanupSalesSettingRankOverview(): void {
 }
 
 function cleanupCompetitorPriceOverview(): void {
-    document.querySelector<HTMLElement>(`[${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}]`)?.remove();
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}]`))) {
+        element.remove();
+    }
 }
 
 function cleanupSalesSettingRankDetails(): void {
@@ -6748,67 +6732,53 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
     }
 }
 
-function renderCompetitorPriceOverviewFromState(firstCardOverride?: SalesSettingCard): void {
+function renderCompetitorPriceOverviewFromState(): void {
     const latestRecord = competitorPriceSnapshotUiState.latestRecord;
-    if (latestRecord === null) {
+    const target = resolveCompetitorPriceTabSectionTarget();
+    if (latestRecord === null || target === null) {
         cleanupCompetitorPriceOverview();
         return;
     }
 
-    const firstCard = firstCardOverride ?? collectSalesSettingCards()[0];
-    if (firstCard === undefined || !firstCard.cardElement.isConnected) {
-        const fallbackTarget = resolveCompetitorPriceTabSectionTarget();
-        if (fallbackTarget === null) {
-            return;
-        }
-        renderCompetitorPriceOverviewAtTarget(
-            fallbackTarget.sectionContainer,
-            fallbackTarget.insertionAnchor,
-            {
-                latestRecord,
-                previousRecord: competitorPriceSnapshotUiState.previousRecord
-            }
-        );
-        return;
-    }
-
-    renderCompetitorPriceOverview(firstCard, {
-        latestRecord,
-        previousRecord: competitorPriceSnapshotUiState.previousRecord
-    });
-}
-
-function renderCompetitorPriceOverview(
-    firstCard: SalesSettingCard,
-    snapshotPair: CompetitorPriceSnapshotPair
-): void {
-    const sectionContainer = resolveSalesSettingSectionContainer(firstCard);
-    const insertionAnchor = resolveSalesSettingSectionInsertionAnchor(firstCard);
-    if (sectionContainer === null || snapshotPair.latestRecord === null) {
-        return;
-    }
-
-    renderCompetitorPriceOverviewAtTarget(sectionContainer, insertionAnchor, snapshotPair);
+    renderCompetitorPriceOverviewAtTarget(
+        target.sectionContainer,
+        target.insertionAnchor,
+        competitorPriceSnapshotUiState.records.length === 0
+            ? [latestRecord]
+            : competitorPriceSnapshotUiState.records,
+        latestRecord
+    );
 }
 
 function renderCompetitorPriceOverviewAtTarget(
     sectionContainer: HTMLElement,
     insertionAnchor: HTMLElement | null,
-    snapshotPair: CompetitorPriceSnapshotPair
+    records: CompetitorPriceSnapshotRecord[],
+    latestRecord: CompetitorPriceSnapshotRecord
 ): void {
-    if (snapshotPair.latestRecord === null) {
-        return;
-    }
+    const filters = buildCompetitorPriceFilterOptions(records);
+    const roomTypeFilter = filters.roomTypes.includes(competitorPriceRoomTypeFilter ?? "")
+        ? competitorPriceRoomTypeFilter
+        : null;
+    const mealTypeFilter = filters.mealTypes.includes(competitorPriceMealTypeFilter ?? "")
+        ? competitorPriceMealTypeFilter
+        : null;
+    competitorPriceRoomTypeFilter = roomTypeFilter;
+    competitorPriceMealTypeFilter = mealTypeFilter;
 
-    const latestRecord = snapshotPair.latestRecord;
-    const previousRecord = snapshotPair.previousRecord;
-    const rows = buildCompetitorPriceComparisonRows(latestRecord, previousRecord);
+    const dailyRecords = buildLatestCompetitorPriceRecordsByFetchDate(records);
+    const chartSeries = buildCompetitorPriceGuestChartSeries(dailyRecords, roomTypeFilter, mealTypeFilter);
     const signature = [
-        latestRecord.snapshotKey,
-        previousRecord?.snapshotKey ?? "previous:none",
-        rows.map((row) => `${row.planKey}:${row.currentPlan.price}:${row.previousPlan?.price ?? "-"}`).join("|")
+        records.map((record) => record.snapshotKey).join("|"),
+        roomTypeFilter ?? "room:any",
+        mealTypeFilter ?? "meal:any"
     ].join("::");
     const existingContainer = findDirectChildByAttribute(sectionContainer, SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE);
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}]`))) {
+        if (element !== existingContainer) {
+            element.remove();
+        }
+    }
     const containerElement = existingContainer ?? document.createElement("section");
 
     if (existingContainer?.getAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_SIGNATURE_ATTRIBUTE) !== signature) {
@@ -6817,56 +6787,35 @@ function renderCompetitorPriceOverviewAtTarget(
 
         const titleElement = document.createElement("div");
         titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_TITLE_ATTRIBUTE, "");
-        titleElement.textContent = "競合価格 前回比";
+        titleElement.textContent = "競合価格 最安値推移";
 
         const metaElement = document.createElement("div");
         metaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE, "");
         metaElement.textContent = [
-            `取得 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
-            previousRecord === null ? "前回なし" : `前回 ${formatDateTimeForDisplay(previousRecord.fetchedAt)}`,
-            `競合 ${latestRecord.competitorSet.length}`,
+            `対象宿泊日 ${formatCompactDateForDisplay(latestRecord.stayDate)}`,
+            `取得日 ${dailyRecords.length}日`,
+            `最終取得 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
+            `同日複数取得は最新 snapshot`,
             `条件 ${shortenConditionSignature(latestRecord.conditionSignature)}`
         ].join(" / ");
 
-        const tableElement = document.createElement("table");
-        tableElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE, "");
-
-        const headElement = document.createElement("thead");
-        const headerRowElement = document.createElement("tr");
-        for (const label of ["競合施設", "人数", "食事", "部屋タイプ", "プラン名", "現在価格", "前回価格", "差分", "前回取得"]) {
-            const headerCellElement = document.createElement("th");
-            headerCellElement.scope = "col";
-            headerCellElement.textContent = label;
-            headerRowElement.append(headerCellElement);
-        }
-        headElement.append(headerRowElement);
-
-        const bodyElement = document.createElement("tbody");
-        if (rows.length === 0) {
-            const rowElement = document.createElement("tr");
-            const cellElement = document.createElement("td");
-            cellElement.colSpan = 9;
-            cellElement.textContent = "競合価格 snapshot に表示できる plan がありません";
-            rowElement.append(cellElement);
-            bodyElement.append(rowElement);
-        } else {
-            for (const row of rows) {
-                bodyElement.append(createCompetitorPriceComparisonRow(row, previousRecord));
-            }
+        const controlsElement = createCompetitorPriceFilterControls(filters, roomTypeFilter, mealTypeFilter);
+        const legendElement = createCompetitorPriceLegend(chartSeries.facilities);
+        const chartGridElement = document.createElement("div");
+        chartGridElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE, "");
+        for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
+            chartGridElement.append(createCompetitorPriceChartPanel(guestCount, chartSeries));
         }
 
-        tableElement.replaceChildren(headElement, bodyElement);
-        containerElement.replaceChildren(titleElement, metaElement, tableElement);
+        containerElement.replaceChildren(titleElement, metaElement, controlsElement, legendElement, chartGridElement);
     }
 
-    const overallSummaryElement = findDirectChildByAttribute(sectionContainer, SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE);
-    const anchorElement = overallSummaryElement ?? insertionAnchor;
-    if (anchorElement === null) {
+    if (insertionAnchor === null) {
         if (containerElement.parentElement !== sectionContainer || sectionContainer.lastElementChild !== containerElement) {
             sectionContainer.append(containerElement);
         }
-    } else if (containerElement.nextElementSibling !== anchorElement) {
-        sectionContainer.insertBefore(containerElement, anchorElement);
+    } else if (containerElement.nextElementSibling !== insertionAnchor) {
+        sectionContainer.insertBefore(containerElement, insertionAnchor);
     }
 }
 
@@ -6875,9 +6824,7 @@ function resolveCompetitorPriceTabSectionTarget(): { sectionContainer: HTMLEleme
     if (taxIncludedTextElement?.parentElement instanceof HTMLElement) {
         return {
             sectionContainer: taxIncludedTextElement.parentElement,
-            insertionAnchor: taxIncludedTextElement.nextElementSibling instanceof HTMLElement
-                ? taxIncludedTextElement.nextElementSibling
-                : null
+            insertionAnchor: null
         };
     }
 
@@ -6893,99 +6840,366 @@ function resolveCompetitorPriceTabSectionTarget(): { sectionContainer: HTMLEleme
     return null;
 }
 
-interface CompetitorPriceComparisonRow {
-    competitorName: string;
-    planKey: string;
-    currentPlan: CompetitorPriceSnapshotPlan;
-    previousPlan: CompetitorPriceSnapshotPlan | null;
+interface CompetitorPriceFilterOptions {
+    roomTypes: string[];
+    mealTypes: string[];
 }
 
-function buildCompetitorPriceComparisonRows(
-    latestRecord: CompetitorPriceSnapshotRecord,
-    previousRecord: CompetitorPriceSnapshotRecord | null
-): CompetitorPriceComparisonRow[] {
-    const previousPlans = new Map<string, CompetitorPriceSnapshotPlan>();
-    for (const plan of flattenCompetitorPricePlans(previousRecord)) {
-        previousPlans.set(buildCompetitorPricePlanKey(plan), plan);
-    }
-
-    const competitorNames = new Map(latestRecord.competitorSet.map((competitor) => [competitor.yadNo, competitor.name]));
-    return flattenCompetitorPricePlans(latestRecord)
-        .map((plan) => {
-            const planKey = buildCompetitorPricePlanKey(plan);
-            return {
-                competitorName: competitorNames.get(plan.yadNo) ?? plan.yadNo,
-                planKey,
-                currentPlan: plan,
-                previousPlan: previousPlans.get(planKey) ?? null
-            } satisfies CompetitorPriceComparisonRow;
-        })
-        .sort(compareCompetitorPriceComparisonRows);
+interface CompetitorPriceFacilitySeries {
+    yadNo: string;
+    name: string;
+    color: string;
 }
 
-function flattenCompetitorPricePlans(record: CompetitorPriceSnapshotRecord | null): CompetitorPriceSnapshotPlan[] {
+interface CompetitorPriceChartPoint {
+    fetchDate: string;
+    yadNo: string;
+    price: number;
+}
+
+interface CompetitorPriceGuestChartSeries {
+    fetchDates: string[];
+    facilities: CompetitorPriceFacilitySeries[];
+    pointsByGuestCount: Map<number, CompetitorPriceChartPoint[]>;
+}
+
+function mergeCompetitorPriceSnapshotRecords(
+    records: CompetitorPriceSnapshotRecord[],
+    record: CompetitorPriceSnapshotRecord | null
+): CompetitorPriceSnapshotRecord[] {
     if (record === null) {
-        return [];
+        return records;
     }
 
-    return record.payload.competitors.flatMap((hotel) => hotel.plans);
+    const merged = new Map(records.map((item) => [item.snapshotKey, item]));
+    merged.set(record.snapshotKey, record);
+    return Array.from(merged.values()).sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt));
 }
 
-function buildCompetitorPricePlanKey(plan: CompetitorPriceSnapshotPlan): string {
+function buildLatestCompetitorPriceRecordsByFetchDate(records: CompetitorPriceSnapshotRecord[]): CompetitorPriceSnapshotRecord[] {
+    const dailyRecords = new Map<string, CompetitorPriceSnapshotRecord>();
+    for (const record of records) {
+        const fetchDate = formatCompetitorPriceFetchDate(record.fetchedAt);
+        const existingRecord = dailyRecords.get(fetchDate);
+        if (existingRecord === undefined || existingRecord.fetchedAt.localeCompare(record.fetchedAt) < 0) {
+            dailyRecords.set(fetchDate, record);
+        }
+    }
+
+    return Array.from(dailyRecords.values()).sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt));
+}
+
+function buildCompetitorPriceFilterOptions(records: CompetitorPriceSnapshotRecord[]): CompetitorPriceFilterOptions {
+    const roomTypes = new Set<string>();
+    const mealTypes = new Set<string>();
+    for (const record of records) {
+        for (const plan of flattenCompetitorPricePlansWithOwn(record)) {
+            if (plan.jalanFacilityRoomType !== null && plan.jalanFacilityRoomType.trim() !== "") {
+                roomTypes.add(plan.jalanFacilityRoomType);
+            }
+            if (plan.mealType !== null && plan.mealType.trim() !== "") {
+                mealTypes.add(plan.mealType);
+            }
+        }
+    }
+
+    return {
+        roomTypes: Array.from(roomTypes).sort((left, right) => left.localeCompare(right, "ja")),
+        mealTypes: Array.from(mealTypes).sort((left, right) => formatMealTypeForDisplay(left).localeCompare(formatMealTypeForDisplay(right), "ja"))
+    };
+}
+
+function createCompetitorPriceFilterControls(
+    filters: CompetitorPriceFilterOptions,
+    roomTypeFilter: string | null,
+    mealTypeFilter: string | null
+): HTMLElement {
+    const controlsElement = document.createElement("div");
+    controlsElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CONTROLS_ATTRIBUTE, "");
+    controlsElement.append(
+        createCompetitorPriceSelect("部屋タイプ", filters.roomTypes, roomTypeFilter, (value) => {
+            competitorPriceRoomTypeFilter = value;
+            renderCompetitorPriceOverviewFromState();
+        }),
+        createCompetitorPriceSelect("食事", filters.mealTypes, mealTypeFilter, (value) => {
+            competitorPriceMealTypeFilter = value;
+            renderCompetitorPriceOverviewFromState();
+        }, formatMealTypeForDisplay)
+    );
+    return controlsElement;
+}
+
+function createCompetitorPriceSelect(
+    label: string,
+    options: string[],
+    selectedValue: string | null,
+    onChange: (value: string | null) => void,
+    formatLabel: (value: string) => string = (value) => value
+): HTMLLabelElement {
+    const labelElement = document.createElement("label");
+    labelElement.textContent = `${label} `;
+    const selectElement = document.createElement("select");
+    selectElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_SELECT_ATTRIBUTE, "");
+    const anyOptionElement = document.createElement("option");
+    anyOptionElement.value = "";
+    anyOptionElement.textContent = "指定なし";
+    selectElement.append(anyOptionElement);
+    for (const option of options) {
+        const optionElement = document.createElement("option");
+        optionElement.value = option;
+        optionElement.textContent = formatLabel(option);
+        selectElement.append(optionElement);
+    }
+    selectElement.value = selectedValue ?? "";
+    selectElement.addEventListener("change", () => {
+        onChange(selectElement.value === "" ? null : selectElement.value);
+    });
+    labelElement.append(selectElement);
+    return labelElement;
+}
+
+function buildCompetitorPriceGuestChartSeries(
+    dailyRecords: CompetitorPriceSnapshotRecord[],
+    roomTypeFilter: string | null,
+    mealTypeFilter: string | null
+): CompetitorPriceGuestChartSeries {
+    const fetchDates = dailyRecords.map((record) => formatCompetitorPriceFetchDate(record.fetchedAt));
+    const facilityMap = new Map<string, CompetitorPriceFacilitySeries>();
+    const pointsByGuestCount = new Map<number, CompetitorPriceChartPoint[]>();
+    for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
+        pointsByGuestCount.set(guestCount, []);
+    }
+
+    for (const record of dailyRecords) {
+        const fetchDate = formatCompetitorPriceFetchDate(record.fetchedAt);
+        for (const facility of buildCompetitorPriceFacilities(record)) {
+            if (!facilityMap.has(facility.yadNo)) {
+                facilityMap.set(facility.yadNo, {
+                    ...facility,
+                    color: COMPETITOR_PRICE_SERIES_COLORS[facilityMap.size % COMPETITOR_PRICE_SERIES_COLORS.length] ?? "#50627a"
+                });
+            }
+        }
+        for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
+            const points = pointsByGuestCount.get(guestCount) ?? [];
+            for (const [yadNo, price] of findMinimumCompetitorPrices(record, guestCount, roomTypeFilter, mealTypeFilter)) {
+                points.push({ fetchDate, yadNo, price });
+            }
+            pointsByGuestCount.set(guestCount, points);
+        }
+    }
+
+    return {
+        fetchDates,
+        facilities: Array.from(facilityMap.values()),
+        pointsByGuestCount
+    };
+}
+
+function createCompetitorPriceLegend(facilities: CompetitorPriceFacilitySeries[]): HTMLElement {
+    const legendElement = document.createElement("div");
+    legendElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_LEGEND_ATTRIBUTE, "");
+    for (const facility of facilities) {
+        const itemElement = document.createElement("span");
+        itemElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_LEGEND_ITEM_ATTRIBUTE, "");
+        const swatchElement = document.createElement("span");
+        swatchElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_LEGEND_SWATCH_ATTRIBUTE, "");
+        swatchElement.style.backgroundColor = facility.color;
+        itemElement.append(swatchElement, document.createTextNode(facility.name));
+        legendElement.append(itemElement);
+    }
+    return legendElement;
+}
+
+function createCompetitorPriceChartPanel(
+    guestCount: number,
+    chartSeries: CompetitorPriceGuestChartSeries
+): HTMLElement {
+    const panelElement = document.createElement("section");
+    panelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE, "");
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE, "");
+    titleElement.textContent = `${guestCount}名 最安値`;
+    const points = chartSeries.pointsByGuestCount.get(guestCount) ?? [];
+    if (points.length === 0) {
+        const emptyElement = document.createElement("div");
+        emptyElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE, "");
+        emptyElement.textContent = "対象データなし";
+        panelElement.replaceChildren(titleElement, emptyElement);
+        return panelElement;
+    }
+
+    panelElement.replaceChildren(titleElement, createCompetitorPriceChartSvg(chartSeries.fetchDates, chartSeries.facilities, points, guestCount));
+    return panelElement;
+}
+
+function createCompetitorPriceChartSvg(
+    fetchDates: string[],
+    facilities: CompetitorPriceFacilitySeries[],
+    points: CompetitorPriceChartPoint[],
+    guestCount: number
+): SVGSVGElement {
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    const width = 420;
+    const height = 164;
+    const paddingLeft = 54;
+    const paddingRight = 18;
+    const paddingTop = 18;
+    const paddingBottom = 30;
+    const plotWidth = width - paddingLeft - paddingRight;
+    const plotHeight = height - paddingTop - paddingBottom;
+    const prices = points.map((point) => point.price);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const yMin = minPrice === maxPrice ? Math.max(0, minPrice - 1000) : minPrice;
+    const yMax = minPrice === maxPrice ? maxPrice + 1000 : maxPrice;
+
+    const svgElement = document.createElementNS(svgNamespace, "svg");
+    svgElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE, "");
+    svgElement.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svgElement.setAttribute("role", "img");
+    svgElement.setAttribute("aria-label", `${guestCount}名の競合価格最安値推移`);
+
+    for (const [index, label] of [formatPriceForDisplay(yMax), formatPriceForDisplay(yMin)].entries()) {
+        const y = index === 0 ? paddingTop : height - paddingBottom;
+        const textElement = document.createElementNS(svgNamespace, "text");
+        textElement.setAttribute("x", "4");
+        textElement.setAttribute("y", String(y + 4));
+        textElement.textContent = label.replace("円", "");
+        svgElement.append(textElement);
+    }
+
+    for (const y of [paddingTop, height - paddingBottom]) {
+        const lineElement = document.createElementNS(svgNamespace, "line");
+        lineElement.setAttribute("x1", String(paddingLeft));
+        lineElement.setAttribute("x2", String(width - paddingRight));
+        lineElement.setAttribute("y1", String(y));
+        lineElement.setAttribute("y2", String(y));
+        svgElement.append(lineElement);
+    }
+
+    for (const [dateIndex, fetchDate] of fetchDates.entries()) {
+        const x = getCompetitorPriceChartX(dateIndex, fetchDates.length, paddingLeft, plotWidth);
+        const textElement = document.createElementNS(svgNamespace, "text");
+        textElement.setAttribute("x", x.toFixed(2));
+        textElement.setAttribute("y", String(height - 8));
+        textElement.setAttribute("text-anchor", "middle");
+        textElement.textContent = fetchDate.slice(5);
+        svgElement.append(textElement);
+    }
+
+    for (const facility of facilities) {
+        const facilityPoints = points
+            .filter((point) => point.yadNo === facility.yadNo)
+            .sort((left, right) => fetchDates.indexOf(left.fetchDate) - fetchDates.indexOf(right.fetchDate));
+        if (facilityPoints.length === 0) {
+            continue;
+        }
+
+        const pathData = facilityPoints
+            .map((point, index) => {
+                const x = getCompetitorPriceChartX(fetchDates.indexOf(point.fetchDate), fetchDates.length, paddingLeft, plotWidth);
+                const y = getCompetitorPriceChartY(point.price, yMin, yMax, paddingTop, plotHeight);
+                return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+            })
+            .join(" ");
+        const pathElement = document.createElementNS(svgNamespace, "path");
+        pathElement.setAttribute("d", pathData);
+        pathElement.setAttribute("fill", "none");
+        pathElement.setAttribute("stroke", facility.color);
+        pathElement.setAttribute("stroke-width", "2");
+        svgElement.append(pathElement);
+
+        for (const point of facilityPoints) {
+            const circleElement = document.createElementNS(svgNamespace, "circle");
+            circleElement.setAttribute("cx", getCompetitorPriceChartX(fetchDates.indexOf(point.fetchDate), fetchDates.length, paddingLeft, plotWidth).toFixed(2));
+            circleElement.setAttribute("cy", getCompetitorPriceChartY(point.price, yMin, yMax, paddingTop, plotHeight).toFixed(2));
+            circleElement.setAttribute("r", "3");
+            circleElement.setAttribute("fill", facility.color);
+            const titleElement = document.createElementNS(svgNamespace, "title");
+            titleElement.textContent = `${facility.name} ${point.fetchDate} ${formatPriceForDisplay(point.price)}`;
+            circleElement.append(titleElement);
+            svgElement.append(circleElement);
+        }
+    }
+
+    return svgElement;
+}
+
+function buildCompetitorPriceFacilities(record: CompetitorPriceSnapshotRecord): Array<{ yadNo: string; name: string }> {
+    const facilities: Array<{ yadNo: string; name: string }> = [];
+    if (record.payload.own !== null) {
+        facilities.push({ yadNo: record.payload.own.yadNo, name: "自社" });
+    }
+    for (const competitor of record.competitorSet) {
+        facilities.push({ yadNo: competitor.yadNo, name: competitor.name });
+    }
+    return facilities;
+}
+
+function findMinimumCompetitorPrices(
+    record: CompetitorPriceSnapshotRecord,
+    guestCount: number,
+    roomTypeFilter: string | null,
+    mealTypeFilter: string | null
+): Map<string, number> {
+    const minimumPrices = new Map<string, number>();
+    for (const plan of flattenCompetitorPricePlansWithOwn(record)) {
+        if (
+            plan.price === null
+            || plan.numGuests !== guestCount
+            || (roomTypeFilter !== null && plan.jalanFacilityRoomType !== roomTypeFilter)
+            || (mealTypeFilter !== null && plan.mealType !== mealTypeFilter)
+        ) {
+            continue;
+        }
+
+        const currentPrice = minimumPrices.get(plan.yadNo);
+        if (currentPrice === undefined || plan.price < currentPrice) {
+            minimumPrices.set(plan.yadNo, plan.price);
+        }
+    }
+    return minimumPrices;
+}
+
+function flattenCompetitorPricePlansWithOwn(record: CompetitorPriceSnapshotRecord): CompetitorPriceSnapshotPlan[] {
     return [
-        plan.yadNo,
-        plan.numGuests ?? "-",
-        plan.mealType ?? "-",
-        plan.jalanFacilityRoomType ?? "-",
-        plan.planName ?? "-"
-    ].join("|");
-}
-
-function compareCompetitorPriceComparisonRows(left: CompetitorPriceComparisonRow, right: CompetitorPriceComparisonRow): number {
-    return left.competitorName.localeCompare(right.competitorName, "ja")
-        || compareNullableNumber(left.currentPlan.numGuests, right.currentPlan.numGuests)
-        || (left.currentPlan.mealType ?? "").localeCompare(right.currentPlan.mealType ?? "", "ja")
-        || (left.currentPlan.jalanFacilityRoomType ?? "").localeCompare(right.currentPlan.jalanFacilityRoomType ?? "", "ja")
-        || (left.currentPlan.planName ?? "").localeCompare(right.currentPlan.planName ?? "", "ja");
-}
-
-function createCompetitorPriceComparisonRow(
-    row: CompetitorPriceComparisonRow,
-    previousRecord: CompetitorPriceSnapshotRecord | null
-): HTMLTableRowElement {
-    const rowElement = document.createElement("tr");
-    rowElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_ROW_ATTRIBUTE, "");
-
-    const delta = row.currentPlan.price !== null && row.previousPlan?.price !== undefined && row.previousPlan.price !== null
-        ? row.currentPlan.price - row.previousPlan.price
-        : null;
-
-    const cells = [
-        row.competitorName,
-        row.currentPlan.numGuests === null ? "-" : `${row.currentPlan.numGuests}名`,
-        formatNullableText(row.currentPlan.mealType),
-        formatNullableText(row.currentPlan.jalanFacilityRoomType),
-        formatNullableText(row.currentPlan.planName),
-        formatPriceForDisplay(row.currentPlan.price),
-        formatPriceForDisplay(row.previousPlan?.price ?? null),
-        formatPriceDeltaForDisplay(delta),
-        previousRecord === null ? "未取得" : formatDateTimeForDisplay(previousRecord.fetchedAt)
+        ...(record.payload.own?.plans ?? []),
+        ...record.payload.competitors.flatMap((hotel) => hotel.plans)
     ];
+}
 
-    for (const [index, value] of cells.entries()) {
-        const cellElement = document.createElement("td");
-        cellElement.textContent = value;
-        if (index === 4) {
-            cellElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_PLAN_ATTRIBUTE, "");
-        }
-        if (index === 7) {
-            cellElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_DELTA_ATTRIBUTE, "");
-            cellElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getMetricDeltaTone(delta, 0));
-        }
-        rowElement.append(cellElement);
+function getCompetitorPriceChartX(index: number, count: number, paddingLeft: number, plotWidth: number): number {
+    return count <= 1 ? paddingLeft + plotWidth / 2 : paddingLeft + (plotWidth * index) / (count - 1);
+}
+
+function getCompetitorPriceChartY(price: number, minPrice: number, maxPrice: number, paddingTop: number, plotHeight: number): number {
+    if (minPrice === maxPrice) {
+        return paddingTop + plotHeight / 2;
+    }
+    return paddingTop + plotHeight - ((price - minPrice) / (maxPrice - minPrice)) * plotHeight;
+}
+
+function formatCompetitorPriceFetchDate(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value.slice(0, 10);
     }
 
-    return rowElement;
+    const year = String(date.getFullYear());
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    return `${year}-${month}-${day}`;
+}
+
+function formatMealTypeForDisplay(value: string): string {
+    const labels: Record<string, string> = {
+        NONE: "素泊まり",
+        BREAKFAST: "朝食",
+        DINNER: "夕食",
+        BREAKFAST_DINNER: "朝夕食"
+    };
+    return labels[value] ?? value;
 }
 
 function resolveSalesSettingSectionContainer(card: SalesSettingCard): HTMLElement | null {
@@ -8369,8 +8583,8 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}] {
             display: flex;
             flex-direction: column;
-            gap: 4px;
-            margin: 0 0 12px;
+            gap: 8px;
+            margin: 12px 0 0;
             padding: 0;
             border: none;
             border-radius: 0;
@@ -8393,43 +8607,92 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.35;
         }
 
-        [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] {
-            width: fit-content;
-            max-width: 100%;
-            border-collapse: collapse;
+        [${SALES_SETTING_COMPETITOR_PRICE_CONTROLS_ATTRIBUTE}] {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 16px;
+            align-items: center;
+            color: #50627a;
+            font-size: 12px;
+            font-weight: 700;
         }
 
-        [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] th,
-        [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] td {
-            padding: 1px 12px 1px 0;
-            text-align: left;
-            vertical-align: top;
+        [${SALES_SETTING_COMPETITOR_PRICE_SELECT_ATTRIBUTE}] {
+            min-width: 140px;
+            margin-left: 4px;
+            padding: 2px 22px 2px 6px;
+            border: 1px solid #c9d3df;
+            border-radius: 4px;
+            background: #fff;
+            color: #243447;
+            font: inherit;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_LEGEND_ATTRIBUTE}] {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 6px 12px;
+            color: #50627a;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_LEGEND_ITEM_ATTRIBUTE}] {
+            display: inline-flex;
+            gap: 4px;
+            align-items: center;
             white-space: nowrap;
         }
 
-        [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] th {
-            color: #50627a;
+        [${SALES_SETTING_COMPETITOR_PRICE_LEGEND_SWATCH_ATTRIBUTE}] {
+            width: 10px;
+            height: 10px;
+            border-radius: 2px;
+            flex: 0 0 auto;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE}] {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(220px, 1fr));
+            gap: 12px 16px;
+            max-width: 900px;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE}] {
+            min-width: 0;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE}] {
+            margin-bottom: 2px;
+            color: #243447;
             font-size: 13px;
-            font-weight: 600;
+            font-weight: 800;
             line-height: 1.35;
         }
 
-        [${SALES_SETTING_COMPETITOR_PRICE_ROW_ATTRIBUTE}] {
-            color: #243447;
-            font-size: 13px;
-            font-weight: 600;
-            line-height: 1.4;
+        [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] {
+            display: block;
+            width: 100%;
+            max-width: 420px;
+            height: auto;
+            overflow: visible;
         }
 
-        [${SALES_SETTING_COMPETITOR_PRICE_PLAN_ATTRIBUTE}] {
-            max-width: 360px;
-            overflow: hidden;
-            text-overflow: ellipsis;
+        [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] text {
+            fill: #50627a;
+            font-size: 10px;
+            font-weight: 700;
         }
 
-        [${SALES_SETTING_COMPETITOR_PRICE_DELTA_ATTRIBUTE}] {
-            text-align: right;
-            font-weight: 800;
+        [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] line {
+            stroke: #d8e0ea;
+            stroke-width: 1;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE}] {
+            color: #7a8794;
+            font-size: 12px;
+            font-weight: 700;
         }
 
         [${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}] {
@@ -8473,13 +8736,8 @@ function ensureGroupRoomStyles(): void {
                 padding-right: 10px;
             }
 
-            [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] {
-                width: 100%;
-            }
-
-            [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] th,
-            [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] td {
-                padding-right: 8px;
+            [${SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE}] {
+                grid-template-columns: 1fr;
             }
         }
 

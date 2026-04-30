@@ -2,27 +2,32 @@
 
 ## Recently Implemented / GUI Confirmation Needs Tampermonkey Reload
 
-### RAU-CP-03 競合価格 snapshot の前回比 table を Analyze 日付ページに表示する
+### RAU-CP-03 競合価格 snapshot の人数別最安値グラフを競合価格タブに表示する
 
 - 目的:
-  - `RAU-CP-02` で保存した競合価格 snapshot を使い、競合価格が前回取得時点から上がったか、下がったかを Analyze 日付ページ上で確認できるようにする。
-  - Revenue Assistant 標準タブの現在値表を複製するのではなく、取得時点つき snapshot の差分だけを RAU の追加価値として表示する。
+  - `RAU-CP-02` で保存した競合価格 snapshot を使い、対象宿泊日の競合価格が取得日ごとにどう推移したかを確認できるようにする。
+  - Revenue Assistant 標準タブの現在値表を複製するのではなく、取得時点つき snapshot の人数別最安値推移を RAU の追加価値として表示する。
 - スコープ:
-  - Analyze 日付ページの競合価格 tab 内、または既存 UI を押しのけない領域に、競合施設別の前回比 table を追加する。
+  - Analyze 日付ページの競合価格 tab 内にだけ、RAU の競合価格表示を追加する。販売設定タブには表示しない。
+  - RAU の表示は、Revenue Assistant 標準の競合価格表より下に置く。
+  - `1名`、`2名`、`3名`、`4名` の人数別 panel で、施設別の最安値折れ線グラフを表示する。
+  - 自社と保存時点の競合施設を同じグラフ上の線として表示する。
+  - 横軸は取得日、縦軸は価格とする。同じ日に複数 snapshot がある場合は、その取得日の最新 snapshot を代表として使う。
+  - 部屋タイプと食事条件は、グラフ軸ではなく簡易絞り込みとして表示する。
   - Analyze 日付ページの indicator に、競合価格 snapshot の保存状態を追加する。
   - Analyze 画面内で競合価格 tab を開いた場合は、現在開いている stay_date の競合価格 snapshot 取得優先度を上げる。
-  - 表示列は、初期実装では `競合施設`、`人数`、`食事条件`、`部屋タイプ`、`プラン名`、`現在価格`、`前回価格`、`差分`、`前回取得時刻`、`条件 signature` とする。
-  - 同じ stay_date かつ同じ検索条件 signature の最新 snapshot と前回 snapshot を比較する。
-  - 競合施設を入れ替えた場合は、同じ `yad_no` の施設だけを前回比比較対象にし、現在の競合施設一覧に存在しない過去施設は別扱いにする。
-  - 価格差分は plan の完全一致条件を先に決めて比較する。初期候補は `yad_no + numGuests + mealType + jalanFacilityRoomType + planName` とする。
+  - 競合施設を入れ替えた場合でも、保存時点の施設名と `yad_no` を使い、現在の競合施設一覧だけで過去 snapshot を解釈しない。
 - 非目標:
-  - グラフ表示を追加すること。
+  - 販売設定タブに競合価格を表示すること。
   - booking_curve warm cache の通常範囲、同週、同月の全日付へ競合価格 snapshot 取得を広げること。
   - 在庫状態、販売停止、満室を表示すること。
   - 自動レート変更へ接続すること。
 - 受け入れ条件:
-  - 前回 snapshot がある場合、同じ `yad_no` と同じ plan 一致条件の価格差分を table で確認できる。
-  - 前回 snapshot がない場合、現在価格は表示しても、前回価格と差分は未取得として表示される。
+  - 競合価格タブを開いたとき、Revenue Assistant 標準の競合価格表より下に RAU の人数別最安値グラフが表示される。
+  - 販売設定タブには RAU の競合価格表示が出ない。
+  - `1名`、`2名`、`3名`、`4名` の panel が表示され、対象データがない人数は `対象データなし` と表示される。
+  - 部屋タイプと食事条件を指定なしから選択でき、選択後にグラフが再描画される。
+  - 同じ取得日に複数 snapshot がある場合、取得日の最新 snapshot だけがグラフに使われる。
   - indicator で、競合価格 snapshot の未取得、保存中、保存済み、skip、保存失敗を区別できる。
   - 競合価格 tab を開いた場合、現在開いている stay_date の競合価格 snapshot 保存が、通常の Analyze open 起点より優先される。
   - 競合施設入れ替え後、現在の競合施設一覧に存在しない過去施設を現在施設として誤表示しない。
@@ -33,10 +38,12 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 - 実装内容:
-  - `src/competitorPriceSnapshotStore.ts` に、同じ facility と stay_date の最新 snapshot と同じ検索条件 signature の前回 snapshot を読む read path を追加した。
+  - `src/competitorPriceSnapshotStore.ts` に、同じ facility と stay_date の snapshot 系列を読む read path を追加した。
   - Analyze 日付ページの indicator に、競合価格 snapshot の保存中、保存済み、前回あり、skip、保存失敗を表示するようにした。
-  - 前回比 table を、販売設定 UI の補助セクション、または競合価格 tab 表示中は税表示説明の直後に表示するようにした。
-  - table は最新 snapshot の現在 plan を行として表示し、同じ `yad_no + numGuests + mealType + jalanFacilityRoomType + planName` の前回 plan がある場合だけ前回価格と差分を表示する。
+  - 販売設定タブへの競合価格表示をやめ、競合価格 tab 内の標準表より下にだけ RAU の追加表示を出すようにした。
+  - 表示方式を前回比 table から、`1名`、`2名`、`3名`、`4名` の人数別最安値グラフへ変更した。
+  - 同日複数 snapshot は取得日の最新 snapshot を代表として使い、取得時刻は保存データと indicator 詳細に残すようにした。
+  - 部屋タイプと食事条件の簡易絞り込みを追加した。
   - 競合価格 tab を開いた場合は、現在開いている stay_date の競合価格 snapshot 保存を `competitor-tab` source として即時トリガーするようにした。
 - verify:
   - `npm run typecheck`: passed
@@ -45,9 +52,9 @@
   - `git diff --check`: passed
 - GUI 確認:
   - 2026-04-30 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` を Analyze 日付ページへ注入して確認した。
-  - Analyze open 時に、前回比 table が 34 行表示されることを確認した。
-  - 競合価格 tab を click した後も、競合価格 tab 本文の税表示説明の直後に前回比 table が 34 行表示されることを確認した。
-  - indicator に `競合価格: 前回あり`、保存時刻、前回取得時刻、競合施設数が表示されることを確認した。
+  - 競合価格 tab 内に `競合価格 最安値推移` が 1 セクション表示されることを確認した。
+  - `1名 最安値`、`2名 最安値`、`3名 最安値`、`4名 最安値` の 4 panel と、部屋タイプ、食事条件の 2 select が表示されることを確認した。
+  - 販売設定 tab に戻ったとき、RAU の競合価格セクションが 0 件になることを確認した。
 - 未確認:
   - Tampermonkey に `dist/*.user.js` を正式に再読込した状態での GUI 目視確認。
 
@@ -641,8 +648,8 @@ Later:
 - `RAU-AF-09` は線の本数と凡例、hover 表示が増えるため、`個人 / 団体` toggle の表示構造を固めた後に実装する。
 - `RAU-CP-01` は `/api/v5/competitor_prices` の現在値表を複製しない。価格推移を扱うには snapshot 保存設計が必要なため、表示実装より先に保存単位を設計する。
 - `RAU-CP-01` の調査結果により、競合価格は競合施設一覧なしでは取得できない。`RAU-CP-02` では、検索条件 signature ごとの snapshot store と取得 adapter を先に作る。
-- `RAU-CP-02` を先に行う理由は、前回比 table を出すには、同じ stay_date と同じ検索条件 signature の過去 snapshot を比較できる保存単位が必要なため。
-- `RAU-CP-03` は、`RAU-CP-02` の保存済み snapshot を使って初めて利用者向けの前回比 table を出す task とする。グラフ表示は snapshot が蓄積してから別判断にする。
+- `RAU-CP-02` を先に行う理由は、人数別最安値グラフを出すには、同じ stay_date の過去 snapshot と保存時点の競合施設情報を読める保存単位が必要なため。
+- `RAU-CP-03` は、`RAU-CP-02` の保存済み snapshot を使って、競合価格タブ内に人数別最安値グラフを出す task とする。販売設定タブには競合価格を表示しない。
 - `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加する。`RAU-CP-03` の build 注入確認まで完了したため、次の安定化 task とする。
 - `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。

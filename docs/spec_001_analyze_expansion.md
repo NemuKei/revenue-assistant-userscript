@@ -325,11 +325,14 @@ Indicator:
 - 競合価格タブを開いたときの優先取得は、現在開いている stay_date と現在の検索条件 signature に限定する。booking_curve warm cache の通常範囲や同週、同月の全日付へ競合価格取得を広げない。
 - 競合価格 snapshot の取得は、booking_curve warm cache queue と同じ完了定義には含めない。indicator では同じ場所に表示しても、状態、skip、error、最終保存時刻は競合価格 snapshot 専用の値として扱う。
 - 検索条件が違う競合価格 snapshot を同じ推移系列として扱わない。保存時には、検索条件 raw、検索条件 signature、取得元、取得時刻を必ず保持する。
-- 前回比 table は、既存の販売設定 UI と booking curve block を押しのけない補助セクションとして表示する。初期実装では、current-ui supplement portal または legacy card 親要素に追加し、Revenue Assistant 標準の競合価格 tab 内 DOM を直接書き換えない。
-- 前回比 table の比較対象は、同じ facility、同じ stay_date、同じ検索条件 signature の最新 snapshot と、その直前の snapshot とする。検索条件 signature が違う snapshot は、同じ stay_date であっても比較しない。
-- plan の同一判定は、`yad_no + numGuests + mealType + jalanFacilityRoomType + planName` の完全一致とする。URL と価格は同一判定に使わない。
-- 前回 snapshot がない場合、現在価格は表示し、前回価格、差分、前回取得時刻は未取得として表示する。
-- 現在 snapshot に存在しない過去施設や過去 plan は、初期 table では行として表示しない。競合施設入れ替え後の過去施設を現在施設として誤表示しないことを優先する。
+- 競合価格の RAU 追加表示は、販売設定タブには出さず、Revenue Assistant 標準の競合価格タブ内に閉じる。
+- 競合価格の RAU 追加表示は、Revenue Assistant 標準の競合価格表より下に置く。標準表の現在値確認を優先し、RAU 側は取得時点つき snapshot の推移確認を担当する。
+- 初期表示は表ではなく、取得日単位の最安値折れ線グラフを既定にする。グラフは `1名`、`2名`、`3名`、`4名` の人数別 panel とし、部屋タイプ別 panel にはしない。
+- 各人数 panel では、自社と保存時点の競合施設を線として表示する。競合施設を後から入れ替えても、過去 snapshot の施設名と `yad_no` を現在の競合施設一覧で上書きしない。
+- グラフの横軸は取得日、縦軸は価格とする。同じ取得日に複数 snapshot がある場合は、その取得日の最新 snapshot だけを代表として使う。取得時刻は保存データとして保持するが、初期表示の比較単位は日単位にする。
+- グラフに使う価格は、対象人数、施設、取得日、現在の簡易絞り込み条件に一致する plan の最安値とする。これは Revenue Assistant 標準表で見る最安値の考え方と揃える。
+- 部屋タイプと食事条件は、グラフ軸ではなく簡易絞り込みとして扱う。初期状態は指定なしとし、保存済み snapshot に含まれる `jalanFacilityRoomType` と `mealType` から選択肢を作る。
+- 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。初期表示では同じ stay_date の保存済み snapshot を読むが、画面上には最新 snapshot の条件 signature を明示し、条件違いが混在している可能性を見落とさないようにする。
 - 初回調査では、Revenue Assistant に保存されている検索条件を無視して、絞り込みなし、または空条件に近い request で競合価格 data を取得できるかを確認する。
 - 絞り込みなし取得が可能かどうかは、次の観点で判定する。
   - API endpoint と request method。
@@ -340,7 +343,7 @@ Indicator:
   - response 内の情報だけで、保存後に人数帯や食事条件で絞り込み直せるか。
   - Revenue Assistant 画面に保存されている検索条件が request にどう反映されるか。
 - 絞り込みなし response が十分な条件情報を含む場合は、広めの raw snapshot を保存し、RAU 側で後から絞り込む方式を候補にする。response が画面条件に強く依存する場合は、検索条件 signature ごとに別系列として保存する。
-- 初期表示は、snapshot が少ない段階ではグラフより表を優先する。まず `現在価格 / 前回価格 / 差分 / 前回取得時刻 / 条件 signature` を競合施設ごとに確認できる形を候補にし、snapshot が 3 点以上ある競合施設だけグラフ表示を後続候補にする。
+- 初期表示は、snapshot が少ない段階でも人数別の最安値グラフを優先する。snapshot が 1 日分だけの場合は線ではなく点として表示し、蓄積後に自然に推移グラフとして読める形にする。
 
 2026-04-30 の Chrome CDP 観測結果:
 
@@ -370,7 +373,7 @@ Indicator:
 ## Open Questions
 
 1. 月送りやタブ切替時の request 数をどこまで減らすべきか
-2. 競合価格表を analyze 画面へ追加する価値が、表示密度の増加を上回るか
+2. 競合価格タブ内の人数別最安値グラフで、施設入れ替え後の過去施設をどこまで表示するか
 3. Revenue Assistant の `/api/v4/booking_curve` response から、すべての履歴 stay_date で final rooms を安定して解決できるか
 4. BCL の outlier row weights に相当する除外または重み補正を、Revenue Assistant だけで再現すべきか
 5. 古い derived reference curve cache を削除する条件を、保存量または再計算頻度のどちらを基準に決めるか

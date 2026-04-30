@@ -101,6 +101,12 @@ export interface CompetitorPriceSnapshotPair {
     previousRecord: CompetitorPriceSnapshotRecord | null;
 }
 
+export interface CompetitorPriceSnapshotSeries {
+    records: CompetitorPriceSnapshotRecord[];
+    latestRecord: CompetitorPriceSnapshotRecord | null;
+    previousRecord: CompetitorPriceSnapshotRecord | null;
+}
+
 interface CompetitorPriceRequestContext {
     searchCondition: CompetitorPriceSnapshotSearchCondition;
     competitorSet: CompetitorPriceSnapshotCompetitor[];
@@ -176,8 +182,20 @@ export async function readLatestCompetitorPriceSnapshotPairForStayDate(
     facilityId: string,
     stayDate: string
 ): Promise<CompetitorPriceSnapshotPair> {
+    const series = await readCompetitorPriceSnapshotSeriesForStayDate(facilityId, stayDate);
+    return {
+        latestRecord: series.latestRecord,
+        previousRecord: series.previousRecord
+    };
+}
+
+export async function readCompetitorPriceSnapshotSeriesForStayDate(
+    facilityId: string,
+    stayDate: string
+): Promise<CompetitorPriceSnapshotSeries> {
     if (!isIndexedDbAvailable()) {
         return {
+            records: [],
             latestRecord: null,
             previousRecord: null
         };
@@ -186,29 +204,35 @@ export async function readLatestCompetitorPriceSnapshotPairForStayDate(
     return withCompetitorPriceSnapshotStore("readonly", async (store) => {
         const index = store.index("facility-stay-date");
         const snapshots = await getSnapshotRecordsByFacilityAndStayDate(index, facilityId, stayDate);
-        const latestRecord = snapshots
-            .slice()
-            .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
-
-        if (latestRecord === null) {
-            return {
-                latestRecord: null,
-                previousRecord: null
-            };
-        }
-
-        const previousRecord = snapshots
-            .filter((snapshot) => (
-                snapshot.snapshotKey !== latestRecord.snapshotKey
-                && snapshot.conditionSignature === latestRecord.conditionSignature
-            ))
-            .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
-
-        return {
-            latestRecord,
-            previousRecord
-        };
+        return buildCompetitorPriceSnapshotSeries(snapshots);
     });
+}
+
+function buildCompetitorPriceSnapshotSeries(snapshots: CompetitorPriceSnapshotRecord[]): CompetitorPriceSnapshotSeries {
+    const records = snapshots
+        .slice()
+        .sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt));
+    const latestRecord = records[records.length - 1] ?? null;
+    if (latestRecord === null) {
+        return {
+            records,
+            latestRecord: null,
+            previousRecord: null
+        };
+    }
+
+    const previousRecord = records
+        .filter((snapshot) => (
+            snapshot.snapshotKey !== latestRecord.snapshotKey
+            && snapshot.conditionSignature === latestRecord.conditionSignature
+        ))
+        .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
+
+    return {
+        records,
+        latestRecord,
+        previousRecord
+    };
 }
 
 async function persistCompetitorPriceSnapshotInternal(
