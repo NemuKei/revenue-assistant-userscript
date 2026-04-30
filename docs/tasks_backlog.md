@@ -116,7 +116,9 @@
 - GUI 確認:
   - Chrome CDP で build 済み userscript を Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` へ注入し、旧 booking curve localStorage key 36 件が削除されることを確認した。
   - 同じ確認で、販売設定タブの booking curve section 1 件、booking curve SVG 2 件が表示されることを確認した。
-  - 同じページ上で既存 Tampermonkey の旧 userscript も動いていたため、旧版由来とみられる booking curve key 再生成が残った。Tampermonkey 側をこの build に更新した後の最終確認が必要。
+  - Tampermonkey 側を `a4c4cc9` の build に更新後、Analyze 日付ページを再読み込みして再確認した。localStorage の booking-curve key は 0 件、booking-curve bytes は 0 のまま維持された。
+  - 同じ再確認で、販売設定タブ内の group rows 6 件、overall summary 1 件、rank overview 1 件、booking curve section 1 件、booking curve SVG 2 件を確認した。
+  - `QuotaExceededError` は再発していない。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl

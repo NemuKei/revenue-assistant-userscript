@@ -12,7 +12,7 @@
   - 競合価格 snapshot は IndexedDB 保存で正常確認済みのため、競合価格の本線は止めず、booking curve localStorage cache の削除、縮小、または IndexedDB 参照への寄せ方を決める。
   - 実装修正する場合は、booking curve current 表示、reference curve 非同期補完、warm cache indicator の既存挙動を維持する。
   - Chrome CDP で確認した localStorage 容量の大半は `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` 配下の booking curve response cache だったため、IndexedDB raw source を正本として localStorage 側の重複保存を止める。
-  - コード実装と build は完了。Tampermonkey 側をこの build に更新した状態で、Analyze 日付ページ再読み込み後に booking curve localStorage key が再生成されないことを最終確認する。
+  - コード実装、build、Tampermonkey 更新後の GUI 確認まで完了。Analyze 日付ページ再読み込み後も booking curve localStorage key は再生成されない。
 
 ## Current State
 
@@ -70,7 +70,7 @@
 - `RAU-CP-03` の GUI 確認は、Chrome CDP で build 済み `dist` を Analyze 日付ページへ注入して確認済み。Tampermonkey 側で `dist/*.user.js` を正式に再読込しての確認は未実施。
 - `RAU-WC-07` はコード実装済み。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行った。Chrome CDP 確認では、localStorage 全体約 5.18 MB のうち、booking curve localStorage key 36 件が約 5.16 MB を占めていた。
 - `RAU-WC-07` の実装では、`src/main.ts` の booking curve 取得経路から localStorage persistent cache の読み込みと書き込みを外し、既存 key は `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` の facility prefix に限定して削除する。IndexedDB raw source、derived reference curve、競合価格 snapshot は削除対象にしない。
-- Chrome CDP で build 済み userscript を注入したところ、旧 booking curve localStorage key 36 件の削除と、販売設定タブの booking curve section 1 件、SVG 2 件の表示を確認した。同じページ上で既存 Tampermonkey の旧 userscript も動いていたため、旧版由来とみられる booking curve key 再生成が残った。次は Tampermonkey 側をこの build に更新してから再読み込みし、再生成が止まることを確認する。
+- Tampermonkey 側を `a4c4cc9` の build に更新後、Chrome CDP で Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を再読み込みして確認した。localStorage の booking-curve key は 0 件、booking-curve bytes は 0 のまま維持された。販売設定タブ内では group rows 6 件、overall summary 1 件、rank overview 1 件、booking curve section 1 件、booking curve SVG 2 件を確認した。`QuotaExceededError` は再発していない。
 
 ## Next Re-entry
 
@@ -88,9 +88,9 @@
 最初にやること:
 
 1. `docs/tasks_backlog.md` の `RAU-WC-07` を確認する。
-2. Tampermonkey 側で `dist/revenue-assistant-userscript.user.js` を更新し、Analyze 日付ページを再読み込みする。
-3. Chrome CDP で、`revenue-assistant:group-room-count:v4:<facility>:booking-curve:` 配下の key が削除され、再生成されないことを確認する。
-4. 販売設定タブで、ホテル全体 booking curve block と、開いた室タイプ card の current 表示、reference curve 非同期補完、indicator 表示を確認する。
+2. 次に進む場合は、`docs/tasks_backlog.md` の `Now` から次の安定化または競合価格系 task を選ぶ。
+3. 競合価格を続ける場合は、競合価格タブ内の保存済み snapshot 表示と indicator の表示密度を、実画面で見ながら調整する。
+4. booking curve 側を続ける場合は、reference curve 取得率が低い日付で、表示待ち、取得中、取得不可の区別が十分かを確認する。
 
 変更しない契約:
 
