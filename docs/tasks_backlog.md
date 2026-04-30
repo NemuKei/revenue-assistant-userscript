@@ -59,6 +59,7 @@
   - warm cache indicator に最小化ボタンを追加した。
   - 競合価格 tab を開いた場合は、現在開いている stay_date の競合価格 snapshot 保存を `competitor-tab` source として即時トリガーするようにした。
   - `競合価格 -> 販売設定 -> 競合価格` と遷移した場合でも、重複取得は抑制したまま、保存済み snapshot series を読み直して競合価格グラフを再描画するようにした。
+  - 取得日数が少ない競合価格グラフでは、横軸をパネル最大幅まで引き伸ばさず、短い描画幅を中央寄せで使うようにした。7日以上になった場合は従来どおりパネル幅を使う。
 - verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
@@ -76,6 +77,7 @@
   - 2026-05-14 の Analyze 日付ページで、販売設定 tab 下部に `競合価格 最安値推移` が割り込まないことを Chrome CDP build 注入で確認した。
   - 2026-04-30 の Analyze 日付ページで、競合価格 tab 本文が表示されている場合は `競合価格 最安値推移` が 1 セクション、4 panel で表示されることを Chrome CDP build 注入で再確認した。
   - 2026-05-01 に Chrome CDP で build 済み userscript を注入し、`競合価格 -> 販売設定 -> 競合価格` の遷移後も `競合価格 最安値推移` が 1 セクション、4 panel、4 SVG で再表示されることを確認した。
+  - 2026-05-01 に Chrome CDP で build 済み userscript を注入し、2日分の競合価格グラフで日付ラベル、点、グリッド線が `315〜475` の短い中央寄せ幅に収まり、旧表示の `54〜736` 両端配置にならないことを確認した。
 - 未確認:
   - Tampermonkey に `dist/*.user.js` を正式に再読込した状態での GUI 目視確認。
   - Tampermonkey 正式再読込後に、indicator 最小化後の `表示` button で詳細を再表示できること。

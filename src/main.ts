@@ -119,7 +119,7 @@ const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE = "data-ra-sales-setting-
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
-const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v2";
+const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v3";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -6875,6 +6875,13 @@ interface CompetitorPriceGuestChartSeries {
     pointsByGuestCount: Map<number, CompetitorPriceChartPoint[]>;
 }
 
+interface CompetitorPriceChartLayout {
+    plotLeft: number;
+    plotWidth: number;
+    activeLeft: number;
+    activeWidth: number;
+}
+
 function mergeCompetitorPriceSnapshotRecords(
     records: CompetitorPriceSnapshotRecord[],
     record: CompetitorPriceSnapshotRecord | null
@@ -7073,6 +7080,7 @@ function createCompetitorPriceChartSvg(
     const paddingBottom = 34;
     const plotWidth = width - paddingLeft - paddingRight;
     const plotHeight = height - paddingTop - paddingBottom;
+    const layout = getCompetitorPriceChartLayout(fetchDates.length, paddingLeft, plotWidth);
     const prices = points.map((point) => point.price);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
@@ -7096,15 +7104,15 @@ function createCompetitorPriceChartSvg(
 
     for (const y of [paddingTop, height - paddingBottom]) {
         const lineElement = document.createElementNS(svgNamespace, "line");
-        lineElement.setAttribute("x1", String(paddingLeft));
-        lineElement.setAttribute("x2", String(width - paddingRight));
+        lineElement.setAttribute("x1", layout.activeLeft.toFixed(2));
+        lineElement.setAttribute("x2", (layout.activeLeft + layout.activeWidth).toFixed(2));
         lineElement.setAttribute("y1", String(y));
         lineElement.setAttribute("y2", String(y));
         svgElement.append(lineElement);
     }
 
     for (const [dateIndex, fetchDate] of fetchDates.entries()) {
-        const x = getCompetitorPriceChartX(dateIndex, fetchDates.length, paddingLeft, plotWidth);
+        const x = getCompetitorPriceChartX(dateIndex, fetchDates.length, layout);
         const textElement = document.createElementNS(svgNamespace, "text");
         textElement.setAttribute("x", x.toFixed(2));
         textElement.setAttribute("y", String(height - 8));
@@ -7133,7 +7141,7 @@ function createCompetitorPriceChartSvg(
 
         const pathData = facilityPoints
             .map((point, index) => {
-                const x = getCompetitorPriceChartX(fetchDates.indexOf(point.fetchDate), fetchDates.length, paddingLeft, plotWidth);
+                const x = getCompetitorPriceChartX(fetchDates.indexOf(point.fetchDate), fetchDates.length, layout);
                 const y = getCompetitorPriceChartY(point.price, yMin, yMax, paddingTop, plotHeight);
                 return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
             })
@@ -7147,7 +7155,7 @@ function createCompetitorPriceChartSvg(
 
         for (const point of facilityPoints) {
             const circleElement = document.createElementNS(svgNamespace, "circle");
-            circleElement.setAttribute("cx", getCompetitorPriceChartX(fetchDates.indexOf(point.fetchDate), fetchDates.length, paddingLeft, plotWidth).toFixed(2));
+            circleElement.setAttribute("cx", getCompetitorPriceChartX(fetchDates.indexOf(point.fetchDate), fetchDates.length, layout).toFixed(2));
             circleElement.setAttribute("cy", getCompetitorPriceChartY(point.price, yMin, yMax, paddingTop, plotHeight).toFixed(2));
             circleElement.setAttribute("r", "3");
             circleElement.setAttribute("fill", facility.color);
@@ -7159,12 +7167,12 @@ function createCompetitorPriceChartSvg(
     }
 
     for (const [dateIndex, fetchDate] of fetchDates.entries()) {
-        const x = getCompetitorPriceChartX(dateIndex, fetchDates.length, paddingLeft, plotWidth);
+        const x = getCompetitorPriceChartX(dateIndex, fetchDates.length, layout);
         const previousFetchDate = fetchDates[dateIndex - 1] ?? null;
         const hitboxElement = document.createElementNS(svgNamespace, "rect");
-        hitboxElement.setAttribute("x", String(dateIndex === 0 ? paddingLeft : getCompetitorPriceChartX(dateIndex - 0.5, fetchDates.length, paddingLeft, plotWidth)));
+        hitboxElement.setAttribute("x", getCompetitorPriceChartHitboxX(dateIndex, fetchDates.length, layout).toFixed(2));
         hitboxElement.setAttribute("y", String(paddingTop));
-        hitboxElement.setAttribute("width", String(fetchDates.length <= 1 ? plotWidth : plotWidth / Math.max(1, fetchDates.length - 1)));
+        hitboxElement.setAttribute("width", getCompetitorPriceChartHitboxWidth(fetchDates.length, layout).toFixed(2));
         hitboxElement.setAttribute("height", String(plotHeight));
         hitboxElement.setAttribute("fill", "transparent");
         hitboxElement.setAttribute("tabindex", "0");
@@ -7294,8 +7302,39 @@ function flattenCompetitorPricePlansWithOwn(record: CompetitorPriceSnapshotRecor
     ];
 }
 
-function getCompetitorPriceChartX(index: number, count: number, paddingLeft: number, plotWidth: number): number {
-    return count <= 1 ? paddingLeft + plotWidth / 2 : paddingLeft + (plotWidth * index) / (count - 1);
+function getCompetitorPriceChartLayout(fetchDateCount: number, plotLeft: number, plotWidth: number): CompetitorPriceChartLayout {
+    const activeWidth = fetchDateCount >= 7
+        ? plotWidth
+        : Math.min(plotWidth, Math.max(160, (Math.max(2, fetchDateCount) - 1) * 140));
+    return {
+        plotLeft,
+        plotWidth,
+        activeLeft: plotLeft + (plotWidth - activeWidth) / 2,
+        activeWidth
+    };
+}
+
+function getCompetitorPriceChartX(index: number, count: number, layout: CompetitorPriceChartLayout): number {
+    return count <= 1
+        ? layout.activeLeft + layout.activeWidth / 2
+        : layout.activeLeft + (layout.activeWidth * index) / (count - 1);
+}
+
+function getCompetitorPriceChartHitboxX(index: number, count: number, layout: CompetitorPriceChartLayout): number {
+    if (count <= 1) {
+        return layout.activeLeft;
+    }
+
+    const stepWidth = layout.activeWidth / Math.max(1, count - 1);
+    return Math.max(layout.plotLeft, getCompetitorPriceChartX(index, count, layout) - stepWidth / 2);
+}
+
+function getCompetitorPriceChartHitboxWidth(count: number, layout: CompetitorPriceChartLayout): number {
+    if (count <= 1) {
+        return layout.activeWidth;
+    }
+
+    return layout.activeWidth / Math.max(1, count - 1);
 }
 
 function getCompetitorPriceChartY(price: number, minPrice: number, maxPrice: number, paddingTop: number, plotHeight: number): number {
