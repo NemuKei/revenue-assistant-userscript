@@ -64,7 +64,7 @@
 - `/api/v5/competitor_prices` の response は `own` と `competitors` を持つ。plan は人数、食事条件、プラン名、じゃらん部屋タイプ、URL、価格、自社価格との差分を持つが、在庫状態、販売停止、満室、ページング情報は持たない。
 - `RAU-CP-02` はコード実装済み。`src/competitorPriceSnapshotStore.ts` に competitor price snapshot の IndexedDB store、request builder、response adapter、同じ検索条件 signature の最新 snapshot read path を追加した。
 - `RAU-CP-02` では、Analyze 日付ページ同期時に、同じ施設、stay_date、batch date につき 1 回だけ snapshot 保存を試す。競合価格 UI と warm cache 接続は実装していない。
-- `RAU-CP-03` はコード実装済み。保存済み snapshot を使い、販売設定タブではなく競合価格タブ内の標準表より下に、`1名`、`2名`、`3名`、`4名` の人数別最安値グラフを表示する。部屋タイプと食事条件は簡易絞り込みとして扱う。indicator には競合価格 snapshot の未取得、保存中、保存済み、skip、保存失敗を表示し、競合価格 tab を開いた場合は現在開いている stay_date の snapshot 取得を優先する。
+- `RAU-CP-03` はコード実装済み。保存済み snapshot を使い、販売設定タブではなく競合価格タブ内の標準表より下に、`1名`、`2名`、`3名`、`4名` の人数別最安値グラフを縦 4 ブロックで表示する。部屋タイプと食事条件は toggle button の簡易絞り込みとして扱い、部屋タイプ名は `シングル`、`ダブル`、`ツイン`、`トリプル` などのカタカナ表記へ寄せる。グラフ Tooltip では取得日ごとの施設別最安値と前回差分を表示する。indicator には競合価格 snapshot の状態を表示し、詳細を折りたためる最小化 button を持たせる。競合価格 tab を開いた場合は現在開いている stay_date の snapshot 取得を優先する。
 - `RAU-CP-03` の GUI 確認は、Chrome CDP で build 済み `dist` を Analyze 日付ページへ注入して確認済み。Tampermonkey 側で `dist/*.user.js` を正式に再読込しての確認は未実施。
 - `RAU-WC-07` が次の本線。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行う。
 
@@ -217,7 +217,10 @@
   - `npm run lint`: passed
   - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
   - `git diff --check`: passed
-  - Chrome CDP build 注入 GUI 確認: passed。競合価格 tab 内に `競合価格 最安値推移` が 1 セクション表示され、`1名`、`2名`、`3名`、`4名` の 4 panel と、部屋タイプ、食事条件の 2 select が表示されることを確認
+  - Chrome CDP build 注入 GUI 確認: passed。競合価格 tab 内に `競合価格 最安値推移` が 1 セクション表示され、`1名`、`2名`、`3名`、`4名` の 4 panel が縦 4 ブロックで表示されることを確認
+  - 競合価格 filter GUI 確認: passed。部屋タイプと食事条件の pull-down が 0 件になり、toggle button として表示されることを確認。部屋タイプ toggle は `シングル`、`ダブル`、`ツイン`、`トリプル` のカタカナ表記で重複なく表示されることを確認
+  - 競合価格 Tooltip GUI 確認: passed。取得日軸 hover で Tooltip が表示され、施設別最安値と前回差分欄が表示されることを確認
+  - indicator 最小化 GUI 確認: partially passed。`最小化` button で詳細表示が非表示になることを確認。Chrome CDP 注入確認では既存 Tampermonkey と build 注入が同時に動くため、`表示` button による再表示は Tampermonkey 正式再読込後に確認する
   - 販売設定 tab GUI 確認: passed。販売設定 tab に戻ったとき、RAU の競合価格セクションが 0 件になることを確認
   - Tampermonkey 正式再読込後の GUI 目視確認: 未実施
 

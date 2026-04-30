@@ -61,6 +61,7 @@ const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
+const GROUP_ROOM_STYLE_VERSION = "20260430-competitor-price-toggle-v1";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
@@ -103,7 +104,10 @@ const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_SIGNATURE_ATTRIBUTE = "data-ra-sal
 const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_TITLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview-title";
 const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview-meta";
 const SALES_SETTING_COMPETITOR_PRICE_CONTROLS_ATTRIBUTE = "data-ra-sales-setting-competitor-price-controls";
-const SALES_SETTING_COMPETITOR_PRICE_SELECT_ATTRIBUTE = "data-ra-sales-setting-competitor-price-select";
+const SALES_SETTING_COMPETITOR_PRICE_FILTER_GROUP_ATTRIBUTE = "data-ra-sales-setting-competitor-price-filter-group";
+const SALES_SETTING_COMPETITOR_PRICE_FILTER_LABEL_ATTRIBUTE = "data-ra-sales-setting-competitor-price-filter-label";
+const SALES_SETTING_COMPETITOR_PRICE_FILTER_BUTTON_ATTRIBUTE = "data-ra-sales-setting-competitor-price-filter-button";
+const SALES_SETTING_COMPETITOR_PRICE_FILTER_ACTIVE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-filter-active";
 const SALES_SETTING_COMPETITOR_PRICE_LEGEND_ATTRIBUTE = "data-ra-sales-setting-competitor-price-legend";
 const SALES_SETTING_COMPETITOR_PRICE_LEGEND_ITEM_ATTRIBUTE = "data-ra-sales-setting-competitor-price-legend-item";
 const SALES_SETTING_COMPETITOR_PRICE_LEGEND_SWATCH_ATTRIBUTE = "data-ra-sales-setting-competitor-price-legend-swatch";
@@ -111,9 +115,11 @@ const SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE = "data-ra-sales-setti
 const SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-panel";
 const SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-title";
 const SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-svg";
+const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip";
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
+const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v2";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -129,6 +135,8 @@ const SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE = "data-ra-sales-setting-cu
 const SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator";
 const SALES_SETTING_WARM_CACHE_INDICATOR_STATUS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator-status";
 const SALES_SETTING_WARM_CACHE_INDICATOR_DETAIL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator-detail";
+const SALES_SETTING_WARM_CACHE_INDICATOR_TOGGLE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator-toggle";
+const SALES_SETTING_WARM_CACHE_INDICATOR_MINIMIZED_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator-minimized";
 const SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE = "data-ra-sales-setting-booking-curve-section";
 const SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE = "data-ra-sales-setting-booking-curve-kind";
 const SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-signature";
@@ -579,6 +587,7 @@ let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesS
 let competitorPriceSnapshotUiState: CompetitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
 let competitorPriceRoomTypeFilter: string | null = null;
 let competitorPriceMealTypeFilter: string | null = null;
+let salesSettingWarmCacheIndicatorMinimized = false;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
@@ -1856,6 +1865,10 @@ function renderSalesSettingWarmCacheIndicator(): void {
 
     const indicatorElement = existingElement ?? document.createElement("div");
     indicatorElement.setAttribute(SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE, "");
+    indicatorElement.setAttribute(
+        SALES_SETTING_WARM_CACHE_INDICATOR_MINIMIZED_ATTRIBUTE,
+        salesSettingWarmCacheIndicatorMinimized ? "true" : "false"
+    );
 
     const statusElement = indicatorElement.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_INDICATOR_STATUS_ATTRIBUTE}]`) ?? document.createElement("div");
     statusElement.setAttribute(SALES_SETTING_WARM_CACHE_INDICATOR_STATUS_ATTRIBUTE, "");
@@ -1865,7 +1878,22 @@ function renderSalesSettingWarmCacheIndicator(): void {
     detailElement.setAttribute(SALES_SETTING_WARM_CACHE_INDICATOR_DETAIL_ATTRIBUTE, "");
     detailElement.textContent = getSalesSettingWarmCacheDetailLabel();
 
-    indicatorElement.replaceChildren(statusElement, detailElement);
+    const toggleElement = indicatorElement.querySelector<HTMLButtonElement>(`[${SALES_SETTING_WARM_CACHE_INDICATOR_TOGGLE_ATTRIBUTE}]`) ?? document.createElement("button");
+    toggleElement.type = "button";
+    toggleElement.setAttribute(SALES_SETTING_WARM_CACHE_INDICATOR_TOGGLE_ATTRIBUTE, "");
+    toggleElement.textContent = salesSettingWarmCacheIndicatorMinimized ? "表示" : "最小化";
+    toggleElement.setAttribute(
+        "aria-label",
+        salesSettingWarmCacheIndicatorMinimized
+            ? "データ取得インジケーターの詳細を表示"
+            : "データ取得インジケーターを最小化"
+    );
+    toggleElement.onclick = () => {
+        salesSettingWarmCacheIndicatorMinimized = !salesSettingWarmCacheIndicatorMinimized;
+        renderSalesSettingWarmCacheIndicator();
+    };
+
+    indicatorElement.replaceChildren(statusElement, detailElement, toggleElement);
 
     if (indicatorElement.parentElement !== document.body) {
         document.body.append(indicatorElement);
@@ -6769,6 +6797,7 @@ function renderCompetitorPriceOverviewAtTarget(
     const dailyRecords = buildLatestCompetitorPriceRecordsByFetchDate(records);
     const chartSeries = buildCompetitorPriceGuestChartSeries(dailyRecords, roomTypeFilter, mealTypeFilter);
     const signature = [
+        COMPETITOR_PRICE_OVERVIEW_UI_VERSION,
         records.map((record) => record.snapshotKey).join("|"),
         roomTypeFilter ?? "room:any",
         mealTypeFilter ?? "meal:any"
@@ -6895,7 +6924,7 @@ function buildCompetitorPriceFilterOptions(records: CompetitorPriceSnapshotRecor
     for (const record of records) {
         for (const plan of flattenCompetitorPricePlansWithOwn(record)) {
             if (plan.jalanFacilityRoomType !== null && plan.jalanFacilityRoomType.trim() !== "") {
-                roomTypes.add(plan.jalanFacilityRoomType);
+                roomTypes.add(formatRoomTypeForDisplay(plan.jalanFacilityRoomType));
             }
             if (plan.mealType !== null && plan.mealType.trim() !== "") {
                 mealTypes.add(plan.mealType);
@@ -6917,11 +6946,11 @@ function createCompetitorPriceFilterControls(
     const controlsElement = document.createElement("div");
     controlsElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CONTROLS_ATTRIBUTE, "");
     controlsElement.append(
-        createCompetitorPriceSelect("部屋タイプ", filters.roomTypes, roomTypeFilter, (value) => {
+        createCompetitorPriceFilterGroup("部屋タイプ", filters.roomTypes, roomTypeFilter, (value) => {
             competitorPriceRoomTypeFilter = value;
             renderCompetitorPriceOverviewFromState();
-        }),
-        createCompetitorPriceSelect("食事", filters.mealTypes, mealTypeFilter, (value) => {
+        }, formatRoomTypeForDisplay),
+        createCompetitorPriceFilterGroup("食事", filters.mealTypes, mealTypeFilter, (value) => {
             competitorPriceMealTypeFilter = value;
             renderCompetitorPriceOverviewFromState();
         }, formatMealTypeForDisplay)
@@ -6929,33 +6958,40 @@ function createCompetitorPriceFilterControls(
     return controlsElement;
 }
 
-function createCompetitorPriceSelect(
+function createCompetitorPriceFilterGroup(
     label: string,
     options: string[],
     selectedValue: string | null,
     onChange: (value: string | null) => void,
     formatLabel: (value: string) => string = (value) => value
-): HTMLLabelElement {
-    const labelElement = document.createElement("label");
-    labelElement.textContent = `${label} `;
-    const selectElement = document.createElement("select");
-    selectElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_SELECT_ATTRIBUTE, "");
-    const anyOptionElement = document.createElement("option");
-    anyOptionElement.value = "";
-    anyOptionElement.textContent = "指定なし";
-    selectElement.append(anyOptionElement);
-    for (const option of options) {
-        const optionElement = document.createElement("option");
-        optionElement.value = option;
-        optionElement.textContent = formatLabel(option);
-        selectElement.append(optionElement);
+): HTMLElement {
+    const groupElement = document.createElement("div");
+    groupElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_FILTER_GROUP_ATTRIBUTE, "");
+    const labelElement = document.createElement("span");
+    labelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_FILTER_LABEL_ATTRIBUTE, "");
+    labelElement.textContent = label;
+    groupElement.append(labelElement);
+
+    const entries: Array<{ value: string | null; label: string }> = [
+        { value: null, label: "指定なし" },
+        ...options.map((option) => ({ value: option, label: formatLabel(option) }))
+    ];
+    for (const entry of entries) {
+        const buttonElement = document.createElement("button");
+        buttonElement.type = "button";
+        buttonElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_FILTER_BUTTON_ATTRIBUTE, "");
+        buttonElement.setAttribute(
+            SALES_SETTING_COMPETITOR_PRICE_FILTER_ACTIVE_ATTRIBUTE,
+            entry.value === selectedValue ? "true" : "false"
+        );
+        buttonElement.textContent = entry.label;
+        buttonElement.addEventListener("click", () => {
+            onChange(entry.value);
+        });
+        groupElement.append(buttonElement);
     }
-    selectElement.value = selectedValue ?? "";
-    selectElement.addEventListener("change", () => {
-        onChange(selectElement.value === "" ? null : selectElement.value);
-    });
-    labelElement.append(selectElement);
-    return labelElement;
+
+    return groupElement;
 }
 
 function buildCompetitorPriceGuestChartSeries(
@@ -7029,7 +7065,12 @@ function createCompetitorPriceChartPanel(
         return panelElement;
     }
 
-    panelElement.replaceChildren(titleElement, createCompetitorPriceChartSvg(chartSeries.fetchDates, chartSeries.facilities, points, guestCount));
+    const tooltipElement = createCompetitorPriceTooltip();
+    panelElement.replaceChildren(
+        titleElement,
+        tooltipElement,
+        createCompetitorPriceChartSvg(chartSeries.fetchDates, chartSeries.facilities, points, guestCount, tooltipElement)
+    );
     return panelElement;
 }
 
@@ -7037,15 +7078,16 @@ function createCompetitorPriceChartSvg(
     fetchDates: string[],
     facilities: CompetitorPriceFacilitySeries[],
     points: CompetitorPriceChartPoint[],
-    guestCount: number
+    guestCount: number,
+    tooltipElement: HTMLElement
 ): SVGSVGElement {
     const svgNamespace = "http://www.w3.org/2000/svg";
-    const width = 420;
-    const height = 164;
+    const width = 760;
+    const height = 220;
     const paddingLeft = 54;
-    const paddingRight = 18;
+    const paddingRight = 24;
     const paddingTop = 18;
-    const paddingBottom = 30;
+    const paddingBottom = 34;
     const plotWidth = width - paddingLeft - paddingRight;
     const plotHeight = height - paddingTop - paddingBottom;
     const prices = points.map((point) => point.price);
@@ -7088,6 +7130,16 @@ function createCompetitorPriceChartSvg(
         svgElement.append(textElement);
     }
 
+    const guideLineElement = document.createElementNS(svgNamespace, "line");
+    guideLineElement.setAttribute("x1", String(paddingLeft));
+    guideLineElement.setAttribute("x2", String(paddingLeft));
+    guideLineElement.setAttribute("y1", String(paddingTop));
+    guideLineElement.setAttribute("y2", String(height - paddingBottom));
+    guideLineElement.setAttribute("visibility", "hidden");
+    guideLineElement.setAttribute("stroke", "#8fa1b8");
+    guideLineElement.setAttribute("stroke-dasharray", "3 3");
+    svgElement.append(guideLineElement);
+
     for (const facility of facilities) {
         const facilityPoints = points
             .filter((point) => point.yadNo === facility.yadNo)
@@ -7123,7 +7175,97 @@ function createCompetitorPriceChartSvg(
         }
     }
 
+    for (const [dateIndex, fetchDate] of fetchDates.entries()) {
+        const x = getCompetitorPriceChartX(dateIndex, fetchDates.length, paddingLeft, plotWidth);
+        const previousFetchDate = fetchDates[dateIndex - 1] ?? null;
+        const hitboxElement = document.createElementNS(svgNamespace, "rect");
+        hitboxElement.setAttribute("x", String(dateIndex === 0 ? paddingLeft : getCompetitorPriceChartX(dateIndex - 0.5, fetchDates.length, paddingLeft, plotWidth)));
+        hitboxElement.setAttribute("y", String(paddingTop));
+        hitboxElement.setAttribute("width", String(fetchDates.length <= 1 ? plotWidth : plotWidth / Math.max(1, fetchDates.length - 1)));
+        hitboxElement.setAttribute("height", String(plotHeight));
+        hitboxElement.setAttribute("fill", "transparent");
+        hitboxElement.setAttribute("tabindex", "0");
+        hitboxElement.addEventListener("mouseenter", () => {
+            showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points);
+        });
+        hitboxElement.addEventListener("focus", () => {
+            showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points);
+        });
+        hitboxElement.addEventListener("mouseleave", () => {
+            hideCompetitorPriceTooltip(tooltipElement, guideLineElement);
+        });
+        hitboxElement.addEventListener("blur", () => {
+            hideCompetitorPriceTooltip(tooltipElement, guideLineElement);
+        });
+        svgElement.append(hitboxElement);
+    }
+
     return svgElement;
+}
+
+function createCompetitorPriceTooltip(): HTMLElement {
+    const tooltipElement = document.createElement("div");
+    tooltipElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE, "");
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "false");
+    return tooltipElement;
+}
+
+function showCompetitorPriceTooltip(
+    tooltipElement: HTMLElement,
+    guideLineElement: SVGLineElement,
+    x: number,
+    width: number,
+    fetchDate: string,
+    previousFetchDate: string | null,
+    facilities: CompetitorPriceFacilitySeries[],
+    points: CompetitorPriceChartPoint[]
+): void {
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "true");
+    tooltipElement.style.left = `${Math.max(72, Math.min(width - 72, x))}px`;
+    guideLineElement.setAttribute("visibility", "visible");
+    guideLineElement.setAttribute("x1", x.toFixed(2));
+    guideLineElement.setAttribute("x2", x.toFixed(2));
+
+    const rows = facilities
+        .map((facility) => {
+            const point = points.find((candidate) => candidate.fetchDate === fetchDate && candidate.yadNo === facility.yadNo);
+            if (point === undefined) {
+                return null;
+            }
+            const previousPoint = previousFetchDate === null
+                ? undefined
+                : points.find((candidate) => candidate.fetchDate === previousFetchDate && candidate.yadNo === facility.yadNo);
+            const delta = previousPoint === undefined ? null : point.price - previousPoint.price;
+            return { facility, point, delta };
+        })
+        .filter((row): row is { facility: CompetitorPriceFacilitySeries; point: CompetitorPriceChartPoint; delta: number | null } => row !== null);
+
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE, "");
+    titleElement.textContent = fetchDate;
+
+    const valueElement = document.createElement("div");
+    valueElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_VALUE_ATTRIBUTE, "");
+    valueElement.textContent = "最安値";
+
+    const detailElement = document.createElement("div");
+    detailElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_DETAIL_ATTRIBUTE, "");
+    for (const row of rows) {
+        const rowElement = document.createElement("div");
+        rowElement.textContent = [
+            row.facility.name,
+            formatPriceForDisplay(row.point.price),
+            row.delta === null ? "前回なし" : `前回差分 ${formatSignedPriceForDisplay(row.delta)}`
+        ].join(" / ");
+        detailElement.append(rowElement);
+    }
+
+    tooltipElement.replaceChildren(titleElement, valueElement, detailElement);
+}
+
+function hideCompetitorPriceTooltip(tooltipElement: HTMLElement, guideLineElement: SVGLineElement): void {
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "false");
+    guideLineElement.setAttribute("visibility", "hidden");
 }
 
 function buildCompetitorPriceFacilities(record: CompetitorPriceSnapshotRecord): Array<{ yadNo: string; name: string }> {
@@ -7148,7 +7290,7 @@ function findMinimumCompetitorPrices(
         if (
             plan.price === null
             || plan.numGuests !== guestCount
-            || (roomTypeFilter !== null && plan.jalanFacilityRoomType !== roomTypeFilter)
+            || (roomTypeFilter !== null && formatRoomTypeForDisplay(plan.jalanFacilityRoomType ?? "") !== roomTypeFilter)
             || (mealTypeFilter !== null && plan.mealType !== mealTypeFilter)
         ) {
             continue;
@@ -7200,6 +7342,39 @@ function formatMealTypeForDisplay(value: string): string {
         BREAKFAST_DINNER: "朝夕食"
     };
     return labels[value] ?? value;
+}
+
+function formatRoomTypeForDisplay(value: string): string {
+    const normalizedValue = value.trim().toLowerCase();
+    if (normalizedValue.includes("single") || normalizedValue.includes("シングル")) {
+        return "シングル";
+    }
+    if (normalizedValue.includes("double") || normalizedValue.includes("ダブル")) {
+        return "ダブル";
+    }
+    if (normalizedValue.includes("twin") || normalizedValue.includes("ツイン")) {
+        return "ツイン";
+    }
+    if (normalizedValue.includes("triple") || normalizedValue.includes("トリプル")) {
+        return "トリプル";
+    }
+    if (normalizedValue.includes("suite") || normalizedValue.includes("スイート")) {
+        return "スイート";
+    }
+    if (normalizedValue.includes("和室")) {
+        return "和室";
+    }
+    if (normalizedValue.includes("和洋")) {
+        return "和洋室";
+    }
+    return value;
+}
+
+function formatSignedPriceForDisplay(value: number): string {
+    if (value > 0) {
+        return `+${value.toLocaleString("ja-JP")}円`;
+    }
+    return `${value.toLocaleString("ja-JP")}円`;
 }
 
 function resolveSalesSettingSectionContainer(card: SalesSettingCard): HTMLElement | null {
@@ -7891,12 +8066,14 @@ function cleanupSalesSettingRoomDeltas(): void {
 }
 
 function ensureGroupRoomStyles(): void {
-    if (document.getElementById(GROUP_ROOM_STYLE_ID) !== null) {
+    const existingStyleElement = document.getElementById(GROUP_ROOM_STYLE_ID);
+    if (existingStyleElement?.getAttribute("data-ra-style-version") === GROUP_ROOM_STYLE_VERSION) {
         return;
     }
 
-    const styleElement = document.createElement("style");
+    const styleElement = existingStyleElement ?? document.createElement("style");
     styleElement.id = GROUP_ROOM_STYLE_ID;
+    styleElement.setAttribute("data-ra-style-version", GROUP_ROOM_STYLE_VERSION);
     styleElement.textContent = `
         [${GROUP_ROOM_LAYOUT_ATTRIBUTE}] {
             display: flex !important;
@@ -8149,7 +8326,17 @@ function ensureGroupRoomStyles(): void {
             font-size: 12px;
             line-height: 1.35;
             padding: 8px 10px;
-            pointer-events: none;
+            pointer-events: auto;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_INDICATOR_MINIMIZED_ATTRIBUTE}="true"] {
+            min-width: 0;
+            max-width: min(240px, calc(100vw - 36px));
+            padding: 6px 8px;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_INDICATOR_MINIMIZED_ATTRIBUTE}="true"] [${SALES_SETTING_WARM_CACHE_INDICATOR_DETAIL_ATTRIBUTE}] {
+            display: none;
         }
 
         [${SALES_SETTING_WARM_CACHE_INDICATOR_STATUS_ATTRIBUTE}] {
@@ -8162,6 +8349,19 @@ function ensureGroupRoomStyles(): void {
             font-size: 11px;
             font-weight: 600;
             white-space: normal;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_INDICATOR_TOGGLE_ATTRIBUTE}] {
+            margin-top: 5px;
+            padding: 2px 6px;
+            border: 1px solid #b8c7dc;
+            border-radius: 4px;
+            background: #fff;
+            color: #3f5f8c;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.2;
+            cursor: pointer;
         }
 
         [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="partial"] {
@@ -8610,22 +8810,42 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_COMPETITOR_PRICE_CONTROLS_ATTRIBUTE}] {
             display: flex;
             flex-wrap: wrap;
-            gap: 8px 16px;
+            gap: 8px 18px;
             align-items: center;
             color: #50627a;
             font-size: 12px;
             font-weight: 700;
         }
 
-        [${SALES_SETTING_COMPETITOR_PRICE_SELECT_ATTRIBUTE}] {
-            min-width: 140px;
-            margin-left: 4px;
-            padding: 2px 22px 2px 6px;
+        [${SALES_SETTING_COMPETITOR_PRICE_FILTER_GROUP_ATTRIBUTE}] {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            align-items: center;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_FILTER_LABEL_ATTRIBUTE}] {
+            margin-right: 2px;
+            color: #50627a;
+            font-weight: 800;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_FILTER_BUTTON_ATTRIBUTE}] {
+            padding: 2px 8px;
             border: 1px solid #c9d3df;
             border-radius: 4px;
             background: #fff;
-            color: #243447;
-            font: inherit;
+            color: #50627a;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.35;
+            cursor: pointer;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_FILTER_BUTTON_ATTRIBUTE}][${SALES_SETTING_COMPETITOR_PRICE_FILTER_ACTIVE_ATTRIBUTE}="true"] {
+            border-color: #4b7fc7;
+            background: #4b7fc7;
+            color: #fff;
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_LEGEND_ATTRIBUTE}] {
@@ -8653,12 +8873,13 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE}] {
             display: grid;
-            grid-template-columns: repeat(2, minmax(220px, 1fr));
-            gap: 12px 16px;
-            max-width: 900px;
+            grid-template-columns: minmax(320px, 1fr);
+            gap: 18px;
+            max-width: 980px;
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE}] {
+            position: relative;
             min-width: 0;
         }
 
@@ -8673,7 +8894,7 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] {
             display: block;
             width: 100%;
-            max-width: 420px;
+            max-width: 760px;
             height: auto;
             overflow: visible;
         }
@@ -8687,6 +8908,32 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] line {
             stroke: #d8e0ea;
             stroke-width: 1;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] {
+            position: absolute;
+            top: 28px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 2;
+            min-width: 220px;
+            max-width: min(360px, 90vw);
+            padding: 6px 8px;
+            border: 1px solid #cbd7e8;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.98);
+            box-shadow: 0 8px 24px rgba(32, 50, 76, 0.14);
+            pointer-events: none;
+            opacity: 0;
+            color: #29384d;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.45;
+            transition: opacity 120ms ease;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE}="true"] {
+            opacity: 1;
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE}] {
