@@ -830,6 +830,19 @@ function scheduleActiveCompetitorPriceSnapshotFromTab(): void {
     }
 
     scheduleCompetitorPriceSnapshot(analysisDate, batchDateKey, facilityCacheKey, "competitor-tab");
+    scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey, analysisDate);
+}
+
+function scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey: string, analysisDate: string): void {
+    void refreshCompetitorPriceSnapshotSeries(facilityCacheKey, analysisDate);
+    for (const delay of [120, 300, 700, 1500, 3000]) {
+        window.setTimeout(() => {
+            if (activeAnalyzeDate !== analysisDate || activeFacilityCacheKey !== facilityCacheKey) {
+                return;
+            }
+            renderCompetitorPriceOverviewFromState();
+        }, delay);
+    }
 }
 
 function syncPage(): void {
