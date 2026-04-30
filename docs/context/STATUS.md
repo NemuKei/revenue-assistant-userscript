@@ -4,14 +4,13 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-CP-03` 競合価格 snapshot の前回比 table を Analyze 日付ページに表示する
+- 主対象: `RAU-WC-07` booking curve localStorage 容量超過を整理する
 - この bundle で扱う Task ID:
-  - `RAU-CP-03` 競合価格 snapshot の前回比 table を Analyze 日付ページに表示する
+  - `RAU-WC-07` booking curve localStorage 容量超過を整理する
 - 今回の目的:
-  - `RAU-CP-02` で保存した競合価格 snapshot を使い、競合価格が前回取得時点から上がったか、下がったかを Analyze 日付ページ上で確認できるようにする。
-  - 標準の現在値表を複製するのではなく、取得時点つき snapshot の差分として `現在価格 / 前回価格 / 差分 / 前回取得時刻 / 条件 signature` を表示する。
-  - 同じ stay_date かつ同じ検索条件 signature の最新 snapshot と前回 snapshot を比較し、競合施設入れ替え後も `yad_no` が異なる施設を同一施設として扱わない。
-  - Analyze 日付ページの indicator に競合価格 snapshot の保存状態を表示し、競合価格 tab を開いた場合は現在開いている stay_date の snapshot 取得優先度を上げる。
+  - 2026-04-30 の GUI 確認中に出た `failed to write persistent booking-curve cache` / `QuotaExceededError` の対象 key と保存量を整理する。
+  - 競合価格 snapshot は IndexedDB 保存で正常確認済みのため、競合価格の本線は止めず、booking curve localStorage cache の削除、縮小、または IndexedDB 参照への寄せ方を決める。
+  - 実装修正する場合は、booking curve current 表示、reference curve 非同期補完、warm cache indicator の既存挙動を維持する。
 
 ## Current State
 
@@ -65,8 +64,9 @@
 - `/api/v5/competitor_prices` の response は `own` と `competitors` を持つ。plan は人数、食事条件、プラン名、じゃらん部屋タイプ、URL、価格、自社価格との差分を持つが、在庫状態、販売停止、満室、ページング情報は持たない。
 - `RAU-CP-02` はコード実装済み。`src/competitorPriceSnapshotStore.ts` に competitor price snapshot の IndexedDB store、request builder、response adapter、同じ検索条件 signature の最新 snapshot read path を追加した。
 - `RAU-CP-02` では、Analyze 日付ページ同期時に、同じ施設、stay_date、batch date につき 1 回だけ snapshot 保存を試す。競合価格 UI と warm cache 接続は実装していない。
-- `RAU-CP-03` は次の本線。保存済み snapshot を使い、競合価格 tab または既存 UI を押しのけない領域に前回比 table を表示する。indicator には競合価格 snapshot の未取得、保存中、保存済み、skip、保存失敗を表示し、競合価格 tab を開いた場合は現在開いている stay_date の snapshot 取得を優先する。
-- `RAU-WC-07` を `RAU-CP-03` の次 task として追加した。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行う。
+- `RAU-CP-03` はコード実装済み。保存済み snapshot を使い、販売設定 UI の補助セクション、または競合価格 tab 本文の税表示説明直後に前回比 table を表示する。indicator には競合価格 snapshot の未取得、保存中、保存済み、skip、保存失敗を表示し、競合価格 tab を開いた場合は現在開いている stay_date の snapshot 取得を優先する。
+- `RAU-CP-03` の GUI 確認は、Chrome CDP で build 済み `dist` を Analyze 日付ページへ注入して確認済み。Tampermonkey 側で `dist/*.user.js` を正式に再読込しての確認は未実施。
+- `RAU-WC-07` が次の本線。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行う。
 
 ## Next Re-entry
 
@@ -83,11 +83,11 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `RAU-CP-03` を確認する。
-2. `docs/spec_001_analyze_expansion.md` の `Competitor Price Table` 観測結果を確認する。
-3. `src/competitorPriceSnapshotStore.ts` の record と read path を確認する。
-4. 前回比 table の表示先、plan 一致条件、前回 snapshot がない場合の表示、indicator の保存状態表示、競合価格 tab open 時の優先取得を `docs/spec_001_analyze_expansion.md` に実装前 checkpoint として反映する。
-5. 競合価格 tab または既存 UI を押しのけない領域に、保存済み snapshot から作った前回比 table を表示し、indicator に競合価格 snapshot の状態を出す。
+1. `docs/tasks_backlog.md` の `RAU-WC-07` を確認する。
+2. `src/main.ts` の `readPersistedBookingCurve`、`writePersistedBookingCurve`、legacy cleanup、IndexedDB raw source read path を確認する。
+3. `QuotaExceededError` が出る localStorage key 群と値の大きさを Chrome CDP で確認する。
+4. `docs/spec_001_analyze_expansion.md` へ spec 更新が必要か判断し、必要なら実装前に反映する。
+5. localStorage booking curve cache の削除、縮小、または IndexedDB raw source への寄せ方を実装し、Analyze 日付ページの current 表示と reference curve 非同期補完を確認する。
 
 変更しない契約:
 
@@ -212,6 +212,14 @@
   - RAU 側の `/api/v5/competitor_prices?date=20260430&min_num_guests=1&max_num_guests=6&yad_nos[]=...`: `200`
   - IndexedDB `revenue-assistant-competitor-price-snapshots` / `competitor-price-snapshots`: snapshot 2 件。最新 snapshot は `facilityId=yad:358180`、`stayDate=20260430`、競合施設 5 件、自社 plan 6 件、競合 plan hotel 5 件
   - 同じ検索条件 signature の前回 snapshot 取得: passed。console log の `competitor price snapshot stored` で `previousFetchedAt=2026-04-30T02:10:25.817Z` を確認
+- 2026-04-30 の `RAU-CP-03` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+  - Chrome CDP build 注入 GUI 確認: passed。Analyze open 時に前回比 table 34 行、indicator の競合価格状態を確認
+  - 競合価格 tab click 後の GUI 確認: passed。標準の競合価格 tab 本文で、税表示説明の直後に前回比 table 34 行が残ることを確認
+  - Tampermonkey 正式再読込後の GUI 目視確認: 未実施
 
 ## Open Questions / Risks
 
@@ -229,7 +237,7 @@
 - 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。
 - 競合施設を入れ替えても、過去 snapshot の競合施設名と `yad_no` を現在の競合施設一覧で上書きしない。
 - 競合価格 response だけで、在庫状態、販売停止、満室を確定した扱いにしない。
-- `RAU-CP-03` では、検索条件 signature と IndexedDB schema は維持し、表示 UI と plan 一致条件だけを追加で確定する。
+- `RAU-CP-03` は build 注入確認まで完了したが、Tampermonkey 正式再読込後の目視確認は残る。
 - 2026-04-30 の GUI 確認中、既存 booking curve の localStorage persistent cache 書き込みで `QuotaExceededError` warning が複数出た。競合価格 snapshot は IndexedDB に保存できているが、booking curve 側の localStorage 容量超過は `RAU-WC-07` で整理対象にする。
 
 ## References

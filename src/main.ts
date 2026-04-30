@@ -36,7 +36,13 @@ import {
     readBookingCurveRawSourceRecord,
     writeBookingCurveRawSourceRecord
 } from "./bookingCurveRawSourceStore";
-import { persistCompetitorPriceSnapshot } from "./competitorPriceSnapshotStore";
+import {
+    persistCompetitorPriceSnapshot,
+    readLatestCompetitorPriceSnapshotPairForStayDate,
+    type CompetitorPriceSnapshotPair,
+    type CompetitorPriceSnapshotPlan,
+    type CompetitorPriceSnapshotRecord
+} from "./competitorPriceSnapshotStore";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Userscript"
@@ -93,6 +99,14 @@ const SALES_SETTING_RANK_OVERVIEW_VALUE_ATTRIBUTE = "data-ra-sales-setting-rank-
 const SALES_SETTING_RANK_OVERVIEW_DELTA_ATTRIBUTE = "data-ra-sales-setting-rank-overview-delta";
 const SALES_SETTING_RANK_DETAIL_ATTRIBUTE = "data-ra-sales-setting-rank-detail";
 const SALES_SETTING_RANK_DETAIL_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-rank-detail-signature";
+const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview";
+const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview-signature";
+const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_TITLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview-title";
+const SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE = "data-ra-sales-setting-competitor-price-overview-meta";
+const SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-table";
+const SALES_SETTING_COMPETITOR_PRICE_ROW_ATTRIBUTE = "data-ra-sales-setting-competitor-price-row";
+const SALES_SETTING_COMPETITOR_PRICE_PLAN_ATTRIBUTE = "data-ra-sales-setting-competitor-price-plan";
+const SALES_SETTING_COMPETITOR_PRICE_DELTA_ATTRIBUTE = "data-ra-sales-setting-competitor-price-delta";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -183,6 +197,7 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`,
     `[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`,
     `[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`,
+    `[${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}]`,
     `[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`,
     `[${SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE}]`,
     `[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`,
@@ -274,6 +289,20 @@ interface SalesSettingWarmCacheState {
     cooldownUntil: number | null;
     lastFetchedAt: string | null;
     pauseReason: string | null;
+}
+
+type CompetitorPriceSnapshotStatus = "idle" | "saving" | "stored" | "skipped" | "error";
+
+interface CompetitorPriceSnapshotUiState {
+    status: CompetitorPriceSnapshotStatus;
+    facilityId: string | null;
+    stayDate: string | null;
+    source: "analyze-open" | "competitor-tab" | null;
+    latestRecord: CompetitorPriceSnapshotRecord | null;
+    previousRecord: CompetitorPriceSnapshotRecord | null;
+    reason: string | null;
+    errorMessage: string | null;
+    updatedAt: string | null;
 }
 
 interface MonthlyCalendarCell {
@@ -521,6 +550,7 @@ const lincolnSuggestStatusRangeCache = new Map<string, Promise<LincolnSuggestSta
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
 const competitorPriceSnapshotAttemptKeys = new Set<string>();
+const competitorPriceSnapshotPriorityAttemptKeys = new Set<string>();
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
 const salesSettingBookingCurveReferenceVisibilityState = new Map<SalesSettingBookingCurveReferenceKind, boolean>();
 let salesSettingBookingCurveSameWeekdayVisible = false;
@@ -538,6 +568,7 @@ const salesSettingCurrentSettingsPromiseCache = new Map<string, Promise<SalesSet
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let salesSettingWarmCacheTimeoutId: number | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
+let competitorPriceSnapshotUiState: CompetitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
@@ -626,6 +657,10 @@ function installInteractionHooks(): void {
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (target instanceof Element) {
+            if (isCompetitorPriceTabTrigger(target)) {
+                scheduleActiveCompetitorPriceSnapshotFromTab();
+            }
+
             const referenceToggleButton = target.closest<HTMLButtonElement>(`[${SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_ATTRIBUTE}]`);
             if (referenceToggleButton !== null) {
                 event.preventDefault();
@@ -761,6 +796,23 @@ function clearInteractionSyncTimeouts(): void {
     }
 }
 
+function isCompetitorPriceTabTrigger(target: Element): boolean {
+    const tabElement = target.closest<HTMLElement>("button, a, [role='tab'], [data-testid]");
+    const text = tabElement?.textContent?.replace(/\s+/g, "") ?? "";
+    return text.includes("競合価格");
+}
+
+function scheduleActiveCompetitorPriceSnapshotFromTab(): void {
+    const analysisDate = activeAnalyzeDate;
+    const batchDateKey = activeBatchDateKey;
+    const facilityCacheKey = activeFacilityCacheKey;
+    if (analysisDate === null || batchDateKey === null || facilityCacheKey === null) {
+        return;
+    }
+
+    scheduleCompetitorPriceSnapshot(analysisDate, batchDateKey, facilityCacheKey, "competitor-tab");
+}
+
 function syncPage(): void {
     const nextHref = window.location.href;
     const previousAnalyzeDate = activeAnalyzeDate;
@@ -789,12 +841,17 @@ function syncPage(): void {
 
     if (selectedDate !== null && (nextHref !== activeHref || selectedDate !== previousAnalyzeDate)) {
         salesSettingBookingCurveOpenState.clear();
+        competitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+        cleanupCompetitorPriceOverview();
     }
 
     ensureCalendarObserver();
     queueCalendarSync({ reason: "sync-page" });
 
     if (selectedDate === null) {
+        competitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+        cleanupCompetitorPriceOverview();
+        renderSalesSettingWarmCacheIndicator();
         clearInteractionSyncTimeouts();
         clearConsistencyCheckTimeout();
 
@@ -869,6 +926,7 @@ function suspendCalendarFeatures(): void {
     cleanupMonthlyCalendarLatestChanges();
     cleanupSalesSettingOverallSummary();
     cleanupSalesSettingRankOverview();
+    cleanupCompetitorPriceOverview();
     cleanupSalesSettingRankDetails();
     cleanupSalesSettingGroupRooms();
     cleanupSalesSettingBookingCurveCards();
@@ -1225,6 +1283,20 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
         cooldownUntil: null,
         lastFetchedAt: null,
         pauseReason: null
+    };
+}
+
+function createInitialCompetitorPriceSnapshotUiState(): CompetitorPriceSnapshotUiState {
+    return {
+        status: "idle",
+        facilityId: null,
+        stayDate: null,
+        source: null,
+        latestRecord: null,
+        previousRecord: null,
+        reason: null,
+        errorMessage: null,
+        updatedAt: null
     };
 }
 
@@ -1761,7 +1833,11 @@ function getActiveSalesSettingWarmCacheRunElapsedMs(): number {
 function renderSalesSettingWarmCacheIndicator(): void {
     ensureGroupRoomStyles();
     const existingElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE}]`);
-    if (salesSettingWarmCacheState.status === "idle" && salesSettingWarmCacheState.total === 0) {
+    if (
+        salesSettingWarmCacheState.status === "idle"
+        && salesSettingWarmCacheState.total === 0
+        && competitorPriceSnapshotUiState.status === "idle"
+    ) {
         existingElement?.remove();
         renderSalesSettingWarmCacheCalendarMarkers();
         return;
@@ -1793,27 +1869,39 @@ function getSalesSettingWarmCacheStatusLabel(): string {
         ? `${dayProgress.completed} / ${dayProgress.total}日・進行 ${dayProgress.partial}日`
         : `${dayProgress.completed} / ${dayProgress.total}日`;
     const targetRangeText = getSalesSettingWarmCacheTargetDateRangeLabel("short");
+    let label: string;
     switch (salesSettingWarmCacheState.status) {
         case "building":
-            return "データ取得: 準備中";
+            label = "データ取得: 準備中";
+            break;
         case "running":
-            return `データ取得: 取得中 ${progressText}${targetRangeText === null ? "" : `（${targetRangeText}）`}`;
+            label = `データ取得: 取得中 ${progressText}${targetRangeText === null ? "" : `（${targetRangeText}）`}`;
+            break;
         case "paused":
-            return "データ取得: 一時停止中";
+            label = "データ取得: 一時停止中";
+            break;
         case "cooldown":
-            return "データ取得: クールダウン中";
+            label = "データ取得: クールダウン中";
+            break;
         case "limitReached":
-            return "データ取得: 上限到達";
+            label = "データ取得: 上限到達";
+            break;
         case "error":
-            return `データ取得: エラー ${salesSettingWarmCacheState.errors}`;
+            label = `データ取得: エラー ${salesSettingWarmCacheState.errors}`;
+            break;
         case "complete":
-            return `データ取得: 完了 ${progressText}${targetRangeText === null ? "" : `（${targetRangeText}）`}`;
+            label = `データ取得: 完了 ${progressText}${targetRangeText === null ? "" : `（${targetRangeText}）`}`;
+            break;
         case "idle":
         default:
-            return salesSettingWarmCacheState.total > 0
+            label = salesSettingWarmCacheState.total > 0
                 ? `データ取得: 待機中 ${progressText}${targetRangeText === null ? "" : `（${targetRangeText}）`}`
                 : "データ取得: 待機中";
+            break;
     }
+
+    const competitorLabel = getCompetitorPriceSnapshotStatusLabel();
+    return competitorLabel === null ? label : `${label} / ${competitorLabel}`;
 }
 
 function getSalesSettingWarmCacheDetailLabel(): string {
@@ -1834,10 +1922,65 @@ function getSalesSettingWarmCacheDetailLabel(): string {
         cooldownLabel,
         retryPendingCount > 0 ? `再試行待ち ${retryPendingCount}` : null,
         `保存 ${salesSettingWarmCacheState.fetched}`,
-        `skip ${salesSettingWarmCacheState.skipped}`
+        `skip ${salesSettingWarmCacheState.skipped}`,
+        getCompetitorPriceSnapshotDetailLabel()
     ].filter((part): part is string => part !== null && part !== "");
 
     return parts.join(" / ");
+}
+
+function getCompetitorPriceSnapshotStatusLabel(): string | null {
+    switch (competitorPriceSnapshotUiState.status) {
+        case "saving":
+            return "競合価格: 保存中";
+        case "stored":
+            return competitorPriceSnapshotUiState.previousRecord === null
+                ? "競合価格: 保存済み"
+                : "競合価格: 前回あり";
+        case "skipped":
+            return "競合価格: skip";
+        case "error":
+            return "競合価格: 保存失敗";
+        case "idle":
+        default:
+            return null;
+    }
+}
+
+function getCompetitorPriceSnapshotDetailLabel(): string | null {
+    if (competitorPriceSnapshotUiState.status === "idle") {
+        return null;
+    }
+
+    const stayDate = competitorPriceSnapshotUiState.stayDate === null
+        ? "日付不明"
+        : formatCompactDateForDisplay(competitorPriceSnapshotUiState.stayDate);
+    if (competitorPriceSnapshotUiState.status === "saving") {
+        return `競合価格 ${stayDate} 保存中`;
+    }
+
+    if (competitorPriceSnapshotUiState.status === "skipped") {
+        return `競合価格 ${stayDate} skip ${formatCompetitorPriceSnapshotSkipReason(competitorPriceSnapshotUiState.reason)}`;
+    }
+
+    if (competitorPriceSnapshotUiState.status === "error") {
+        return `競合価格 ${stayDate} 保存失敗 ${competitorPriceSnapshotUiState.errorMessage ?? ""}`.trim();
+    }
+
+    const latestRecord = competitorPriceSnapshotUiState.latestRecord;
+    if (latestRecord === null) {
+        return `競合価格 ${stayDate} 保存済み`;
+    }
+
+    const previousText = competitorPriceSnapshotUiState.previousRecord === null
+        ? "前回なし"
+        : `前回 ${formatDateTimeForDisplay(competitorPriceSnapshotUiState.previousRecord.fetchedAt)}`;
+    return [
+        `競合価格 ${stayDate}`,
+        `保存 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
+        previousText,
+        `競合 ${latestRecord.competitorSet.length}`
+    ].join(" ");
 }
 
 function getSalesSettingWarmCacheRetryPendingCount(): number {
@@ -2064,6 +2207,80 @@ function formatCompactDateForDisplay(dateKey: string): string {
     }
 
     return `${compactDateKey.slice(0, 4)}-${compactDateKey.slice(4, 6)}-${compactDateKey.slice(6, 8)}`;
+}
+
+function formatDateTimeForDisplay(value: string): string {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+        return value;
+    }
+
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${month}/${day} ${hours}:${minutes}`;
+}
+
+function formatNullableText(value: string | null): string {
+    return value === null || value.trim() === "" ? "-" : value;
+}
+
+function formatPriceForDisplay(value: number | null): string {
+    return value === null ? "-" : `${value.toLocaleString("ja-JP")}円`;
+}
+
+function formatPriceDeltaForDisplay(value: number | null): string {
+    if (value === null) {
+        return "-";
+    }
+
+    if (value > 0) {
+        return `+${value.toLocaleString("ja-JP")}円`;
+    }
+
+    return `${value.toLocaleString("ja-JP")}円`;
+}
+
+function shortenConditionSignature(value: string): string {
+    return value.length <= 24 ? value : `${value.slice(0, 24)}...`;
+}
+
+function compareNullableNumber(left: number | null, right: number | null): number {
+    if (left === right) {
+        return 0;
+    }
+
+    if (left === null) {
+        return 1;
+    }
+
+    if (right === null) {
+        return -1;
+    }
+
+    return left - right;
+}
+
+function formatCompetitorPriceSnapshotSkipReason(reason: string | null): string {
+    switch (reason) {
+        case "indexeddb-unavailable":
+            return "IndexedDBなし";
+        case "no-competitors":
+            return "競合施設なし";
+        case null:
+            return "理由不明";
+        default:
+            return reason;
+    }
+}
+
+function getErrorMessage(error: unknown): string {
+    if (error instanceof Error) {
+        return error.message;
+    }
+
+    return String(error);
 }
 
 function formatCompactMonthDayForDisplay(dateKey: string): string | null {
@@ -2937,21 +3154,53 @@ function createSyncContext(batchDateKey: string, facilityCacheKey: string): Sync
 function scheduleCompetitorPriceSnapshot(
     analysisDate: string,
     batchDateKey: string,
-    facilityCacheKey: string
+    facilityCacheKey: string,
+    source: "analyze-open" | "competitor-tab" = "analyze-open"
 ): void {
-    const attemptKey = `${facilityCacheKey}:${analysisDate}:${batchDateKey}`;
-    if (competitorPriceSnapshotAttemptKeys.has(attemptKey)) {
+    const attemptKey = `${facilityCacheKey}:${analysisDate}:${batchDateKey}:${source}`;
+    const attemptKeys = source === "competitor-tab"
+        ? competitorPriceSnapshotPriorityAttemptKeys
+        : competitorPriceSnapshotAttemptKeys;
+    if (attemptKeys.has(attemptKey)) {
         return;
     }
 
-    competitorPriceSnapshotAttemptKeys.add(attemptKey);
+    attemptKeys.add(attemptKey);
+    competitorPriceSnapshotUiState = {
+        ...competitorPriceSnapshotUiState,
+        status: "saving",
+        facilityId: facilityCacheKey,
+        stayDate: analysisDate,
+        source,
+        reason: null,
+        errorMessage: null,
+        updatedAt: new Date().toISOString()
+    };
+    renderSalesSettingWarmCacheIndicator();
+    renderCompetitorPriceOverviewFromState();
+    void refreshCompetitorPriceSnapshotPair(facilityCacheKey, analysisDate);
+
     void persistCompetitorPriceSnapshot({
         facilityId: facilityCacheKey,
         stayDate: analysisDate,
-        source: "analyze-open"
+        source
     })
         .then((result) => {
             if (!result.stored) {
+                competitorPriceSnapshotUiState = {
+                    ...competitorPriceSnapshotUiState,
+                    status: "skipped",
+                    facilityId: facilityCacheKey,
+                    stayDate: analysisDate,
+                    source,
+                    latestRecord: null,
+                    previousRecord: null,
+                    reason: result.reason ?? "unknown",
+                    errorMessage: null,
+                    updatedAt: new Date().toISOString()
+                };
+                renderSalesSettingWarmCacheIndicator();
+                renderCompetitorPriceOverviewFromState();
                 console.info(`[${SCRIPT_NAME}] competitor price snapshot skipped`, {
                     analysisDate,
                     batchDateKey,
@@ -2961,6 +3210,20 @@ function scheduleCompetitorPriceSnapshot(
                 return;
             }
 
+            competitorPriceSnapshotUiState = {
+                ...competitorPriceSnapshotUiState,
+                status: "stored",
+                facilityId: facilityCacheKey,
+                stayDate: analysisDate,
+                source,
+                latestRecord: result.record,
+                previousRecord: result.previousRecord,
+                reason: null,
+                errorMessage: null,
+                updatedAt: new Date().toISOString()
+            };
+            renderSalesSettingWarmCacheIndicator();
+            renderCompetitorPriceOverviewFromState();
             console.info(`[${SCRIPT_NAME}] competitor price snapshot stored`, {
                 analysisDate,
                 batchDateKey,
@@ -2970,7 +3233,19 @@ function scheduleCompetitorPriceSnapshot(
             });
         })
         .catch((error: unknown) => {
-            competitorPriceSnapshotAttemptKeys.delete(attemptKey);
+            attemptKeys.delete(attemptKey);
+            competitorPriceSnapshotUiState = {
+                ...competitorPriceSnapshotUiState,
+                status: "error",
+                facilityId: facilityCacheKey,
+                stayDate: analysisDate,
+                source,
+                reason: null,
+                errorMessage: getErrorMessage(error),
+                updatedAt: new Date().toISOString()
+            };
+            renderSalesSettingWarmCacheIndicator();
+            renderCompetitorPriceOverviewFromState();
             console.warn(`[${SCRIPT_NAME}] failed to persist competitor price snapshot`, {
                 analysisDate,
                 batchDateKey,
@@ -2978,6 +3253,36 @@ function scheduleCompetitorPriceSnapshot(
                 error
             });
         });
+}
+
+async function refreshCompetitorPriceSnapshotPair(facilityCacheKey: string, analysisDate: string): Promise<void> {
+    const snapshotPair = await readLatestCompetitorPriceSnapshotPairForStayDate(facilityCacheKey, analysisDate)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read competitor price snapshot pair`, {
+                analysisDate,
+                facilityCacheKey,
+                error
+            });
+            return null;
+        });
+    if (snapshotPair === null || snapshotPair.latestRecord === null) {
+        return;
+    }
+
+    if (
+        competitorPriceSnapshotUiState.facilityId !== facilityCacheKey
+        || competitorPriceSnapshotUiState.stayDate !== analysisDate
+    ) {
+        return;
+    }
+
+    competitorPriceSnapshotUiState = {
+        ...competitorPriceSnapshotUiState,
+        latestRecord: snapshotPair.latestRecord,
+        previousRecord: snapshotPair.previousRecord
+    };
+    renderSalesSettingWarmCacheIndicator();
+    renderCompetitorPriceOverviewFromState();
 }
 
 function isSyncContextStale(syncContext: SyncContext): boolean {
@@ -3814,11 +4119,13 @@ function restoreCurrentUiSalesSettingSupplements(cards: SalesSettingCard[]): voi
             firstCard,
             preparedData
         );
+        renderCompetitorPriceOverviewFromState(firstCard);
         return;
     }
 
     cleanupSalesSettingRankOverview();
     cleanupSalesSettingRankDetails();
+    renderCompetitorPriceOverviewFromState(firstCard);
 }
 
 function scheduleSalesSettingSupplementCleanup(): void {
@@ -6201,6 +6508,10 @@ function cleanupSalesSettingRankOverview(): void {
     document.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`)?.remove();
 }
 
+function cleanupCompetitorPriceOverview(): void {
+    document.querySelector<HTMLElement>(`[${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}]`)?.remove();
+}
+
 function cleanupSalesSettingRankDetails(): void {
     for (const detailElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`))) {
         detailElement.remove();
@@ -6435,6 +6746,246 @@ function renderSalesSettingRankOverview(firstCard: SalesSettingCard, summaries: 
     } else if (containerElement !== rankInsertionAnchor) {
         sectionContainer.insertBefore(containerElement, rankInsertionAnchor);
     }
+}
+
+function renderCompetitorPriceOverviewFromState(firstCardOverride?: SalesSettingCard): void {
+    const latestRecord = competitorPriceSnapshotUiState.latestRecord;
+    if (latestRecord === null) {
+        cleanupCompetitorPriceOverview();
+        return;
+    }
+
+    const firstCard = firstCardOverride ?? collectSalesSettingCards()[0];
+    if (firstCard === undefined || !firstCard.cardElement.isConnected) {
+        const fallbackTarget = resolveCompetitorPriceTabSectionTarget();
+        if (fallbackTarget === null) {
+            return;
+        }
+        renderCompetitorPriceOverviewAtTarget(
+            fallbackTarget.sectionContainer,
+            fallbackTarget.insertionAnchor,
+            {
+                latestRecord,
+                previousRecord: competitorPriceSnapshotUiState.previousRecord
+            }
+        );
+        return;
+    }
+
+    renderCompetitorPriceOverview(firstCard, {
+        latestRecord,
+        previousRecord: competitorPriceSnapshotUiState.previousRecord
+    });
+}
+
+function renderCompetitorPriceOverview(
+    firstCard: SalesSettingCard,
+    snapshotPair: CompetitorPriceSnapshotPair
+): void {
+    const sectionContainer = resolveSalesSettingSectionContainer(firstCard);
+    const insertionAnchor = resolveSalesSettingSectionInsertionAnchor(firstCard);
+    if (sectionContainer === null || snapshotPair.latestRecord === null) {
+        return;
+    }
+
+    renderCompetitorPriceOverviewAtTarget(sectionContainer, insertionAnchor, snapshotPair);
+}
+
+function renderCompetitorPriceOverviewAtTarget(
+    sectionContainer: HTMLElement,
+    insertionAnchor: HTMLElement | null,
+    snapshotPair: CompetitorPriceSnapshotPair
+): void {
+    if (snapshotPair.latestRecord === null) {
+        return;
+    }
+
+    const latestRecord = snapshotPair.latestRecord;
+    const previousRecord = snapshotPair.previousRecord;
+    const rows = buildCompetitorPriceComparisonRows(latestRecord, previousRecord);
+    const signature = [
+        latestRecord.snapshotKey,
+        previousRecord?.snapshotKey ?? "previous:none",
+        rows.map((row) => `${row.planKey}:${row.currentPlan.price}:${row.previousPlan?.price ?? "-"}`).join("|")
+    ].join("::");
+    const existingContainer = findDirectChildByAttribute(sectionContainer, SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE);
+    const containerElement = existingContainer ?? document.createElement("section");
+
+    if (existingContainer?.getAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_SIGNATURE_ATTRIBUTE) !== signature) {
+        containerElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE, "");
+        containerElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_SIGNATURE_ATTRIBUTE, signature);
+
+        const titleElement = document.createElement("div");
+        titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_TITLE_ATTRIBUTE, "");
+        titleElement.textContent = "競合価格 前回比";
+
+        const metaElement = document.createElement("div");
+        metaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE, "");
+        metaElement.textContent = [
+            `取得 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
+            previousRecord === null ? "前回なし" : `前回 ${formatDateTimeForDisplay(previousRecord.fetchedAt)}`,
+            `競合 ${latestRecord.competitorSet.length}`,
+            `条件 ${shortenConditionSignature(latestRecord.conditionSignature)}`
+        ].join(" / ");
+
+        const tableElement = document.createElement("table");
+        tableElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE, "");
+
+        const headElement = document.createElement("thead");
+        const headerRowElement = document.createElement("tr");
+        for (const label of ["競合施設", "人数", "食事", "部屋タイプ", "プラン名", "現在価格", "前回価格", "差分", "前回取得"]) {
+            const headerCellElement = document.createElement("th");
+            headerCellElement.scope = "col";
+            headerCellElement.textContent = label;
+            headerRowElement.append(headerCellElement);
+        }
+        headElement.append(headerRowElement);
+
+        const bodyElement = document.createElement("tbody");
+        if (rows.length === 0) {
+            const rowElement = document.createElement("tr");
+            const cellElement = document.createElement("td");
+            cellElement.colSpan = 9;
+            cellElement.textContent = "競合価格 snapshot に表示できる plan がありません";
+            rowElement.append(cellElement);
+            bodyElement.append(rowElement);
+        } else {
+            for (const row of rows) {
+                bodyElement.append(createCompetitorPriceComparisonRow(row, previousRecord));
+            }
+        }
+
+        tableElement.replaceChildren(headElement, bodyElement);
+        containerElement.replaceChildren(titleElement, metaElement, tableElement);
+    }
+
+    const overallSummaryElement = findDirectChildByAttribute(sectionContainer, SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE);
+    const anchorElement = overallSummaryElement ?? insertionAnchor;
+    if (anchorElement === null) {
+        if (containerElement.parentElement !== sectionContainer || sectionContainer.lastElementChild !== containerElement) {
+            sectionContainer.append(containerElement);
+        }
+    } else if (containerElement.nextElementSibling !== anchorElement) {
+        sectionContainer.insertBefore(containerElement, anchorElement);
+    }
+}
+
+function resolveCompetitorPriceTabSectionTarget(): { sectionContainer: HTMLElement; insertionAnchor: HTMLElement | null } | null {
+    const taxIncludedTextElement = document.querySelector<HTMLElement>(`[data-testid="competitor-price-tax-included-text"]`);
+    if (taxIncludedTextElement?.parentElement instanceof HTMLElement) {
+        return {
+            sectionContainer: taxIncludedTextElement.parentElement,
+            insertionAnchor: taxIncludedTextElement.nextElementSibling instanceof HTMLElement
+                ? taxIncludedTextElement.nextElementSibling
+                : null
+        };
+    }
+
+    const tabElement = document.querySelector<HTMLElement>(`[data-testid="tab-competitorPrice"]`);
+    const rootElement = tabElement?.parentElement?.parentElement?.parentElement;
+    if (rootElement instanceof HTMLElement) {
+        return {
+            sectionContainer: rootElement,
+            insertionAnchor: null
+        };
+    }
+
+    return null;
+}
+
+interface CompetitorPriceComparisonRow {
+    competitorName: string;
+    planKey: string;
+    currentPlan: CompetitorPriceSnapshotPlan;
+    previousPlan: CompetitorPriceSnapshotPlan | null;
+}
+
+function buildCompetitorPriceComparisonRows(
+    latestRecord: CompetitorPriceSnapshotRecord,
+    previousRecord: CompetitorPriceSnapshotRecord | null
+): CompetitorPriceComparisonRow[] {
+    const previousPlans = new Map<string, CompetitorPriceSnapshotPlan>();
+    for (const plan of flattenCompetitorPricePlans(previousRecord)) {
+        previousPlans.set(buildCompetitorPricePlanKey(plan), plan);
+    }
+
+    const competitorNames = new Map(latestRecord.competitorSet.map((competitor) => [competitor.yadNo, competitor.name]));
+    return flattenCompetitorPricePlans(latestRecord)
+        .map((plan) => {
+            const planKey = buildCompetitorPricePlanKey(plan);
+            return {
+                competitorName: competitorNames.get(plan.yadNo) ?? plan.yadNo,
+                planKey,
+                currentPlan: plan,
+                previousPlan: previousPlans.get(planKey) ?? null
+            } satisfies CompetitorPriceComparisonRow;
+        })
+        .sort(compareCompetitorPriceComparisonRows);
+}
+
+function flattenCompetitorPricePlans(record: CompetitorPriceSnapshotRecord | null): CompetitorPriceSnapshotPlan[] {
+    if (record === null) {
+        return [];
+    }
+
+    return record.payload.competitors.flatMap((hotel) => hotel.plans);
+}
+
+function buildCompetitorPricePlanKey(plan: CompetitorPriceSnapshotPlan): string {
+    return [
+        plan.yadNo,
+        plan.numGuests ?? "-",
+        plan.mealType ?? "-",
+        plan.jalanFacilityRoomType ?? "-",
+        plan.planName ?? "-"
+    ].join("|");
+}
+
+function compareCompetitorPriceComparisonRows(left: CompetitorPriceComparisonRow, right: CompetitorPriceComparisonRow): number {
+    return left.competitorName.localeCompare(right.competitorName, "ja")
+        || compareNullableNumber(left.currentPlan.numGuests, right.currentPlan.numGuests)
+        || (left.currentPlan.mealType ?? "").localeCompare(right.currentPlan.mealType ?? "", "ja")
+        || (left.currentPlan.jalanFacilityRoomType ?? "").localeCompare(right.currentPlan.jalanFacilityRoomType ?? "", "ja")
+        || (left.currentPlan.planName ?? "").localeCompare(right.currentPlan.planName ?? "", "ja");
+}
+
+function createCompetitorPriceComparisonRow(
+    row: CompetitorPriceComparisonRow,
+    previousRecord: CompetitorPriceSnapshotRecord | null
+): HTMLTableRowElement {
+    const rowElement = document.createElement("tr");
+    rowElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_ROW_ATTRIBUTE, "");
+
+    const delta = row.currentPlan.price !== null && row.previousPlan?.price !== undefined && row.previousPlan.price !== null
+        ? row.currentPlan.price - row.previousPlan.price
+        : null;
+
+    const cells = [
+        row.competitorName,
+        row.currentPlan.numGuests === null ? "-" : `${row.currentPlan.numGuests}名`,
+        formatNullableText(row.currentPlan.mealType),
+        formatNullableText(row.currentPlan.jalanFacilityRoomType),
+        formatNullableText(row.currentPlan.planName),
+        formatPriceForDisplay(row.currentPlan.price),
+        formatPriceForDisplay(row.previousPlan?.price ?? null),
+        formatPriceDeltaForDisplay(delta),
+        previousRecord === null ? "未取得" : formatDateTimeForDisplay(previousRecord.fetchedAt)
+    ];
+
+    for (const [index, value] of cells.entries()) {
+        const cellElement = document.createElement("td");
+        cellElement.textContent = value;
+        if (index === 4) {
+            cellElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_PLAN_ATTRIBUTE, "");
+        }
+        if (index === 7) {
+            cellElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_DELTA_ATTRIBUTE, "");
+            cellElement.setAttribute(SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE, getMetricDeltaTone(delta, 0));
+        }
+        rowElement.append(cellElement);
+    }
+
+    return rowElement;
 }
 
 function resolveSalesSettingSectionContainer(card: SalesSettingCard): HTMLElement | null {
@@ -7815,6 +8366,72 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
+        [${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}] {
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+            margin: 0 0 12px;
+            padding: 0;
+            border: none;
+            border-radius: 0;
+            background: transparent;
+            user-select: text;
+            -webkit-user-select: text;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_TITLE_ATTRIBUTE}] {
+            color: #243447;
+            font-size: 15px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE}] {
+            color: #50627a;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] {
+            width: fit-content;
+            max-width: 100%;
+            border-collapse: collapse;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] th,
+        [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] td {
+            padding: 1px 12px 1px 0;
+            text-align: left;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] th {
+            color: #50627a;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_ROW_ATTRIBUTE}] {
+            color: #243447;
+            font-size: 13px;
+            font-weight: 600;
+            line-height: 1.4;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_PLAN_ATTRIBUTE}] {
+            max-width: 360px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_DELTA_ATTRIBUTE}] {
+            text-align: right;
+            font-weight: 800;
+        }
+
         [${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}] {
             margin-top: 2px;
             color: #50627a;
@@ -7854,6 +8471,15 @@ function ensureGroupRoomStyles(): void {
             [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] th,
             [${SALES_SETTING_RANK_OVERVIEW_TABLE_ATTRIBUTE}] td {
                 padding-right: 10px;
+            }
+
+            [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] {
+                width: 100%;
+            }
+
+            [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] th,
+            [${SALES_SETTING_COMPETITOR_PRICE_TABLE_ATTRIBUTE}] td {
+                padding-right: 8px;
             }
         }
 

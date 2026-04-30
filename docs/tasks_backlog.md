@@ -1,6 +1,6 @@
 # tasks_backlog
 
-## Now
+## Recently Implemented / GUI Confirmation Needs Tampermonkey Reload
 
 ### RAU-CP-03 競合価格 snapshot の前回比 table を Analyze 日付ページに表示する
 
@@ -32,8 +32,26 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - `src/competitorPriceSnapshotStore.ts` に、同じ facility と stay_date の最新 snapshot と同じ検索条件 signature の前回 snapshot を読む read path を追加した。
+  - Analyze 日付ページの indicator に、競合価格 snapshot の保存中、保存済み、前回あり、skip、保存失敗を表示するようにした。
+  - 前回比 table を、販売設定 UI の補助セクション、または競合価格 tab 表示中は税表示説明の直後に表示するようにした。
+  - table は最新 snapshot の現在 plan を行として表示し、同じ `yad_no + numGuests + mealType + jalanFacilityRoomType + planName` の前回 plan がある場合だけ前回価格と差分を表示する。
+  - 競合価格 tab を開いた場合は、現在開いている stay_date の競合価格 snapshot 保存を `competitor-tab` source として即時トリガーするようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+- GUI 確認:
+  - 2026-04-30 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` を Analyze 日付ページへ注入して確認した。
+  - Analyze open 時に、前回比 table が 34 行表示されることを確認した。
+  - 競合価格 tab を click した後も、競合価格 tab 本文の税表示説明の直後に前回比 table が 34 行表示されることを確認した。
+  - indicator に `競合価格: 前回あり`、保存時刻、前回取得時刻、競合施設数が表示されることを確認した。
+- 未確認:
+  - Tampermonkey に `dist/*.user.js` を正式に再読込した状態での GUI 目視確認。
 
-## Next
+## Now
 
 ### RAU-WC-07 booking curve localStorage 容量超過を整理する
 
@@ -595,11 +613,10 @@
 
 Now:
 
-- `RAU-CP-03` 競合価格 snapshot の前回比 table を Analyze 日付ページに表示する
+- `RAU-WC-07` booking curve localStorage 容量超過を整理する
 
 Next:
 
-- `RAU-WC-07` booking curve localStorage 容量超過を整理する
 - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 After Next:
@@ -626,6 +643,6 @@ Later:
 - `RAU-CP-01` の調査結果により、競合価格は競合施設一覧なしでは取得できない。`RAU-CP-02` では、検索条件 signature ごとの snapshot store と取得 adapter を先に作る。
 - `RAU-CP-02` を先に行う理由は、前回比 table を出すには、同じ stay_date と同じ検索条件 signature の過去 snapshot を比較できる保存単位が必要なため。
 - `RAU-CP-03` は、`RAU-CP-02` の保存済み snapshot を使って初めて利用者向けの前回比 table を出す task とする。グラフ表示は snapshot が蓄積してから別判断にする。
-- `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加する。ただし競合価格 snapshot は IndexedDB 保存で正常確認済みのため、`RAU-CP-03` を先に進め、その次の安定化 task とする。
+- `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加する。`RAU-CP-03` の build 注入確認まで完了したため、次の安定化 task とする。
 - `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。

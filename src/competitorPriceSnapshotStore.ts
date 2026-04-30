@@ -75,7 +75,7 @@ export interface CompetitorPriceSnapshotRecord {
     conditionSignature: string;
     searchConditionRaw: CompetitorPriceSnapshotSearchCondition;
     fetchedAt: string;
-    source: "analyze-open";
+    source: "analyze-open" | "competitor-tab";
     endpoint: string;
     query: string;
     schemaVersion: string;
@@ -86,7 +86,7 @@ export interface CompetitorPriceSnapshotRecord {
 export interface PersistCompetitorPriceSnapshotOptions {
     facilityId: string;
     stayDate: string;
-    source?: "analyze-open";
+    source?: "analyze-open" | "competitor-tab";
 }
 
 export interface PersistCompetitorPriceSnapshotResult {
@@ -94,6 +94,11 @@ export interface PersistCompetitorPriceSnapshotResult {
     record: CompetitorPriceSnapshotRecord | null;
     previousRecord: CompetitorPriceSnapshotRecord | null;
     reason?: "indexeddb-unavailable" | "no-competitors";
+}
+
+export interface CompetitorPriceSnapshotPair {
+    latestRecord: CompetitorPriceSnapshotRecord | null;
+    previousRecord: CompetitorPriceSnapshotRecord | null;
 }
 
 interface CompetitorPriceRequestContext {
@@ -164,6 +169,45 @@ export async function readLatestCompetitorPriceSnapshot(
         return snapshots
             .slice()
             .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0];
+    });
+}
+
+export async function readLatestCompetitorPriceSnapshotPairForStayDate(
+    facilityId: string,
+    stayDate: string
+): Promise<CompetitorPriceSnapshotPair> {
+    if (!isIndexedDbAvailable()) {
+        return {
+            latestRecord: null,
+            previousRecord: null
+        };
+    }
+
+    return withCompetitorPriceSnapshotStore("readonly", async (store) => {
+        const index = store.index("facility-stay-date");
+        const snapshots = await getSnapshotRecordsByFacilityAndStayDate(index, facilityId, stayDate);
+        const latestRecord = snapshots
+            .slice()
+            .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
+
+        if (latestRecord === null) {
+            return {
+                latestRecord: null,
+                previousRecord: null
+            };
+        }
+
+        const previousRecord = snapshots
+            .filter((snapshot) => (
+                snapshot.snapshotKey !== latestRecord.snapshotKey
+                && snapshot.conditionSignature === latestRecord.conditionSignature
+            ))
+            .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
+
+        return {
+            latestRecord,
+            previousRecord
+        };
     });
 }
 
@@ -407,6 +451,24 @@ function getSnapshotRecordsByFacilityAndCondition(
 
         request.onerror = () => {
             reject(request.error ?? new Error("failed to read competitor price snapshot records"));
+        };
+    });
+}
+
+function getSnapshotRecordsByFacilityAndStayDate(
+    index: IDBIndex,
+    facilityId: string,
+    stayDate: string
+): Promise<CompetitorPriceSnapshotRecord[]> {
+    return new Promise((resolve, reject) => {
+        const request = index.getAll([facilityId, stayDate]);
+
+        request.onsuccess = () => {
+            resolve(request.result as CompetitorPriceSnapshotRecord[]);
+        };
+
+        request.onerror = () => {
+            reject(request.error ?? new Error("failed to read competitor price snapshot records by stay date"));
         };
     });
 }

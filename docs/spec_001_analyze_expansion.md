@@ -325,6 +325,11 @@ Indicator:
 - 競合価格タブを開いたときの優先取得は、現在開いている stay_date と現在の検索条件 signature に限定する。booking_curve warm cache の通常範囲や同週、同月の全日付へ競合価格取得を広げない。
 - 競合価格 snapshot の取得は、booking_curve warm cache queue と同じ完了定義には含めない。indicator では同じ場所に表示しても、状態、skip、error、最終保存時刻は競合価格 snapshot 専用の値として扱う。
 - 検索条件が違う競合価格 snapshot を同じ推移系列として扱わない。保存時には、検索条件 raw、検索条件 signature、取得元、取得時刻を必ず保持する。
+- 前回比 table は、既存の販売設定 UI と booking curve block を押しのけない補助セクションとして表示する。初期実装では、current-ui supplement portal または legacy card 親要素に追加し、Revenue Assistant 標準の競合価格 tab 内 DOM を直接書き換えない。
+- 前回比 table の比較対象は、同じ facility、同じ stay_date、同じ検索条件 signature の最新 snapshot と、その直前の snapshot とする。検索条件 signature が違う snapshot は、同じ stay_date であっても比較しない。
+- plan の同一判定は、`yad_no + numGuests + mealType + jalanFacilityRoomType + planName` の完全一致とする。URL と価格は同一判定に使わない。
+- 前回 snapshot がない場合、現在価格は表示し、前回価格、差分、前回取得時刻は未取得として表示する。
+- 現在 snapshot に存在しない過去施設や過去 plan は、初期 table では行として表示しない。競合施設入れ替え後の過去施設を現在施設として誤表示しないことを優先する。
 - 初回調査では、Revenue Assistant に保存されている検索条件を無視して、絞り込みなし、または空条件に近い request で競合価格 data を取得できるかを確認する。
 - 絞り込みなし取得が可能かどうかは、次の観点で判定する。
   - API endpoint と request method。
