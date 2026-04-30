@@ -332,6 +332,21 @@ Indicator:
 - 絞り込みなし response が十分な条件情報を含む場合は、広めの raw snapshot を保存し、RAU 側で後から絞り込む方式を候補にする。response が画面条件に強く依存する場合は、検索条件 signature ごとに別系列として保存する。
 - 初期表示は、snapshot が少ない段階ではグラフより表を優先する。まず `現在価格 / 前回価格 / 差分 / 前回取得時刻 / 条件 signature` を競合施設ごとに確認できる形を候補にし、snapshot が 3 点以上ある競合施設だけグラフ表示を後続候補にする。
 
+2026-04-30 の Chrome CDP 観測結果:
+
+- Analyze 日付ページを開くと、Revenue Assistant 画面本体は `GET /api/v5/competitor_prices` を呼び出す。
+- request には `x-requested-with: XMLHttpRequest` が必要である。この header がない同一 origin `fetch` は、同じ URL でも `400 BAD_REQUEST` になる。
+- 画面本体の request query は、`date`、`min_num_guests`、`max_num_guests`、`meal_types[]`、`search_jalan_plan_name_contains`、`yad_nos[]` を含む。
+- `yad_nos[]` は必須条件として扱う。`date`、宿泊人数範囲、食事条件があっても `yad_nos[]` がない request は `400 BAD_REQUEST` になる。
+- 宿泊人数範囲は必須条件として扱う。`date`、食事条件、`yad_nos[]` があっても `min_num_guests` と `max_num_guests` がない request は `400 BAD_REQUEST` になる。
+- `meal_types[]` は省略可能である。省略すると、`NONE`、`BREAKFAST` だけではなく、`DINNER`、`BREAKFAST_DINNER` を含む response が返る。
+- `search_jalan_plan_name_contains` は、少なくとも空 keyword の状態では省略しても response shape と件数は変わらない。
+- `max_num_guests=10` は `400 BAD_REQUEST` になる。観測時点では、画面に保存されている `min_num_guests=1`、`max_num_guests=4` の範囲を使う。
+- response root は `own` と `competitors` を持つ。`own.plans[]` と `competitors[].plans[]` の各 plan は、`num_guests`、`meal_type`、`plan_name`、`jalan_facility_room_type`、`url`、`price`、`price_diff` を持つ。
+- response には、在庫状態、販売停止、満室、ページング情報は含まれない。空室なしや販売停止を独立した状態として保存したい場合は、別 endpoint または画面表示の追加確認が必要である。
+- response には、人数、食事条件、部屋タイプ、プラン名、競合施設識別子、価格、自社価格との差分が含まれるため、取得後に RAU 側で人数、食事条件、部屋タイプ、プラン名の再絞り込みは可能である。
+- ただし、競合施設一覧を指定しない広い raw snapshot は取得できない。初期の snapshot 保存単位は、`date`、宿泊人数範囲、競合施設一覧、任意の食事条件、任意のプラン名検索条件から作る検索条件 signature ごとに分ける。
+
 ### Candidate 3: Booking Curve Phase 2
 
 - BCL の `直近型カーブ` と `季節型カーブ` に相当する rooms-only reference curve を別系列として重ねる

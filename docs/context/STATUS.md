@@ -1,17 +1,16 @@
 # STATUS
 
-最終更新: 2026-04-29
+最終更新: 2026-04-30
 
 ## Current Task Bundle
 
-- 主対象: `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+- 主対象: `RAU-CP-02` 競合価格 snapshot store と取得 adapter を実装する
 - この bundle で扱う Task ID:
-  - `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+  - `RAU-CP-02` 競合価格 snapshot store と取得 adapter を実装する
 - 今回の目的:
-  - 競合価格の現在値表を複製するのではなく、取得時点つき snapshot を保存し、競合価格が直近で上がったか、下がったかを追跡できる形を設計する。
-  - 全件取得を前提にせず、Analyze 日付ページを開いた日付や、料金判断のために繰り返し確認された日付ほど snapshot 履歴が厚くなる設計にする。
-  - 最初の作業は、絞り込みなし、空条件、または初期条件に近い request で競合価格 data を取得できるかを調査することに限定する。
-  - response に人数、食事条件、部屋タイプ、プラン名、在庫状態が含まれるかを確認し、保存後に RAU 側で絞り込みできるかを判断する。
+  - `RAU-CP-01` の Chrome CDP 調査結果に基づき、競合価格 response を取得時点つき snapshot として保存できる最小土台を作る。
+  - `date`、宿泊人数範囲、競合施設一覧、任意の食事条件、任意のプラン名検索条件から検索条件 signature を作り、同じ stay_date でも条件が違う snapshot を別系列として保存する。
+  - UI 表示はまだ作らず、次の前回比 table に必要な IndexedDB store、request builder、response adapter を先に実装する。
 
 ## Current State
 
@@ -60,7 +59,10 @@
 - `RAU-AF-10` はコード実装済み。reference curve の `0日前` は core logic と IndexedDB derived cache では推測補完せず、表示層だけで `1日前` と `ACT` の線形補間値を使う。初期実装では `round(1日前 + (ACT - 1日前) * 0.5)` とし、整数室数に丸める。Tooltip では補間値であることを `（補間）` として明示する。
 - `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル下端に、一部取得済み、完了、エラーの line を表示する。
 - `RAU-WC-06` はコード実装済み。warm cache の通常対象を `as_of_date - 1日` から `as_of_date + 3か月` までへ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
-- `RAU-CP-01` は次の本線。最初の調査は、Chrome CDP で競合価格タブまたは Analyze 日付ページの network を確認し、競合価格 endpoint、request 条件、response shape、絞り込みなし取得可否を整理する。調査が終わるまで IndexedDB store と UI は実装しない。
+- `RAU-CP-01` は完了。2026-04-30 に Chrome CDP で Analyze 日付ページの Network request を確認し、`GET /api/v5/competitor_prices` が競合価格 endpoint であることを確認した。
+- `/api/v5/competitor_prices` には `x-requested-with: XMLHttpRequest` が必要で、query には少なくとも `date`、`min_num_guests`、`max_num_guests`、`yad_nos[]` が必要である。`meal_types[]` は省略可能だが、競合施設一覧なしの広い取得は `400 BAD_REQUEST` になる。
+- `/api/v5/competitor_prices` の response は `own` と `competitors` を持つ。plan は人数、食事条件、プラン名、じゃらん部屋タイプ、URL、価格、自社価格との差分を持つが、在庫状態、販売停止、満室、ページング情報は持たない。
+- `RAU-CP-02` は次の本線。最初の実装は snapshot store、request builder、response adapter に限定し、競合価格 UI と warm cache 接続はまだ実装しない。
 
 ## Next Re-entry
 
@@ -77,11 +79,10 @@
 
 最初にやること:
 
-1. Chrome CDP で Revenue Assistant の競合価格タブを開き、Network request を確認する。
-2. 競合価格 endpoint、request method、query/payload、検索条件、response shape を記録する。
-3. 絞り込みなし、空条件、または初期条件に近い request で競合価格 data を取得できるかを確認する。
-4. response に人数、食事条件、部屋タイプ、プラン名、在庫状態、満室、販売停止、価格が含まれるかを確認する。
-5. 調査結果を `docs/tasks_backlog.md` の `RAU-CP-01` と `docs/context/DECISIONS.md` へ反映し、次の実装 slice を決める。
+1. `docs/tasks_backlog.md` の `RAU-CP-02` を確認する。
+2. `docs/spec_001_analyze_expansion.md` の `Competitor Price Table` 観測結果を確認する。
+3. `/api/v5/competitor_prices` 用の request builder、IndexedDB snapshot store、response adapter を実装する。
+4. UI 表示は作らず、保存済み snapshot から同じ検索条件 signature の前回 snapshot を取り出せる状態までを確認する。
 
 変更しない契約:
 
@@ -191,6 +192,12 @@
   - 通常対象が `as_of_date - 1日` から `as_of_date + 3か月` までになること: 未実施
   - retry 発生時に `再試行待ち n` が表示されること: 未実施
   - トップカレンダー cooldown 中に Analyze 日付ページを開いたとき priority queue が動き始めること: 未実施
+- 2026-04-30 の `RAU-CP-01` Chrome CDP 調査:
+  - `npm run chrome:pages`: passed。open pages は Tampermonkey dashboard と Revenue Assistant root
+  - Analyze 日付ページ `https://ra.jalan.net/analyze/2026-04-30` を開き、Network request を確認
+  - `GET /api/v5/competitor_prices`、`GET /api/v2/competitors`、`GET /api/v2/competitors_filter_settings` を確認
+  - `x-requested-with: XMLHttpRequest` 付きの同一 origin fetch で、保存条件あり、食事条件省略、plan name 検索 flag 省略、1名のみ、競合施設一覧なし、宿泊人数範囲なし、`date` のみ、`max_num_guests=10` を比較
+  - `docs/spec_001_analyze_expansion.md`、`docs/context/DECISIONS.md`、`docs/tasks_backlog.md` を更新
 
 ## Open Questions / Risks
 
@@ -204,7 +211,10 @@
 - `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。Tampermonkey 再読込後、ON/OFF、hover 表示、室タイプ別 card を開いたときの追加取得を GUI 目視で確認する必要がある。
 - `RAU-WC-01` では、API 負荷と IndexedDB 保存量が増えるため、同時取得 1、request 間隔、1 回稼働時間、1 日稼働時間、hidden 時の一時停止、連続エラー停止を verify 対象にする。
 - 競合価格は現在値表ではなく、価格推移 snapshot の保存単位を設計してから表示判断する。
-- `RAU-CP-01` では、絞り込みなし取得が可能かを調査するまで、検索条件 signature、IndexedDB schema、表示 UI を確定しない。
+- 競合価格 snapshot は、競合施設一覧なしの全件取得を前提にしない。
+- 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。
+- 競合価格 response だけで、在庫状態、販売停止、満室を確定した扱いにしない。
+- `RAU-CP-02` では、検索条件 signature と IndexedDB schema は確定するが、表示 UI は次の task まで確定しない。
 
 ## References
 

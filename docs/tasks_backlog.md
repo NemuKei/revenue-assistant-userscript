@@ -2,6 +2,36 @@
 
 ## Now
 
+### RAU-CP-02 競合価格 snapshot store と取得 adapter を実装する
+
+- 目的:
+  - `RAU-CP-01` の観測結果に基づき、競合価格 response を取得時点つき snapshot として保存できる最小土台を作る。
+  - 競合価格の現在値表を複製するのではなく、次回以降に `現在価格 / 前回価格 / 差分 / 前回取得時刻 / 条件 signature` を出せる保存単位へ揃える。
+- スコープ:
+  - `/api/v5/competitor_prices` 用の request builder を追加する。
+  - request には `x-requested-with: XMLHttpRequest` を付ける。
+  - query は `date`、`min_num_guests`、`max_num_guests`、`yad_nos[]` を必須にし、`meal_types[]` と plan name 検索条件は任意にする。
+  - 画面に保存されている `competitors_filter_settings` と `competitors` から、初期 request 条件を作る。
+  - IndexedDB store は、取得時刻、対象 stay_date、検索条件 raw、検索条件 signature、取得元、response schema version、`own`、`competitors` を保存する。
+  - response adapter は、`own.plans[]` と `competitors[].plans[]` の plan を、人数、食事条件、部屋タイプ、プラン名、URL、価格、自社価格との差分として正規化する。
+- 非目標:
+  - 競合価格 UI を表示すること。
+  - warm cache queue に競合価格取得を混ぜること。
+  - 競合施設一覧なしの全件取得を前提にすること。
+  - 在庫状態、販売停止、満室を競合価格 response だけで判定すること。
+- 受け入れ条件:
+  - `date`、宿泊人数範囲、競合施設一覧を含む検索条件 signature で snapshot を保存できる。
+  - 同じ stay_date でも、検索条件 signature が違う snapshot は別系列として保存される。
+  - `meal_types[]` を省略する場合と指定する場合を、検索条件 signature で区別できる。
+  - 保存済み snapshot から、競合施設別、人数別、食事条件別、部屋タイプ別、プラン名別に RAU 側で再絞り込みできる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+## Recently Implemented / GUI Unconfirmed
+
 ### RAU-WC-06 warm cache の retry、3ヶ月対象、Analyze 優先再開を実装する
 
 - 目的:
@@ -166,38 +196,6 @@
 
 ## Next
 
-### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
-
-- 目的:
-  - Revenue Assistant 標準タブで見られる現在値ではなく、競合価格が直近で上がったか、下がったか、自館の価格変更や booking curve 変化と前後関係があるかを確認できるようにする。
-  - 全件取得ではなく、Analyze 日付ページを開いた日付や、料金判断のために繰り返し確認された日付ほど snapshot 履歴が厚くなる設計にする。
-  - 最初の調査では、絞り込みなし、または空条件に近い request で競合価格 data を取得できるかを確認する。
-- スコープ:
-  - `/api/v5/competitor_prices` または実際に使われている競合価格 endpoint を Chrome CDP の Network 監視または userscript 側の fetch hook で特定する。
-  - 競合価格タブを開いたときと、Analyze 日付ページを開いたときに、どの endpoint が呼ばれるかを確認する。
-  - request method、query、payload、headers のうち、検索条件に関係する項目を確認する。
-  - Revenue Assistant に保存されている検索条件を使う request と、検索条件なし、空条件、または初期条件に近い request の差を確認する。
-  - response に人数、食事条件、部屋タイプ、プラン名、競合施設識別子、価格、在庫状態、満室、販売停止、取得件数、ページング情報が含まれるかを確認する。
-  - 保存後に RAU 側で人数帯や食事条件を絞り込めるだけの情報が response に含まれるかを判定する。
-  - 絞り込みなし保存が可能な場合と不可能な場合で、IndexedDB snapshot key の候補を分けて整理する。
-  - Analyze 画面へ表示する場合の最小表示は、初期案として `現在価格 / 前回価格 / 差分 / 前回取得時刻 / 条件 signature` の表を優先し、グラフは snapshot が蓄積してから後続候補にする。
-- 非目標:
-  - 初回調査の段階で IndexedDB store を実装すること。
-  - 初回調査の段階で競合価格推移 UI を実装すること。
-  - 全日付、全競合、全検索条件の網羅取得を前提にすること。
-  - 競合価格の現在値表だけを販売設定タブへ複製すること。
-  - 自動レート変更へ接続すること。
-- 受け入れ条件:
-  - 競合価格 endpoint、request method、主要 query/payload、response shape が整理されている。
-  - 絞り込みなし、空条件、または初期条件に近い request で取得できるかが、実ブラウザ観測に基づいて判定されている。
-  - response 内に、保存後の人数帯、食事条件、部屋タイプ、プラン単位の絞り込みに必要な項目が含まれるかが整理されている。
-  - `広めに raw snapshot 保存して後から絞り込み` と `検索条件 signature ごとに別系列保存` のどちらを採用すべきか、判断材料が残っている。
-  - 次実装 slice が、`snapshot store 設計`、`Analyze open 時の snapshot 取得`、`前回比 table 表示` のどこから始めるべきか整理されている。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
 - 目的:
@@ -210,6 +208,25 @@
   - `target-spec`: `docs/spec_000_overview.md`
 
 ## Completed
+
+### RAU-CP-01 競合価格推移 snapshot の価値と保存単位を設計する
+
+- 完了日: 2026-04-30
+- 調査結果:
+  - Analyze 日付ページで、Revenue Assistant 画面本体が `GET /api/v5/competitor_prices` を呼ぶことを Chrome CDP で確認した。
+  - request header には `x-requested-with: XMLHttpRequest` が必要である。同じ URL でも、この header がない同一 origin `fetch` は `400 BAD_REQUEST` になった。
+  - request query は、`date`、`min_num_guests`、`max_num_guests`、`meal_types[]`、`search_jalan_plan_name_contains`、`yad_nos[]` を含む。
+  - `yad_nos[]` なし、宿泊人数範囲なし、`date` のみ、`max_num_guests=10` は `400 BAD_REQUEST` になった。
+  - `meal_types[]` は省略可能で、省略すると `NONE`、`BREAKFAST`、`DINNER`、`BREAKFAST_DINNER` を含む response が返った。
+  - response root は `own` と `competitors` を持つ。plan は `num_guests`、`meal_type`、`plan_name`、`jalan_facility_room_type`、`url`、`price`、`price_diff` を持つ。
+  - response には在庫状態、販売停止、満室、ページング情報は含まれなかった。
+- 判断:
+  - 競合施設一覧なしの広い raw snapshot は初期方式にしない。
+  - 初期 snapshot は、`date`、宿泊人数範囲、競合施設一覧、任意の食事条件、任意のプラン名検索条件から作る検索条件 signature ごとに保存する。
+  - 次の実装 slice は `RAU-CP-02` の snapshot store と取得 adapter とする。
+- verify:
+  - Chrome CDP で Analyze 日付ページの Network request、headers、response shape を確認した。
+  - `docs/spec_001_analyze_expansion.md` と `docs/context/DECISIONS.md` に観測結果を反映した。
 
 ### RAU-WC-04 warm cache の取得速度を安全弁つきで引き上げる
 
@@ -499,7 +516,7 @@
 
 Now:
 
-- `RAU-CP-01` 競合価格推移 snapshot の価値と保存単位を設計する
+- `RAU-CP-02` 競合価格 snapshot store と取得 adapter を実装する
 
 Next:
 
@@ -526,6 +543,7 @@ Later:
 - `RAU-AF-08` を先に行う理由は、既存 booking curve panel の segment 表示切替だけで実装でき、直近同曜日補助線より表示構造への影響が小さいため。
 - `RAU-AF-09` は線の本数と凡例、hover 表示が増えるため、`個人 / 団体` toggle の表示構造を固めた後に実装する。
 - `RAU-CP-01` は `/api/v5/competitor_prices` の現在値表を複製しない。価格推移を扱うには snapshot 保存設計が必要なため、表示実装より先に保存単位を設計する。
-- `RAU-CP-01` の最初の作業は、実装ではなく調査とする。特に、絞り込みなし、空条件、または初期条件に近い request で競合価格 data を取得できるか、response に後から絞り込めるだけの条件情報が含まれるかを確認する。
+- `RAU-CP-01` の調査結果により、競合価格は競合施設一覧なしでは取得できない。`RAU-CP-02` では、検索条件 signature ごとの snapshot store と取得 adapter を先に作る。
+- `RAU-CP-02` を先に行う理由は、前回比 table を出すには、同じ stay_date と同じ検索条件 signature の過去 snapshot を比較できる保存単位が必要なため。
 - `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。
