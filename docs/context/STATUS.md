@@ -207,9 +207,10 @@
   - `npm run lint`: passed
   - `npm run build`: passed。初回は sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に再実行して通過
   - `git diff --check`: passed
-  - Tampermonkey 再読込 GUI 確認: 未実施
-  - Analyze 日付ページを開いたときに IndexedDB へ競合価格 snapshot が保存されること: 未実施
-  - 同じ検索条件 signature の前回 snapshot が実ブラウザ上で取得できること: 未実施
+  - Tampermonkey 更新後の GUI 確認: passed。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-04-30` で確認
+  - RAU 側の `/api/v5/competitor_prices?date=20260430&min_num_guests=1&max_num_guests=6&yad_nos[]=...`: `200`
+  - IndexedDB `revenue-assistant-competitor-price-snapshots` / `competitor-price-snapshots`: snapshot 2 件。最新 snapshot は `facilityId=yad:358180`、`stayDate=20260430`、競合施設 5 件、自社 plan 6 件、競合 plan hotel 5 件
+  - 同じ検索条件 signature の前回 snapshot 取得: passed。console log の `competitor price snapshot stored` で `previousFetchedAt=2026-04-30T02:10:25.817Z` を確認
 
 ## Open Questions / Risks
 
@@ -228,6 +229,7 @@
 - 競合施設を入れ替えても、過去 snapshot の競合施設名と `yad_no` を現在の競合施設一覧で上書きしない。
 - 競合価格 response だけで、在庫状態、販売停止、満室を確定した扱いにしない。
 - `RAU-CP-03` では、検索条件 signature と IndexedDB schema は維持し、表示 UI と plan 一致条件だけを追加で確定する。
+- 2026-04-30 の GUI 確認中、既存 booking curve の localStorage persistent cache 書き込みで `QuotaExceededError` warning が複数出た。競合価格 snapshot は IndexedDB に保存できているが、booking curve 側の localStorage 容量超過は別 task で整理対象にする。
 
 ## References
 

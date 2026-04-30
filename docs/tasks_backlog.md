@@ -78,9 +78,12 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
-- 未確認:
-  - Tampermonkey 再読込後、Analyze 日付ページを開いたときに IndexedDB へ競合価格 snapshot が保存されること
-  - 同じ検索条件 signature の前回 snapshot が実ブラウザ上で取得できること
+- GUI 確認:
+  - 2026-04-30 に Tampermonkey 更新後の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-04-30` で確認済み。
+  - RAU 側の `/api/v5/competitor_prices?date=20260430&min_num_guests=1&max_num_guests=6&yad_nos[]=...` は `200` を返した。
+  - IndexedDB database `revenue-assistant-competitor-price-snapshots` の store `competitor-price-snapshots` に snapshot が 2 件保存されていた。
+  - 最新 snapshot は `facilityId=yad:358180`、`stayDate=20260430`、競合施設 5 件、自社 plan 6 件、競合 plan hotel 5 件だった。
+  - console log で `competitor price snapshot stored` と `previousFetchedAt` を確認し、同じ検索条件 signature の前回 snapshot が実ブラウザ上で読めることを確認した。
 
 ### RAU-WC-06 warm cache の retry、3ヶ月対象、Analyze 優先再開を実装する
 
