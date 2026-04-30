@@ -99,8 +99,26 @@
   - 実装する場合、容量超過時の復旧処理が facility、batch date、schema の境界を壊さない。
   - Analyze 日付ページを再読み込みしても、booking curve の current 表示と reference curve の非同期補完が壊れない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- 実装方針:
+  - 2026-04-30 の Chrome CDP 確認では、localStorage 全体 547 件、約 5.18 MB のうち、`revenue-assistant:group-room-count:v4:<facility>:booking-curve:` 配下の 36 件が約 5.16 MB を占めていた。大きい key は 1 件あたり約 145 KB だった。
+  - `/api/v4/booking_curve` raw source は IndexedDB に保存済みのため、booking curve response 全体を localStorage に重複保存しない。
+  - 新規の localStorage booking curve 書き込みと読み込みを止め、既存 key は facility prefix `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` に限定して削除する。
+  - localStorage の group-room result cache、booking curve raw source IndexedDB、derived reference curve IndexedDB、競合価格 snapshot IndexedDB は削除対象にしない。
+- 実装内容:
+  - `src/main.ts` の booking curve 取得経路から、localStorage persistent cache の読み込みと書き込みを削除した。
+  - `cleanupPersistedBookingCurveStorage()` を追加し、sync batch 開始時に facility prefix `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` 配下の旧 key だけを削除するようにした。
+  - `docs/spec_001_analyze_expansion.md`、`docs/spec_000_overview.md`、`docs/context/DECISIONS.md`、`README.md` の保存契約を、IndexedDB raw source 正本へ揃えた。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
+  - `git diff --check`: passed
+- GUI 確認:
+  - Chrome CDP で build 済み userscript を Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` へ注入し、旧 booking curve localStorage key 36 件が削除されることを確認した。
+  - 同じ確認で、販売設定タブの booking curve section 1 件、booking curve SVG 2 件が表示されることを確認した。
+  - 同じページ上で既存 Tampermonkey の旧 userscript も動いていたため、旧版由来とみられる booking curve key 再生成が残った。Tampermonkey 側をこの build に更新した後の最終確認が必要。
 - metadata:
-  - `spec-impact`: unknown
+  - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
@@ -572,7 +590,7 @@
   - `recent_weighted_90:v3` で `0日前 -> ACT` の不自然なスパイク解消を確認した。
 - 実装内容:
   - `src/bookingCurveRawSourceStore.ts` に `/api/v4/booking_curve` raw source 用 IndexedDB store を追加した。
-  - `src/main.ts` の booking curve 取得経路を、memory、localStorage、IndexedDB raw source、API の順にした。
+  - 当初の `src/main.ts` の booking curve 取得経路は、memory、localStorage、IndexedDB raw source、API の順だった。`RAU-WC-07` 以降は localStorage の response 全体 cache を廃止し、memory、IndexedDB raw source、API の順に変更した。
   - reference curve の表示範囲を current と同じ `0〜360日前 + ACT` へ広げた。
   - ホテル全体と室タイプ別 card で、current curve を先に描画し、reference curve を非同期で補完するようにした。
   - `ReferenceCurveDiagnostics.actComparison` を追加し、`0日前` と `ACT` の rooms、sourceCount、差分を記録できるようにした。

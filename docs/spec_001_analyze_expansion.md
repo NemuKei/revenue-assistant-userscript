@@ -106,6 +106,8 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 同じ部屋タイプで同じ日に複数回 rank 変更がある場合、Phase 1 ではその日の最後の 1 件だけを marker として表示する
 - `/api/v4/booking_curve` の raw source は `stayDate`、`asOfDate`、`fetchedAt`、scope、roomGroupId、endpoint、query、schema を key 情報として IndexedDB に保存する
 - 既存の short-lived cache は画面応答のために維持するが、`0日前` と `ACT` の分離や future reference curve の再計算に使う正本は raw source IndexedDB とする
+- `/api/v4/booking_curve` response 全体を localStorage に永続保存する旧 persistent cache は、新規書き込みを行わない。理由は、同じ raw source を IndexedDB に保存済みであり、localStorage 側は画面応答用の短期 memory cache と役割が重複するうえ、施設単位で数十件保存すると localStorage の容量上限に達するためである
+- 既存の localStorage booking curve key は、`revenue-assistant:group-room-count:v4:<facilityCacheKey>:booking-curve:` の facility prefix に限定して削除してよい。localStorage 全体、競合価格 IndexedDB、booking curve raw source IndexedDB、derived reference curve IndexedDB は削除対象にしない
 
 #### Phase 1 Verification Notes
 

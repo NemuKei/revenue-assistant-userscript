@@ -1205,18 +1205,7 @@ function getBookingCurve(stayDate: string, batchDateKey: string, rmRoomGroupId?:
             return cached;
         }
 
-        const persisted = readPersistedBookingCurve(facilityCacheKey, cacheKey);
-        if (persisted !== undefined) {
-            const request = Promise.resolve(persisted);
-            bookingCurveCache.set(cacheKey, request);
-            return request;
-        }
-
         const request = readOrLoadBookingCurveRawSource(facilityCacheKey, stayDate, batchDateKey, rmRoomGroupId)
-            .then((data) => {
-                writePersistedBookingCurve(facilityCacheKey, cacheKey, data);
-                return data;
-            })
             .catch((error: unknown) => {
                 bookingCurveCache.delete(cacheKey);
                 throw error;
@@ -4933,6 +4922,7 @@ function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
     }
 
     cleanupLegacyGroupRoomStorage();
+    cleanupPersistedBookingCurveStorage(facilityCacheKey);
 
     activeBatchDateKey = batchDateKey;
     activeFacilityCacheKey = facilityCacheKey;
@@ -5065,41 +5055,37 @@ function writePersistedGroupRoomCount(facilityCacheKey: string, cacheKey: string
     }
 }
 
-function readPersistedBookingCurve(facilityCacheKey: string, cacheKey: string): BookingCurveResponse | undefined {
+function cleanupPersistedBookingCurveStorage(facilityCacheKey: string): number {
     try {
-        const raw = window.localStorage.getItem(`${getBookingCurveStoragePrefix(facilityCacheKey)}${cacheKey}`);
-        if (raw === null) {
-            return undefined;
+        const storagePrefix = getBookingCurveStoragePrefix(facilityCacheKey);
+        const keysToRemove: string[] = [];
+        for (let index = 0; index < window.localStorage.length; index += 1) {
+            const key = window.localStorage.key(index);
+            if (key !== null && key.startsWith(storagePrefix)) {
+                keysToRemove.push(key);
+            }
         }
 
-        return compactBookingCurveResponse(JSON.parse(raw) as BookingCurveResponse);
+        for (const key of keysToRemove) {
+            window.localStorage.removeItem(key);
+        }
+
+        if (keysToRemove.length > 0) {
+            console.info(`[${SCRIPT_NAME}] removed persistent booking-curve localStorage cache`, {
+                facilityCacheKey,
+                removedCount: keysToRemove.length
+            });
+        }
+
+        return keysToRemove.length;
     } catch (error: unknown) {
-        console.warn(`[${SCRIPT_NAME}] failed to read persistent booking-curve cache`, {
-            cacheKey,
+        console.warn(`[${SCRIPT_NAME}] failed to cleanup persistent booking-curve localStorage cache`, {
+            facilityCacheKey,
             error
         });
     }
 
-    return undefined;
-}
-
-function writePersistedBookingCurve(facilityCacheKey: string, cacheKey: string, data: BookingCurveResponse): void {
-    const storageKey = `${getBookingCurveStoragePrefix(facilityCacheKey)}${cacheKey}`;
-    const serialized = JSON.stringify(compactBookingCurveResponse(data));
-
-    try {
-        window.localStorage.setItem(storageKey, serialized);
-    } catch (error: unknown) {
-        const recovered = tryRecoverPersistentBookingCurveQuota(storageKey, serialized);
-        if (recovered) {
-            return;
-        }
-
-        console.warn(`[${SCRIPT_NAME}] failed to write persistent booking-curve cache`, {
-            cacheKey,
-            error
-        });
-    }
+    return 0;
 }
 
 function cleanupLegacyGroupRoomStorage(): boolean {
@@ -5135,23 +5121,6 @@ function cleanupLegacyGroupRoomStorage(): boolean {
     }
 
     return false;
-}
-
-function tryRecoverPersistentBookingCurveQuota(storageKey: string, serialized: string): boolean {
-    const cleaned = cleanupLegacyGroupRoomStorage();
-    if (!cleaned) {
-        return false;
-    }
-
-    try {
-        window.localStorage.setItem(storageKey, serialized);
-        console.info(`[${SCRIPT_NAME}] recovered persistent booking-curve cache after legacy cleanup`, {
-            storageKey
-        });
-        return true;
-    } catch {
-        return false;
-    }
 }
 
 function getGroupRoomStorageFacilityPrefix(facilityCacheKey: string): string {
