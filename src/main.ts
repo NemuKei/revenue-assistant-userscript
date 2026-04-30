@@ -6934,7 +6934,7 @@ function buildCompetitorPriceFilterOptions(records: CompetitorPriceSnapshotRecor
     }
 
     return {
-        roomTypes: Array.from(roomTypes).sort((left, right) => left.localeCompare(right, "ja")),
+        roomTypes: Array.from(roomTypes).sort(compareCompetitorPriceRoomTypeLabels),
         mealTypes: Array.from(mealTypes).sort((left, right) => formatMealTypeForDisplay(left).localeCompare(formatMealTypeForDisplay(right), "ja"))
     };
 }
@@ -7347,6 +7347,9 @@ function formatMealTypeForDisplay(value: string): string {
 
 function formatRoomTypeForDisplay(value: string): string {
     const normalizedValue = value.trim().toLowerCase();
+    if (normalizedValue.includes("four_beds") || normalizedValue.includes("4_beds") || normalizedValue.includes("quad") || normalizedValue.includes("フォース")) {
+        return "フォース";
+    }
     if (normalizedValue.includes("single") || normalizedValue.includes("シングル")) {
         return "シングル";
     }
@@ -7369,6 +7372,17 @@ function formatRoomTypeForDisplay(value: string): string {
         return "和洋室";
     }
     return value;
+}
+
+function compareCompetitorPriceRoomTypeLabels(left: string, right: string): number {
+    const displayOrder = ["シングル", "ダブル", "ツイン", "トリプル", "フォース"];
+    const leftIndex = displayOrder.indexOf(left);
+    const rightIndex = displayOrder.indexOf(right);
+    if (leftIndex !== -1 || rightIndex !== -1) {
+        return (leftIndex === -1 ? displayOrder.length : leftIndex)
+            - (rightIndex === -1 ? displayOrder.length : rightIndex);
+    }
+    return left.localeCompare(right, "ja");
 }
 
 function formatSignedPriceForDisplay(value: number): string {
