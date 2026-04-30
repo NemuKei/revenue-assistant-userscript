@@ -36,6 +36,7 @@ import {
     readBookingCurveRawSourceRecord,
     writeBookingCurveRawSourceRecord
 } from "./bookingCurveRawSourceStore";
+import { persistCompetitorPriceSnapshot } from "./competitorPriceSnapshotStore";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Userscript"
@@ -519,6 +520,7 @@ const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]
 const lincolnSuggestStatusRangeCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
+const competitorPriceSnapshotAttemptKeys = new Set<string>();
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
 const salesSettingBookingCurveReferenceVisibilityState = new Map<SalesSettingBookingCurveReferenceKind, boolean>();
 let salesSettingBookingCurveSameWeekdayVisible = false;
@@ -2892,6 +2894,7 @@ async function runCalendarSync(): Promise<void> {
 
         if (analysisDate !== null) {
             await salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingRankInsights(analysisDate, syncContext, preparedData));
+            scheduleCompetitorPriceSnapshot(analysisDate, batchDateKey, facilityCacheKey);
         }
 
         if (hasSalesSettingWarmCacheEligiblePage()) {
@@ -2929,6 +2932,52 @@ function createSyncContext(batchDateKey: string, facilityCacheKey: string): Sync
         batchDateKey,
         facilityCacheKey
     };
+}
+
+function scheduleCompetitorPriceSnapshot(
+    analysisDate: string,
+    batchDateKey: string,
+    facilityCacheKey: string
+): void {
+    const attemptKey = `${facilityCacheKey}:${analysisDate}:${batchDateKey}`;
+    if (competitorPriceSnapshotAttemptKeys.has(attemptKey)) {
+        return;
+    }
+
+    competitorPriceSnapshotAttemptKeys.add(attemptKey);
+    void persistCompetitorPriceSnapshot({
+        facilityId: facilityCacheKey,
+        stayDate: analysisDate,
+        source: "analyze-open"
+    })
+        .then((result) => {
+            if (!result.stored) {
+                console.info(`[${SCRIPT_NAME}] competitor price snapshot skipped`, {
+                    analysisDate,
+                    batchDateKey,
+                    facilityCacheKey,
+                    reason: result.reason
+                });
+                return;
+            }
+
+            console.info(`[${SCRIPT_NAME}] competitor price snapshot stored`, {
+                analysisDate,
+                batchDateKey,
+                facilityCacheKey,
+                conditionSignature: result.record?.conditionSignature,
+                previousFetchedAt: result.previousRecord?.fetchedAt ?? null
+            });
+        })
+        .catch((error: unknown) => {
+            competitorPriceSnapshotAttemptKeys.delete(attemptKey);
+            console.warn(`[${SCRIPT_NAME}] failed to persist competitor price snapshot`, {
+                analysisDate,
+                batchDateKey,
+                facilityCacheKey,
+                error
+            });
+        });
 }
 
 function isSyncContextStale(syncContext: SyncContext): boolean {
