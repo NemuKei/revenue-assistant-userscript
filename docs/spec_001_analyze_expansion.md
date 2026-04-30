@@ -341,11 +341,14 @@ Indicator:
 - 宿泊人数範囲は必須条件として扱う。`date`、食事条件、`yad_nos[]` があっても `min_num_guests` と `max_num_guests` がない request は `400 BAD_REQUEST` になる。
 - `meal_types[]` は省略可能である。省略すると、`NONE`、`BREAKFAST` だけではなく、`DINNER`、`BREAKFAST_DINNER` を含む response が返る。
 - `search_jalan_plan_name_contains` は、少なくとも空 keyword の状態では省略しても response shape と件数は変わらない。
-- `max_num_guests=10` は `400 BAD_REQUEST` になる。観測時点では、画面に保存されている `min_num_guests=1`、`max_num_guests=4` の範囲を使う。
+- `min_num_guests=1`、`max_num_guests=6`、`meal_types[]` 省略の request は `200` で取得できる。response に実際に入る人数は、該当プランが存在する人数だけである。2026-04-30 の観測では、request は `1〜6名` でも response 内の `num_guests` は `1〜4` だった。
+- `max_num_guests=10` は `400 BAD_REQUEST` になる。初期取得条件は、Revenue Assistant 画面の通常絞り込みが `1〜4名 / 素泊まり・朝のみ` であっても、RAU 側では `1〜6名 / 食事条件指定なし` を第一候補にする。
 - response root は `own` と `competitors` を持つ。`own.plans[]` と `competitors[].plans[]` の各 plan は、`num_guests`、`meal_type`、`plan_name`、`jalan_facility_room_type`、`url`、`price`、`price_diff` を持つ。
 - response には、在庫状態、販売停止、満室、ページング情報は含まれない。空室なしや販売停止を独立した状態として保存したい場合は、別 endpoint または画面表示の追加確認が必要である。
 - response には、人数、食事条件、部屋タイプ、プラン名、競合施設識別子、価格、自社価格との差分が含まれるため、取得後に RAU 側で人数、食事条件、部屋タイプ、プラン名の再絞り込みは可能である。
 - ただし、競合施設一覧を指定しない広い raw snapshot は取得できない。初期の snapshot 保存単位は、`date`、宿泊人数範囲、競合施設一覧、任意の食事条件、任意のプラン名検索条件から作る検索条件 signature ごとに分ける。
+- Revenue Assistant で扱う競合は自社に加えて最大 5 施設である。競合施設は後から入れ替え可能なため、保存時点の `yad_nos[]` と競合施設名を snapshot に保存し、後から現在の競合施設一覧だけを参照して過去 snapshot を解釈しない。
+- 競合施設を入れ替えた場合、入れ替え前の競合施設と入れ替え後の競合施設を同じ施設として連結しない。施設単位の価格推移は `yad_no` ごとに追跡し、検索条件 signature は保存時点の `yad_nos[]` の集合を含めて作る。
 
 ### Candidate 3: Booking Curve Phase 2
 

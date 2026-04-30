@@ -10,6 +10,8 @@
 - 今回の目的:
   - `RAU-CP-01` の Chrome CDP 調査結果に基づき、競合価格 response を取得時点つき snapshot として保存できる最小土台を作る。
   - `date`、宿泊人数範囲、競合施設一覧、任意の食事条件、任意のプラン名検索条件から検索条件 signature を作り、同じ stay_date でも条件が違う snapshot を別系列として保存する。
+  - 初期取得条件は `1〜6名 / 食事条件指定なし` を第一候補にし、競合施設一覧は保存時点の最大 5 件を snapshot に保持する。
+  - 競合施設は後から入れ替え可能なため、現在の競合施設一覧だけで過去 snapshot を解釈せず、施設単位の価格推移は `yad_no` ごとに扱う。
   - UI 表示はまだ作らず、次の前回比 table に必要な IndexedDB store、request builder、response adapter を先に実装する。
 
 ## Current State
@@ -60,7 +62,7 @@
 - `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル下端に、一部取得済み、完了、エラーの line を表示する。
 - `RAU-WC-06` はコード実装済み。warm cache の通常対象を `as_of_date - 1日` から `as_of_date + 3か月` までへ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
 - `RAU-CP-01` は完了。2026-04-30 に Chrome CDP で Analyze 日付ページの Network request を確認し、`GET /api/v5/competitor_prices` が競合価格 endpoint であることを確認した。
-- `/api/v5/competitor_prices` には `x-requested-with: XMLHttpRequest` が必要で、query には少なくとも `date`、`min_num_guests`、`max_num_guests`、`yad_nos[]` が必要である。`meal_types[]` は省略可能だが、競合施設一覧なしの広い取得は `400 BAD_REQUEST` になる。
+- `/api/v5/competitor_prices` には `x-requested-with: XMLHttpRequest` が必要で、query には少なくとも `date`、`min_num_guests`、`max_num_guests`、`yad_nos[]` が必要である。`1〜6名 / 食事条件指定なし` は取得できるが、競合施設一覧なしの広い取得は `400 BAD_REQUEST` になる。
 - `/api/v5/competitor_prices` の response は `own` と `competitors` を持つ。plan は人数、食事条件、プラン名、じゃらん部屋タイプ、URL、価格、自社価格との差分を持つが、在庫状態、販売停止、満室、ページング情報は持たない。
 - `RAU-CP-02` は次の本線。最初の実装は snapshot store、request builder、response adapter に限定し、競合価格 UI と warm cache 接続はまだ実装しない。
 
@@ -82,7 +84,8 @@
 1. `docs/tasks_backlog.md` の `RAU-CP-02` を確認する。
 2. `docs/spec_001_analyze_expansion.md` の `Competitor Price Table` 観測結果を確認する。
 3. `/api/v5/competitor_prices` 用の request builder、IndexedDB snapshot store、response adapter を実装する。
-4. UI 表示は作らず、保存済み snapshot から同じ検索条件 signature の前回 snapshot を取り出せる状態までを確認する。
+4. 競合施設入れ替え後も、過去 snapshot の `yad_no` と競合施設名が失われない保存構造にする。
+5. UI 表示は作らず、保存済み snapshot から同じ検索条件 signature の前回 snapshot を取り出せる状態までを確認する。
 
 変更しない契約:
 
@@ -213,6 +216,7 @@
 - 競合価格は現在値表ではなく、価格推移 snapshot の保存単位を設計してから表示判断する。
 - 競合価格 snapshot は、競合施設一覧なしの全件取得を前提にしない。
 - 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。
+- 競合施設を入れ替えても、過去 snapshot の競合施設名と `yad_no` を現在の競合施設一覧で上書きしない。
 - 競合価格 response だけで、在庫状態、販売停止、満室を確定した扱いにしない。
 - `RAU-CP-02` では、検索条件 signature と IndexedDB schema は確定するが、表示 UI は次の task まで確定しない。
 

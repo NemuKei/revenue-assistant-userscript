@@ -10,9 +10,11 @@
 - スコープ:
   - `/api/v5/competitor_prices` 用の request builder を追加する。
   - request には `x-requested-with: XMLHttpRequest` を付ける。
-  - query は `date`、`min_num_guests`、`max_num_guests`、`yad_nos[]` を必須にし、`meal_types[]` と plan name 検索条件は任意にする。
+  - query は `date`、`min_num_guests=1`、`max_num_guests=6`、`yad_nos[]` を必須にし、`meal_types[]` と plan name 検索条件は任意にする。
+  - 初期取得では食事条件を指定せず、Revenue Assistant から取得できる食事タイプを広めに保存する。
   - 画面に保存されている `competitors_filter_settings` と `competitors` から、初期 request 条件を作る。
-  - IndexedDB store は、取得時刻、対象 stay_date、検索条件 raw、検索条件 signature、取得元、response schema version、`own`、`competitors` を保存する。
+  - 競合施設は自社に加えて最大 5 施設で、後から入れ替え可能である。保存時点の `yad_nos[]` と競合施設名を snapshot に保存し、現在の競合施設一覧だけで過去 snapshot を解釈しない。
+  - IndexedDB store は、取得時刻、対象 stay_date、検索条件 raw、検索条件 signature、取得元、response schema version、保存時点の競合施設一覧、`own`、`competitors` を保存する。
   - response adapter は、`own.plans[]` と `competitors[].plans[]` の plan を、人数、食事条件、部屋タイプ、プラン名、URL、価格、自社価格との差分として正規化する。
 - 非目標:
   - 競合価格 UI を表示すること。
@@ -22,6 +24,8 @@
 - 受け入れ条件:
   - `date`、宿泊人数範囲、競合施設一覧を含む検索条件 signature で snapshot を保存できる。
   - 同じ stay_date でも、検索条件 signature が違う snapshot は別系列として保存される。
+  - 競合施設を入れ替えた場合でも、過去 snapshot の競合施設名と `yad_no` が失われず、現在の競合施設一覧と混同されない。
+  - 施設単位の価格推移は `yad_no` ごとに追跡できる。
   - `meal_types[]` を省略する場合と指定する場合を、検索条件 signature で区別できる。
   - 保存済み snapshot から、競合施設別、人数別、食事条件別、部屋タイプ別、プラン名別に RAU 側で再絞り込みできる。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
