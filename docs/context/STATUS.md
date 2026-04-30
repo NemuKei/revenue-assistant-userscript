@@ -222,6 +222,7 @@
   - 競合価格 Tooltip GUI 確認: passed。取得日軸 hover で Tooltip が表示され、施設別最安値と前回差分欄が表示されることを確認
   - indicator 最小化 GUI 確認: partially passed。`最小化` button で詳細表示が非表示になることを確認。Chrome CDP 注入確認では既存 Tampermonkey と build 注入が同時に動くため、`表示` button による再表示は Tampermonkey 正式再読込後に確認する
   - 販売設定 tab GUI 確認: passed。販売設定 tab に戻ったとき、RAU の競合価格セクションが 0 件になることを確認
+  - 競合価格 tab 限定表示の回帰確認: passed。2026-05-14 の Analyze 日付ページで販売設定 tab 下部に `競合価格 最安値推移` が割り込まないこと、2026-04-30 の競合価格 tab 本文では `競合価格 最安値推移` が 1 セクション、4 panel で表示されることを Chrome CDP build 注入で確認
   - Tampermonkey 正式再読込後の GUI 目視確認: 未実施
 
 ## Open Questions / Risks

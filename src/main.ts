@@ -6850,23 +6850,24 @@ function renderCompetitorPriceOverviewAtTarget(
 
 function resolveCompetitorPriceTabSectionTarget(): { sectionContainer: HTMLElement; insertionAnchor: HTMLElement | null } | null {
     const taxIncludedTextElement = document.querySelector<HTMLElement>(`[data-testid="competitor-price-tax-included-text"]`);
-    if (taxIncludedTextElement?.parentElement instanceof HTMLElement) {
+    if (
+        taxIncludedTextElement?.parentElement instanceof HTMLElement
+        && isElementVisiblyRendered(taxIncludedTextElement)
+    ) {
         return {
             sectionContainer: taxIncludedTextElement.parentElement,
             insertionAnchor: null
         };
     }
 
-    const tabElement = document.querySelector<HTMLElement>(`[data-testid="tab-competitorPrice"]`);
-    const rootElement = tabElement?.parentElement?.parentElement?.parentElement;
-    if (rootElement instanceof HTMLElement) {
-        return {
-            sectionContainer: rootElement,
-            insertionAnchor: null
-        };
-    }
-
     return null;
+}
+
+function isElementVisiblyRendered(element: HTMLElement): boolean {
+    const style = window.getComputedStyle(element);
+    return style.display !== "none"
+        && style.visibility !== "hidden"
+        && element.getClientRects().length > 0;
 }
 
 interface CompetitorPriceFilterOptions {
