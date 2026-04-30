@@ -66,6 +66,7 @@
 - `RAU-CP-02` はコード実装済み。`src/competitorPriceSnapshotStore.ts` に competitor price snapshot の IndexedDB store、request builder、response adapter、同じ検索条件 signature の最新 snapshot read path を追加した。
 - `RAU-CP-02` では、Analyze 日付ページ同期時に、同じ施設、stay_date、batch date につき 1 回だけ snapshot 保存を試す。競合価格 UI と warm cache 接続は実装していない。
 - `RAU-CP-03` は次の本線。保存済み snapshot を使い、競合価格 tab または既存 UI を押しのけない領域に前回比 table を表示する。indicator には競合価格 snapshot の未取得、保存中、保存済み、skip、保存失敗を表示し、競合価格 tab を開いた場合は現在開いている stay_date の snapshot 取得を優先する。
+- `RAU-WC-07` を `RAU-CP-03` の次 task として追加した。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行う。
 
 ## Next Re-entry
 
@@ -229,7 +230,7 @@
 - 競合施設を入れ替えても、過去 snapshot の競合施設名と `yad_no` を現在の競合施設一覧で上書きしない。
 - 競合価格 response だけで、在庫状態、販売停止、満室を確定した扱いにしない。
 - `RAU-CP-03` では、検索条件 signature と IndexedDB schema は維持し、表示 UI と plan 一致条件だけを追加で確定する。
-- 2026-04-30 の GUI 確認中、既存 booking curve の localStorage persistent cache 書き込みで `QuotaExceededError` warning が複数出た。競合価格 snapshot は IndexedDB に保存できているが、booking curve 側の localStorage 容量超過は別 task で整理対象にする。
+- 2026-04-30 の GUI 確認中、既存 booking curve の localStorage persistent cache 書き込みで `QuotaExceededError` warning が複数出た。競合価格 snapshot は IndexedDB に保存できているが、booking curve 側の localStorage 容量超過は `RAU-WC-07` で整理対象にする。
 
 ## References
 

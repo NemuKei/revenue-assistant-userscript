@@ -33,6 +33,32 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
+## Next
+
+### RAU-WC-07 booking curve localStorage 容量超過を整理する
+
+- 目的:
+  - Analyze 日付ページの GUI 確認中に発生した `QuotaExceededError` を放置せず、booking curve の persistent cache が容量超過で書き込めない状態を整理する。
+  - 競合価格 snapshot は IndexedDB に保存できているため、本タスクは競合価格の本線を止めず、booking curve 側の保存先と削除条件だけを対象にする。
+- スコープ:
+  - `failed to write persistent booking-curve cache` の発生箇所を確認し、localStorage に保存している booking curve cache の key、値の大きさ、削除条件を棚卸しする。
+  - 既存の IndexedDB raw source store と役割が重複している localStorage booking curve cache を、削除、縮小、または IndexedDB 参照へ寄せる方針を決める。
+  - 容量超過時に、古い legacy key または現在の `batchDateKey` と一致しない key を削除しても復旧できるかを確認する。
+  - 修正する場合は、booking curve 表示、reference curve 非同期補完、warm cache indicator の既存挙動を維持する。
+- 非目標:
+  - 競合価格 snapshot store を変更すること。
+  - warm cache の取得対象日付、取得優先順位、request 間隔を変更すること。
+  - localStorage 全体を無条件に消す操作を追加すること。
+- 受け入れ条件:
+  - `QuotaExceededError` が出る条件と、対象 localStorage key 群を説明できる。
+  - 実装する場合、容量超過時の復旧処理が facility、batch date、schema の境界を壊さない。
+  - Analyze 日付ページを再読み込みしても、booking curve の current 表示と reference curve の非同期補完が壊れない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
 ## Recently Implemented / GUI Unconfirmed
 
 ### RAU-CP-02 競合価格 snapshot store と取得 adapter を実装する
@@ -573,6 +599,7 @@ Now:
 
 Next:
 
+- `RAU-WC-07` booking curve localStorage 容量超過を整理する
 - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 After Next:
@@ -599,5 +626,6 @@ Later:
 - `RAU-CP-01` の調査結果により、競合価格は競合施設一覧なしでは取得できない。`RAU-CP-02` では、検索条件 signature ごとの snapshot store と取得 adapter を先に作る。
 - `RAU-CP-02` を先に行う理由は、前回比 table を出すには、同じ stay_date と同じ検索条件 signature の過去 snapshot を比較できる保存単位が必要なため。
 - `RAU-CP-03` は、`RAU-CP-02` の保存済み snapshot を使って初めて利用者向けの前回比 table を出す task とする。グラフ表示は snapshot が蓄積してから別判断にする。
+- `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加する。ただし競合価格 snapshot は IndexedDB 保存で正常確認済みのため、`RAU-CP-03` を先に進め、その次の安定化 task とする。
 - `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。
