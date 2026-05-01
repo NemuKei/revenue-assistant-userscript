@@ -7103,8 +7103,8 @@ function createCompetitorPriceChartSvg(
         svgElement.append(textElement);
 
         const lineElement = document.createElementNS(svgNamespace, "line");
-        lineElement.setAttribute("x1", layout.activeLeft.toFixed(2));
-        lineElement.setAttribute("x2", (layout.activeLeft + layout.activeWidth).toFixed(2));
+        lineElement.setAttribute("x1", layout.plotLeft.toFixed(2));
+        lineElement.setAttribute("x2", (layout.plotLeft + layout.plotWidth).toFixed(2));
         lineElement.setAttribute("y1", y.toFixed(2));
         lineElement.setAttribute("y2", y.toFixed(2));
         if (index > 0 && index < yAxisTicks.length - 1) {
