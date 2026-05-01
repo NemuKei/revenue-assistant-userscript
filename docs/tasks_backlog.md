@@ -382,6 +382,27 @@
 
 ## Completed / Recent Implementation
 
+### RAU-CP-09 競合価格 background 取得中に表示中グラフが揺れるバグを修正する
+
+- 目的:
+  - 前回データがある stay_date で競合価格 background queue が動いている間も、表示中の競合価格グラフを現在開いている stay_date の系列に固定する。
+  - 周辺日程の取得中に、前回データが見えたり見えなかったり、表示対象日が切り替わって見える状態を防ぐ。
+- スコープ:
+  - background queue から呼ぶ競合価格 snapshot 保存では、indicator の進捗だけを更新し、`competitorPriceSnapshotUiState` の `stayDate`、`records`、`latestRecord`、`previousRecord` を更新しない。
+  - Analyze open と競合価格 tab の現在 stay_date 保存では、従来どおり表示中グラフの state を更新する。
+- 非目標:
+  - 競合価格グラフの表示形式、横軸、Tooltip、保存 schema を変更すること。
+- 受け入れ条件:
+  - background queue 実行中も、競合価格グラフの `対象宿泊日` が現在開いている stay_date から周辺日程へ切り替わらない。
+  - background queue 実行中も、保存済みの前回データ系列が一時的に消えない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+- 実装内容:
+  - `runCompetitorPriceSnapshotSave()` に `updateVisibleState` option を追加し、background queue からの保存では visible state 更新を無効化した。
+
 ### RAU-CP-08 競合価格 background queue の indicator 進捗を表示する
 
 - 目的:

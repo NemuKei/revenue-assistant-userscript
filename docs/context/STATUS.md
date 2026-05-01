@@ -13,6 +13,7 @@
   - `RAU-CP-06` は完了。Analyze open 起点でも、現在開いている宿泊日の `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。
   - `RAU-CP-07` は完了。競合価格 tab 起点で現在 stay_date の保存後、同週、同月の順に background queue で競合価格 snapshot を保存するようにした。
   - `RAU-CP-08` は完了。競合価格 background queue の対象範囲、完了日数、対象日数、現在取得中の stay_date を indicator に表示するようにした。
+  - `RAU-CP-09` は完了。競合価格 background queue 実行中に、表示中グラフの対象日と前回データ系列が周辺日程の保存処理で揺れないようにした。
   - 次に、月次実績画面 `RAU-MP-01` へ戻り、追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart をどこまで final graph へ寄せるか判断する。
 
 ## Current State
@@ -75,6 +76,7 @@
 - `RAU-CP-06` はコード実装済み。Analyze open 起点でも競合価格 tab 起点と同じ 6 snapshot を保存し、現在開いている宿泊日の競合価格 snapshot 粒度を揃える。同週、同月、直近 30 日への queue 拡張は、request 数、booking curve warm cache との優先順位、停止条件を別途設計してから行う。
 - `RAU-CP-07` はコード実装済み。競合価格 tab 起点で現在 stay_date の 6 snapshot を保存した後、同じ Analyze 日付ページを表示している間だけ、同週、同月の順に background queue で競合価格 snapshot を保存する。background queue は booking curve warm cache queue と分離し、document hidden、別 Analyze 日付への遷移、batch date や facility cache key の変更時は停止する。直近 30 日への拡張は未実装。
 - `RAU-CP-08` はコード実装済み。Indicator は競合価格 background queue について、`周辺日程取得中 n / m日`、対象範囲、現在取得中の stay_date、完了日数を表示する。Analyze 日付変更や Analyze 外への遷移では、古い background queue と進捗表示を reset する。
+- `RAU-CP-09` はコード実装済み。background queue からの競合価格 snapshot 保存では indicator の進捗だけを更新し、表示中グラフの `competitorPriceSnapshotUiState` は更新しない。これにより、周辺日程保存中に競合価格グラフの対象日や前回データ系列が一時的に切り替わらない。
 - `RAU-WC-07` はコード実装済み。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行った。Chrome CDP 確認では、localStorage 全体約 5.18 MB のうち、booking curve localStorage key 36 件が約 5.16 MB を占めていた。
 - `RAU-WC-07` の実装では、`src/main.ts` の booking curve 取得経路から localStorage persistent cache の読み込みと書き込みを外し、既存 key は `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` の facility prefix に限定して削除する。IndexedDB raw source、derived reference curve、競合価格 snapshot は削除対象にしない。
 - Tampermonkey 側を `a4c4cc9` の build に更新後、Chrome CDP で Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を再読み込みして確認した。localStorage の booking-curve key は 0 件、booking-curve bytes は 0 のまま維持された。販売設定タブ内では group rows 6 件、overall summary 1 件、rank overview 1 件、booking curve section 1 件、booking curve SVG 2 件を確認した。`QuotaExceededError` は再発していない。
@@ -238,6 +240,7 @@
   - RAU-CP-06 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-19` の Analyze open 起点で、`/api/v5/competitor_prices` の request に `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` が含まれることを確認。console log で最新注入分の `storedCount: 6` を確認
   - RAU-CP-07 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-20` の競合価格 tab 起点で、現在 stay_date の保存後に `20260614`、`20260615`、`20260616` の background request が発行されることを確認。先頭の background 日付 `20260614` では `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 request を確認
   - RAU-CP-08 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-22` の競合価格 tab 起点で、indicator に `競合価格: 周辺日程取得中 0 / 29日`、対象範囲 `2026-06-01〜2026-06-30`、現在取得中の stay_date `2026-06-21`、完了日数 `0 / 29日` が表示されることを確認
+  - RAU-CP-09 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-23` の競合価格 tab 起点で、indicator が `競合価格: 周辺日程取得中` の間も、競合価格グラフ meta の `対象宿泊日 2026-06-23` が周辺日程へ切り替わらないことを確認
 
 ## Open Questions / Risks
 

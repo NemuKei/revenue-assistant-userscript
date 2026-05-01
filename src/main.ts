@@ -3311,40 +3311,46 @@ async function runCompetitorPriceSnapshotSave(
     facilityCacheKey: string,
     source: "analyze-open" | "competitor-tab",
     attemptKeys: Set<string>,
-    attemptKey: string
+    attemptKey: string,
+    options: { updateVisibleState?: boolean } = {}
 ): Promise<boolean> {
-    competitorPriceSnapshotUiState = {
-        ...competitorPriceSnapshotUiState,
-        status: "saving",
-        facilityId: facilityCacheKey,
-        stayDate: analysisDate,
-        source,
-        reason: null,
-        errorMessage: null,
-        updatedAt: new Date().toISOString()
-    };
-    renderSalesSettingWarmCacheIndicator();
-    renderCompetitorPriceOverviewFromState();
-    void refreshCompetitorPriceSnapshotSeries(facilityCacheKey, analysisDate);
+    const updateVisibleState = options.updateVisibleState !== false;
+    if (updateVisibleState) {
+        competitorPriceSnapshotUiState = {
+            ...competitorPriceSnapshotUiState,
+            status: "saving",
+            facilityId: facilityCacheKey,
+            stayDate: analysisDate,
+            source,
+            reason: null,
+            errorMessage: null,
+            updatedAt: new Date().toISOString()
+        };
+        renderSalesSettingWarmCacheIndicator();
+        renderCompetitorPriceOverviewFromState();
+        void refreshCompetitorPriceSnapshotSeries(facilityCacheKey, analysisDate);
+    }
 
     try {
         const result = await persistCompetitorPriceSnapshotsForSource(facilityCacheKey, analysisDate, source);
         if (!result.stored) {
-            competitorPriceSnapshotUiState = {
-                ...competitorPriceSnapshotUiState,
-                status: "skipped",
-                facilityId: facilityCacheKey,
-                stayDate: analysisDate,
-                source,
-                records: [],
-                latestRecord: null,
-                previousRecord: null,
-                reason: result.reason ?? "unknown",
-                errorMessage: null,
-                updatedAt: new Date().toISOString()
-            };
-            renderSalesSettingWarmCacheIndicator();
-            renderCompetitorPriceOverviewFromState();
+            if (updateVisibleState) {
+                competitorPriceSnapshotUiState = {
+                    ...competitorPriceSnapshotUiState,
+                    status: "skipped",
+                    facilityId: facilityCacheKey,
+                    stayDate: analysisDate,
+                    source,
+                    records: [],
+                    latestRecord: null,
+                    previousRecord: null,
+                    reason: result.reason ?? "unknown",
+                    errorMessage: null,
+                    updatedAt: new Date().toISOString()
+                };
+                renderSalesSettingWarmCacheIndicator();
+                renderCompetitorPriceOverviewFromState();
+            }
             console.info(`[${SCRIPT_NAME}] competitor price snapshot skipped`, {
                 analysisDate,
                 batchDateKey,
@@ -3354,21 +3360,23 @@ async function runCompetitorPriceSnapshotSave(
             return false;
         }
 
-        competitorPriceSnapshotUiState = {
-            ...competitorPriceSnapshotUiState,
-            status: "stored",
-            facilityId: facilityCacheKey,
-            stayDate: analysisDate,
-            source,
-            records: mergeCompetitorPriceSnapshotRecordList(competitorPriceSnapshotUiState.records, result.records),
-            latestRecord: result.latestRecord,
-            previousRecord: result.previousRecord,
-            reason: null,
-            errorMessage: null,
-            updatedAt: new Date().toISOString()
-        };
-        renderSalesSettingWarmCacheIndicator();
-        renderCompetitorPriceOverviewFromState();
+        if (updateVisibleState) {
+            competitorPriceSnapshotUiState = {
+                ...competitorPriceSnapshotUiState,
+                status: "stored",
+                facilityId: facilityCacheKey,
+                stayDate: analysisDate,
+                source,
+                records: mergeCompetitorPriceSnapshotRecordList(competitorPriceSnapshotUiState.records, result.records),
+                latestRecord: result.latestRecord,
+                previousRecord: result.previousRecord,
+                reason: null,
+                errorMessage: null,
+                updatedAt: new Date().toISOString()
+            };
+            renderSalesSettingWarmCacheIndicator();
+            renderCompetitorPriceOverviewFromState();
+        }
         console.info(`[${SCRIPT_NAME}] competitor price snapshot stored`, {
             analysisDate,
             batchDateKey,
@@ -3380,18 +3388,20 @@ async function runCompetitorPriceSnapshotSave(
         return true;
     } catch (error: unknown) {
         attemptKeys.delete(attemptKey);
-        competitorPriceSnapshotUiState = {
-            ...competitorPriceSnapshotUiState,
-            status: "error",
-            facilityId: facilityCacheKey,
-            stayDate: analysisDate,
-            source,
-            reason: null,
-            errorMessage: getErrorMessage(error),
-            updatedAt: new Date().toISOString()
-        };
-        renderSalesSettingWarmCacheIndicator();
-        renderCompetitorPriceOverviewFromState();
+        if (updateVisibleState) {
+            competitorPriceSnapshotUiState = {
+                ...competitorPriceSnapshotUiState,
+                status: "error",
+                facilityId: facilityCacheKey,
+                stayDate: analysisDate,
+                source,
+                reason: null,
+                errorMessage: getErrorMessage(error),
+                updatedAt: new Date().toISOString()
+            };
+            renderSalesSettingWarmCacheIndicator();
+            renderCompetitorPriceOverviewFromState();
+        }
         console.warn(`[${SCRIPT_NAME}] failed to persist competitor price snapshot`, {
             analysisDate,
             batchDateKey,
@@ -3530,7 +3540,8 @@ async function drainCompetitorPriceSnapshotBackgroundQueue(): Promise<void> {
                 task.facilityCacheKey,
                 "competitor-tab",
                 competitorPriceSnapshotPriorityAttemptKeys,
-                attemptKey
+                attemptKey,
+                { updateVisibleState: false }
             );
         }
 
