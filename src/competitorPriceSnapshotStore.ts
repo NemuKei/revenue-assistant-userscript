@@ -42,6 +42,7 @@ export interface CompetitorPriceSnapshotSearchCondition {
     minNumGuests: number;
     maxNumGuests: number;
     competitorYadNos: string[];
+    jalanRoomTypes?: string[] | null;
     mealTypes: string[] | null;
     planNameWords: string[] | null;
     planNameContains: boolean | null;
@@ -87,6 +88,7 @@ export interface PersistCompetitorPriceSnapshotOptions {
     facilityId: string;
     stayDate: string;
     source?: "analyze-open" | "competitor-tab";
+    jalanRoomTypes?: string[] | null;
 }
 
 export interface PersistCompetitorPriceSnapshotResult {
@@ -119,7 +121,7 @@ interface CompetitorPriceRequestContext {
 const pendingCompetitorPriceSnapshotWrites = new Map<string, Promise<PersistCompetitorPriceSnapshotResult>>();
 
 export function buildCompetitorPriceConditionSignature(condition: CompetitorPriceSnapshotSearchCondition): string {
-    return stableStringify({
+    const signatureSource: Record<string, unknown> = {
         stayDate: condition.stayDate,
         minNumGuests: condition.minNumGuests,
         maxNumGuests: condition.maxNumGuests,
@@ -127,13 +129,17 @@ export function buildCompetitorPriceConditionSignature(condition: CompetitorPric
         mealTypes: condition.mealTypes === null ? null : condition.mealTypes.slice().sort(),
         planNameWords: condition.planNameWords === null ? null : condition.planNameWords.slice().sort(),
         planNameContains: condition.planNameContains
-    });
+    };
+    if (condition.jalanRoomTypes !== null && condition.jalanRoomTypes !== undefined) {
+        signatureSource.jalanRoomTypes = condition.jalanRoomTypes.slice().sort();
+    }
+    return stableStringify(signatureSource);
 }
 
 export async function persistCompetitorPriceSnapshot(
     options: PersistCompetitorPriceSnapshotOptions
 ): Promise<PersistCompetitorPriceSnapshotResult> {
-    const requestContext = await buildCompetitorPriceRequestContext(options.stayDate);
+    const requestContext = await buildCompetitorPriceRequestContext(options.stayDate, options.jalanRoomTypes ?? null);
     if (requestContext === null) {
         return {
             stored: false,
@@ -212,7 +218,11 @@ function buildCompetitorPriceSnapshotSeries(snapshots: CompetitorPriceSnapshotRe
     const records = snapshots
         .slice()
         .sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt));
-    const latestRecord = records[records.length - 1] ?? null;
+    const latestRecord = records
+        .filter(isUnspecifiedCompetitorPriceSnapshotRecord)
+        .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0]
+        ?? records[records.length - 1]
+        ?? null;
     if (latestRecord === null) {
         return {
             records,
@@ -233,6 +243,10 @@ function buildCompetitorPriceSnapshotSeries(snapshots: CompetitorPriceSnapshotRe
         latestRecord,
         previousRecord
     };
+}
+
+function isUnspecifiedCompetitorPriceSnapshotRecord(record: CompetitorPriceSnapshotRecord): boolean {
+    return (record.searchConditionRaw.jalanRoomTypes ?? []).length === 0;
 }
 
 async function persistCompetitorPriceSnapshotInternal(
@@ -278,7 +292,10 @@ async function persistCompetitorPriceSnapshotInternal(
     };
 }
 
-async function buildCompetitorPriceRequestContext(stayDate: string): Promise<CompetitorPriceRequestContext | null> {
+async function buildCompetitorPriceRequestContext(
+    stayDate: string,
+    jalanRoomTypes: string[] | null
+): Promise<CompetitorPriceRequestContext | null> {
     const competitors = await loadCompetitors();
     const competitorSet = competitors
         .map((competitor) => ({
@@ -299,6 +316,7 @@ async function buildCompetitorPriceRequestContext(stayDate: string): Promise<Com
         minNumGuests: DEFAULT_MIN_NUM_GUESTS,
         maxNumGuests: DEFAULT_MAX_NUM_GUESTS,
         competitorYadNos: competitorSet.map((competitor) => competitor.yadNo),
+        jalanRoomTypes,
         mealTypes: null,
         planNameWords: null,
         planNameContains: null
@@ -309,6 +327,9 @@ async function buildCompetitorPriceRequestContext(stayDate: string): Promise<Com
     url.searchParams.set("max_num_guests", String(searchCondition.maxNumGuests));
     for (const yadNo of searchCondition.competitorYadNos) {
         url.searchParams.append("yad_nos[]", yadNo);
+    }
+    for (const roomType of searchCondition.jalanRoomTypes ?? []) {
+        url.searchParams.append("jalan_room_types[]", roomType);
     }
 
     return {

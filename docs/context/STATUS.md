@@ -4,17 +4,13 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-CP-05` 競合価格の部屋タイプ別 snapshot を個別取得する
+- 主対象: `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 - この bundle で扱う Task ID:
-  - `RAU-CP-04` 競合価格グラフを標準表より下に固定する
-  - `RAU-CP-05` 競合価格の部屋タイプ別 snapshot を個別取得する
+  - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 - 今回の目的:
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
-  - 次に、`jalan_room_types[]` の単独指定を使い、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot 取得を追加する。
-  - 従来の `指定なし` snapshot は継続する。`SEMI_DOUBLE` と raw room type が空のその他相当 plan は、Revenue Assistant の部屋タイプ絞り込み選択肢に独立して存在しないため、`指定なし` snapshot で保持する。
-  - 部屋タイプ別 snapshot は、指定なし snapshot と検索条件 signature を分け、グラフの部屋タイプ toggle で該当 snapshot を優先利用できるようにする。部屋タイプ別 snapshot は `指定なし` snapshot の置き換えではなく、補助として扱う。
-  - 競合価格グラフの Tooltip には、施設名、実際に返った部屋タイプ、価格、前回差分を表示する。
-  - 月次実績画面 `RAU-MP-01` は、競合価格の表示順バグと部屋タイプ別 snapshot 欠損を処理したあとに戻る。
+  - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
+  - 次に、月次実績画面 `RAU-MP-01` へ戻り、追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart をどこまで final graph へ寄せるか判断する。
 
 ## Current State
 
@@ -72,6 +68,7 @@
 - `RAU-CP-03` の GUI 確認は、Chrome CDP で build 済み `dist` を Analyze 日付ページへ注入して確認済み。2026-05-01 に `競合価格 -> 販売設定 -> 競合価格` と遷移した場合でも、2 回目の競合価格タブで `競合価格 最安値推移` が 1 セクション、4 panel、4 SVG で再表示されることを確認した。同じ日に、2日分の競合価格グラフが旧表示の `54〜736` 両端配置ではなく、`315〜475` の短い中央寄せ幅で表示されることを確認した。人数別グラフ panel の枠線、縦軸補助目盛り、補助線、Tooltip 表形式、補助線の横幅いっぱい表示は、Tampermonkey 正式再読込後の利用者確認まで完了した。
 - 2026-05-01 の追加調査で、`/api/v5/competitor_prices` は `jalan_room_types[]=TWIN` のような単独部屋タイプ指定を受け付けることを Chrome CDP で確認した。指定なし response では返らない TWIN plan が、TWIN 単独指定では返った。複数部屋タイプ同時指定は各部屋タイプを網羅せず、指定集合内の最安値寄りに絞られるため、部屋タイプ別 snapshot は単独 request として扱う。ただし、`指定なし` response には `SEMI_DOUBLE` や raw room type が空のその他相当 plan が最安値として含まれる場合があるため、`指定なし` snapshot は継続して保存する。
 - `RAU-CP-04` はコード実装済み。Analyze 日付ページ内の click 後と、MutationObserver が DOM 変化を検知したが calendar sync signature が変わらない場合に、競合価格グラフの配置修復を予約するようにした。Revenue Assistant 標準表が後から追加された場合でも、保存済み state から `renderCompetitorPriceOverviewFromState()` を再実行し、RAU セクションを同じ親要素の末尾へ戻す。
+- `RAU-CP-05` はコード実装済み。Analyze open 起点では従来どおり `指定なし` snapshot だけを保存し、競合価格 tab 起点では `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存する。指定なし表示では `指定なし` snapshot を優先し、部屋タイプ toggle 選択時は対応する `jalan_room_types[]` snapshot を優先する。Tooltip には、施設名、部屋タイプ、価格、前回差分を表示する。
 - `RAU-WC-07` はコード実装済み。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行った。Chrome CDP 確認では、localStorage 全体約 5.18 MB のうち、booking curve localStorage key 36 件が約 5.16 MB を占めていた。
 - `RAU-WC-07` の実装では、`src/main.ts` の booking curve 取得経路から localStorage persistent cache の読み込みと書き込みを外し、既存 key は `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` の facility prefix に限定して削除する。IndexedDB raw source、derived reference curve、競合価格 snapshot は削除対象にしない。
 - Tampermonkey 側を `a4c4cc9` の build に更新後、Chrome CDP で Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を再読み込みして確認した。localStorage の booking-curve key は 0 件、booking-curve bytes は 0 のまま維持された。販売設定タブ内では group rows 6 件、overall summary 1 件、rank overview 1 件、booking curve section 1 件、booking curve SVG 2 件を確認した。`QuotaExceededError` は再発していない。
@@ -91,10 +88,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-CP-05` を確認し、`jalan_room_types[]` 単独指定の room type 別 snapshot 取得を実装する。
-2. 実装時は、従来の `指定なし` snapshot を継続し、`SEMI_DOUBLE` と raw room type が空のその他相当 plan を失わないことを確認する。
-3. 競合価格を続けない場合は、`RAU-MP-01` 月次実績画面の LT 基準 custom booking curve へ戻る。
-4. booking curve 側を続ける場合は、reference curve 取得率が低い日付で、表示待ち、取得中、取得不可の区別が十分かを確認する。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-MP-01` を確認し、月次実績画面の LT 基準 custom booking curve を再開する。
+2. まず、既存の月次実績 route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart の実装状態を確認し、final graph へ寄せる範囲を決める。
+3. booking curve 側を続ける場合は、reference curve 取得率が低い日付で、表示待ち、取得中、取得不可の区別が十分かを確認する。
 
 変更しない契約:
 
@@ -232,6 +228,7 @@
   - 競合価格 tab 限定表示の回帰確認: passed。2026-05-14 の Analyze 日付ページで販売設定 tab 下部に `競合価格 最安値推移` が割り込まないこと、2026-04-30 の競合価格 tab 本文では `競合価格 最安値推移` が 1 セクション、4 panel で表示されることを Chrome CDP build 注入で確認
   - Tampermonkey 正式再読込後の GUI 目視確認: passed。人数別グラフ panel の枠線、縦軸補助目盛り、補助線、Tooltip 表形式、補助線の横幅いっぱい表示を利用者確認済み
   - RAU-CP-04 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-17` の競合価格 tab で、RAU セクションの後ろに標準表の後続再描画を模した test node を追加し、2.3 秒後に RAU セクションが親要素の末尾へ戻ることを確認
+  - RAU-CP-05 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-17` の競合価格 tab を開いたとき、`/api/v5/competitor_prices` の request に `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` が含まれることを確認。console log で `storedCount: 6` を確認
 
 ## Open Questions / Risks
 
@@ -244,13 +241,12 @@
 - 現行コードでは `recent_weighted_90` の `ACT` は `as_of_date` より前に宿泊済みの履歴 stay_date から final rooms 相当を作り、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
 - `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。Tampermonkey 再読込後、ON/OFF、hover 表示、室タイプ別 card を開いたときの追加取得を GUI 目視で確認する必要がある。
 - `RAU-WC-01` では、API 負荷と IndexedDB 保存量が増えるため、同時取得 1、request 間隔、1 回稼働時間、1 日稼働時間、hidden 時の一時停止、連続エラー停止を verify 対象にする。
-- 競合価格は現在値表ではなく、価格推移 snapshot の保存単位を設計してから表示判断する。
 - 競合価格 snapshot は、競合施設一覧なしの全件取得を前提にしない。
 - 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。
 - 競合施設を入れ替えても、過去 snapshot の競合施設名と `yad_no` を現在の競合施設一覧で上書きしない。
 - 競合価格 response だけで、在庫状態、販売停止、満室を確定した扱いにしない。
 - `RAU-CP-03` は Tampermonkey 正式再読込後の利用者確認まで完了している。今後の競合価格改善は、追加 UI 調整または保存済み snapshot の表示密度改善として別 task 化する。
-- 競合価格の部屋タイプ toggle は、指定なし snapshot だけでは欠損が出る。部屋タイプ別の精度を上げる場合は、`jalan_room_types[]` 単独指定の snapshot を追加保存する必要がある。ただし、`SEMI_DOUBLE` と raw room type が空のその他相当 plan を保持するため、従来の `指定なし` snapshot は廃止しない。
+- 競合価格の部屋タイプ別 snapshot は `RAU-CP-05` で実装済み。ただし、`SEMI_DOUBLE` と raw room type が空のその他相当 plan を保持するため、従来の `指定なし` snapshot は廃止しない。
 - 2026-04-30 の GUI 確認中に出た booking curve の localStorage persistent cache 書き込み `QuotaExceededError` は、`RAU-WC-07` で localStorage booking curve response cache を廃止して整理済み。再発した場合は、IndexedDB 保存量、group-room result cache、別 namespace の localStorage key を切り分ける。
 
 ## References

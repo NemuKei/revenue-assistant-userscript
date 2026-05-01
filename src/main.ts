@@ -120,7 +120,8 @@ const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE = "data-ra-sales-set
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
-const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v5";
+const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v6";
+const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -3208,11 +3209,7 @@ function scheduleCompetitorPriceSnapshot(
     renderCompetitorPriceOverviewFromState();
     void refreshCompetitorPriceSnapshotSeries(facilityCacheKey, analysisDate);
 
-    void persistCompetitorPriceSnapshot({
-        facilityId: facilityCacheKey,
-        stayDate: analysisDate,
-        source
-    })
+    void persistCompetitorPriceSnapshotsForSource(facilityCacheKey, analysisDate, source)
         .then((result) => {
             if (!result.stored) {
                 competitorPriceSnapshotUiState = {
@@ -3245,8 +3242,8 @@ function scheduleCompetitorPriceSnapshot(
                 facilityId: facilityCacheKey,
                 stayDate: analysisDate,
                 source,
-                records: mergeCompetitorPriceSnapshotRecords(competitorPriceSnapshotUiState.records, result.record),
-                latestRecord: result.record,
+                records: mergeCompetitorPriceSnapshotRecordList(competitorPriceSnapshotUiState.records, result.records),
+                latestRecord: result.latestRecord,
                 previousRecord: result.previousRecord,
                 reason: null,
                 errorMessage: null,
@@ -3258,7 +3255,8 @@ function scheduleCompetitorPriceSnapshot(
                 analysisDate,
                 batchDateKey,
                 facilityCacheKey,
-                conditionSignature: result.record?.conditionSignature,
+                storedCount: result.records.length,
+                conditionSignature: result.latestRecord?.conditionSignature,
                 previousFetchedAt: result.previousRecord?.fetchedAt ?? null
             });
         })
@@ -3283,6 +3281,71 @@ function scheduleCompetitorPriceSnapshot(
                 error
             });
         });
+}
+
+interface PersistCompetitorPriceSnapshotsForSourceResult {
+    stored: boolean;
+    records: CompetitorPriceSnapshotRecord[];
+    latestRecord: CompetitorPriceSnapshotRecord | null;
+    previousRecord: CompetitorPriceSnapshotRecord | null;
+    reason?: "indexeddb-unavailable" | "no-competitors";
+}
+
+async function persistCompetitorPriceSnapshotsForSource(
+    facilityCacheKey: string,
+    analysisDate: string,
+    source: "analyze-open" | "competitor-tab"
+): Promise<PersistCompetitorPriceSnapshotsForSourceResult> {
+    const roomTypeRequests = source === "competitor-tab"
+        ? [null, ...COMPETITOR_PRICE_ROOM_TYPE_REQUESTS.map((roomType) => [roomType])]
+        : [null];
+    const records: CompetitorPriceSnapshotRecord[] = [];
+    let previousRecord: CompetitorPriceSnapshotRecord | null = null;
+    let skipReason: "indexeddb-unavailable" | "no-competitors" | undefined;
+
+    for (const jalanRoomTypes of roomTypeRequests) {
+        const result = await persistCompetitorPriceSnapshot({
+            facilityId: facilityCacheKey,
+            stayDate: analysisDate,
+            source,
+            jalanRoomTypes
+        });
+        if (!result.stored) {
+            skipReason = result.reason;
+            if (records.length === 0) {
+                const skippedResult: PersistCompetitorPriceSnapshotsForSourceResult = {
+                    stored: false,
+                    records: [],
+                    latestRecord: null,
+                    previousRecord: null
+                };
+                if (skipReason !== undefined) {
+                    skippedResult.reason = skipReason;
+                }
+                return {
+                    ...skippedResult
+                };
+            }
+            continue;
+        }
+
+        if (result.record !== null) {
+            records.push(result.record);
+        }
+        if (jalanRoomTypes === null) {
+            previousRecord = result.previousRecord;
+        }
+    }
+
+    const latestRecord = records.find((record) => isUnspecifiedCompetitorPriceRecord(record))
+        ?? records[records.length - 1]
+        ?? null;
+    return {
+        stored: records.length > 0,
+        records,
+        latestRecord,
+        previousRecord
+    };
 }
 
 async function refreshCompetitorPriceSnapshotSeries(facilityCacheKey: string, analysisDate: string): Promise<void> {
@@ -6795,7 +6858,7 @@ function renderCompetitorPriceOverviewAtTarget(
     competitorPriceRoomTypeFilter = roomTypeFilter;
     competitorPriceMealTypeFilter = mealTypeFilter;
 
-    const dailyRecords = buildLatestCompetitorPriceRecordsByFetchDate(records);
+    const dailyRecords = buildLatestCompetitorPriceRecordsByFetchDate(records, roomTypeFilter);
     const chartSeries = buildCompetitorPriceGuestChartSeries(dailyRecords, roomTypeFilter, mealTypeFilter);
     const signature = [
         COMPETITOR_PRICE_OVERVIEW_UI_VERSION,
@@ -6886,6 +6949,7 @@ interface CompetitorPriceChartPoint {
     fetchDate: string;
     yadNo: string;
     price: number;
+    roomType: string | null;
 }
 
 interface CompetitorPriceGuestChartSeries {
@@ -6901,22 +6965,24 @@ interface CompetitorPriceChartLayout {
     activeWidth: number;
 }
 
-function mergeCompetitorPriceSnapshotRecords(
+function mergeCompetitorPriceSnapshotRecordList(
     records: CompetitorPriceSnapshotRecord[],
-    record: CompetitorPriceSnapshotRecord | null
+    nextRecords: CompetitorPriceSnapshotRecord[]
 ): CompetitorPriceSnapshotRecord[] {
-    if (record === null) {
-        return records;
-    }
-
     const merged = new Map(records.map((item) => [item.snapshotKey, item]));
-    merged.set(record.snapshotKey, record);
+    for (const record of nextRecords) {
+        merged.set(record.snapshotKey, record);
+    }
     return Array.from(merged.values()).sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt));
 }
 
-function buildLatestCompetitorPriceRecordsByFetchDate(records: CompetitorPriceSnapshotRecord[]): CompetitorPriceSnapshotRecord[] {
+function buildLatestCompetitorPriceRecordsByFetchDate(
+    records: CompetitorPriceSnapshotRecord[],
+    roomTypeFilter: string | null
+): CompetitorPriceSnapshotRecord[] {
+    const candidateRecords = selectCompetitorPriceRecordsForRoomTypeFilter(records, roomTypeFilter);
     const dailyRecords = new Map<string, CompetitorPriceSnapshotRecord>();
-    for (const record of records) {
+    for (const record of candidateRecords) {
         const fetchDate = formatCompetitorPriceFetchDate(record.fetchedAt);
         const existingRecord = dailyRecords.get(fetchDate);
         if (existingRecord === undefined || existingRecord.fetchedAt.localeCompare(record.fetchedAt) < 0) {
@@ -6925,6 +6991,36 @@ function buildLatestCompetitorPriceRecordsByFetchDate(records: CompetitorPriceSn
     }
 
     return Array.from(dailyRecords.values()).sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt));
+}
+
+function selectCompetitorPriceRecordsForRoomTypeFilter(
+    records: CompetitorPriceSnapshotRecord[],
+    roomTypeFilter: string | null
+): CompetitorPriceSnapshotRecord[] {
+    if (roomTypeFilter === null) {
+        const unspecifiedRecords = records.filter(isUnspecifiedCompetitorPriceRecord);
+        return unspecifiedRecords.length > 0 ? unspecifiedRecords : records;
+    }
+
+    const roomTypeRequestRecords = records.filter((record) => recordMatchesCompetitorPriceRoomTypeRequest(record, roomTypeFilter));
+    if (roomTypeRequestRecords.length > 0) {
+        return roomTypeRequestRecords;
+    }
+
+    return records.filter(isUnspecifiedCompetitorPriceRecord);
+}
+
+function isUnspecifiedCompetitorPriceRecord(record: CompetitorPriceSnapshotRecord): boolean {
+    return getCompetitorPriceRecordJalanRoomTypes(record).length === 0;
+}
+
+function recordMatchesCompetitorPriceRoomTypeRequest(record: CompetitorPriceSnapshotRecord, roomTypeFilter: string): boolean {
+    return getCompetitorPriceRecordJalanRoomTypes(record)
+        .some((roomType) => formatRoomTypeForDisplay(roomType) === roomTypeFilter);
+}
+
+function getCompetitorPriceRecordJalanRoomTypes(record: CompetitorPriceSnapshotRecord): string[] {
+    return record.searchConditionRaw.jalanRoomTypes ?? [];
 }
 
 function buildCompetitorPriceFilterOptions(records: CompetitorPriceSnapshotRecord[]): CompetitorPriceFilterOptions {
@@ -7027,8 +7123,13 @@ function buildCompetitorPriceGuestChartSeries(
         }
         for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
             const points = pointsByGuestCount.get(guestCount) ?? [];
-            for (const [yadNo, price] of findMinimumCompetitorPrices(record, guestCount, roomTypeFilter, mealTypeFilter)) {
-                points.push({ fetchDate, yadNo, price });
+            for (const [yadNo, minimumPrice] of findMinimumCompetitorPrices(record, guestCount, roomTypeFilter, mealTypeFilter)) {
+                points.push({
+                    fetchDate,
+                    yadNo,
+                    price: minimumPrice.price,
+                    roomType: minimumPrice.roomType
+                });
             }
             pointsByGuestCount.set(guestCount, points);
         }
@@ -7266,7 +7367,7 @@ function showCompetitorPriceTooltip(
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
     const headRowElement = document.createElement("tr");
-    for (const label of ["施設", "価格", "前回差分"]) {
+    for (const label of ["施設", "部屋タイプ", "価格", "前回差分"]) {
         const cellElement = document.createElement("th");
         cellElement.scope = "col";
         cellElement.textContent = label;
@@ -7279,12 +7380,14 @@ function showCompetitorPriceTooltip(
         const rowElement = document.createElement("tr");
         const facilityElement = document.createElement("td");
         facilityElement.textContent = row.facility.name;
+        const roomTypeElement = document.createElement("td");
+        roomTypeElement.textContent = row.point.roomType === null ? "不明" : formatRoomTypeForDisplay(row.point.roomType);
         const priceElement = document.createElement("td");
         priceElement.textContent = formatPriceForDisplay(row.point.price);
         const deltaElement = document.createElement("td");
         deltaElement.textContent = row.delta === null ? "前回なし" : formatSignedPriceForDisplay(row.delta);
         deltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.delta));
-        rowElement.append(facilityElement, priceElement, deltaElement);
+        rowElement.append(facilityElement, roomTypeElement, priceElement, deltaElement);
         bodyElement.append(rowElement);
     }
     tableElement.append(headElement, bodyElement);
@@ -7314,8 +7417,8 @@ function findMinimumCompetitorPrices(
     guestCount: number,
     roomTypeFilter: string | null,
     mealTypeFilter: string | null
-): Map<string, number> {
-    const minimumPrices = new Map<string, number>();
+): Map<string, { price: number; roomType: string | null }> {
+    const minimumPrices = new Map<string, { price: number; roomType: string | null }>();
     for (const plan of flattenCompetitorPricePlansWithOwn(record)) {
         if (
             plan.price === null
@@ -7327,8 +7430,11 @@ function findMinimumCompetitorPrices(
         }
 
         const currentPrice = minimumPrices.get(plan.yadNo);
-        if (currentPrice === undefined || plan.price < currentPrice) {
-            minimumPrices.set(plan.yadNo, plan.price);
+        if (currentPrice === undefined || plan.price < currentPrice.price) {
+            minimumPrices.set(plan.yadNo, {
+                price: plan.price,
+                roomType: plan.jalanFacilityRoomType
+            });
         }
     }
     return minimumPrices;
@@ -7436,6 +7542,9 @@ function formatRoomTypeForDisplay(value: string): string {
     if (normalizedValue.includes("single") || normalizedValue.includes("シングル")) {
         return "シングル";
     }
+    if (normalizedValue.includes("semi_double") || normalizedValue.includes("semidouble") || normalizedValue.includes("セミダブル")) {
+        return "セミダブル";
+    }
     if (normalizedValue.includes("double") || normalizedValue.includes("ダブル")) {
         return "ダブル";
     }
@@ -7458,7 +7567,7 @@ function formatRoomTypeForDisplay(value: string): string {
 }
 
 function compareCompetitorPriceRoomTypeLabels(left: string, right: string): number {
-    const displayOrder = ["シングル", "ダブル", "ツイン", "トリプル", "フォース"];
+    const displayOrder = ["シングル", "セミダブル", "ダブル", "ツイン", "トリプル", "フォース"];
     const leftIndex = displayOrder.indexOf(left);
     const rightIndex = displayOrder.indexOf(right);
     if (leftIndex !== -1 || rightIndex !== -1) {

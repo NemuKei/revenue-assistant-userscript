@@ -380,7 +380,7 @@
   - Analyze 日付ページで、その日、同週、同月の順に取得が優先されること
   - Indicator の `raw / 参考線 / 同曜日` 取得率が実データに応じて進むこと
 
-## Now
+## Completed / Recent Implementation
 
 ### RAU-CP-05 競合価格の部屋タイプ別 snapshot を個別取得する
 
@@ -417,8 +417,23 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - `CompetitorPriceSnapshotSearchCondition` に `jalanRoomTypes` を追加し、`jalan_room_types[]` 単独指定を検索条件 signature と request query に含められるようにした。
+  - Analyze open 起点では従来どおり `指定なし` snapshot だけを保存し、競合価格 tab 起点では `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。
+  - 取得日ごとの代表 snapshot は、指定なし表示では `指定なし` snapshot を優先し、部屋タイプ toggle 選択時は対応する `jalan_room_types[]` snapshot を優先するようにした。
+  - `SEMI_DOUBLE` は単独 request せず、response に含まれた plan として保持する。表示名は `セミダブル` として扱う。
+  - Tooltip に `部屋タイプ` 列を追加し、最安値として採用した plan の実際の `jalanFacilityRoomType` を表示するようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+- GUI 確認:
+  - 2026-05-01 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` を `https://ra.jalan.net/analyze/2026-06-17` へ注入して確認した。
+  - 競合価格 tab を開いたとき、`/api/v5/competitor_prices` の request に `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` が含まれることを確認した。
+  - console log で `storedCount: 6` を確認し、競合価格 tab 起点で 6 snapshot が保存されたことを確認した。
 
-## After Next
+## Now
 
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
@@ -740,20 +755,19 @@
 
 Now:
 
-- `RAU-CP-05` 競合価格の部屋タイプ別 snapshot を個別取得する
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 Next:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 
 After Next:
 
-- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
+- `RAU-FC-02` 予測評価 dataset と metrics を設計する
 
 Later:
 
-- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
-- `RAU-FC-02` 予測評価 dataset と metrics を設計する
+- なし
 
 統合判断:
 
