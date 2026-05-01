@@ -3296,9 +3296,7 @@ async function persistCompetitorPriceSnapshotsForSource(
     analysisDate: string,
     source: "analyze-open" | "competitor-tab"
 ): Promise<PersistCompetitorPriceSnapshotsForSourceResult> {
-    const roomTypeRequests = source === "competitor-tab"
-        ? [null, ...COMPETITOR_PRICE_ROOM_TYPE_REQUESTS.map((roomType) => [roomType])]
-        : [null];
+    const roomTypeRequests = [null, ...COMPETITOR_PRICE_ROOM_TYPE_REQUESTS.map((roomType) => [roomType])];
     const records: CompetitorPriceSnapshotRecord[] = [];
     let previousRecord: CompetitorPriceSnapshotRecord | null = null;
     let skipReason: "indexeddb-unavailable" | "no-competitors" | undefined;

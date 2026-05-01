@@ -382,6 +382,29 @@
 
 ## Completed / Recent Implementation
 
+### RAU-CP-06 Analyze open の競合価格 snapshot 粒度を部屋タイプ別まで揃える
+
+- 目的:
+  - Analyze 画面を開いた日程について、競合価格 tab を開いたかどうかで snapshot 粒度が変わらないようにする。
+  - 現在開いている宿泊日は料金判断対象である可能性が高いため、`指定なし` だけでなく、部屋タイプ別 snapshot も同じタイミングで保存する。
+- スコープ:
+  - Analyze open 起点でも、`指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存する。
+  - `指定なし` snapshot は継続し、`SEMI_DOUBLE` と raw room type が空のその他相当 plan を保持する。
+  - 表示側は、指定なし表示では `指定なし` snapshot を優先し、部屋タイプ toggle 選択時は対応する `jalan_room_types[]` snapshot を優先する既存仕様を維持する。
+- 非目標:
+  - 同週、同月、直近 30 日の競合価格 snapshot queue を追加すること。これは request 数、booking curve warm cache との優先順位、停止条件を別途設計してから行う。
+  - booking curve warm cache より競合価格 snapshot を優先すること。
+- 受け入れ条件:
+  - Analyze 画面を開いた日程で、`/api/v5/competitor_prices` の request に `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` が含まれる。
+  - 競合価格 tab を開かなくても、現在日程の部屋タイプ別 snapshot が保存される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - `persistCompetitorPriceSnapshotsForSource()` の source 分岐をなくし、`analyze-open` と `competitor-tab` のどちらでも同じ 6 snapshot を保存するようにした。
+
 ### RAU-CP-05 競合価格の部屋タイプ別 snapshot を個別取得する
 
 - 目的:
@@ -419,7 +442,7 @@
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 - 実装内容:
   - `CompetitorPriceSnapshotSearchCondition` に `jalanRoomTypes` を追加し、`jalan_room_types[]` 単独指定を検索条件 signature と request query に含められるようにした。
-  - Analyze open 起点では従来どおり `指定なし` snapshot だけを保存し、競合価格 tab 起点では `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。
+  - 初期実装では Analyze open 起点は従来どおり `指定なし` snapshot だけを保存し、競合価格 tab 起点では `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。この取得タイミングは `RAU-CP-06` で Analyze open 起点も 6 snapshot に拡張した。
   - 取得日ごとの代表 snapshot は、指定なし表示では `指定なし` snapshot を優先し、部屋タイプ toggle 選択時は対応する `jalan_room_types[]` snapshot を優先するようにした。
   - `SEMI_DOUBLE` は単独 request せず、response に含まれた plan として保持する。表示名は `セミダブル` として扱う。
   - Tooltip に `部屋タイプ` 列を追加し、最安値として採用した plan の実際の `jalanFacilityRoomType` を表示するようにした。

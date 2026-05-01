@@ -323,8 +323,10 @@ Indicator:
 - RAU で競合価格を扱う場合は、取得時点つきの競合価格 snapshot を IndexedDB に保存し、直近で競合価格が上がったか、下がったか、自館の価格変更や booking curve 変化と前後関係があるかを追跡できる形を候補にする
 - 競合価格 snapshot は、全日付、全競合、全条件を網羅取得するものではなく、Analyze 日付ページを開いた日付や、料金判断のために繰り返し確認された日付ほど観測履歴が厚くなる設計を第一候補にする。
 - 取得トリガーは、競合価格タブを開いたときだけに限定しない。Analyze 日付ページを開いた時点で、その stay_date は料金判断の対象になっている可能性が高いため、競合価格 snapshot の候補に含める。
+- Analyze 日付ページを開いた stay_date は、競合価格タブを開いたかどうかに関係なく、`指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存する。理由は、現在見ている宿泊日の競合価格 data は、操作履歴によって部屋タイプ別 snapshot の有無が変わると比較しにくいためである。
 - Analyze 画面内で競合価格タブを開いた場合は、その stay_date の競合価格確認意図がより明確になったものとして、競合価格 snapshot の取得優先度を上げる。
 - 競合価格タブを開いたときの優先取得は、現在開いている stay_date と現在の検索条件 signature に限定する。booking_curve warm cache の通常範囲や同週、同月の全日付へ競合価格取得を広げない。
+- 競合価格タブを開いた stay_date の取得後に、同週、同月、直近 30 日へ取得範囲を広げる案は後続候補とする。実装する場合は、booking_curve warm cache との優先順位、画面表示中だけ進める停止条件、request 数の上限を先に設計する。
 - 競合価格 snapshot の取得は、booking_curve warm cache queue と同じ完了定義には含めない。indicator では同じ場所に表示しても、状態、skip、error、最終保存時刻は競合価格 snapshot 専用の値として扱う。
 - 検索条件が違う競合価格 snapshot を同じ推移系列として扱わない。保存時には、検索条件 raw、検索条件 signature、取得元、取得時刻を必ず保持する。
 - 競合価格の RAU 追加表示は、販売設定タブには出さず、Revenue Assistant 標準の競合価格タブ内に閉じる。
