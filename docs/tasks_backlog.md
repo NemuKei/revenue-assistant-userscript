@@ -528,6 +528,34 @@
 
 ## Now
 
+### RAU-SALES-01 Analyze 日付単位の売上・単価データ取得可否を調査する
+
+- 目的:
+  - Analyze / 販売設定判断で、宿泊日単位の売上、販売室数、販売単価を扱える API または DOM 起点の data があるか確認する。
+  - 競合価格 snapshot、booking curve room count、将来の単価表示を同じ stay_date 軸で比較できるか判断する。
+- 背景:
+  - 現行の Analyze / 販売設定タブの booking curve warm cache は `/api/v4/booking_curve` の室数系 raw source を保存しており、売上金額そのものは保存していない。
+  - 月次実績画面側には `/api/v1/booking_curve/monthly` の `sales_based` があるが、これは月単位 preview 用であり、Analyze 日付単位の保存単位としてそのまま使えるか未確認である。
+- 調査スコープ:
+  - `/api/v4/booking_curve` response に売上相当の値が含まれないことを再確認する。
+  - Revenue Assistant の Analyze / 販売設定 / 月次実績周辺で、宿泊日単位の売上または単価を取得できる endpoint があるか Chrome CDP で確認する。
+  - `/api/v1/booking_curve/monthly` の `sales_based` を、日付単位の売上推移や単価算出へ使えるか確認する。
+  - 取得可能な場合、保存単位を `facility`、`stay_date`、`batch_date`、scope、room group のどこまでにするか整理する。
+  - 単価を算出する場合の分母を、販売室数、予約室数、`booking_curve` の `all / transient / group` のどれにするか候補を整理する。
+- 非目標:
+  - この task では snapshot store、UI、グラフ表示を実装しない。
+  - 競合価格グラフへ売上や単価を重ねない。
+  - DWH や外部 RMS 連携を前提にしない。
+- 受け入れ条件:
+  - Analyze 日付単位の売上または単価に使える取得元があるか、`API endpoint`、`DOM`、`取得不可` のいずれかで結論を出す。
+  - 使える取得元がある場合は、request 条件、response shape、保存単位、単価算出の分母候補を記録する。
+  - 使える取得元がない場合は、月次 `sales_based` で代替できる範囲と、代替できない範囲を記録する。
+  - 次に実装する場合の task を、snapshot store 追加、既存 monthly store 再利用、UI 表示のどれに分けるか提案する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
 - 目的:
@@ -848,10 +876,11 @@
 
 Now:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- `RAU-SALES-01` Analyze 日付単位の売上・単価データ取得可否を調査する
 
 Next:
 
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 
 After Next:
@@ -864,6 +893,8 @@ Later:
 
 統合判断:
 
+- `RAU-SALES-01` は、競合価格 snapshot のデータ量増加と同じ stay_date 軸で売上・単価を扱えるかを確認する調査 task とする。現時点では取得元と保存単位が未確定のため、競合価格グラフ表示改善や月次実績 graph 実装へ統合しない。
+- `RAU-SALES-01` の後続実装は、調査結果に応じて snapshot store、monthly store 再利用、UI 表示のいずれかに分割する。調査前に保存 schema やグラフ表示を先行実装しない。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
