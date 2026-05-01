@@ -366,6 +366,9 @@ Indicator:
 - response root は `own` と `competitors` を持つ。`own.plans[]` と `competitors[].plans[]` の各 plan は、`num_guests`、`meal_type`、`plan_name`、`jalan_facility_room_type`、`url`、`price`、`price_diff` を持つ。
 - response には、在庫状態、販売停止、満室、ページング情報は含まれない。空室なしや販売停止を独立した状態として保存したい場合は、別 endpoint または画面表示の追加確認が必要である。
 - response には、人数、食事条件、部屋タイプ、プラン名、競合施設識別子、価格、自社価格との差分が含まれるため、取得後に RAU 側で人数、食事条件、部屋タイプ、プラン名の再絞り込みは可能である。
+- ただし、部屋タイプ指定なし response は各部屋タイプの plan を網羅しない。2026-05-01 の Chrome CDP 調査では、`jalan_room_types[]=TWIN` を単独指定すると、指定なし response には含まれなかった TWIN plan が返った。
+- 部屋タイプ query は `jalan_room_types[]` を使う。`jalan_facility_room_types[]`、`jalan_facility_room_type`、`room_types[]` は 2026-05-01 の調査では部屋タイプ条件として効かなかった。
+- 複数部屋タイプを同時指定しても、各部屋タイプの plan がすべて返るわけではない。`jalan_room_types[]=TWIN&jalan_room_types[]=DOUBLE` では、TWIN 単独指定では返る施設でも DOUBLE だけに寄るケースがあったため、部屋タイプ別 snapshot は単独 request として扱う。
 - ただし、競合施設一覧を指定しない広い raw snapshot は取得できない。初期の snapshot 保存単位は、`date`、宿泊人数範囲、競合施設一覧、任意の食事条件、任意のプラン名検索条件から作る検索条件 signature ごとに分ける。
 - Revenue Assistant で扱う競合は自社に加えて最大 5 施設である。競合施設は後から入れ替え可能なため、保存時点の `yad_nos[]` と競合施設名を snapshot に保存し、後から現在の競合施設一覧だけを参照して過去 snapshot を解釈しない。
 - 競合施設を入れ替えた場合、入れ替え前の競合施設と入れ替え後の競合施設を同じ施設として連結しない。施設単位の価格推移は `yad_no` ごとに追跡し、検索条件 signature は保存時点の `yad_nos[]` の集合を含めて作る。

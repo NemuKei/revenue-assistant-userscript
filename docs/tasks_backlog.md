@@ -346,6 +346,62 @@
 
 ## Now
 
+### RAU-CP-04 競合価格グラフを標準表より下に固定する
+
+- 目的:
+  - Revenue Assistant 側で競合価格の絞り込みを行ったあとも、RAU の競合価格グラフが Revenue Assistant 標準の競合価格表より下に表示され続けるようにする。
+- 背景:
+  - 2026-05-01 の利用者確認で、Revenue Assistant 側の競合価格絞り込み後に、RAU のグラフブロックが上側へ移動し、Revenue Assistant 標準表が下に出るケースが確認された。
+- スコープ:
+  - 競合価格 tab 本文の標準表が再描画された場合でも、RAU の挿入位置を標準表より下へ戻す。
+  - 標準表が未表示または hidden の状態では、販売設定 tab や別 tab の下部へ fallback 描画しない。
+  - 既存の `競合価格 -> 販売設定 -> 競合価格` 再表示対応を壊さない。
+- 非目標:
+  - 部屋タイプ別 snapshot 取得を追加すること。
+  - 競合価格グラフのデータ構造や IndexedDB schema を変更すること。
+- 受け入れ条件:
+  - 競合価格 tab で Revenue Assistant 側の絞り込みを変更しても、RAU の `競合価格 最安値推移` は Revenue Assistant 標準表より下に表示される。
+  - 販売設定 tab には RAU の競合価格表示が出ない。
+  - `競合価格 -> 販売設定 -> 競合価格` と遷移しても、RAU グラフは標準表より下に 1 セクションだけ再表示される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+## Next
+
+### RAU-CP-05 競合価格の部屋タイプ別 snapshot を個別取得する
+
+- 目的:
+  - `指定なし` の競合価格 response だけでは部屋タイプ別の plan が十分に返らないため、シングル、ダブル、ツイン、トリプル、フォースを個別条件で取得し、部屋タイプ絞り込み時の欠損を減らす。
+- 背景:
+  - 2026-05-01 の Chrome CDP 調査で、`jalan_room_types[]=TWIN` を単独指定すると、指定なし response では返らなかった TWIN plan が返ることを確認した。
+  - `jalan_room_types[]=TWIN&jalan_room_types[]=DOUBLE` のように複数部屋タイプを同時指定しても、各部屋タイプの plan がすべて返るわけではなく、指定集合内の最安値寄りに絞られる挙動だった。
+  - `jalan_facility_room_types[]`、`jalan_facility_room_type`、`room_types[]` は部屋タイプ条件として効かなかった。
+- スコープ:
+  - 競合価格 snapshot 取得条件に、`jalan_room_types[]` の単独指定を持たせる。
+  - 取得対象は `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` とする。
+  - `指定なし` snapshot と部屋タイプ別 snapshot は検索条件 signature で区別する。
+  - グラフの部屋タイプ toggle で該当部屋タイプが選ばれた場合は、該当 room type snapshot を優先して使う。
+  - request 数が増えるため、初期実装では競合価格 tab を開いた stay_date を優先し、通常 warm cache の広い対象日付へは混ぜない。
+- 非目標:
+  - `SEMI_DOUBLE` を単独 request 条件にすること。2026-05-01 の調査では `SEMI_DOUBLE` は `400 BAD_REQUEST` だった。
+  - 複数部屋タイプを 1 request で網羅取得できる前提にすること。
+  - 競合施設一覧なしの全件取得を追加すること。
+- 受け入れ条件:
+  - `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の単独条件 snapshot を保存できる。
+  - `TWIN` などの部屋タイプ toggle 選択時、指定なし snapshot だけでは欠けていた施設の plan が、部屋タイプ別 snapshot から表示される。
+  - 条件 signature に `jalan_room_types[]` の単独指定が含まれ、指定なし snapshot と混同されない。
+  - API request は同時に大量発行せず、既存の競合価格 tab 優先取得と indicator 表示を壊さない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+## After Next
+
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
 - 目的:
@@ -666,15 +722,15 @@
 
 Now:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- `RAU-CP-04` 競合価格グラフを標準表より下に固定する
 
 Next:
 
-- なし
+- `RAU-CP-05` 競合価格の部屋タイプ別 snapshot を個別取得する
 
 After Next:
 
-- なし
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 Later:
 
@@ -696,7 +752,9 @@ Later:
 - `RAU-CP-01` の調査結果により、競合価格は競合施設一覧なしでは取得できない。`RAU-CP-02` では、検索条件 signature ごとの snapshot store と取得 adapter を先に作る。
 - `RAU-CP-02` を先に行う理由は、人数別最安値グラフを出すには、同じ stay_date の過去 snapshot と保存時点の競合施設情報を読める保存単位が必要なため。
 - `RAU-CP-03` は、`RAU-CP-02` の保存済み snapshot を使って、競合価格タブ内に人数別最安値グラフを出す task とする。販売設定タブには競合価格を表示しない。
+- `RAU-CP-04` は、Revenue Assistant 側の競合価格絞り込みで標準表が再描画されたとき、RAU グラフが標準表より上へ移動する表示順バグを直す task とする。データ取得や IndexedDB schema は変更しない。
+- `RAU-CP-05` は、`jalan_room_types[]` 単独指定で部屋タイプ別 plan が返ることを確認したため追加する。複数部屋タイプ同時指定では各部屋タイプを網羅できないため、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` を個別 request として扱う。
 - `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加した。2026-05-01 時点で localStorage booking curve response cache の廃止と GUI 確認まで完了している。
-- `RAU-MP-01` は、Analyze 日付ページの競合価格表示と booking curve localStorage 容量超過整理が完了したため、次の再開候補とする。
+- `RAU-MP-01` は、Analyze 日付ページの競合価格表示と booking curve localStorage 容量超過整理が完了したため再開候補だったが、競合価格の表示順バグと部屋タイプ別 snapshot 欠損が見つかったため、その後へ戻す。
 - `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。
