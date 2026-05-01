@@ -369,6 +369,8 @@ Indicator:
 - ただし、部屋タイプ指定なし response は各部屋タイプの plan を網羅しない。2026-05-01 の Chrome CDP 調査では、`jalan_room_types[]=TWIN` を単独指定すると、指定なし response には含まれなかった TWIN plan が返った。
 - 部屋タイプ query は `jalan_room_types[]` を使う。`jalan_facility_room_types[]`、`jalan_facility_room_type`、`room_types[]` は 2026-05-01 の調査では部屋タイプ条件として効かなかった。
 - 複数部屋タイプを同時指定しても、各部屋タイプの plan がすべて返るわけではない。`jalan_room_types[]=TWIN&jalan_room_types[]=DOUBLE` では、TWIN 単独指定では返る施設でも DOUBLE だけに寄るケースがあったため、部屋タイプ別 snapshot は単独 request として扱う。
+- 部屋タイプ別 snapshot は、従来の `指定なし` snapshot を置き換えない。`指定なし` response には、Revenue Assistant の部屋タイプ絞り込み選択肢に独立して存在しない `SEMI_DOUBLE` や、raw room type が空のその他相当 plan が最安値として含まれる場合があるため、`指定なし` snapshot も保存し続ける。
+- `SINGLE` 単独指定で `SEMI_DOUBLE` が返る場合はあるが、通常は `SINGLE` の最安値が優先して表出しやすい。`SEMI_DOUBLE` とその他相当 plan を後から確認できるように、表示時は実際に response で返った `jalanFacilityRoomType` を保持し、Tooltip には施設名、部屋タイプ、価格、前回差分を表示する。
 - ただし、競合施設一覧を指定しない広い raw snapshot は取得できない。初期の snapshot 保存単位は、`date`、宿泊人数範囲、競合施設一覧、任意の食事条件、任意のプラン名検索条件から作る検索条件 signature ごとに分ける。
 - Revenue Assistant で扱う競合は自社に加えて最大 5 施設である。競合施設は後から入れ替え可能なため、保存時点の `yad_nos[]` と競合施設名を snapshot に保存し、後から現在の競合施設一覧だけを参照して過去 snapshot を解釈しない。
 - 競合施設を入れ替えた場合、入れ替え前の競合施設と入れ替え後の競合施設を同じ施設として連結しない。施設単位の価格推移は `yad_no` ごとに追跡し、検索条件 signature は保存時点の `yad_nos[]` の集合を含めて作る。

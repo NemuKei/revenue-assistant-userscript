@@ -374,25 +374,32 @@
 ### RAU-CP-05 競合価格の部屋タイプ別 snapshot を個別取得する
 
 - 目的:
-  - `指定なし` の競合価格 response だけでは部屋タイプ別の plan が十分に返らないため、シングル、ダブル、ツイン、トリプル、フォースを個別条件で取得し、部屋タイプ絞り込み時の欠損を減らす。
+  - 既存の `指定なし` 競合価格 snapshot は継続しつつ、シングル、ダブル、ツイン、トリプル、フォースを個別条件で追加取得し、部屋タイプ絞り込み時の欠損を減らす。
+  - `指定なし` snapshot を継続する理由は、Revenue Assistant の部屋タイプ絞り込み選択肢には独立して存在しない `SEMI_DOUBLE` や、raw room type が空のその他相当 plan が、最安値として返る場合があるためである。
 - 背景:
   - 2026-05-01 の Chrome CDP 調査で、`jalan_room_types[]=TWIN` を単独指定すると、指定なし response では返らなかった TWIN plan が返ることを確認した。
   - `jalan_room_types[]=TWIN&jalan_room_types[]=DOUBLE` のように複数部屋タイプを同時指定しても、各部屋タイプの plan がすべて返るわけではなく、指定集合内の最安値寄りに絞られる挙動だった。
   - `jalan_facility_room_types[]`、`jalan_facility_room_type`、`room_types[]` は部屋タイプ条件として効かなかった。
+  - `SINGLE` 単独指定で `SEMI_DOUBLE` が返る場合はあるが、通常は `SINGLE` の最安値が優先して表出しやすい。`SINGLE` 在庫がない場合や、その他相当 plan が最安値になる場合を後から確認できるように、`指定なし` snapshot も保存対象として残す。
 - スコープ:
+  - 従来の `指定なし` snapshot 取得を継続する。
   - 競合価格 snapshot 取得条件に、`jalan_room_types[]` の単独指定を持たせる。
   - 取得対象は `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` とする。
-  - `指定なし` snapshot と部屋タイプ別 snapshot は検索条件 signature で区別する。
+  - `指定なし` snapshot と部屋タイプ別 snapshot は検索条件 signature で区別する。部屋タイプ別 snapshot は `指定なし` snapshot の補助であり、置き換えではない。
   - グラフの部屋タイプ toggle で該当部屋タイプが選ばれた場合は、該当 room type snapshot を優先して使う。
+  - グラフ Tooltip は、施設名、部屋タイプ、価格、前回差分を表形式で表示する。部屋タイプは実際に response で返った `jalanFacilityRoomType` を表示名へ正規化して出す。
   - request 数が増えるため、初期実装では競合価格 tab を開いた stay_date を優先し、通常 warm cache の広い対象日付へは混ぜない。
 - 非目標:
-  - `SEMI_DOUBLE` を単独 request 条件にすること。2026-05-01 の調査では `SEMI_DOUBLE` は `400 BAD_REQUEST` だった。
+  - `SEMI_DOUBLE` を単独 request 条件にすること。2026-05-01 の調査では `SEMI_DOUBLE` は `400 BAD_REQUEST` だった。`SEMI_DOUBLE` は `指定なし` snapshot、または `SINGLE` request の response に含まれた plan として保持する。
+  - Revenue Assistant の部屋タイプ絞り込み選択肢に存在しないその他相当の部屋タイプを、独立した request 条件として扱うこと。raw room type が空の plan は `指定なし` snapshot で保持する。
   - 複数部屋タイプを 1 request で網羅取得できる前提にすること。
   - 競合施設一覧なしの全件取得を追加すること。
 - 受け入れ条件:
+  - 従来の `指定なし` snapshot が引き続き保存され、`SEMI_DOUBLE` や raw room type が空のその他相当 plan が失われない。
   - `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の単独条件 snapshot を保存できる。
   - `TWIN` などの部屋タイプ toggle 選択時、指定なし snapshot だけでは欠けていた施設の plan が、部屋タイプ別 snapshot から表示される。
   - 条件 signature に `jalan_room_types[]` の単独指定が含まれ、指定なし snapshot と混同されない。
+  - Tooltip に、施設名、部屋タイプ、価格、前回差分が表示される。
   - API request は同時に大量発行せず、既存の競合価格 tab 優先取得と indicator 表示を壊さない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
 - metadata:
@@ -753,7 +760,7 @@ Later:
 - `RAU-CP-02` を先に行う理由は、人数別最安値グラフを出すには、同じ stay_date の過去 snapshot と保存時点の競合施設情報を読める保存単位が必要なため。
 - `RAU-CP-03` は、`RAU-CP-02` の保存済み snapshot を使って、競合価格タブ内に人数別最安値グラフを出す task とする。販売設定タブには競合価格を表示しない。
 - `RAU-CP-04` は、Revenue Assistant 側の競合価格絞り込みで標準表が再描画されたとき、RAU グラフが標準表より上へ移動する表示順バグを直す task とする。データ取得や IndexedDB schema は変更しない。
-- `RAU-CP-05` は、`jalan_room_types[]` 単独指定で部屋タイプ別 plan が返ることを確認したため追加する。複数部屋タイプ同時指定では各部屋タイプを網羅できないため、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` を個別 request として扱う。
+- `RAU-CP-05` は、`jalan_room_types[]` 単独指定で部屋タイプ別 plan が返ることを確認したため追加する。複数部屋タイプ同時指定では各部屋タイプを網羅できないため、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` を個別 request として扱う。ただし、`指定なし` snapshot は廃止しない。`SEMI_DOUBLE` と raw room type が空のその他相当 plan は、Revenue Assistant の部屋タイプ絞り込み選択肢に独立して存在しないため、`指定なし` snapshot で保持する。
 - `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加した。2026-05-01 時点で localStorage booking curve response cache の廃止と GUI 確認まで完了している。
 - `RAU-MP-01` は、Analyze 日付ページの競合価格表示と booking curve localStorage 容量超過整理が完了したため再開候補だったが、競合価格の表示順バグと部屋タイプ別 snapshot 欠損が見つかったため、その後へ戻す。
 - `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
