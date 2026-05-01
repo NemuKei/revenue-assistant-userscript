@@ -61,7 +61,7 @@ const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
-const GROUP_ROOM_STYLE_VERSION = "20260501-competitor-price-panel-border-v1";
+const GROUP_ROOM_STYLE_VERSION = "20260501-competitor-price-tooltip-table-v1";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
@@ -119,7 +119,7 @@ const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE = "data-ra-sales-setting-
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
-const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v3";
+const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v4";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -7086,6 +7086,7 @@ function createCompetitorPriceChartSvg(
     const maxPrice = Math.max(...prices);
     const yMin = minPrice === maxPrice ? Math.max(0, minPrice - 1000) : minPrice;
     const yMax = minPrice === maxPrice ? maxPrice + 1000 : maxPrice;
+    const yAxisTicks = buildCompetitorPriceYAxisTicks(yMin, yMax);
 
     const svgElement = document.createElementNS(svgNamespace, "svg");
     svgElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE, "");
@@ -7093,21 +7094,23 @@ function createCompetitorPriceChartSvg(
     svgElement.setAttribute("role", "img");
     svgElement.setAttribute("aria-label", `${guestCount}名の競合価格最安値推移`);
 
-    for (const [index, label] of [formatPriceForDisplay(yMax), formatPriceForDisplay(yMin)].entries()) {
-        const y = index === 0 ? paddingTop : height - paddingBottom;
+    for (const [index, tick] of yAxisTicks.entries()) {
+        const y = getCompetitorPriceChartY(tick, yMin, yMax, paddingTop, plotHeight);
         const textElement = document.createElementNS(svgNamespace, "text");
         textElement.setAttribute("x", "4");
         textElement.setAttribute("y", String(y + 4));
-        textElement.textContent = label.replace("円", "");
+        textElement.textContent = formatPriceForDisplay(tick).replace("円", "");
         svgElement.append(textElement);
-    }
 
-    for (const y of [paddingTop, height - paddingBottom]) {
         const lineElement = document.createElementNS(svgNamespace, "line");
         lineElement.setAttribute("x1", layout.activeLeft.toFixed(2));
         lineElement.setAttribute("x2", (layout.activeLeft + layout.activeWidth).toFixed(2));
-        lineElement.setAttribute("y1", String(y));
-        lineElement.setAttribute("y2", String(y));
+        lineElement.setAttribute("y1", y.toFixed(2));
+        lineElement.setAttribute("y2", y.toFixed(2));
+        if (index > 0 && index < yAxisTicks.length - 1) {
+            lineElement.setAttribute("stroke-dasharray", "2 4");
+            lineElement.setAttribute("opacity", "0.75");
+        }
         svgElement.append(lineElement);
     }
 
@@ -7241,15 +7244,31 @@ function showCompetitorPriceTooltip(
 
     const detailElement = document.createElement("div");
     detailElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_DETAIL_ATTRIBUTE, "");
-    for (const row of rows) {
-        const rowElement = document.createElement("div");
-        rowElement.textContent = [
-            row.facility.name,
-            formatPriceForDisplay(row.point.price),
-            row.delta === null ? "前回なし" : `前回差分 ${formatSignedPriceForDisplay(row.delta)}`
-        ].join(" / ");
-        detailElement.append(rowElement);
+    const tableElement = document.createElement("table");
+    const headElement = document.createElement("thead");
+    const headRowElement = document.createElement("tr");
+    for (const label of ["施設", "価格", "前回差分"]) {
+        const cellElement = document.createElement("th");
+        cellElement.scope = "col";
+        cellElement.textContent = label;
+        headRowElement.append(cellElement);
     }
+    headElement.append(headRowElement);
+
+    const bodyElement = document.createElement("tbody");
+    for (const row of rows) {
+        const rowElement = document.createElement("tr");
+        const facilityElement = document.createElement("td");
+        facilityElement.textContent = row.facility.name;
+        const priceElement = document.createElement("td");
+        priceElement.textContent = formatPriceForDisplay(row.point.price);
+        const deltaElement = document.createElement("td");
+        deltaElement.textContent = row.delta === null ? "前回なし" : formatSignedPriceForDisplay(row.delta);
+        rowElement.append(facilityElement, priceElement, deltaElement);
+        bodyElement.append(rowElement);
+    }
+    tableElement.append(headElement, bodyElement);
+    detailElement.append(tableElement);
 
     tooltipElement.replaceChildren(titleElement, valueElement, detailElement);
 }
@@ -7312,6 +7331,21 @@ function getCompetitorPriceChartLayout(fetchDateCount: number, plotLeft: number,
         activeLeft: plotLeft + (plotWidth - activeWidth) / 2,
         activeWidth
     };
+}
+
+function buildCompetitorPriceYAxisTicks(yMin: number, yMax: number): number[] {
+    if (yMax <= yMin) {
+        return [yMin];
+    }
+
+    const tickCount = 5;
+    const step = (yMax - yMin) / (tickCount - 1);
+    const roundedTicks = Array.from({ length: tickCount }, (_, index) => Math.round((yMax - step * index) / 100) * 100);
+    if (new Set(roundedTicks).size === tickCount) {
+        return roundedTicks;
+    }
+
+    return Array.from({ length: tickCount }, (_, index) => Math.round(yMax - step * index));
 }
 
 function getCompetitorPriceChartX(index: number, count: number, layout: CompetitorPriceChartLayout): number {
@@ -8957,7 +8991,7 @@ function ensureGroupRoomStyles(): void {
             transform: translateX(-50%);
             z-index: 2;
             min-width: 220px;
-            max-width: min(360px, 90vw);
+            max-width: min(560px, 90vw);
             padding: 6px 8px;
             border: 1px solid #cbd7e8;
             border-radius: 6px;
@@ -8970,6 +9004,39 @@ function ensureGroupRoomStyles(): void {
             font-weight: 700;
             line-height: 1.45;
             transition: opacity 120ms ease;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] table {
+            border-collapse: collapse;
+            min-width: 430px;
+            margin-top: 4px;
+            font-size: 11px;
+            line-height: 1.35;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] th,
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] td {
+            padding: 2px 6px;
+            border-bottom: 1px solid #e5ebf2;
+            text-align: right;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] th:first-child,
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] td:first-child {
+            max-width: 240px;
+            overflow: hidden;
+            text-align: left;
+            text-overflow: ellipsis;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] th {
+            color: #50627a;
+            font-weight: 800;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] tr:last-child td {
+            border-bottom: 0;
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE}="true"] {
