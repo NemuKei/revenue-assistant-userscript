@@ -61,7 +61,7 @@ const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
-const GROUP_ROOM_STYLE_VERSION = "20260430-competitor-price-toggle-v1";
+const GROUP_ROOM_STYLE_VERSION = "20260501-competitor-price-panel-border-v1";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
@@ -8910,13 +8910,17 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE}] {
             display: grid;
             grid-template-columns: minmax(320px, 1fr);
-            gap: 18px;
+            gap: 12px;
             max-width: 980px;
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE}] {
             position: relative;
             min-width: 0;
+            padding: 12px 14px 10px;
+            border: 1px solid #d8e0ea;
+            border-radius: 6px;
+            background: #fff;
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE}] {

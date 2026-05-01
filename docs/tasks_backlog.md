@@ -60,6 +60,7 @@
   - 競合価格 tab を開いた場合は、現在開いている stay_date の競合価格 snapshot 保存を `competitor-tab` source として即時トリガーするようにした。
   - `競合価格 -> 販売設定 -> 競合価格` と遷移した場合でも、重複取得は抑制したまま、保存済み snapshot series を読み直して競合価格グラフを再描画するようにした。
   - 取得日数が少ない競合価格グラフでは、横軸をパネル最大幅まで引き伸ばさず、短い描画幅を中央寄せで使うようにした。7日以上になった場合は従来どおりパネル幅を使う。
+  - 人数別グラフ panel ごとの境界が分かるように、各 panel に薄い枠線、内側余白、白背景を追加した。
 - verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
@@ -81,6 +82,7 @@
 - 未確認:
   - Tampermonkey に `dist/*.user.js` を正式に再読込した状態での GUI 目視確認。
   - Tampermonkey 正式再読込後に、indicator 最小化後の `表示` button で詳細を再表示できること。
+  - Tampermonkey 正式再読込後に、人数別グラフ panel の枠線と内側余白が表示されること。
 
 ## Now
 
