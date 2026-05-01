@@ -1,6 +1,6 @@
 # tasks_backlog
 
-## Recently Implemented / GUI Confirmation Needs Tampermonkey Reload
+## Completed / Recent GUI Confirmed
 
 ### RAU-CP-03 競合価格 snapshot の人数別最安値グラフを競合価格タブに表示する
 
@@ -75,20 +75,16 @@
   - 部屋タイプと食事条件の pull-down が 0 件になり、toggle button として表示されることを確認した。
   - 部屋タイプ toggle が `シングル`、`ダブル`、`ツイン`、`トリプル` のカタカナ表記で重複なく表示されることを確認した。
   - 取得日軸の hover で Tooltip が表示され、施設別最安値と前回差分欄が表示されることを確認した。
-  - indicator の `最小化` button で詳細表示が非表示になることを確認した。Chrome CDP 注入確認では既存 Tampermonkey と build 注入が同時に動くため、再表示 button の保持は Tampermonkey 正式再読込後に目視確認する。
+  - indicator の `最小化` button で詳細表示が非表示になることを確認した。Tampermonkey 正式再読込後の利用者確認で、人数別グラフ panel の枠線、縦軸補助目盛り、補助線、Tooltip 表形式、補助線の横幅いっぱい表示が反映されることを確認した。
   - 販売設定 tab に戻ったとき、RAU の競合価格セクションが 0 件になることを確認した。
   - 2026-05-14 の Analyze 日付ページで、販売設定 tab 下部に `競合価格 最安値推移` が割り込まないことを Chrome CDP build 注入で確認した。
   - 2026-04-30 の Analyze 日付ページで、競合価格 tab 本文が表示されている場合は `競合価格 最安値推移` が 1 セクション、4 panel で表示されることを Chrome CDP build 注入で再確認した。
   - 2026-05-01 に Chrome CDP で build 済み userscript を注入し、`競合価格 -> 販売設定 -> 競合価格` の遷移後も `競合価格 最安値推移` が 1 セクション、4 panel、4 SVG で再表示されることを確認した。
   - 2026-05-01 に Chrome CDP で build 済み userscript を注入し、2日分の競合価格グラフで日付ラベル、点、グリッド線が `315〜475` の短い中央寄せ幅に収まり、旧表示の `54〜736` 両端配置にならないことを確認した。
-  - 2026-05-01 に build 出力へ `trend-toggle-v4`、縦軸補助目盛り、補助線、Tooltip 表形式の生成コードが含まれることを確認した。既存 Tampermonkey の旧版 script が同時に動く環境では最新版 UI の目視確認が安定しないため、正式再読込後の目視確認を残す。
-- 未確認:
-  - Tampermonkey に `dist/*.user.js` を正式に再読込した状態での GUI 目視確認。
-  - Tampermonkey 正式再読込後に、indicator 最小化後の `表示` button で詳細を再表示できること。
-  - Tampermonkey 正式再読込後に、人数別グラフ panel の枠線と内側余白が表示されること。
-  - Tampermonkey 正式再読込後に、縦軸補助目盛り、補助線、Tooltip 表形式が表示されること。
+  - 2026-05-01 に build 出力へ `trend-toggle-v4`、縦軸補助目盛り、補助線、Tooltip 表形式の生成コードが含まれることを確認した。
+  - 2026-05-01 に Tampermonkey 正式再読込後の利用者確認で、人数別グラフ panel の枠線、縦軸補助目盛り、補助線、Tooltip 表形式、補助線の横幅いっぱい表示が期待どおり表示されることを確認した。
 
-## Now
+## Completed / Recent Stabilization
 
 ### RAU-WC-07 booking curve localStorage 容量超過を整理する
 
@@ -348,7 +344,7 @@
   - Analyze 日付ページで、その日、同週、同月の順に取得が優先されること
   - Indicator の `raw / 参考線 / 同曜日` 取得率が実データに応じて進むこと
 
-## Next
+## Now
 
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
@@ -670,11 +666,11 @@
 
 Now:
 
-- `RAU-WC-07` booking curve localStorage 容量超過を整理する
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 Next:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- なし
 
 After Next:
 
@@ -700,6 +696,7 @@ Later:
 - `RAU-CP-01` の調査結果により、競合価格は競合施設一覧なしでは取得できない。`RAU-CP-02` では、検索条件 signature ごとの snapshot store と取得 adapter を先に作る。
 - `RAU-CP-02` を先に行う理由は、人数別最安値グラフを出すには、同じ stay_date の過去 snapshot と保存時点の競合施設情報を読める保存単位が必要なため。
 - `RAU-CP-03` は、`RAU-CP-02` の保存済み snapshot を使って、競合価格タブ内に人数別最安値グラフを出す task とする。販売設定タブには競合価格を表示しない。
-- `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加する。`RAU-CP-03` の build 注入確認まで完了したため、次の安定化 task とする。
+- `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加した。2026-05-01 時点で localStorage booking curve response cache の廃止と GUI 確認まで完了している。
+- `RAU-MP-01` は、Analyze 日付ページの競合価格表示と booking curve localStorage 容量超過整理が完了したため、次の再開候補とする。
 - `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。
