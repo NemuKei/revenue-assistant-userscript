@@ -116,10 +116,11 @@ const SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE = "data-ra-sales-sett
 const SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-title";
 const SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-svg";
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip";
+const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-tone";
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
-const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v4";
+const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v5";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -7264,6 +7265,7 @@ function showCompetitorPriceTooltip(
         priceElement.textContent = formatPriceForDisplay(row.point.price);
         const deltaElement = document.createElement("td");
         deltaElement.textContent = row.delta === null ? "前回なし" : formatSignedPriceForDisplay(row.delta);
+        deltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.delta));
         rowElement.append(facilityElement, priceElement, deltaElement);
         bodyElement.append(rowElement);
     }
@@ -7346,6 +7348,14 @@ function buildCompetitorPriceYAxisTicks(yMin: number, yMax: number): number[] {
     }
 
     return Array.from({ length: tickCount }, (_, index) => Math.round(yMax - step * index));
+}
+
+function getCompetitorPriceDeltaTone(delta: number | null): "negative" | "neutral" | "positive" {
+    if (delta === null || delta === 0) {
+        return "neutral";
+    }
+
+    return delta < 0 ? "negative" : "positive";
 }
 
 function getCompetitorPriceChartX(index: number, count: number, layout: CompetitorPriceChartLayout): number {
@@ -9037,6 +9047,10 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] tr:last-child td {
             border-bottom: 0;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE}="negative"] {
+            color: #c93a3a;
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE}="true"] {
