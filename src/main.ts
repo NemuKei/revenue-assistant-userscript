@@ -122,6 +122,7 @@ const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
 const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v6";
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
+const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -561,6 +562,13 @@ interface CalendarSyncDebugSnapshot {
     mutationObserverSummaries: CalendarSyncDebugMutationSummary[];
 }
 
+interface CompetitorPriceSnapshotBackgroundTask {
+    stayDate: string;
+    priorityStayDate: string;
+    batchDateKey: string;
+    facilityCacheKey: string;
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
@@ -569,6 +577,8 @@ const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
 const competitorPriceSnapshotAttemptKeys = new Set<string>();
 const competitorPriceSnapshotPriorityAttemptKeys = new Set<string>();
+const competitorPriceSnapshotBackgroundTaskKeys = new Set<string>();
+const competitorPriceSnapshotBackgroundQueue: CompetitorPriceSnapshotBackgroundTask[] = [];
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
 const salesSettingBookingCurveReferenceVisibilityState = new Map<SalesSettingBookingCurveReferenceKind, boolean>();
 let salesSettingBookingCurveSameWeekdayVisible = false;
@@ -585,6 +595,8 @@ let latestSalesSettingRankStatusesSnapshot: {
 const salesSettingCurrentSettingsPromiseCache = new Map<string, Promise<SalesSettingCurrentSettingsResponse>>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let salesSettingWarmCacheTimeoutId: number | null = null;
+let competitorPriceSnapshotBackgroundTimeoutId: number | null = null;
+let competitorPriceSnapshotBackgroundRunning = false;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
 let competitorPriceSnapshotUiState: CompetitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
 let competitorPriceRoomTypeFilter: string | null = null;
@@ -3186,7 +3198,7 @@ function scheduleCompetitorPriceSnapshot(
     facilityCacheKey: string,
     source: "analyze-open" | "competitor-tab" = "analyze-open"
 ): void {
-    const attemptKey = `${facilityCacheKey}:${analysisDate}:${batchDateKey}:${source}`;
+    const attemptKey = buildCompetitorPriceSnapshotAttemptKey(facilityCacheKey, analysisDate, batchDateKey, source);
     const attemptKeys = source === "competitor-tab"
         ? competitorPriceSnapshotPriorityAttemptKeys
         : competitorPriceSnapshotAttemptKeys;
@@ -3195,6 +3207,22 @@ function scheduleCompetitorPriceSnapshot(
     }
 
     attemptKeys.add(attemptKey);
+    void runCompetitorPriceSnapshotSave(analysisDate, batchDateKey, facilityCacheKey, source, attemptKeys, attemptKey)
+        .then((stored) => {
+            if (stored && source === "competitor-tab") {
+                scheduleCompetitorPriceSnapshotBackgroundQueue(analysisDate, batchDateKey, facilityCacheKey);
+            }
+        });
+}
+
+async function runCompetitorPriceSnapshotSave(
+    analysisDate: string,
+    batchDateKey: string,
+    facilityCacheKey: string,
+    source: "analyze-open" | "competitor-tab",
+    attemptKeys: Set<string>,
+    attemptKey: string
+): Promise<boolean> {
     competitorPriceSnapshotUiState = {
         ...competitorPriceSnapshotUiState,
         status: "saving",
@@ -3209,78 +3237,189 @@ function scheduleCompetitorPriceSnapshot(
     renderCompetitorPriceOverviewFromState();
     void refreshCompetitorPriceSnapshotSeries(facilityCacheKey, analysisDate);
 
-    void persistCompetitorPriceSnapshotsForSource(facilityCacheKey, analysisDate, source)
-        .then((result) => {
-            if (!result.stored) {
-                competitorPriceSnapshotUiState = {
-                    ...competitorPriceSnapshotUiState,
-                    status: "skipped",
-                    facilityId: facilityCacheKey,
-                    stayDate: analysisDate,
-                    source,
-                    records: [],
-                    latestRecord: null,
-                    previousRecord: null,
-                    reason: result.reason ?? "unknown",
-                    errorMessage: null,
-                    updatedAt: new Date().toISOString()
-                };
-                renderSalesSettingWarmCacheIndicator();
-                renderCompetitorPriceOverviewFromState();
-                console.info(`[${SCRIPT_NAME}] competitor price snapshot skipped`, {
-                    analysisDate,
-                    batchDateKey,
-                    facilityCacheKey,
-                    reason: result.reason
-                });
-                return;
-            }
-
+    try {
+        const result = await persistCompetitorPriceSnapshotsForSource(facilityCacheKey, analysisDate, source);
+        if (!result.stored) {
             competitorPriceSnapshotUiState = {
                 ...competitorPriceSnapshotUiState,
-                status: "stored",
+                status: "skipped",
                 facilityId: facilityCacheKey,
                 stayDate: analysisDate,
                 source,
-                records: mergeCompetitorPriceSnapshotRecordList(competitorPriceSnapshotUiState.records, result.records),
-                latestRecord: result.latestRecord,
-                previousRecord: result.previousRecord,
-                reason: null,
+                records: [],
+                latestRecord: null,
+                previousRecord: null,
+                reason: result.reason ?? "unknown",
                 errorMessage: null,
                 updatedAt: new Date().toISOString()
             };
             renderSalesSettingWarmCacheIndicator();
             renderCompetitorPriceOverviewFromState();
-            console.info(`[${SCRIPT_NAME}] competitor price snapshot stored`, {
+            console.info(`[${SCRIPT_NAME}] competitor price snapshot skipped`, {
                 analysisDate,
                 batchDateKey,
                 facilityCacheKey,
-                storedCount: result.records.length,
-                conditionSignature: result.latestRecord?.conditionSignature,
-                previousFetchedAt: result.previousRecord?.fetchedAt ?? null
+                reason: result.reason
             });
-        })
-        .catch((error: unknown) => {
-            attemptKeys.delete(attemptKey);
-            competitorPriceSnapshotUiState = {
-                ...competitorPriceSnapshotUiState,
-                status: "error",
-                facilityId: facilityCacheKey,
-                stayDate: analysisDate,
-                source,
-                reason: null,
-                errorMessage: getErrorMessage(error),
-                updatedAt: new Date().toISOString()
-            };
-            renderSalesSettingWarmCacheIndicator();
-            renderCompetitorPriceOverviewFromState();
-            console.warn(`[${SCRIPT_NAME}] failed to persist competitor price snapshot`, {
-                analysisDate,
-                batchDateKey,
-                facilityCacheKey,
-                error
-            });
+            return false;
+        }
+
+        competitorPriceSnapshotUiState = {
+            ...competitorPriceSnapshotUiState,
+            status: "stored",
+            facilityId: facilityCacheKey,
+            stayDate: analysisDate,
+            source,
+            records: mergeCompetitorPriceSnapshotRecordList(competitorPriceSnapshotUiState.records, result.records),
+            latestRecord: result.latestRecord,
+            previousRecord: result.previousRecord,
+            reason: null,
+            errorMessage: null,
+            updatedAt: new Date().toISOString()
+        };
+        renderSalesSettingWarmCacheIndicator();
+        renderCompetitorPriceOverviewFromState();
+        console.info(`[${SCRIPT_NAME}] competitor price snapshot stored`, {
+            analysisDate,
+            batchDateKey,
+            facilityCacheKey,
+            storedCount: result.records.length,
+            conditionSignature: result.latestRecord?.conditionSignature,
+            previousFetchedAt: result.previousRecord?.fetchedAt ?? null
         });
+        return true;
+    } catch (error: unknown) {
+        attemptKeys.delete(attemptKey);
+        competitorPriceSnapshotUiState = {
+            ...competitorPriceSnapshotUiState,
+            status: "error",
+            facilityId: facilityCacheKey,
+            stayDate: analysisDate,
+            source,
+            reason: null,
+            errorMessage: getErrorMessage(error),
+            updatedAt: new Date().toISOString()
+        };
+        renderSalesSettingWarmCacheIndicator();
+        renderCompetitorPriceOverviewFromState();
+        console.warn(`[${SCRIPT_NAME}] failed to persist competitor price snapshot`, {
+            analysisDate,
+            batchDateKey,
+            facilityCacheKey,
+            error
+        });
+        return false;
+    }
+}
+
+function scheduleCompetitorPriceSnapshotBackgroundQueue(
+    priorityStayDate: string,
+    batchDateKey: string,
+    facilityCacheKey: string
+): void {
+    for (const stayDate of buildCompetitorPriceSnapshotBackgroundStayDates(priorityStayDate)) {
+        if (stayDate === priorityStayDate) {
+            continue;
+        }
+        const taskKey = buildCompetitorPriceSnapshotAttemptKey(facilityCacheKey, stayDate, batchDateKey, "competitor-tab");
+        if (competitorPriceSnapshotPriorityAttemptKeys.has(taskKey) || competitorPriceSnapshotBackgroundTaskKeys.has(taskKey)) {
+            continue;
+        }
+        competitorPriceSnapshotBackgroundTaskKeys.add(taskKey);
+        competitorPriceSnapshotBackgroundQueue.push({
+            stayDate,
+            priorityStayDate,
+            batchDateKey,
+            facilityCacheKey
+        });
+    }
+
+    scheduleCompetitorPriceSnapshotBackgroundDrain();
+}
+
+function buildCompetitorPriceSnapshotBackgroundStayDates(priorityStayDate: string): string[] {
+    const stayDates: string[] = [];
+    const seen = new Set<string>();
+    const addDate = (stayDate: string | null): void => {
+        const compactStayDate = stayDate === null ? null : toCompactDateKey(stayDate);
+        if (compactStayDate === null || seen.has(compactStayDate)) {
+            return;
+        }
+        seen.add(compactStayDate);
+        stayDates.push(compactStayDate);
+    };
+
+    for (const stayDate of getSalesSettingWarmCacheWeekStayDates(priorityStayDate)) {
+        addDate(stayDate);
+    }
+    for (const stayDate of getSalesSettingWarmCacheMonthStayDates(priorityStayDate)) {
+        addDate(stayDate);
+    }
+    return stayDates;
+}
+
+function scheduleCompetitorPriceSnapshotBackgroundDrain(delayMs = COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS): void {
+    if (competitorPriceSnapshotBackgroundTimeoutId !== null || competitorPriceSnapshotBackgroundRunning) {
+        return;
+    }
+
+    competitorPriceSnapshotBackgroundTimeoutId = window.setTimeout(() => {
+        competitorPriceSnapshotBackgroundTimeoutId = null;
+        void drainCompetitorPriceSnapshotBackgroundQueue();
+    }, delayMs);
+}
+
+async function drainCompetitorPriceSnapshotBackgroundQueue(): Promise<void> {
+    if (competitorPriceSnapshotBackgroundRunning) {
+        return;
+    }
+    competitorPriceSnapshotBackgroundRunning = true;
+
+    try {
+        const task = competitorPriceSnapshotBackgroundQueue.shift();
+        if (task === undefined) {
+            return;
+        }
+
+        if (
+            document.visibilityState === "hidden"
+            || activeAnalyzeDate === null
+            || activeAnalyzeDate !== task.priorityStayDate
+            || activeBatchDateKey !== task.batchDateKey
+            || activeFacilityCacheKey !== task.facilityCacheKey
+        ) {
+            competitorPriceSnapshotBackgroundQueue.length = 0;
+            competitorPriceSnapshotBackgroundTaskKeys.clear();
+            return;
+        }
+
+        const attemptKey = buildCompetitorPriceSnapshotAttemptKey(task.facilityCacheKey, task.stayDate, task.batchDateKey, "competitor-tab");
+        if (!competitorPriceSnapshotPriorityAttemptKeys.has(attemptKey)) {
+            competitorPriceSnapshotPriorityAttemptKeys.add(attemptKey);
+            await runCompetitorPriceSnapshotSave(
+                task.stayDate,
+                task.batchDateKey,
+                task.facilityCacheKey,
+                "competitor-tab",
+                competitorPriceSnapshotPriorityAttemptKeys,
+                attemptKey
+            );
+        }
+    } finally {
+        competitorPriceSnapshotBackgroundRunning = false;
+        if (competitorPriceSnapshotBackgroundQueue.length > 0) {
+            scheduleCompetitorPriceSnapshotBackgroundDrain();
+        }
+    }
+}
+
+function buildCompetitorPriceSnapshotAttemptKey(
+    facilityCacheKey: string,
+    analysisDate: string,
+    batchDateKey: string,
+    source: "analyze-open" | "competitor-tab"
+): string {
+    return `${facilityCacheKey}:${analysisDate}:${batchDateKey}:${source}`;
 }
 
 interface PersistCompetitorPriceSnapshotsForSourceResult {

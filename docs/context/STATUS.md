@@ -11,6 +11,7 @@
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
   - `RAU-CP-06` は完了。Analyze open 起点でも、現在開いている宿泊日の `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。
+  - `RAU-CP-07` は完了。競合価格 tab 起点で現在 stay_date の保存後、同週、同月の順に background queue で競合価格 snapshot を保存するようにした。
   - 次に、月次実績画面 `RAU-MP-01` へ戻り、追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart をどこまで final graph へ寄せるか判断する。
 
 ## Current State
@@ -71,6 +72,7 @@
 - `RAU-CP-04` はコード実装済み。Analyze 日付ページ内の click 後と、MutationObserver が DOM 変化を検知したが calendar sync signature が変わらない場合に、競合価格グラフの配置修復を予約するようにした。Revenue Assistant 標準表が後から追加された場合でも、保存済み state から `renderCompetitorPriceOverviewFromState()` を再実行し、RAU セクションを同じ親要素の末尾へ戻す。
 - `RAU-CP-05` はコード実装済み。`指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存できるようにし、指定なし表示では `指定なし` snapshot を優先し、部屋タイプ toggle 選択時は対応する `jalan_room_types[]` snapshot を優先する。Tooltip には、施設名、部屋タイプ、価格、前回差分を表示する。
 - `RAU-CP-06` はコード実装済み。Analyze open 起点でも競合価格 tab 起点と同じ 6 snapshot を保存し、現在開いている宿泊日の競合価格 snapshot 粒度を揃える。同週、同月、直近 30 日への queue 拡張は、request 数、booking curve warm cache との優先順位、停止条件を別途設計してから行う。
+- `RAU-CP-07` はコード実装済み。競合価格 tab 起点で現在 stay_date の 6 snapshot を保存した後、同じ Analyze 日付ページを表示している間だけ、同週、同月の順に background queue で競合価格 snapshot を保存する。background queue は booking curve warm cache queue と分離し、document hidden、別 Analyze 日付への遷移、batch date や facility cache key の変更時は停止する。直近 30 日への拡張は未実装。
 - `RAU-WC-07` はコード実装済み。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行った。Chrome CDP 確認では、localStorage 全体約 5.18 MB のうち、booking curve localStorage key 36 件が約 5.16 MB を占めていた。
 - `RAU-WC-07` の実装では、`src/main.ts` の booking curve 取得経路から localStorage persistent cache の読み込みと書き込みを外し、既存 key は `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` の facility prefix に限定して削除する。IndexedDB raw source、derived reference curve、競合価格 snapshot は削除対象にしない。
 - Tampermonkey 側を `a4c4cc9` の build に更新後、Chrome CDP で Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を再読み込みして確認した。localStorage の booking-curve key は 0 件、booking-curve bytes は 0 のまま維持された。販売設定タブ内では group rows 6 件、overall summary 1 件、rank overview 1 件、booking curve section 1 件、booking curve SVG 2 件を確認した。`QuotaExceededError` は再発していない。
@@ -232,6 +234,7 @@
   - RAU-CP-04 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-17` の競合価格 tab で、RAU セクションの後ろに標準表の後続再描画を模した test node を追加し、2.3 秒後に RAU セクションが親要素の末尾へ戻ることを確認
   - RAU-CP-05 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-17` の競合価格 tab を開いたとき、`/api/v5/competitor_prices` の request に `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` が含まれることを確認。console log で `storedCount: 6` を確認
   - RAU-CP-06 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-19` の Analyze open 起点で、`/api/v5/competitor_prices` の request に `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` が含まれることを確認。console log で最新注入分の `storedCount: 6` を確認
+  - RAU-CP-07 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-20` の競合価格 tab 起点で、現在 stay_date の保存後に `20260614`、`20260615`、`20260616` の background request が発行されることを確認。先頭の background 日付 `20260614` では `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 request を確認
 
 ## Open Questions / Risks
 

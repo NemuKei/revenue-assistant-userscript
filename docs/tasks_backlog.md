@@ -382,6 +382,31 @@
 
 ## Completed / Recent Implementation
 
+### RAU-CP-07 競合価格タブ起点で同週、同月の snapshot を background 取得する
+
+- 目的:
+  - 競合価格 tab を開いた stay_date の比較意図を起点に、同週、同月の競合価格 snapshot を少しずつ厚くする。
+  - 取得対象を広げても、booking curve warm cache の queue、完了定義、indicator の基本挙動とは分離する。
+- スコープ:
+  - 競合価格 tab 起点で現在の stay_date の 6 snapshot を保存した後、同週、同月の順に background queue を作る。
+  - 各 stay_date では `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存する。
+  - document hidden、別 Analyze 日付への遷移、batch date や facility cache key の変更を検知した場合は background queue を停止する。
+- 非目標:
+  - Analyze open だけで同週、同月、直近 30 日を取得すること。
+  - 直近 30 日の競合価格 snapshot queue を追加すること。
+  - booking curve warm cache queue に競合価格 task を混ぜること。
+- 受け入れ条件:
+  - 競合価格 tab を開いた stay_date の保存後、同週、同月の別 stay_date に対する `/api/v5/competitor_prices` request が発行される。
+  - background queue の各 stay_date request に、`指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` が含まれる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - 競合価格 snapshot 保存処理を `runCompetitorPriceSnapshotSave()` に切り出し、現在 stay_date の保存完了後に同週、同月の background queue を積むようにした。
+  - background queue は booking curve warm cache とは別に持ち、1 task ずつ `COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS` 間隔で進めるようにした。
+
 ### RAU-CP-06 Analyze open の競合価格 snapshot 粒度を部屋タイプ別まで揃える
 
 - 目的:
