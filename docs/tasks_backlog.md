@@ -382,6 +382,30 @@
 
 ## Completed / Recent Implementation
 
+### RAU-SALES-01 Analyze 日付単位の売上・単価データ取得可否を調査する
+
+- 目的:
+  - Analyze / 販売設定判断で、宿泊日単位の売上、販売室数、販売単価を扱える API または DOM 起点の data があるか確認する。
+  - 競合価格 snapshot、booking curve room count、将来の単価表示を同じ stay_date 軸で比較できるか判断する。
+- 調査結果:
+  - `/api/v4/booking_curve` response は室数だけでなく、売上と ADR を含んでいた。
+  - ホテル全体と室タイプ別 `rm_room_group_id` 指定の両方で、`all`、`transient`、`group` に `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` が含まれる。
+  - 2026-04-30 のホテル全体では、`all.this_year_sales_sum=1218863`、`all.this_year_room_sum=138`、`all.this_year_adr=8896` が返った。
+  - 2026-04-30 の室タイプ別シングルでは、`all.this_year_sales_sum=336508`、`all.this_year_room_sum=50`、`all.this_year_adr=6730` が返った。
+  - 月次 `/api/v1/booking_curve/monthly?year_month=202606` は `sales_based` と `room_based` を返すが、予約日基準の月次系列であり、Analyze の stay_date 単位判断には `/api/v4/booking_curve` のほうが保存単位を揃えやすい。
+- 結論:
+  - Analyze 日付単位の売上と ADR の取得元は `API endpoint` として存在する。
+  - 新規取得 endpoint や DOM scraping を追加する前に、既存 booking curve raw source の adapter と表示用 model を拡張する。
+  - 保存単位は既存 `/api/v4/booking_curve` raw source と同じ `facility`、`stay_date`、`batch_date`、scope、room group、endpoint、query を使う。
+  - 単価は API の `this_year_adr` / `last_year_adr` を第一候補とし、必要な場合だけ `sales_sum / room_sum` の再計算値と差分確認する。
+- 非目標:
+  - この task では snapshot store、UI、グラフ表示を実装しない。
+  - 競合価格グラフへ売上や単価を重ねない。
+  - DWH や外部 RMS 連携を前提にしない。
+- verify:
+  - Chrome CDP で `/api/v4/booking_curve?date=20260623`、`/api/v4/booking_curve?date=20260430`、`/api/v4/booking_curve?date=20260430&rm_room_group_id=<id>`、`/api/v1/booking_curve/monthly?year_month=202606` を確認した。
+  - `docs/spec_001_analyze_expansion.md` と `docs/context/DECISIONS.md` に取得元と判断を反映した。
+
 ### RAU-CP-09 競合価格 background 取得中に表示中グラフが揺れるバグを修正する
 
 - 目的:
@@ -528,31 +552,29 @@
 
 ## Now
 
-### RAU-SALES-01 Analyze 日付単位の売上・単価データ取得可否を調査する
+### RAU-SALES-02 booking_curve 売上・ADR adapter と表示候補 model を設計する
 
 - 目的:
-  - Analyze / 販売設定判断で、宿泊日単位の売上、販売室数、販売単価を扱える API または DOM 起点の data があるか確認する。
-  - 競合価格 snapshot、booking curve room count、将来の単価表示を同じ stay_date 軸で比較できるか判断する。
+  - `/api/v4/booking_curve` raw source に含まれる売上と ADR を、Analyze 日付ページの表示や将来の競合価格比較で使える display model へ取り出す設計を決める。
+  - 既存の room count reference curve と同じ保存単位を使い、追加取得 queue を増やさずに売上・単価を扱う。
 - 背景:
-  - 現行の Analyze / 販売設定タブの booking curve warm cache は `/api/v4/booking_curve` の室数系 raw source を保存しており、売上金額そのものは保存していない。
-  - 月次実績画面側には `/api/v1/booking_curve/monthly` の `sales_based` があるが、これは月単位 preview 用であり、Analyze 日付単位の保存単位としてそのまま使えるか未確認である。
-- 調査スコープ:
-  - `/api/v4/booking_curve` response に売上相当の値が含まれないことを再確認する。
-  - Revenue Assistant の Analyze / 販売設定 / 月次実績周辺で、宿泊日単位の売上または単価を取得できる endpoint があるか Chrome CDP で確認する。
-  - `/api/v1/booking_curve/monthly` の `sales_based` を、日付単位の売上推移や単価算出へ使えるか確認する。
-  - 取得可能な場合、保存単位を `facility`、`stay_date`、`batch_date`、scope、room group のどこまでにするか整理する。
-  - 単価を算出する場合の分母を、販売室数、予約室数、`booking_curve` の `all / transient / group` のどれにするか候補を整理する。
+  - `RAU-SALES-01` で、既存 `/api/v4/booking_curve` の `all`、`transient`、`group` に売上と ADR が含まれることを確認した。
+  - 既存 IndexedDB raw source は response 全体を保存済みのため、まず read adapter と表示用 model を拡張すればよい。
+- スコープ:
+  - `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` の型と null handling を定義する。
+  - `all`、`transient`、`group` のどの segment を初期表示に使うか、既存の `個人 / 団体` toggle とどう対応させるか決める。
+  - API の ADR をそのまま使う場合と、`sales_sum / room_sum` で再計算する場合の優先順位と検算方法を決める。
+  - 最初の UI 反映先を、booking curve tooltip、overall summary、競合価格グラフ横の補助情報のどれにするか提案する。
 - 非目標:
-  - この task では snapshot store、UI、グラフ表示を実装しない。
+  - この task では UI 実装と IndexedDB schema migration を行わない。
+  - 月次 `/api/v1/booking_curve/monthly` の read path を変更しない。
   - 競合価格グラフへ売上や単価を重ねない。
-  - DWH や外部 RMS 連携を前提にしない。
 - 受け入れ条件:
-  - Analyze 日付単位の売上または単価に使える取得元があるか、`API endpoint`、`DOM`、`取得不可` のいずれかで結論を出す。
-  - 使える取得元がある場合は、request 条件、response shape、保存単位、単価算出の分母候補を記録する。
-  - 使える取得元がない場合は、月次 `sales_based` で代替できる範囲と、代替できない範囲を記録する。
-  - 次に実装する場合の task を、snapshot store 追加、既存 monthly store 再利用、UI 表示のどれに分けるか提案する。
+  - 売上・ADR を扱う adapter 追加時の入力、出力、null handling、segment 対応が明文化される。
+  - 最初の UI 実装 task を 1 つに絞れる。
+  - 既存 booking curve raw source の保存単位を変更する必要があるかどうかを判断できる。
 - metadata:
-  - `spec-impact`: unknown
+  - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
@@ -876,7 +898,7 @@
 
 Now:
 
-- `RAU-SALES-01` Analyze 日付単位の売上・単価データ取得可否を調査する
+- `RAU-SALES-02` booking_curve 売上・ADR adapter と表示候補 model を設計する
 
 Next:
 
@@ -893,8 +915,8 @@ Later:
 
 統合判断:
 
-- `RAU-SALES-01` は、競合価格 snapshot のデータ量増加と同じ stay_date 軸で売上・単価を扱えるかを確認する調査 task とする。現時点では取得元と保存単位が未確定のため、競合価格グラフ表示改善や月次実績 graph 実装へ統合しない。
-- `RAU-SALES-01` の後続実装は、調査結果に応じて snapshot store、monthly store 再利用、UI 表示のいずれかに分割する。調査前に保存 schema やグラフ表示を先行実装しない。
+- `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。後続は新規取得 endpoint 探索ではなく、既存 raw source adapter と表示用 model の設計に進める。
+- `RAU-SALES-02` は、競合価格 snapshot のデータ量増加と同じ stay_date 軸で売上・ADR を扱うための設計 task とする。現時点では UI 実装先を決める前段のため、月次実績 graph 実装へ統合しない。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。

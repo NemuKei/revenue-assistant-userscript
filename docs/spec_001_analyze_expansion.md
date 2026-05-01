@@ -25,7 +25,8 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - `/api/v4/booking_curve` の response は、ホテル全体と室タイプ別で同じ形として扱う
   - top-level には `booking_curve`、`stay_date`、`last_year_stay_date`、`max_room_count` がある
   - `booking_curve[]` の各 point には `date`、`last_year_date`、`all`、`transient`、`group` がある
-  - `all`、`transient`、`group` には少なくとも `this_year_room_sum`、`last_year_room_sum`、`two_years_ago_room_sum`、`three_years_ago_room_sum` がある
+  - `all`、`transient`、`group` には少なくとも `this_year_room_sum`、`last_year_room_sum`、`two_years_ago_room_sum`、`three_years_ago_room_sum`、`this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` がある
+  - 売上と ADR は Analyze 日付単位の取得元として使える。Chrome CDP で 2026-04-30 のホテル全体と室タイプ別 `rm_room_group_id` 指定の両方で、`this_year_sales_sum`、過去年売上、`this_year_adr`、`last_year_adr` が返ることを確認した
   - `batch-date` は `/api/v4/booking_curve` の response には含まれない。取得時点や cache 分離に必要な `batch-date` は、既存の同期文脈または cache key 側の値として扱う
 - `/api/v1/booking_curve/rm_room_groups`
   - 室タイプ一覧と `rm_room_group_id` を取得する
