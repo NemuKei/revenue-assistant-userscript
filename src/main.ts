@@ -769,6 +769,7 @@ function installInteractionHooks(): void {
             return;
         }
 
+        scheduleCompetitorPriceOverviewPlacementRepair();
         scheduleInteractionSync();
     });
 }
@@ -841,6 +842,22 @@ function scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey: string, 
             if (activeAnalyzeDate !== analysisDate || activeFacilityCacheKey !== facilityCacheKey) {
                 return;
             }
+            renderCompetitorPriceOverviewFromState();
+        }, delay);
+    }
+}
+
+function scheduleCompetitorPriceOverviewPlacementRepair(): void {
+    if (activeAnalyzeDate === null) {
+        return;
+    }
+
+    for (const delay of [120, 300, 700, 1500]) {
+        window.setTimeout(() => {
+            if (activeAnalyzeDate === null) {
+                return;
+            }
+
             renderCompetitorPriceOverviewFromState();
         }, delay);
     }
@@ -2744,6 +2761,7 @@ function scheduleMutationObserverCalendarSync(): void {
         mutationObserverSyncQueued = false;
 
         if (nextSignature === completedCalendarSyncSignature) {
+            scheduleCompetitorPriceOverviewPlacementRepair();
             return;
         }
 

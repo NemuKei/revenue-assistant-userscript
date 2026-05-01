@@ -4,12 +4,12 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-CP-04` 競合価格グラフを標準表より下に固定する
+- 主対象: `RAU-CP-05` 競合価格の部屋タイプ別 snapshot を個別取得する
 - この bundle で扱う Task ID:
   - `RAU-CP-04` 競合価格グラフを標準表より下に固定する
   - `RAU-CP-05` 競合価格の部屋タイプ別 snapshot を個別取得する
 - 今回の目的:
-  - 先に、Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下に残るようにする。
+  - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - 次に、`jalan_room_types[]` の単独指定を使い、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot 取得を追加する。
   - 従来の `指定なし` snapshot は継続する。`SEMI_DOUBLE` と raw room type が空のその他相当 plan は、Revenue Assistant の部屋タイプ絞り込み選択肢に独立して存在しないため、`指定なし` snapshot で保持する。
   - 部屋タイプ別 snapshot は、指定なし snapshot と検索条件 signature を分け、グラフの部屋タイプ toggle で該当 snapshot を優先利用できるようにする。部屋タイプ別 snapshot は `指定なし` snapshot の置き換えではなく、補助として扱う。
@@ -71,7 +71,7 @@
 - `RAU-CP-03` はコード実装済み。保存済み snapshot を使い、販売設定タブではなく競合価格タブ内の標準表より下に、`1名`、`2名`、`3名`、`4名` の人数別最安値グラフを縦 4 ブロックで表示する。部屋タイプと食事条件は toggle button の簡易絞り込みとして扱い、部屋タイプ名は `シングル`、`ダブル`、`ツイン`、`トリプル` などのカタカナ表記へ寄せる。グラフ Tooltip では取得日ごとの施設別最安値と前回差分を表示する。indicator には競合価格 snapshot の状態を表示し、詳細を折りたためる最小化 button を持たせる。競合価格 tab を開いた場合は現在開いている stay_date の snapshot 取得を優先する。
 - `RAU-CP-03` の GUI 確認は、Chrome CDP で build 済み `dist` を Analyze 日付ページへ注入して確認済み。2026-05-01 に `競合価格 -> 販売設定 -> 競合価格` と遷移した場合でも、2 回目の競合価格タブで `競合価格 最安値推移` が 1 セクション、4 panel、4 SVG で再表示されることを確認した。同じ日に、2日分の競合価格グラフが旧表示の `54〜736` 両端配置ではなく、`315〜475` の短い中央寄せ幅で表示されることを確認した。人数別グラフ panel の枠線、縦軸補助目盛り、補助線、Tooltip 表形式、補助線の横幅いっぱい表示は、Tampermonkey 正式再読込後の利用者確認まで完了した。
 - 2026-05-01 の追加調査で、`/api/v5/competitor_prices` は `jalan_room_types[]=TWIN` のような単独部屋タイプ指定を受け付けることを Chrome CDP で確認した。指定なし response では返らない TWIN plan が、TWIN 単独指定では返った。複数部屋タイプ同時指定は各部屋タイプを網羅せず、指定集合内の最安値寄りに絞られるため、部屋タイプ別 snapshot は単独 request として扱う。ただし、`指定なし` response には `SEMI_DOUBLE` や raw room type が空のその他相当 plan が最安値として含まれる場合があるため、`指定なし` snapshot は継続して保存する。
-- 2026-05-01 の利用者確認で、Revenue Assistant 側の競合価格絞り込み後に、RAU の競合価格グラフが標準表より上へ移動し、Revenue Assistant 標準表が下に出る表示順バグが確認された。
+- `RAU-CP-04` はコード実装済み。Analyze 日付ページ内の click 後と、MutationObserver が DOM 変化を検知したが calendar sync signature が変わらない場合に、競合価格グラフの配置修復を予約するようにした。Revenue Assistant 標準表が後から追加された場合でも、保存済み state から `renderCompetitorPriceOverviewFromState()` を再実行し、RAU セクションを同じ親要素の末尾へ戻す。
 - `RAU-WC-07` はコード実装済み。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行った。Chrome CDP 確認では、localStorage 全体約 5.18 MB のうち、booking curve localStorage key 36 件が約 5.16 MB を占めていた。
 - `RAU-WC-07` の実装では、`src/main.ts` の booking curve 取得経路から localStorage persistent cache の読み込みと書き込みを外し、既存 key は `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` の facility prefix に限定して削除する。IndexedDB raw source、derived reference curve、競合価格 snapshot は削除対象にしない。
 - Tampermonkey 側を `a4c4cc9` の build に更新後、Chrome CDP で Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を再読み込みして確認した。localStorage の booking-curve key は 0 件、booking-curve bytes は 0 のまま維持された。販売設定タブ内では group rows 6 件、overall summary 1 件、rank overview 1 件、booking curve section 1 件、booking curve SVG 2 件を確認した。`QuotaExceededError` は再発していない。
@@ -91,8 +91,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-CP-04` を確認し、競合価格 tab の標準表再描画後も RAU グラフを標準表より下へ戻す。
-2. 次に `RAU-CP-05` で、`jalan_room_types[]` 単独指定の room type 別 snapshot 取得を実装する。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-CP-05` を確認し、`jalan_room_types[]` 単独指定の room type 別 snapshot 取得を実装する。
+2. 実装時は、従来の `指定なし` snapshot を継続し、`SEMI_DOUBLE` と raw room type が空のその他相当 plan を失わないことを確認する。
 3. 競合価格を続けない場合は、`RAU-MP-01` 月次実績画面の LT 基準 custom booking curve へ戻る。
 4. booking curve 側を続ける場合は、reference curve 取得率が低い日付で、表示待ち、取得中、取得不可の区別が十分かを確認する。
 
@@ -231,6 +231,7 @@
   - 販売設定 tab GUI 確認: passed。販売設定 tab に戻ったとき、RAU の競合価格セクションが 0 件になることを確認
   - 競合価格 tab 限定表示の回帰確認: passed。2026-05-14 の Analyze 日付ページで販売設定 tab 下部に `競合価格 最安値推移` が割り込まないこと、2026-04-30 の競合価格 tab 本文では `競合価格 最安値推移` が 1 セクション、4 panel で表示されることを Chrome CDP build 注入で確認
   - Tampermonkey 正式再読込後の GUI 目視確認: passed。人数別グラフ panel の枠線、縦軸補助目盛り、補助線、Tooltip 表形式、補助線の横幅いっぱい表示を利用者確認済み
+  - RAU-CP-04 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-17` の競合価格 tab で、RAU セクションの後ろに標準表の後続再描画を模した test node を追加し、2.3 秒後に RAU セクションが親要素の末尾へ戻ることを確認
 
 ## Open Questions / Risks
 

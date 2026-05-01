@@ -2,6 +2,42 @@
 
 ## Completed / Recent GUI Confirmed
 
+### RAU-CP-04 競合価格グラフを標準表より下に固定する
+
+- 目的:
+  - Revenue Assistant 側で競合価格の絞り込みを行ったあとも、RAU の競合価格グラフが Revenue Assistant 標準の競合価格表より下に表示され続けるようにする。
+- 背景:
+  - 2026-05-01 の利用者確認で、Revenue Assistant 側の競合価格絞り込み後に、RAU のグラフブロックが上側へ移動し、Revenue Assistant 標準表が下に出るケースが確認された。
+- スコープ:
+  - 競合価格 tab 本文の標準表が再描画された場合でも、RAU の挿入位置を標準表より下へ戻す。
+  - 標準表が未表示または hidden の状態では、販売設定 tab や別 tab の下部へ fallback 描画しない。
+  - 既存の `競合価格 -> 販売設定 -> 競合価格` 再表示対応を壊さない。
+- 非目標:
+  - 部屋タイプ別 snapshot 取得を追加すること。
+  - 競合価格グラフのデータ構造や IndexedDB schema を変更すること。
+- 受け入れ条件:
+  - 競合価格 tab で Revenue Assistant 側の絞り込みを変更しても、RAU の `競合価格 最安値推移` は Revenue Assistant 標準表より下に表示される。
+  - 販売設定 tab には RAU の競合価格表示が出ない。
+  - `競合価格 -> 販売設定 -> 競合価格` と遷移しても、RAU グラフは標準表より下に 1 セクションだけ再表示される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - Analyze 日付ページ内の click 後に、競合価格グラフの配置修復を複数回予約するようにした。
+  - MutationObserver が DOM 変化を検知したが calendar sync signature が変わらない場合でも、競合価格グラフの配置修復を予約するようにした。
+  - 配置修復は保存済み state から `renderCompetitorPriceOverviewFromState()` を再実行し、Revenue Assistant 標準表が後から追加された場合でも RAU セクションを同じ親要素の末尾へ戻す。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+- GUI 確認:
+  - 2026-05-01 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` を `https://ra.jalan.net/analyze/2026-06-17` へ注入して確認した。
+  - 競合価格 tab 内に `競合価格 最安値推移` が表示され、初期状態で RAU セクションが親要素の末尾にあることを確認した。
+  - 標準表の後続再描画を模した test node を RAU セクションの後ろに追加し、2.3 秒後に RAU セクションが再び末尾へ戻ることを確認した。
+
 ### RAU-CP-03 競合価格 snapshot の人数別最安値グラフを競合価格タブに表示する
 
 - 目的:
@@ -345,31 +381,6 @@
   - Indicator の `raw / 参考線 / 同曜日` 取得率が実データに応じて進むこと
 
 ## Now
-
-### RAU-CP-04 競合価格グラフを標準表より下に固定する
-
-- 目的:
-  - Revenue Assistant 側で競合価格の絞り込みを行ったあとも、RAU の競合価格グラフが Revenue Assistant 標準の競合価格表より下に表示され続けるようにする。
-- 背景:
-  - 2026-05-01 の利用者確認で、Revenue Assistant 側の競合価格絞り込み後に、RAU のグラフブロックが上側へ移動し、Revenue Assistant 標準表が下に出るケースが確認された。
-- スコープ:
-  - 競合価格 tab 本文の標準表が再描画された場合でも、RAU の挿入位置を標準表より下へ戻す。
-  - 標準表が未表示または hidden の状態では、販売設定 tab や別 tab の下部へ fallback 描画しない。
-  - 既存の `競合価格 -> 販売設定 -> 競合価格` 再表示対応を壊さない。
-- 非目標:
-  - 部屋タイプ別 snapshot 取得を追加すること。
-  - 競合価格グラフのデータ構造や IndexedDB schema を変更すること。
-- 受け入れ条件:
-  - 競合価格 tab で Revenue Assistant 側の絞り込みを変更しても、RAU の `競合価格 最安値推移` は Revenue Assistant 標準表より下に表示される。
-  - 販売設定 tab には RAU の競合価格表示が出ない。
-  - `競合価格 -> 販売設定 -> 競合価格` と遷移しても、RAU グラフは標準表より下に 1 セクションだけ再表示される。
-  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
-## Next
 
 ### RAU-CP-05 競合価格の部屋タイプ別 snapshot を個別取得する
 
@@ -729,15 +740,15 @@
 
 Now:
 
-- `RAU-CP-04` 競合価格グラフを標準表より下に固定する
+- `RAU-CP-05` 競合価格の部屋タイプ別 snapshot を個別取得する
 
 Next:
 
-- `RAU-CP-05` 競合価格の部屋タイプ別 snapshot を個別取得する
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 After Next:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 
 Later:
 
