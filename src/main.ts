@@ -569,6 +569,16 @@ interface CompetitorPriceSnapshotBackgroundTask {
     facilityCacheKey: string;
 }
 
+interface CompetitorPriceSnapshotBackgroundProgress {
+    status: "idle" | "running" | "complete" | "stopped";
+    total: number;
+    processed: number;
+    currentTask: CompetitorPriceSnapshotBackgroundTask | null;
+    targetFromDate: string | null;
+    targetToDate: string | null;
+    pauseReason: string | null;
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
@@ -597,6 +607,7 @@ let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let salesSettingWarmCacheTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundRunning = false;
+let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
 let competitorPriceSnapshotUiState: CompetitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
 let competitorPriceRoomTypeFilter: string | null = null;
@@ -905,6 +916,7 @@ function syncPage(): void {
     if (selectedDate !== null && (nextHref !== activeHref || selectedDate !== previousAnalyzeDate)) {
         salesSettingBookingCurveOpenState.clear();
         competitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+        resetCompetitorPriceSnapshotBackgroundProgress();
         cleanupCompetitorPriceOverview();
     }
 
@@ -913,6 +925,7 @@ function syncPage(): void {
 
     if (selectedDate === null) {
         competitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+        resetCompetitorPriceSnapshotBackgroundProgress();
         cleanupCompetitorPriceOverview();
         renderSalesSettingWarmCacheIndicator();
         clearInteractionSyncTimeouts();
@@ -1351,6 +1364,28 @@ function createInitialCompetitorPriceSnapshotUiState(): CompetitorPriceSnapshotU
         errorMessage: null,
         updatedAt: null
     };
+}
+
+function createInitialCompetitorPriceSnapshotBackgroundProgress(): CompetitorPriceSnapshotBackgroundProgress {
+    return {
+        status: "idle",
+        total: 0,
+        processed: 0,
+        currentTask: null,
+        targetFromDate: null,
+        targetToDate: null,
+        pauseReason: null
+    };
+}
+
+function resetCompetitorPriceSnapshotBackgroundProgress(): void {
+    if (competitorPriceSnapshotBackgroundTimeoutId !== null) {
+        window.clearTimeout(competitorPriceSnapshotBackgroundTimeoutId);
+        competitorPriceSnapshotBackgroundTimeoutId = null;
+    }
+    competitorPriceSnapshotBackgroundQueue.length = 0;
+    competitorPriceSnapshotBackgroundTaskKeys.clear();
+    competitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
 }
 
 function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, facilityCacheKey: string, priorityStayDate: string | null): void {
@@ -1890,6 +1925,7 @@ function renderSalesSettingWarmCacheIndicator(): void {
         salesSettingWarmCacheState.status === "idle"
         && salesSettingWarmCacheState.total === 0
         && competitorPriceSnapshotUiState.status === "idle"
+        && competitorPriceSnapshotBackgroundProgress.status === "idle"
     ) {
         existingElement?.remove();
         renderSalesSettingWarmCacheCalendarMarkers();
@@ -2002,6 +2038,11 @@ function getSalesSettingWarmCacheDetailLabel(): string {
 }
 
 function getCompetitorPriceSnapshotStatusLabel(): string | null {
+    const backgroundLabel = getCompetitorPriceSnapshotBackgroundStatusLabel();
+    if (backgroundLabel !== null) {
+        return backgroundLabel;
+    }
+
     switch (competitorPriceSnapshotUiState.status) {
         case "saving":
             return "競合価格: 保存中";
@@ -2020,6 +2061,11 @@ function getCompetitorPriceSnapshotStatusLabel(): string | null {
 }
 
 function getCompetitorPriceSnapshotDetailLabel(): string | null {
+    const backgroundLabel = getCompetitorPriceSnapshotBackgroundDetailLabel();
+    if (backgroundLabel !== null) {
+        return backgroundLabel;
+    }
+
     if (competitorPriceSnapshotUiState.status === "idle") {
         return null;
     }
@@ -2053,6 +2099,50 @@ function getCompetitorPriceSnapshotDetailLabel(): string | null {
         previousText,
         `競合 ${latestRecord.competitorSet.length}`
     ].join(" ");
+}
+
+function getCompetitorPriceSnapshotBackgroundStatusLabel(): string | null {
+    if (competitorPriceSnapshotBackgroundProgress.status === "idle") {
+        return null;
+    }
+
+    const progressText = `${competitorPriceSnapshotBackgroundProgress.processed} / ${competitorPriceSnapshotBackgroundProgress.total}日`;
+    if (competitorPriceSnapshotBackgroundProgress.status === "running") {
+        return `競合価格: 周辺日程取得中 ${progressText}`;
+    }
+    if (competitorPriceSnapshotBackgroundProgress.status === "complete") {
+        return `競合価格: 周辺日程完了 ${progressText}`;
+    }
+    return `競合価格: 周辺日程停止 ${progressText}`;
+}
+
+function getCompetitorPriceSnapshotBackgroundDetailLabel(): string | null {
+    if (competitorPriceSnapshotBackgroundProgress.status === "idle") {
+        return null;
+    }
+
+    const rangeLabel = getCompetitorPriceSnapshotBackgroundRangeLabel();
+    const currentTask = competitorPriceSnapshotBackgroundProgress.currentTask;
+    const currentTaskLabel = currentTask === null
+        ? competitorPriceSnapshotBackgroundProgress.pauseReason
+        : `取得中 ${formatCompactDateForDisplay(currentTask.stayDate)}`;
+    return [
+        rangeLabel === null ? null : `競合価格 周辺日程 ${rangeLabel}`,
+        currentTaskLabel,
+        `完了 ${competitorPriceSnapshotBackgroundProgress.processed} / ${competitorPriceSnapshotBackgroundProgress.total}日`
+    ].filter((part): part is string => part !== null && part !== "").join(" / ");
+}
+
+function getCompetitorPriceSnapshotBackgroundRangeLabel(): string | null {
+    const fromDate = competitorPriceSnapshotBackgroundProgress.targetFromDate;
+    const toDate = competitorPriceSnapshotBackgroundProgress.targetToDate;
+    if (fromDate === null || toDate === null) {
+        return null;
+    }
+    if (fromDate === toDate) {
+        return formatCompactDateForDisplay(fromDate);
+    }
+    return `${formatCompactDateForDisplay(fromDate)}〜${formatCompactDateForDisplay(toDate)}`;
 }
 
 function getSalesSettingWarmCacheRetryPendingCount(): number {
@@ -3317,6 +3407,8 @@ function scheduleCompetitorPriceSnapshotBackgroundQueue(
     batchDateKey: string,
     facilityCacheKey: string
 ): void {
+    competitorPriceSnapshotBackgroundQueue.length = 0;
+    competitorPriceSnapshotBackgroundTaskKeys.clear();
     for (const stayDate of buildCompetitorPriceSnapshotBackgroundStayDates(priorityStayDate)) {
         if (stayDate === priorityStayDate) {
             continue;
@@ -3334,7 +3426,28 @@ function scheduleCompetitorPriceSnapshotBackgroundQueue(
         });
     }
 
+    competitorPriceSnapshotBackgroundProgress = buildCompetitorPriceSnapshotBackgroundProgress();
+    renderSalesSettingWarmCacheIndicator();
     scheduleCompetitorPriceSnapshotBackgroundDrain();
+}
+
+function buildCompetitorPriceSnapshotBackgroundProgress(): CompetitorPriceSnapshotBackgroundProgress {
+    const targetStayDates = competitorPriceSnapshotBackgroundQueue
+        .map((task) => task.stayDate)
+        .sort();
+    if (targetStayDates.length === 0) {
+        return createInitialCompetitorPriceSnapshotBackgroundProgress();
+    }
+
+    return {
+        status: "running",
+        total: targetStayDates.length,
+        processed: 0,
+        currentTask: null,
+        targetFromDate: targetStayDates[0] ?? null,
+        targetToDate: targetStayDates[targetStayDates.length - 1] ?? null,
+        pauseReason: null
+    };
 }
 
 function buildCompetitorPriceSnapshotBackgroundStayDates(priorityStayDate: string): string[] {
@@ -3390,8 +3503,23 @@ async function drainCompetitorPriceSnapshotBackgroundQueue(): Promise<void> {
         ) {
             competitorPriceSnapshotBackgroundQueue.length = 0;
             competitorPriceSnapshotBackgroundTaskKeys.clear();
+            competitorPriceSnapshotBackgroundProgress = {
+                ...competitorPriceSnapshotBackgroundProgress,
+                status: "stopped",
+                currentTask: null,
+                pauseReason: "画面変更またはタブ非表示"
+            };
+            renderSalesSettingWarmCacheIndicator();
             return;
         }
+
+        competitorPriceSnapshotBackgroundProgress = {
+            ...competitorPriceSnapshotBackgroundProgress,
+            status: "running",
+            currentTask: task,
+            pauseReason: null
+        };
+        renderSalesSettingWarmCacheIndicator();
 
         const attemptKey = buildCompetitorPriceSnapshotAttemptKey(task.facilityCacheKey, task.stayDate, task.batchDateKey, "competitor-tab");
         if (!competitorPriceSnapshotPriorityAttemptKeys.has(attemptKey)) {
@@ -3405,10 +3533,26 @@ async function drainCompetitorPriceSnapshotBackgroundQueue(): Promise<void> {
                 attemptKey
             );
         }
+
+        competitorPriceSnapshotBackgroundProgress = {
+            ...competitorPriceSnapshotBackgroundProgress,
+            processed: Math.min(competitorPriceSnapshotBackgroundProgress.total, competitorPriceSnapshotBackgroundProgress.processed + 1),
+            currentTask: null,
+            pauseReason: null
+        };
+        renderSalesSettingWarmCacheIndicator();
     } finally {
         competitorPriceSnapshotBackgroundRunning = false;
         if (competitorPriceSnapshotBackgroundQueue.length > 0) {
             scheduleCompetitorPriceSnapshotBackgroundDrain();
+        } else if (competitorPriceSnapshotBackgroundProgress.status === "running") {
+            competitorPriceSnapshotBackgroundProgress = {
+                ...competitorPriceSnapshotBackgroundProgress,
+                status: "complete",
+                currentTask: null,
+                pauseReason: "完了"
+            };
+            renderSalesSettingWarmCacheIndicator();
         }
     }
 }

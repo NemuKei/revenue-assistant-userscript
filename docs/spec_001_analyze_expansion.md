@@ -327,6 +327,7 @@ Indicator:
 - Analyze 画面内で競合価格タブを開いた場合は、その stay_date の競合価格確認意図がより明確になったものとして、競合価格 snapshot の取得優先度を上げる。
 - 競合価格タブを開いたときは、現在開いている stay_date の 6 snapshot を先に保存する。その保存後、同じ Analyze 日付ページを表示している間だけ、同週、同月の順に background queue で競合価格 snapshot を保存する。queue の各 stay_date も `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存する。
 - 競合価格 snapshot の background queue は、booking_curve warm cache queue へ混ぜない。競合価格 tab 起点の保存後に別の queue として進め、document hidden、別 Analyze 日付への遷移、batch date や facility cache key の変更を検知した場合は停止する。
+- Indicator は競合価格 snapshot の background queue について、対象範囲、完了日数、対象日数、現在取得中の stay_date を表示する。利用者が同週、同月の取得が進んでいるか、止まっているかを判別できることを優先する。
 - 競合価格 tab 起点で直近 30 日へ取得範囲を広げる案は後続候補とする。実装する場合は、同週、同月 queue との重複、request 数の上限、booking_curve warm cache との体感上の優先順位を再設計する。
 - 競合価格 snapshot の取得は、booking_curve warm cache queue と同じ完了定義には含めない。indicator では同じ場所に表示しても、状態、skip、error、最終保存時刻は競合価格 snapshot 専用の値として扱う。
 - 検索条件が違う競合価格 snapshot を同じ推移系列として扱わない。保存時には、検索条件 raw、検索条件 signature、取得元、取得時刻を必ず保持する。

@@ -382,6 +382,30 @@
 
 ## Completed / Recent Implementation
 
+### RAU-CP-08 競合価格 background queue の indicator 進捗を表示する
+
+- 目的:
+  - 同週、同月の競合価格 snapshot 取得が進んでいるか、止まっているかを indicator で判断できるようにする。
+  - 競合価格 data が増える前段として、取得進捗と表示確認の前提を利用者が追える状態にする。
+- スコープ:
+  - Indicator の競合価格 status に、周辺日程の取得中、完了、停止を表示する。
+  - 詳細には対象範囲、現在取得中の stay_date、完了日数、対象日数を表示する。
+  - Analyze 日付変更や Analyze 外への遷移では、古い background queue と進捗表示を reset する。
+- 非目標:
+  - 直近 30 日の取得を追加すること。
+  - 競合価格グラフの横軸ラベル間引き、期間フィルタ、表示点数制限を追加すること。
+- 受け入れ条件:
+  - 競合価格 tab 起点の background queue 実行中に、indicator が `競合価格: 周辺日程取得中 n / m日` を表示する。
+  - 詳細表示に、周辺日程の対象範囲と現在取得中の stay_date が出る。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - `CompetitorPriceSnapshotBackgroundProgress` を追加し、background queue の total、processed、currentTask、対象範囲、停止理由を indicator へ渡すようにした。
+  - Analyze 日付変更や Analyze 外への遷移時に、background queue、task key、progress、timeout を reset するようにした。
+
 ### RAU-CP-07 競合価格タブ起点で同週、同月の snapshot を background 取得する
 
 - 目的:
