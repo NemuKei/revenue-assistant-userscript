@@ -583,6 +583,11 @@ interface CompetitorPriceSnapshotBackgroundProgress {
     pauseReason: string | null;
 }
 
+interface PendingCompetitorPriceTabSnapshotRequest {
+    analysisDate: string;
+    timeoutIds: number[];
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
@@ -612,6 +617,7 @@ let salesSettingWarmCacheTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundRunning = false;
 let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
+let pendingCompetitorPriceTabSnapshotRequest: PendingCompetitorPriceTabSnapshotRequest | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
 let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
 let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
@@ -855,15 +861,86 @@ function isCompetitorPriceTabTrigger(target: Element): boolean {
 }
 
 function scheduleActiveCompetitorPriceSnapshotFromTab(): void {
-    const analysisDate = activeAnalyzeDate;
-    const batchDateKey = activeBatchDateKey;
-    const facilityCacheKey = activeFacilityCacheKey;
-    if (analysisDate === null || batchDateKey === null || facilityCacheKey === null) {
+    const analysisDate = getAnalyzeDate(window.location.pathname) ?? activeAnalyzeDate;
+    if (analysisDate === null) {
         return;
     }
 
-    scheduleCompetitorPriceSnapshot(analysisDate, batchDateKey, facilityCacheKey, "competitor-tab");
-    scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey, analysisDate);
+    requestCompetitorPriceSnapshotFromTabWhenContextReady(analysisDate);
+    queueCalendarSync({ reason: "competitor-price-tab" });
+}
+
+function clearPendingCompetitorPriceTabSnapshotRequest(): void {
+    const request = pendingCompetitorPriceTabSnapshotRequest;
+    if (request === null) {
+        return;
+    }
+
+    for (const timeoutId of request.timeoutIds) {
+        window.clearTimeout(timeoutId);
+    }
+    pendingCompetitorPriceTabSnapshotRequest = null;
+}
+
+function requestCompetitorPriceSnapshotFromTabWhenContextReady(analysisDate: string): void {
+    clearPendingCompetitorPriceTabSnapshotRequest();
+    const request: PendingCompetitorPriceTabSnapshotRequest = {
+        analysisDate,
+        timeoutIds: []
+    };
+    pendingCompetitorPriceTabSnapshotRequest = request;
+
+    trySchedulePendingCompetitorPriceTabSnapshotRequest();
+    if (pendingCompetitorPriceTabSnapshotRequest !== request) {
+        return;
+    }
+
+    for (const delay of [120, 300, 700, 1500, 3000]) {
+        const timeoutId = window.setTimeout(() => {
+            trySchedulePendingCompetitorPriceTabSnapshotRequest();
+        }, delay);
+        request.timeoutIds.push(timeoutId);
+    }
+}
+
+function ensureCompetitorPriceSnapshotUiContext(facilityCacheKey: string, analysisDate: string): void {
+    if (
+        competitorPriceSnapshotUiState.facilityId === facilityCacheKey
+        && competitorPriceSnapshotUiState.stayDate === analysisDate
+    ) {
+        return;
+    }
+
+    competitorPriceSnapshotUiState = {
+        ...createInitialCompetitorPriceSnapshotUiState(),
+        facilityId: facilityCacheKey,
+        stayDate: analysisDate,
+        source: "competitor-tab",
+        updatedAt: new Date().toISOString()
+    };
+}
+
+function trySchedulePendingCompetitorPriceTabSnapshotRequest(): boolean {
+    const request = pendingCompetitorPriceTabSnapshotRequest;
+    if (request === null) {
+        return false;
+    }
+
+    const batchDateKey = activeBatchDateKey;
+    const facilityCacheKey = activeFacilityCacheKey;
+    if (
+        activeAnalyzeDate !== request.analysisDate
+        || batchDateKey === null
+        || facilityCacheKey === null
+    ) {
+        return false;
+    }
+
+    ensureCompetitorPriceSnapshotUiContext(facilityCacheKey, request.analysisDate);
+    scheduleCompetitorPriceSnapshot(request.analysisDate, batchDateKey, facilityCacheKey, "competitor-tab");
+    scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey, request.analysisDate);
+    clearPendingCompetitorPriceTabSnapshotRequest();
+    return true;
 }
 
 function scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey: string, analysisDate: string): void {
@@ -901,6 +978,7 @@ function syncPage(): void {
     const monthlyProgressRouteState = getMonthlyProgressRouteState(window.location.pathname);
     const previousMonthlyProgressYearMonth = activeMonthlyProgressYearMonth;
     const previousMonthlyProgressBatchDateKey = activeMonthlyProgressBatchDateKey;
+    const pendingCompetitorPriceTabAnalysisDate = pendingCompetitorPriceTabSnapshotRequest?.analysisDate ?? null;
     const returnedToCalendarTop = previousAnalyzeDate !== null && selectedDate === null;
 
     activeAnalyzeDate = selectedDate;
@@ -923,6 +1001,9 @@ function syncPage(): void {
     if (selectedDate !== null && (nextHref !== activeHref || selectedDate !== previousAnalyzeDate)) {
         salesSettingBookingCurveOpenState.clear();
         competitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+        if (pendingCompetitorPriceTabAnalysisDate !== selectedDate) {
+            clearPendingCompetitorPriceTabSnapshotRequest();
+        }
         resetCompetitorPriceSnapshotBackgroundProgress();
         cleanupCompetitorPriceOverview();
     }
@@ -932,6 +1013,7 @@ function syncPage(): void {
 
     if (selectedDate === null) {
         competitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+        clearPendingCompetitorPriceTabSnapshotRequest();
         resetCompetitorPriceSnapshotBackgroundProgress();
         cleanupCompetitorPriceOverview();
         renderSalesSettingWarmCacheIndicator();
@@ -3364,6 +3446,7 @@ async function runCalendarSync(): Promise<void> {
         if (analysisDate !== null) {
             await salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingRankInsights(analysisDate, syncContext, preparedData));
             scheduleCompetitorPriceSnapshot(analysisDate, batchDateKey, facilityCacheKey);
+            trySchedulePendingCompetitorPriceTabSnapshotRequest();
         }
 
         if (hasSalesSettingWarmCacheEligiblePage()) {

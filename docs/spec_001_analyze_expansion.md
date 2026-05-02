@@ -328,6 +328,7 @@ Indicator:
 - 取得トリガーは、競合価格タブを開いたときだけに限定しない。Analyze 日付ページを開いた時点で、その stay_date は料金判断の対象になっている可能性が高いため、競合価格 snapshot の候補に含める。
 - Analyze 日付ページを開いた stay_date は、競合価格タブを開いたかどうかに関係なく、`指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存する。理由は、現在見ている宿泊日の競合価格 data は、操作履歴によって部屋タイプ別 snapshot の有無が変わると比較しにくいためである。
 - Analyze 画面内で競合価格タブを開いた場合は、その stay_date の競合価格確認意図がより明確になったものとして、競合価格 snapshot の取得優先度を上げる。
+- 競合価格タブを開いた時点で、single-page application の画面遷移直後などにより Analyze 日付、施設 cache key、batch date key がまだ確定していない場合でも、その競合価格タブ起点の取得要求を即時破棄してはならない。短時間の再試行で必要な context がそろった時点で、現在開いている stay_date の `competitor-tab` source として snapshot 保存と保存済み系列の読み直しを開始する。
 - 競合価格タブを開いたときは、現在開いている stay_date の 6 snapshot を先に保存する。その保存後、同じ Analyze 日付ページを表示している間だけ、同週、同月の順に background queue で競合価格 snapshot を保存する。queue の各 stay_date も `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存する。
 - 競合価格 snapshot の background queue は、booking_curve warm cache queue へ混ぜない。競合価格 tab 起点の保存後に別の queue として進め、document hidden、別 Analyze 日付への遷移、batch date や facility cache key の変更を検知した場合は停止する。
 - Indicator は競合価格 snapshot の background queue について、対象範囲、完了日数、対象日数、現在取得中の stay_date を表示する。利用者が同週、同月の取得が進んでいるか、止まっているかを判別できることを優先する。

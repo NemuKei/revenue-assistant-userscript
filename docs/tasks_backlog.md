@@ -122,6 +122,47 @@
 
 ## Completed / Recent Stabilization
 
+### RAU-CP-10 競合価格タブ遷移直後の取得トリガー欠落を修正する
+
+- 目的:
+  - Analyze 日付ページをしばらく開いたあとに別の Analyze 日付ページへ移動し、競合価格タブを開いた場合でも、現在開いている宿泊日の競合価格 snapshot 取得とグラフ表示を開始できるようにする。
+- 背景:
+  - 2026-05-02 の利用者確認で、競合価格タブを開いても競合価格グラフが表示されない場合があると報告された。
+  - 表示されない場合は indicator 内に競合価格の表示がなく、競合価格 snapshot 取得自体が走っていないように見えることが確認された。
+  - F5 更新後に同じ画面を開くと表示されるため、保存済みデータやグラフ描画形式ではなく、SPA 画面遷移直後の取得開始タイミングが主な疑いになった。
+- スコープ:
+  - 競合価格タブ click 時点で、Analyze 日付、施設 cache key、batch date key のいずれかが未確定でも、要求を破棄せず短時間だけ保留して再試行する。
+  - 保留中の競合価格タブ要求は、対象 Analyze 日付と現在の Analyze 日付が一致し、施設 cache key と batch date key が確定した時点で `competitor-tab` source として snapshot 保存を開始する。
+  - 保存済み snapshot 系列だけが先に存在する場合でも、競合価格タブ表示時に現在の施設と宿泊日を表示対象として確定し、保存済み系列を読み直せるようにする。
+- 非目標:
+  - 競合価格 snapshot の IndexedDB schema を変更すること。
+  - 競合価格 background queue の対象範囲、request 間隔、停止条件を変更すること。
+  - 競合価格グラフの表示密度、横軸、Tooltip、フィルタ UI を変更すること。
+- 受け入れ条件:
+  - 別の Analyze 日付ページから移動した直後に競合価格タブを開いても、現在開いている stay_date の `/api/v5/competitor_prices` request が発行される。
+  - indicator に現在 stay_date の競合価格保存状態、または競合価格 background queue の進捗が表示される。
+  - 競合価格タブ内に `競合価格 最安値推移` が表示され、販売設定タブには表示されない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - 競合価格タブ click 時の要求を `PendingCompetitorPriceTabSnapshotRequest` として保持し、日付・施設 cache key・batch date key がそろうまで短時間再試行するようにした。
+  - `runCalendarSync()` で施設 cache key と batch date key が確定したあと、保留中の競合価格タブ要求を再評価するようにした。
+  - Analyze 日付が変わった場合は、別日付向けの保留要求を破棄し、同じ日付向けの保留要求だけを維持するようにした。
+  - 保存済み snapshot 系列を読み直す前に、競合価格 UI state の施設と stay_date を現在の競合価格タブ対象へ合わせるようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+- GUI 確認:
+  - 2026-05-02 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` を注入して確認した。
+  - `https://ra.jalan.net/analyze/2026-06-22` を約 5 秒開いたあと、`https://ra.jalan.net/analyze/2026-06-23` へ移動し、競合価格タブを開いた。
+  - 競合価格タブ click 後に `/api/v5/competitor_prices` request が発行され、indicator に `競合価格: 周辺日程取得中` が表示されることを確認した。
+  - 競合価格タブ内に `競合価格 最安値推移` が表示され、画面内の SVG が 4 件になることを確認した。
+
 ### RAU-WC-07 booking curve localStorage 容量超過を整理する
 
 - 目的:
