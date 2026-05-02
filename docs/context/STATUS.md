@@ -49,7 +49,8 @@
   - 月次実績画面を開いた直後に、対象月から未来 4 か月と、現在選択中の compare に必要な比較月の snapshot prefetch を background で開始するようにした。compare 切替時も、選択後の表示に必要な snapshot prefetch を先に開始する。
   - `RAU-MP-01` は GUI 確認済み。利用者が Tampermonkey 更新後に目視確認し、追加で Chrome CDP から `https://ra.jalan.net/monthly-progress/2026-05` を確認した。LT preview root、`LTブッキングカーブ` heading、2 panel、2 SVG、compare button、`販売単価 / 売上` button が存在した。compare click 直後に `比較年を更新中`、`aria-busy=true`、押した年の active 表示を確認した。cache hit では status は短時間で消える。
   - `RAU-WC-08` は GUI 確認済み。トップカレンダーの日付セル下端の booking_curve 取得状態 line を、現在走っている warm cache queue の `done / total` に応じた progress bar 表示へ変更した。Chrome CDP で `calendar-date-2026-05-01` が `partial`、`25 / 77`、progress `32%` として表示されることを確認した。
-  - `RAU-WC-09` はコード実装済み。取得が走っていない日でも、IndexedDB に同じ施設と stay_date の `/api/v4/booking_curve` raw source が 1 件以上ある場合は、トップカレンダーの日付セル下端中央に短い薄色ラインを出す。現在取得中の progress bar、完了、エラー表示は保存済みシグナルより優先する。現在 `as_of_date` と過去 `as_of_date` の見た目分離は `RAU-WC-10` に分ける。Chrome CDP で build 済み userscript を一時注入し、`partial` 1 件と `stored` 91 件が表示されることを確認した。Tampermonkey 再読込後の GUI 目視確認は未実施。
+  - `RAU-WC-09` は GUI 確認済み。取得が走っていない日でも、IndexedDB に同じ施設と stay_date の `/api/v4/booking_curve` raw source が 1 件以上ある場合は、トップカレンダーの日付セル下端中央に短い薄色ラインを出す。現在取得中の progress bar、完了、エラー表示は保存済みシグナルより優先する。Tampermonkey 再読込後、Chrome CDP で marker 92 件、bar 92 件、5/1 の青い進捗 bar、5/2 以降の保存済み bar を確認した。
+  - `RAU-WC-10` はコード実装済み。保存済みシグナルは、現在 `as_of_date` の raw source がある日を緑の短い線、過去 `as_of_date` の raw source だけがある日を灰色の短い線として分ける。これは raw source の存在を示すものであり、reference source raw source、derived reference curve、同曜日 raw source まで含めた完了を示すものではない。Chrome CDP build 注入では、現在の実データで `stored-current` 91 件、`partial` 1 件を確認した。Tampermonkey 再読込後の GUI 目視確認は未実施。
 
 ## Current State
 
@@ -101,7 +102,8 @@
 - `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル下端に、一部取得済み、完了、エラーの line を表示する。
 - `RAU-WC-06` はコード実装済み。warm cache の通常対象を `as_of_date - 1日` から `as_of_date + 3か月` までへ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
 - `RAU-WC-08` は GUI 確認済み。トップカレンダーの一部取得済み line は固定幅ではなく、現在 queue の `raw / reference / sameWeekday` 合計進捗に応じた幅で表示する。完了は緑の全幅、エラーは赤の全幅とする。Tampermonkey 再読込後、Chrome CDP で `calendar-date-2026-05-01` の marker state、title、progress custom property を確認した。
-- `RAU-WC-09` はコード実装済み。表示中のトップカレンダー日付を対象に IndexedDB raw source をまとめて読み、現在 queue の対象でない保存済み日付へ短い薄色ラインを出す。保存済みラインは `as_of_date` を区別しないため、現在基準の完了と過去保存データの分離は `RAU-WC-10` で扱う。Chrome CDP build 注入では、現在取得中の 5/1 が `partial`、5/2 以降が `stored` として表示され、保存済みシグナルが progress 表示を上書きしないことを確認した。Tampermonkey 再読込後の GUI 目視確認は未実施。
+- `RAU-WC-09` は GUI 確認済み。表示中のトップカレンダー日付を対象に IndexedDB raw source をまとめて読み、現在 queue の対象でない保存済み日付へ短い薄色ラインを出す。保存済みシグナルは progress 表示を上書きしない。Tampermonkey 再読込後、Chrome CDP で marker と bar の DOM、bar 幅、日付セルの `position: absolute` 維持を確認した。
+- `RAU-WC-10` はコード実装済み。保存済み raw source の `asOfDate` が現在 batch date と一致する場合は `stored-current`、過去 `asOfDate` の raw source だけがある場合は `stored-past` として表示する。現在取得中の `partial`、`complete`、`error` 表示は引き続き保存済みシグナルより優先する。Chrome CDP build 注入では `stored-current` の緑 line と title `booking_curve 現在基準の保存済みデータあり` を確認した。現在の実データには `stored-past` 該当日がなかったため、過去基準だけの見た目はコード経路の verify までで、Tampermonkey 再読込後の GUI 目視確認は未実施。
 - `RAU-CP-01` は完了。2026-04-30 に Chrome CDP で Analyze 日付ページの Network request を確認し、`GET /api/v5/competitor_prices` が競合価格 endpoint であることを確認した。
 - `/api/v5/competitor_prices` には `x-requested-with: XMLHttpRequest` が必要で、query には少なくとも `date`、`min_num_guests`、`max_num_guests`、`yad_nos[]` が必要である。`1〜6名 / 食事条件指定なし` は取得できるが、競合施設一覧なしの広い取得は `400 BAD_REQUEST` になる。
 - `/api/v5/competitor_prices` の response は `own` と `competitors` を持つ。plan は人数、食事条件、プラン名、じゃらん部屋タイプ、URL、価格、自社価格との差分を持つが、在庫状態、販売停止、満室、ページング情報は持たない。

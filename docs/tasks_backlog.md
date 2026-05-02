@@ -231,11 +231,53 @@
   - `npm run check`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
   - `git diff --check`: passed
 - 未確認:
-  - Tampermonkey 再読込後のトップカレンダー GUI 目視確認。
+  - なし。
 - GUI 確認:
   - 2026-05-02 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` をトップカレンダーへ一時注入して確認した。
   - `calendar-date-2026-05-01` は `partial`、title `booking_curve 一部取得済み 31 / 77`、progress `40%` として表示され、現在取得中の progress bar が優先された。
   - `calendar-date-2026-05-02` 以降の保存済み日付は `stored`、title `booking_curve 保存済みデータあり`、progress `18%` として表示された。
+  - 2026-05-02 に Tampermonkey 再読込後のトップカレンダーを Chrome CDP で確認した。marker 92 件、bar 92 件が存在し、日付セルの `position: absolute` は維持されていた。
+  - `calendar-date-2026-05-01` は `partial`、title `booking_curve 一部取得済み 39 / 77`、progress `51%` として表示され、青い bar 幅が設定されていた。
+  - `calendar-date-2026-05-02` 以降の保存済み日付は `stored`、title `booking_curve 保存済みデータあり`、progress `18%` として表示され、短い保存済み bar が設定されていた。
+
+### RAU-WC-10 保存済みシグナルを current as_of_date と過去 as_of_date に分ける
+
+- 目的:
+  - カレンダー上の保存済みシグナルについて、現在の `as_of_date` の raw source がある日と、過去 `as_of_date` の raw source だけがある日を誤読されないように分ける。
+- スコープ:
+  - 表示中のトップカレンダー日付を対象に、同じ施設と stay_date の `/api/v4/booking_curve` raw source を IndexedDB から読む。
+  - その stay_date に現在の `as_of_date` と一致する raw source が 1 件以上ある場合は `stored-current` とし、緑の短い静的 line を表示する。
+  - 過去 `as_of_date` の raw source だけがある場合は `stored-past` とし、灰色の短い静的 line を表示する。
+  - 現在取得中の progress bar、完了、エラー表示を優先し、保存済みシグナルがそれらを上書きしない。
+- 非目標:
+  - reference source raw source、derived reference curve、同曜日 raw source まで含めた完全完了判定。
+  - warm cache の取得対象や queue 制御を変更すること。
+- 受け入れ条件:
+  - 現在の `as_of_date` の raw source がある日付は、取得中でなければ緑の短い line になる。
+  - 過去 `as_of_date` の raw source だけがある日付は、取得中でなければ灰色の短い line になる。
+  - 現在取得中の `partial`、`complete`、`error` 表示は保存済みシグナルより優先される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - `src/bookingCurveRawSourceStore.ts` の保存済み raw source read path を、stay_date ごとの `currentAsOf` / `pastAsOf` status を返す形に変更した。
+  - `src/main.ts` のカレンダー marker state を `stored-current` と `stored-past` に分けた。
+  - `stored-current` は緑の短い line、`stored-past` は灰色の短い line として表示する。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `npm run check`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+- 未確認:
+  - Tampermonkey 再読込後のトップカレンダー GUI 目視確認。
+- GUI 確認:
+  - 2026-05-02 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` をトップカレンダーへ一時注入して確認した。
+  - 現在の実データでは `partial` 1 件、`stored-current` 91 件、bar 92 件が表示された。
+  - `stored-current` は title `booking_curve 現在基準の保存済みデータあり`、progress `24%`、緑の短い line として表示された。
+  - 現在の実データには `stored-past` 該当日がなかったため、過去基準だけの灰色 line はコード経路と CSS rule の確認に留めた。
 
 ### RAU-CP-02 競合価格 snapshot store と取得 adapter を実装する
 
@@ -939,20 +981,6 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_002_curve_core.md`
 
-### RAU-WC-10 保存済みシグナルを current as_of_date と過去 as_of_date に分ける
-
-- 目的:
-  - カレンダー上の保存済みシグナルについて、現在の `as_of_date` で完了している日と、過去 `as_of_date` のデータだけがある日を誤読されないように分ける。
-- スコープ:
-  - `current as_of_date 完了` は緑の静的表示にする。
-  - `過去 as_of_date あり` は薄い点または短い線にし、現在基準の完了と同じ見た目にしない。
-- 非目標:
-  - warm cache の取得対象や queue 制御を変更すること。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
 ## Completed / Superseded Context
 
 ### RAU-AF-07 booking_curve raw source IndexedDB cache と ACT/0日前分離を実装する
@@ -1043,7 +1071,7 @@ After Next:
 
 Later:
 
-- `RAU-WC-10` 保存済みシグナルを current as_of_date と過去 as_of_date に分ける
+- なし
 
 統合判断:
 

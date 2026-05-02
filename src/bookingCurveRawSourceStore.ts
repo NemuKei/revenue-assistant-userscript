@@ -29,6 +29,8 @@ export interface BookingCurveRawSourceRecord {
     response: BookingCurveApiResponse;
 }
 
+export type BookingCurveRawSourceStoredStayDateStatus = "currentAsOf" | "pastAsOf";
+
 export function buildBookingCurveRawSourceCacheKey(parts: BookingCurveRawSourceKeyParts): string {
     return [
         `facility:${parts.facilityId}`,
@@ -64,20 +66,24 @@ export async function readBookingCurveRawSourceRecord(cacheKey: string): Promise
     return withBookingCurveRawSourceStore("readonly", (store) => getBookingCurveRawSourceRecord(store, cacheKey));
 }
 
-export async function readBookingCurveRawSourceStoredStayDates(facilityId: string, stayDates: string[]): Promise<Set<string>> {
+export async function readBookingCurveRawSourceStoredStayDateStatuses(
+    facilityId: string,
+    stayDates: string[],
+    currentAsOfDate: string
+): Promise<Record<string, BookingCurveRawSourceStoredStayDateStatus>> {
     if (!isIndexedDbAvailable()) {
-        return new Set<string>();
+        return {};
     }
 
     const uniqueStayDates = Array.from(new Set(stayDates)).sort();
     return withBookingCurveRawSourceStore("readonly", async (store) => {
         const results = await Promise.all(uniqueStayDates.map(async (stayDate) => ({
             stayDate,
-            hasStoredRawSource: await hasBookingCurveRawSourceRecordForStayDate(store, facilityId, stayDate)
+            status: await getBookingCurveRawSourceStoredStayDateStatus(store, facilityId, stayDate, currentAsOfDate)
         })));
-        return new Set(results
-            .filter((result) => result.hasStoredRawSource)
-            .map((result) => result.stayDate));
+        return Object.fromEntries(results
+            .filter((result): result is { stayDate: string; status: BookingCurveRawSourceStoredStayDateStatus } => result.status !== null)
+            .map((result) => [result.stayDate, result.status]));
     });
 }
 
@@ -155,20 +161,35 @@ function getBookingCurveRawSourceRecord(
     });
 }
 
-function hasBookingCurveRawSourceRecordForStayDate(
+function getBookingCurveRawSourceStoredStayDateStatus(
     store: IDBObjectStore,
     facilityId: string,
-    stayDate: string
-): Promise<boolean> {
+    stayDate: string,
+    currentAsOfDate: string
+): Promise<BookingCurveRawSourceStoredStayDateStatus | null> {
     return new Promise((resolve, reject) => {
         const index = store.index("facility-stay-scope");
         const request = index.openCursor(IDBKeyRange.bound(
             [facilityId, stayDate],
             [facilityId, stayDate, "\uffff"]
         ));
+        let hasPastAsOfRecord = false;
 
         request.onsuccess = () => {
-            resolve(request.result !== null);
+            const cursor = request.result;
+            if (cursor === null) {
+                resolve(hasPastAsOfRecord ? "pastAsOf" : null);
+                return;
+            }
+
+            const record = cursor.value as BookingCurveRawSourceRecord;
+            if (record.asOfDate === currentAsOfDate) {
+                resolve("currentAsOf");
+                return;
+            }
+
+            hasPastAsOfRecord = true;
+            cursor.continue();
         };
 
         request.onerror = () => {
