@@ -195,8 +195,47 @@
   - `npm run lint`: passed
   - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
   - `git diff --check`: passed
+- GUI 確認:
+  - 2026-05-02 に Tampermonkey 再読込後のトップカレンダーを Chrome CDP で確認した。
+  - `calendar-date-2026-05-01` が `partial`、title `booking_curve 一部取得済み 25 / 77`、progress custom property `32%` として表示されることを確認した。
+
+### RAU-WC-09 カレンダーへ保存済みデータありの静的シグナルを表示する
+
+- 目的:
+  - warm cache queue が現在走っていない日でも、IndexedDB に booking_curve raw source が保存済みであることをカレンダー上で確認できるようにする。
+- スコープ:
+  - 初期版では、同じ施設と stay_date の `/api/v4/booking_curve` raw source が IndexedDB に 1 件以上あるかだけを判定する。
+  - 表示中のトップカレンダー日付を 1 回の readonly transaction でまとめて確認する。
+  - 現在取得中の progress bar とは別の、セル下端中央の短い薄色ラインとして表示する。
+  - 現在取得中の progress bar、完了、エラー表示を優先し、保存済みシグナルがそれらを上書きしない。
+- 非目標:
+  - reference source raw source、derived reference curve、同曜日 raw source まで含めた完全完了判定。
+  - 過去 `as_of_date` と現在 `as_of_date` の見た目分離。これは `RAU-WC-10` で扱う。
+- 受け入れ条件:
+  - warm cache queue の対象ではない日でも、対象 stay_date の raw source が IndexedDB にあれば短い薄色ラインが表示される。
+  - warm cache queue の対象日は、保存済みシグナルではなく、`partial`、`complete`、`error` の既存表示が優先される。
+  - 保存済みシグナルの tooltip は `booking_curve 保存済みデータあり` とする。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実装内容:
+  - `src/bookingCurveRawSourceStore.ts` に、表示中 stay_date 群について raw source の保存有無をまとめて読む read path を追加した。
+  - `src/main.ts` のカレンダー marker state に `stored` を追加した。
+  - `stored` は現在 queue の progress state がない日だけ使い、中央の短い薄色ラインとして表示する。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `npm run check`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
 - 未確認:
   - Tampermonkey 再読込後のトップカレンダー GUI 目視確認。
+- GUI 確認:
+  - 2026-05-02 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` をトップカレンダーへ一時注入して確認した。
+  - `calendar-date-2026-05-01` は `partial`、title `booking_curve 一部取得済み 31 / 77`、progress `40%` として表示され、現在取得中の progress bar が優先された。
+  - `calendar-date-2026-05-02` 以降の保存済み日付は `stored`、title `booking_curve 保存済みデータあり`、progress `18%` として表示された。
 
 ### RAU-CP-02 競合価格 snapshot store と取得 adapter を実装する
 
@@ -900,22 +939,6 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_002_curve_core.md`
 
-### RAU-WC-09 カレンダーへ保存済みデータありの静的シグナルを表示する
-
-- 目的:
-  - warm cache queue が現在走っていない日でも、IndexedDB に booking_curve raw source が保存済みであることをカレンダー上で確認できるようにする。
-- スコープ:
-  - 初期版では `current raw source` の保存有無だけを対象にする。
-  - 現在取得中の progress bar とは別の薄い静的シグナルとして表示する。
-  - 現在取得中の progress bar、完了、エラー表示を優先し、保存済みシグナルがそれらを上書きしない。
-- 非目標:
-  - reference source raw source、derived reference curve、同曜日 raw source まで含めた完全完了判定。
-  - 過去 `as_of_date` と現在 `as_of_date` の見た目分離。これは `RAU-WC-10` で扱う。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
 ### RAU-WC-10 保存済みシグナルを current as_of_date と過去 as_of_date に分ける
 
 - 目的:
@@ -1020,7 +1043,6 @@ After Next:
 
 Later:
 
-- `RAU-WC-09` カレンダーへ保存済みデータありの静的シグナルを表示する
 - `RAU-WC-10` 保存済みシグナルを current as_of_date と過去 as_of_date に分ける
 
 統合判断:

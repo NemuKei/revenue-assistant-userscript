@@ -289,7 +289,8 @@ Indicator:
 - 対象範囲は月名だけではなく、`対象 2026-04-29〜2026-05-29` のように開始日と終了日を明示する。
 - 完了済み stay_date 範囲は、current raw source、reference source raw source、derived reference curve、同曜日 raw source がすべて揃った日付を、連続範囲として表示する。
 - トップカレンダーの各日付セルには、warm cache の stay_date 単位の状態をセル下端の細い色ラインとして表示する。現在 warm cache queue の対象になっている日付は、`raw source`、`reference curve`、`同曜日` の合計 `done / total` に応じた progress bar として表示する。部分的に取得済みの日付は青、完了した日付は緑の全幅、取得エラーがある日付は赤の全幅とする。日付セル内の販売室数、団体室数、差分表示とは重ねない。
-- warm cache queue が現在走っていない日付に、過去保存済みデータの存在を永続表示する場合は、現在取得中の progress bar と同じ見た目にしない。初期候補は薄い点または短い線とし、現在取得中、現在 `as_of_date` 完了、過去 `as_of_date` ありを区別する。
+- warm cache queue が現在走っていない日付に、保存済み raw source の存在を表示する場合は、現在取得中の progress bar と同じ見た目にしない。初期実装では、IndexedDB に同じ施設と stay_date の `/api/v4/booking_curve` raw source が 1 件以上ある日付を、セル下端中央の短い薄色ラインとして表示する。現在取得中の progress bar、完了、エラー表示がある場合は、それらを優先し、保存済みシグナルは上書きしない。
+- 保存済みシグナルは初期実装では `as_of_date` を区別しない。現在 `as_of_date` で取得済みのデータと、過去 `as_of_date` のデータだけがある状態を別表示にする場合は、別 task で扱う。
 - indicator の完了日数は、完了定義を満たした stay_date の数を指す。取得が始まっているが完了していない stay_date は `進行 n日` として別に表示し、完了 0 日のままでも取得が進んでいることを確認できるようにする。
 - Analyze 日付ページでは、利用者が開いている stay_date の取得状況を percentage と件数で表示する。例: `この日 71%（5/7）`。
 - Analyze 日付ページの percentage は、少なくとも `raw source`、`reference curve`、`同曜日` の内訳を区別できる形にする。初期表示では `この日 raw 100% / 参考線 60% / 同曜日 100%` のように、どの段階が不足しているか分かる表示を優先する。

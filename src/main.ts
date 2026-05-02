@@ -33,6 +33,7 @@ import {
 import {
     buildBookingCurveRawSourceCacheKey,
     buildBookingCurveRawSourceRecord,
+    readBookingCurveRawSourceStoredStayDates,
     readBookingCurveRawSourceRecord,
     writeBookingCurveRawSourceRecord
 } from "./bookingCurveRawSourceStore";
@@ -333,7 +334,7 @@ interface MonthlyCalendarCell {
     indicatorElement: HTMLElement | null;
 }
 
-type SalesSettingWarmCacheDateMarkerState = "partial" | "complete" | "error";
+type SalesSettingWarmCacheDateMarkerState = "partial" | "complete" | "error" | "stored";
 
 interface SalesSettingCard {
     roomGroupName: string;
@@ -610,6 +611,9 @@ let competitorPriceSnapshotBackgroundTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundRunning = false;
 let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
+let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
+let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
+let salesSettingWarmCacheStoredCalendarMarkerDates = new Set<string>();
 let competitorPriceSnapshotUiState: CompetitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
 let competitorPriceRoomTypeFilter: string | null = null;
 let competitorPriceMealTypeFilter: string | null = null;
@@ -2214,12 +2218,19 @@ function getSalesSettingWarmCacheDateMarkerState(progress: SalesSettingWarmCache
 function renderSalesSettingWarmCacheCalendarMarkers(): void {
     const cells = collectMonthlyCalendarCells();
     const renderedStayDates = new Set<string>();
-    const shouldShowMarkers = salesSettingWarmCacheState.total > 0;
+    const shouldShowProgressMarkers = salesSettingWarmCacheState.total > 0;
+
+    queueSalesSettingWarmCacheStoredCalendarMarkerRefresh(cells);
 
     for (const cell of cells) {
-        renderedStayDates.add(cell.stayDate);
-        const progress = shouldShowMarkers ? salesSettingWarmCacheState.dateProgress[cell.stayDate] : undefined;
-        renderSalesSettingWarmCacheCalendarMarker(cell, progress, getSalesSettingWarmCacheDateMarkerState(progress));
+        const progress = shouldShowProgressMarkers ? salesSettingWarmCacheState.dateProgress[cell.stayDate] : undefined;
+        const progressState = getSalesSettingWarmCacheDateMarkerState(progress);
+        const storedState = salesSettingWarmCacheStoredCalendarMarkerDates.has(cell.stayDate) ? "stored" : null;
+        const state = progressState ?? storedState;
+        if (state !== null) {
+            renderedStayDates.add(cell.stayDate);
+        }
+        renderSalesSettingWarmCacheCalendarMarker(cell, progress, state);
     }
 
     for (const markedCell of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE}]`))) {
@@ -2227,13 +2238,60 @@ function renderSalesSettingWarmCacheCalendarMarkers(): void {
         const stayDate = testId?.startsWith(CALENDAR_DATE_TEST_ID_PREFIX) === true
             ? testId.slice(CALENDAR_DATE_TEST_ID_PREFIX.length).replaceAll("-", "")
             : null;
-        if (stayDate === null || !renderedStayDates.has(stayDate) || !shouldShowMarkers) {
+        if (stayDate === null || !renderedStayDates.has(stayDate)) {
             markedCell.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE);
             markedCell.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE);
             markedCell.style.removeProperty(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY);
             markedCell.removeAttribute("title");
         }
     }
+}
+
+function queueSalesSettingWarmCacheStoredCalendarMarkerRefresh(cells: MonthlyCalendarCell[]): void {
+    const facilityId = activeFacilityCacheKey;
+    if (facilityId === null || cells.length === 0 || activeAnalyzeDate !== null) {
+        clearSalesSettingWarmCacheStoredCalendarMarkers();
+        return;
+    }
+
+    const stayDates = Array.from(new Set(cells.map((cell) => cell.stayDate))).sort();
+    const signature = `${facilityId}:${stayDates.join(",")}`;
+    if (signature === salesSettingWarmCacheStoredCalendarMarkerSignature) {
+        return;
+    }
+
+    salesSettingWarmCacheStoredCalendarMarkerSignature = signature;
+    salesSettingWarmCacheStoredCalendarMarkerDates = new Set<string>();
+    const requestSeq = ++salesSettingWarmCacheStoredCalendarMarkerRequestSeq;
+
+    void readBookingCurveRawSourceStoredStayDates(facilityId, stayDates)
+        .then((storedStayDates) => {
+            if (requestSeq !== salesSettingWarmCacheStoredCalendarMarkerRequestSeq) {
+                return;
+            }
+
+            salesSettingWarmCacheStoredCalendarMarkerDates = storedStayDates;
+            renderSalesSettingWarmCacheCalendarMarkers();
+        })
+        .catch((error: unknown) => {
+            if (requestSeq !== salesSettingWarmCacheStoredCalendarMarkerRequestSeq) {
+                return;
+            }
+            console.warn(`[${SCRIPT_NAME}] failed to load warm cache stored calendar markers`, {
+                facilityId,
+                error
+            });
+        });
+}
+
+function clearSalesSettingWarmCacheStoredCalendarMarkers(): void {
+    if (salesSettingWarmCacheStoredCalendarMarkerSignature === "" && salesSettingWarmCacheStoredCalendarMarkerDates.size === 0) {
+        return;
+    }
+
+    salesSettingWarmCacheStoredCalendarMarkerSignature = "";
+    salesSettingWarmCacheStoredCalendarMarkerDates = new Set<string>();
+    salesSettingWarmCacheStoredCalendarMarkerRequestSeq += 1;
 }
 
 function renderSalesSettingWarmCacheCalendarMarker(
@@ -2263,6 +2321,10 @@ function getSalesSettingWarmCacheCalendarMarkerProgressPercent(
         return 100;
     }
 
+    if (state === "stored") {
+        return 18;
+    }
+
     if (progress === undefined) {
         return 0;
     }
@@ -2288,6 +2350,8 @@ function getSalesSettingWarmCacheCalendarMarkerTitle(
             return "booking_curve 取得完了";
         case "error":
             return "booking_curve 取得エラーあり";
+        case "stored":
+            return "booking_curve 保存済みデータあり";
         case "partial":
         default:
             return `booking_curve 一部取得済み${progressLabel}`;
@@ -8911,6 +8975,7 @@ function ensureGroupRoomStyles(): void {
             height: 3px;
             border-radius: 999px;
             pointer-events: none;
+            transform: none;
         }
 
         [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="partial"]::after {
@@ -8923,6 +8988,13 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="error"]::after {
             background: rgba(208, 79, 79, 0.82);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="stored"]::after {
+            left: 50%;
+            width: var(${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY}, 18%);
+            transform: translateX(-50%);
+            background: rgba(91, 110, 130, 0.42);
         }
 
         [${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}] {

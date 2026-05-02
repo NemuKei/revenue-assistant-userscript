@@ -64,6 +64,23 @@ export async function readBookingCurveRawSourceRecord(cacheKey: string): Promise
     return withBookingCurveRawSourceStore("readonly", (store) => getBookingCurveRawSourceRecord(store, cacheKey));
 }
 
+export async function readBookingCurveRawSourceStoredStayDates(facilityId: string, stayDates: string[]): Promise<Set<string>> {
+    if (!isIndexedDbAvailable()) {
+        return new Set<string>();
+    }
+
+    const uniqueStayDates = Array.from(new Set(stayDates)).sort();
+    return withBookingCurveRawSourceStore("readonly", async (store) => {
+        const results = await Promise.all(uniqueStayDates.map(async (stayDate) => ({
+            stayDate,
+            hasStoredRawSource: await hasBookingCurveRawSourceRecordForStayDate(store, facilityId, stayDate)
+        })));
+        return new Set(results
+            .filter((result) => result.hasStoredRawSource)
+            .map((result) => result.stayDate));
+    });
+}
+
 export async function writeBookingCurveRawSourceRecord(record: BookingCurveRawSourceRecord): Promise<void> {
     if (!isIndexedDbAvailable()) {
         return;
@@ -134,6 +151,28 @@ function getBookingCurveRawSourceRecord(
 
         request.onerror = () => {
             reject(request.error ?? new Error("failed to read booking curve raw source record"));
+        };
+    });
+}
+
+function hasBookingCurveRawSourceRecordForStayDate(
+    store: IDBObjectStore,
+    facilityId: string,
+    stayDate: string
+): Promise<boolean> {
+    return new Promise((resolve, reject) => {
+        const index = store.index("facility-stay-scope");
+        const request = index.openCursor(IDBKeyRange.bound(
+            [facilityId, stayDate],
+            [facilityId, stayDate, "\uffff"]
+        ));
+
+        request.onsuccess = () => {
+            resolve(request.result !== null);
+        };
+
+        request.onerror = () => {
+            reject(request.error ?? new Error("failed to query booking curve raw source records for stay date"));
         };
     });
 }
