@@ -246,21 +246,7 @@ export function syncMonthlyProgressPage(options: MonthlyProgressSyncOptions): vo
             ensureMonthlyProgressObserver();
 
             const storage = createMonthlyProgressStorageAdapter(facilityCacheKey);
-            void persistMonthlyBookingCurveSnapshot({
-                scriptName: options.scriptName,
-                facilityCacheKey,
-                yearMonth: options.routeState.yearMonth,
-                batchDateKey: options.batchDateKey
-            }).catch((error: unknown) => {
-                console.warn(`[${options.scriptName}] failed to persist monthly-progress booking-curve snapshot`, {
-                    href: options.href,
-                    yearMonth: options.routeState.yearMonth,
-                    batchDateKey: options.batchDateKey,
-                    facilityCacheKey,
-                    error
-                });
-            });
-
+            startMonthlyProgressSnapshotPrefetch(resolvedContext);
             void syncMonthlyProgressPreview(resolvedContext);
 
             console.info(`[${options.scriptName}] monthly-progress route ready`, {
@@ -279,6 +265,68 @@ export function syncMonthlyProgressPage(options: MonthlyProgressSyncOptions): vo
                 error
             });
         });
+}
+
+function startMonthlyProgressSnapshotPrefetch(context: MonthlyProgressResolvedContext): void {
+    const storage = createMonthlyProgressStorageAdapter(context.facilityCacheKey);
+    const compareMode = resolveMonthlyProgressCompareMode(storage);
+    const targetYearMonths = buildMonthlyProgressSnapshotPrefetchYearMonths(context.routeState.yearMonth, compareMode);
+    if (targetYearMonths.length === 0) {
+        return;
+    }
+
+    void Promise.allSettled(targetYearMonths.map((yearMonth) => persistMonthlyBookingCurveSnapshot({
+        scriptName: context.scriptName,
+        facilityCacheKey: context.facilityCacheKey,
+        yearMonth,
+        batchDateKey: context.batchDateKey
+    }))).then((results) => {
+        const rejectedCount = results.filter((result) => result.status === "rejected").length;
+        if (rejectedCount === 0) {
+            return;
+        }
+
+        console.warn(`[${context.scriptName}] monthly-progress snapshot prefetch partially failed`, {
+            href: context.href,
+            routeYearMonth: context.routeState.yearMonth,
+            batchDateKey: context.batchDateKey,
+            facilityCacheKey: context.facilityCacheKey,
+            targetYearMonths,
+            rejectedCount
+        });
+    });
+}
+
+function buildMonthlyProgressSnapshotPrefetchYearMonths(
+    routeYearMonth: string,
+    compareMode: MonthlyProgressCompareMode
+): string[] {
+    const targetYearMonths = new Set<string>();
+    const focusYearMonths = buildFutureYearMonths(routeYearMonth, MONTHLY_PROGRESS_VISIBLE_MONTH_COUNT);
+
+    for (const focusYearMonth of focusYearMonths) {
+        if (focusYearMonth === null) {
+            continue;
+        }
+
+        targetYearMonths.add(focusYearMonth);
+
+        if (compareMode >= 2) {
+            const previousYearMonth = shiftYearMonth(focusYearMonth, -12);
+            if (previousYearMonth !== null) {
+                targetYearMonths.add(previousYearMonth);
+            }
+        }
+
+        if (compareMode >= 3) {
+            const twoYearsAgoMonth = shiftYearMonth(focusYearMonth, -24);
+            if (twoYearsAgoMonth !== null) {
+                targetYearMonths.add(twoYearsAgoMonth);
+            }
+        }
+    }
+
+    return [...targetYearMonths];
 }
 
 export function cleanupMonthlyProgressPage(): void {
@@ -762,6 +810,7 @@ function createMonthlyProgressCompareButton(
             activeAttribute: MONTHLY_PROGRESS_PREVIEW_COMPARE_BUTTON_ACTIVE_ATTRIBUTE,
             message: "比較年を更新中"
         });
+        startMonthlyProgressSnapshotPrefetch(context);
         void syncMonthlyProgressPreview(context);
     });
     return button;

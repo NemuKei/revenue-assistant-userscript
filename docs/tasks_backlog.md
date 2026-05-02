@@ -591,6 +591,11 @@
   - compare button と `販売単価 / 売上` button は、click 直後に押した選択肢を active 表示へ切り替える。
   - compare 切替で追加 snapshot 取得が発生している間は、preview section 内に更新中 status を表示する。
   - 連続 click で複数の非同期 sync が走った場合は、最後に開始した sync だけを描画対象にする。古い sync が後から完了しても、画面を古い選択状態へ戻さない。
+- 画面 open 直後の取得改善:
+  - `/monthly-progress/YYYY-MM` に入った直後に、対象月から未来 4 か月と、現在選択中の compare に必要な比較月の snapshot prefetch を background で開始する。
+  - compare 切替時も、選択後の表示に必要な snapshot prefetch を先に開始する。
+  - prefetch と preview 描画側の取得は、既存の `persistMonthlyBookingCurveSnapshot()` の pending map で同じ snapshot key ごとに dedupe する。同じ `facilityCacheKey + yearMonth + batchDateKey` を重複 request しない。
+  - prefetch は表示を直接描画しない。表示は従来どおり `syncMonthlyProgressPreview()` が snapshot read path から作る。
 - 次の実装 slice:
   - まず `/monthly-progress/YYYY-MM` の GUI 確認を行う。
   - GUI 確認で修正が必要な場合だけ、`src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout を最小修正する。
