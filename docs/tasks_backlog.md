@@ -52,7 +52,7 @@
   - 自社と保存時点の競合施設を同じグラフ上の線として表示する。
   - 横軸は取得日、縦軸は価格とする。同じ日に複数 snapshot がある場合は、その取得日の最新 snapshot を代表として使う。
   - 部屋タイプと食事条件は、グラフ軸ではなく toggle button の簡易絞り込みとして表示する。
-  - 部屋タイプ名は raw value をそのまま出さず、`シングル`、`ダブル`、`ツイン`、`トリプル` などのカタカナ表記へ寄せる。
+  - 部屋タイプ名は raw value をそのまま出さず、`シングル`、`ダブル`、`ツイン`、`トリプル`、`和洋室` などの日本語表記へ寄せる。
   - グラフの Tooltip は取得日軸ごとに表示し、施設別の最安値と同じ施設の前回取得日との差分を表示する。
   - Analyze 日付ページの indicator に、競合価格 snapshot の保存状態を追加する。
   - warm cache indicator は詳細を折りたためる最小化機能を持つ。
@@ -69,7 +69,7 @@
   - 販売設定タブを最下部までスクロールしても、RAU の競合価格表示が割り込まない。
   - `1名`、`2名`、`3名`、`4名` の panel が縦 4 ブロックで表示され、対象データがない人数は `対象データなし` と表示される。
   - 部屋タイプと食事条件を toggle button で指定なしから選択でき、選択後にグラフが再描画される。
-  - 部屋タイプ名が `シングル`、`ダブル`、`ツイン`、`トリプル` などの読みやすい表記で表示される。
+  - 部屋タイプ名が `シングル`、`ダブル`、`ツイン`、`トリプル`、`和洋室` などの読みやすい表記で表示される。
   - グラフの取得日軸に hover または focus したとき、Tooltip で施設別最安値と前回差分を確認できる。
   - indicator の最小化ボタンで詳細表示を折りたたみ、再表示できる。
   - 同じ取得日に複数 snapshot がある場合、取得日の最新 snapshot だけがグラフに使われる。
@@ -90,7 +90,7 @@
   - 表示方式を前回比 table から、`1名`、`2名`、`3名`、`4名` の人数別最安値グラフへ変更した。
   - 同日複数 snapshot は取得日の最新 snapshot を代表として使い、取得時刻は保存データと indicator 詳細に残すようにした。
   - 部屋タイプと食事条件の toggle button 絞り込みを追加した。
-  - 部屋タイプ名を `シングル`、`ダブル`、`ツイン`、`トリプル` などのカタカナ表記へ寄せた。
+  - 部屋タイプ名を `シングル`、`ダブル`、`ツイン`、`トリプル`、`和洋室` などの日本語表記へ寄せた。
   - グラフを縦 4 ブロック表示にし、取得日軸ごとの Tooltip と前回差分表示を追加した。
   - warm cache indicator に最小化ボタンを追加した。
   - 競合価格 tab を開いた場合は、現在開いている stay_date の競合価格 snapshot 保存を `competitor-tab` source として即時トリガーするようにした。
@@ -750,6 +750,8 @@
   - prefetch と preview 描画側の取得は、既存の `persistMonthlyBookingCurveSnapshot()` の pending map で同じ snapshot key ごとに dedupe する。同じ `facilityCacheKey + yearMonth + batchDateKey` を重複 request しない。
   - prefetch は表示を直接描画しない。表示は従来どおり `syncMonthlyProgressPreview()` が snapshot read path から作る。
 - 次の実装 slice:
+  - なし。`RAU-MP-01` は GUI 確認済みで、現時点では追加実装へ進めない。
+  - 月次の過去 batch 履歴比較、日次差分表示、表示密度の追加調整は、利用者が必要性を再確認した場合に別 task として切る。
 - verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
@@ -1118,7 +1120,7 @@ Later:
 統合判断:
 
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。売上・ADR はすでに室数と同じ raw source に保存されるため、直近で追加取得や表示活用を急がない。
-- `RAU-SALES-02` は、室数予測を実装した後に単価予測と売上予測へ接続するための設計 task として、予測モデル側の Later に寄せる。直近の Next は、月次実績画面 `RAU-MP-01` と rooms-only 予測モデル導入判断 `RAU-FC-01` に整理する。
+- `RAU-SALES-02` は、室数予測を実装した後に単価予測と売上予測へ接続するための設計 task として、予測モデル側の Later に寄せる。月次実績画面 `RAU-MP-01` は GUI 確認済みのため、直近の Now は rooms-only 予測モデル導入判断 `RAU-FC-01` に絞る。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
@@ -1135,6 +1137,6 @@ Later:
 - `RAU-CP-04` は、Revenue Assistant 側の競合価格絞り込みで標準表が再描画されたとき、RAU グラフが標準表より上へ移動する表示順バグを直す task とする。データ取得や IndexedDB schema は変更しない。
 - `RAU-CP-05` は、`jalan_room_types[]` 単独指定で部屋タイプ別 plan が返ることを確認したため追加する。複数部屋タイプ同時指定では各部屋タイプを網羅できないため、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` を個別 request として扱う。ただし、`指定なし` snapshot は廃止しない。`SEMI_DOUBLE` と raw room type が空のその他相当 plan は、Revenue Assistant の部屋タイプ絞り込み選択肢に独立して存在しないため、`指定なし` snapshot で保持する。
 - `RAU-WC-07` は、2026-04-30 の GUI 確認で booking curve localStorage 書き込みの `QuotaExceededError` が実観測されたため追加した。2026-05-01 時点で localStorage booking curve response cache の廃止と GUI 確認まで完了している。
-- `RAU-MP-01` は、Analyze 日付ページの競合価格表示と booking curve localStorage 容量超過整理が完了したため再開候補だったが、競合価格の表示順バグと部屋タイプ別 snapshot 欠損が見つかったため、その後へ戻す。
+- `RAU-MP-01` は、月次カーブのレスポンス改善、切替 UX 改善、画面 open 直後の snapshot prefetch、Chrome CDP と利用者目視の GUI 確認まで完了した。月次の過去 batch 履歴比較、日次差分表示、表示密度の追加調整は、必要性が再確認された場合に別 task として切る。
 - `RAU-WC-01` は、部屋タイプ別 booking curve の表示待ちを減らすため、`RAU-CP-01` より先に進める。取得順は部屋タイプ優先ではなく、近い stay_date からホテル全体と全室タイプを揃える方針にする。
 - 予測モデルと予測評価は将来候補として残すが、reference curve の core logic と GUI 接続が完了するまでは `Later` に置く。先に `RAU-AF-04` で evaluation-ready な input / output / diagnostics を作り、後続 task が同じ core contract を再利用できる状態にする。

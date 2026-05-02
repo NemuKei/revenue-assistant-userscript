@@ -32,7 +32,7 @@
   - 既定では使わない。
   - 使う場合は、`docs/spec_002_curve_core.md`、`src/curveCore.ts`、`src/referenceCurveStore.ts` の既存 contract 調査など read-heavy な作業に限る。
   - 仕様判断、task 分割、最終 verify、正本文書更新はメインスレッドで行う。
-- 今回の目的:
+- このスレッドで完了したこと:
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
   - `RAU-CP-06` は完了。Analyze open 起点でも、現在開いている宿泊日の `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。
@@ -40,6 +40,7 @@
   - `RAU-CP-08` は完了。競合価格 background queue の対象範囲、完了日数、対象日数、現在取得中の stay_date を indicator に表示するようにした。
   - `RAU-CP-09` は完了。競合価格 background queue 実行中に、表示中グラフの対象日と前回データ系列が周辺日程の保存処理で揺れないようにした。
   - `RAU-CP-10` は完了。Analyze 日付ページ遷移直後に競合価格タブを開いた場合でも、日付・施設 cache key・batch date key がそろうまで競合価格タブ要求を短時間保留し、`competitor-tab` source の snapshot 保存とグラフ再描画を開始するようにした。
+  - 競合価格グラフの部屋タイプ filter で、`WAYOUSHITSU` / `wayo` 系の raw value を `和洋室` として表示するようにした。保存データの raw value と filter 判定は従来どおり raw value を使う。
   - `RAU-SALES-01` は完了。Analyze 日付単位の売上と ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。
   - 売上・ADR はすでに室数と同じ raw source に保存されるため、直近では表示活用を急がない。`RAU-SALES-02` は、将来の室数予測、単価予測、売上予測の接続設計として Later に移す。
   - `RAU-MP-01` のコード状態を再確認した。既存実装は `src/monthlyProgress.ts` で `/monthly-progress/YYYY-MM` route を検知し、top / analyze 系同期を停止したうえで月次専用 observer と preview を起動する。
@@ -126,6 +127,7 @@
 - 月次実績画面 `/monthly-progress/YYYY-MM` は、既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みである。monthly-progress 側は専用 storage namespace と kill switch `localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` を持つ。
 - 月次 `/api/v1/booking_curve/monthly` の response は、`facilityCacheKey + yearMonth + batchDateKey` ごとの IndexedDB snapshot として保存している。現在の preview は、同じ batch date の snapshot がなければ API 取得して保存し、その後 `readLatestMonthlyBookingCurveSnapshot()` で保存済み snapshot を読む。過去 batch の履歴比較や日次差分表示にはまだ使っていない。
 - 月次実績画面には、予約日基準 chart 直下へ month-end anchor の LT bucket 集約 preview chart を独立 section として差し込んでいる。現在の preview は、`販売客室数` panel、`販売単価 / 売上` 切替 panel、対象月から未来 4 か月の同時表示、`前年 / 前々年 / 3年前` compare 切替、hover tooltip を持つ。snapshot 取得は選択中 compare に必要な月へ限定する。画面 open と compare 切替の直後に必要 snapshot の prefetch を開始し、切替 click 後は更新中 status を表示し、古い非同期結果の後戻り描画を抑止する。
+- 月次実績画面 `RAU-MP-01` は GUI 確認済みのため、次スレッドの主対象にしない。月次の過去 batch 履歴比較、日次差分表示、表示密度の追加調整は、利用者が必要性を再確認した場合に別 task として切る。
 
 ## Next Re-entry
 
@@ -145,6 +147,7 @@
 1. `docs/tasks_backlog.md` の `Now` にある `RAU-FC-01` を確認し、rooms-only 予測モデルの導入要否を判断する。
 2. 予測対象を、最終販売室数、将来 LT 点、参考線との差分表示のどれにするか整理する。
 3. 売上・ADR の活用 `RAU-SALES-02` は、室数予測、単価予測、売上予測の接続設計として Later で扱う。
+4. 競合価格、月次実績、warm cache calendar marker は直近の不具合修正と GUI 確認まで完了しているため、再発報告がない限り次スレッドの作業対象にしない。
 
 変更しない契約:
 
@@ -164,6 +167,13 @@
 - docs-only の再開準備では、`git diff --check` と正本参照の整合確認を最小 verify とする。
 - 実装に入る場合の最小 verify は `npm run typecheck`、`npm run lint`、`npm run build` とする。
 - GUI まで触る場合は、Tampermonkey 側で `dist/*.user.js` を再読込してから Analyze 日付ページで確認する。
+- 2026-05-02 のスレッド移行前 docs 整備:
+  - 現在の再開入口は `RAU-FC-01`。
+  - 競合価格、月次実績、warm cache calendar marker は直近の修正と GUI 確認まで完了扱い。
+  - この docs 整備は docs-only のため、`git diff --check` と正本間の手動整合確認を最小 verify とする。
+- 最新 savepoint:
+  - `d50c1cb fix: localize wayoushitsu room type label`
+  - `5b1a98f fix: retry competitor tab snapshot after analyze transition`
 - GUI 確認時の対象:
   - Analyze 日付ページの販売設定タブ
   - ホテル全体 booking curve block
@@ -306,6 +316,7 @@
 - 競合価格 response だけで、在庫状態、販売停止、満室を確定した扱いにしない。
 - `RAU-CP-03` は Tampermonkey 正式再読込後の利用者確認まで完了している。今後の競合価格改善は、追加 UI 調整または保存済み snapshot の表示密度改善として別 task 化する。
 - 競合価格の部屋タイプ別 snapshot は `RAU-CP-05` で実装済み。ただし、`SEMI_DOUBLE` と raw room type が空のその他相当 plan を保持するため、従来の `指定なし` snapshot は廃止しない。
+- 競合価格の部屋タイプ表示名は、日本語表記へ寄せる。`WAYOUSHITSU` / `wayo` 系 raw value は `和洋室` と表示する。保存データの raw value と filter 判定は raw value のまま維持する。
 - 2026-04-30 の GUI 確認中に出た booking curve の localStorage persistent cache 書き込み `QuotaExceededError` は、`RAU-WC-07` で localStorage booking curve response cache を廃止して整理済み。再発した場合は、IndexedDB 保存量、group-room result cache、別 namespace の localStorage key を切り分ける。
 
 ## References
