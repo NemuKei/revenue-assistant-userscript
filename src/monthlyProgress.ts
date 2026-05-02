@@ -28,6 +28,8 @@ const MONTHLY_PROGRESS_PREVIEW_COMPARE_BUTTON_ACTIVE_ATTRIBUTE = "data-ra-monthl
 const MONTHLY_PROGRESS_PREVIEW_METRIC_GROUP_ATTRIBUTE = "data-ra-monthly-progress-preview-metric-group";
 const MONTHLY_PROGRESS_PREVIEW_METRIC_BUTTON_ATTRIBUTE = "data-ra-monthly-progress-preview-metric-button";
 const MONTHLY_PROGRESS_PREVIEW_METRIC_BUTTON_ACTIVE_ATTRIBUTE = "data-ra-monthly-progress-preview-metric-button-active";
+const MONTHLY_PROGRESS_PREVIEW_BUSY_ATTRIBUTE = "data-ra-monthly-progress-preview-busy";
+const MONTHLY_PROGRESS_PREVIEW_STATUS_ATTRIBUTE = "data-ra-monthly-progress-preview-status";
 const MONTHLY_PROGRESS_PREVIEW_MONTH_LEGEND_ATTRIBUTE = "data-ra-monthly-progress-preview-month-legend";
 const MONTHLY_PROGRESS_PREVIEW_MONTH_ITEM_ATTRIBUTE = "data-ra-monthly-progress-preview-month-item";
 const MONTHLY_PROGRESS_PREVIEW_MONTH_SWATCH_ATTRIBUTE = "data-ra-monthly-progress-preview-month-swatch";
@@ -128,6 +130,7 @@ let activeMonthlyProgressContext: MonthlyProgressResolvedContext | null = null;
 let monthlyProgressObserver: MutationObserver | null = null;
 let monthlyProgressRenderQueued = false;
 let latestMonthlyProgressPreviewSignature = "";
+let monthlyProgressPreviewSyncSequence = 0;
 
 export function getMonthlyProgressRouteState(pathname: string): MonthlyProgressRouteState | null {
     const match = MONTHLY_PROGRESS_ROUTE_PATTERN.exec(pathname);
@@ -366,8 +369,14 @@ function queueMonthlyProgressPreviewSync(): void {
 }
 
 async function syncMonthlyProgressPreview(context: MonthlyProgressResolvedContext): Promise<void> {
+    const syncSequence = monthlyProgressPreviewSyncSequence + 1;
+    monthlyProgressPreviewSyncSequence = syncSequence;
     try {
         const previewModel = await buildMonthlyProgressPreviewModel(context);
+        if (syncSequence !== monthlyProgressPreviewSyncSequence) {
+            return;
+        }
+
         if (previewModel === null || previewModel.focusMonths.length === 0) {
             cleanupMonthlyProgressPreview();
             return;
@@ -386,6 +395,10 @@ async function syncMonthlyProgressPreview(context: MonthlyProgressResolvedContex
             previewModel
         });
     } catch (error: unknown) {
+        if (syncSequence !== monthlyProgressPreviewSyncSequence) {
+            return;
+        }
+
         cleanupMonthlyProgressPreview();
         console.warn(`[${context.scriptName}] failed to prepare monthly-progress LT preview`, {
             href: context.href,
@@ -658,6 +671,8 @@ function renderMonthlyProgressPreview(options: {
 
     const root = existingRoot ?? document.createElement("section");
     root.setAttribute(MONTHLY_PROGRESS_PREVIEW_ROOT_ATTRIBUTE, "");
+    root.removeAttribute("aria-busy");
+    root.removeAttribute(MONTHLY_PROGRESS_PREVIEW_BUSY_ATTRIBUTE);
 
     const heading = document.createElement("h3");
     heading.textContent = "LTブッキングカーブ";
@@ -741,6 +756,12 @@ function createMonthlyProgressCompareButton(
         const storage = createMonthlyProgressStorageAdapter(context.facilityCacheKey);
         storage.writeJson(MONTHLY_PROGRESS_COMPARE_MODE_STORAGE_KEY, mode);
         latestMonthlyProgressPreviewSignature = "";
+        showMonthlyProgressPendingFeedback({
+            button,
+            buttonSelector: `[${MONTHLY_PROGRESS_PREVIEW_COMPARE_BUTTON_ATTRIBUTE}]`,
+            activeAttribute: MONTHLY_PROGRESS_PREVIEW_COMPARE_BUTTON_ACTIVE_ATTRIBUTE,
+            message: "比較年を更新中"
+        });
         void syncMonthlyProgressPreview(context);
     });
     return button;
@@ -778,9 +799,43 @@ function createMonthlyProgressSecondaryMetricButton(
         const storage = createMonthlyProgressStorageAdapter(context.facilityCacheKey);
         storage.writeJson(MONTHLY_PROGRESS_SECONDARY_METRIC_STORAGE_KEY, metric);
         latestMonthlyProgressPreviewSignature = "";
+        showMonthlyProgressPendingFeedback({
+            button,
+            buttonSelector: `[${MONTHLY_PROGRESS_PREVIEW_METRIC_BUTTON_ATTRIBUTE}]`,
+            activeAttribute: MONTHLY_PROGRESS_PREVIEW_METRIC_BUTTON_ACTIVE_ATTRIBUTE,
+            message: "表示指標を更新中"
+        });
         void syncMonthlyProgressPreview(context);
     });
     return button;
+}
+
+function showMonthlyProgressPendingFeedback(options: {
+    button: HTMLButtonElement;
+    buttonSelector: string;
+    activeAttribute: string;
+    message: string;
+}): void {
+    const root = options.button.closest<HTMLElement>(`[${MONTHLY_PROGRESS_PREVIEW_ROOT_ATTRIBUTE}]`);
+    if (root === null) {
+        return;
+    }
+
+    root.setAttribute("aria-busy", "true");
+    root.setAttribute(MONTHLY_PROGRESS_PREVIEW_BUSY_ATTRIBUTE, "true");
+    root.querySelectorAll<HTMLButtonElement>(options.buttonSelector).forEach((button) => {
+        button.setAttribute(options.activeAttribute, button === options.button ? "true" : "false");
+    });
+
+    let status = root.querySelector<HTMLElement>(`[${MONTHLY_PROGRESS_PREVIEW_STATUS_ATTRIBUTE}]`);
+    if (status === null) {
+        status = document.createElement("div");
+        status.setAttribute(MONTHLY_PROGRESS_PREVIEW_STATUS_ATTRIBUTE, "");
+        const controls = root.querySelector<HTMLElement>(`[${MONTHLY_PROGRESS_PREVIEW_CONTROLS_ATTRIBUTE}]`);
+        controls?.insertAdjacentElement("afterend", status);
+    }
+
+    status.textContent = options.message;
 }
 
 function createMonthlyProgressMonthLegend(focusMonths: MonthlyProgressFocusMonthPreview[]): HTMLDivElement {
@@ -1268,6 +1323,21 @@ function ensureMonthlyProgressPreviewStyles(): void {
         justify-content: space-between;
         gap: 10px;
         margin-top: 12px;
+      }
+      [${MONTHLY_PROGRESS_PREVIEW_STATUS_ATTRIBUTE}] {
+        display: inline-flex;
+        align-items: center;
+        margin-top: 8px;
+        border-radius: 999px;
+        background: #fff7e8;
+        color: #8a5b14;
+        font-size: 11px;
+        font-weight: 700;
+        line-height: 1;
+        padding: 6px 9px;
+      }
+      [${MONTHLY_PROGRESS_PREVIEW_ROOT_ATTRIBUTE}][${MONTHLY_PROGRESS_PREVIEW_BUSY_ATTRIBUTE}="true"] [${MONTHLY_PROGRESS_PREVIEW_PANEL_ATTRIBUTE}] {
+        opacity: 0.72;
       }
       [${MONTHLY_PROGRESS_PREVIEW_COMPARE_GROUP_ATTRIBUTE}] {
         display: inline-flex;

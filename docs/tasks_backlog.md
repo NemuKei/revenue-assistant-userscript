@@ -587,6 +587,10 @@
   - `前々年` compare を選んだ場合だけ、対象月から 12 か月前の snapshot を追加取得し、その snapshot の `lastYearSum` を前々年値として使う。
   - `3年前` compare を選んだ場合だけ、対象月から 12 か月前と 24 か月前の snapshot を追加取得し、24 か月前 snapshot の `lastYearSum` を 3年前値として使う。
   - 表示に使わない比較年 snapshot を先に取得しないことで、初期表示前の直列 request 数を減らす。IndexedDB schema、snapshot key、LT bucket 算出、UI 契約は変更しない。
+- 切替 UX 改善:
+  - compare button と `販売単価 / 売上` button は、click 直後に押した選択肢を active 表示へ切り替える。
+  - compare 切替で追加 snapshot 取得が発生している間は、preview section 内に更新中 status を表示する。
+  - 連続 click で複数の非同期 sync が走った場合は、最後に開始した sync だけを描画対象にする。古い sync が後から完了しても、画面を古い選択状態へ戻さない。
 - 次の実装 slice:
   - まず `/monthly-progress/YYYY-MM` の GUI 確認を行う。
   - GUI 確認で修正が必要な場合だけ、`src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout を最小修正する。
