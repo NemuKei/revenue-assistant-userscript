@@ -168,6 +168,36 @@
 
 ## Recently Implemented / GUI Unconfirmed
 
+### RAU-WC-08 カレンダー下線を現在取得中の progress bar として表示する
+
+- 目的:
+  - トップカレンダーの日付セル下端に出している booking_curve 取得状態の下線を、現在走っている warm cache queue の進捗として読めるようにする。
+  - `一部取得済み` を固定幅の青線ではなく、`done / total` に応じた幅の progress bar として表示する。
+- スコープ:
+  - 既存の `salesSettingWarmCacheState.dateProgress` を使い、現在 queue の対象日だけを progress bar 表示にする。
+  - `partial` は青、`complete` は緑の全幅、`error` は赤の全幅として表示する。
+  - `partial` tooltip には、対象 task の完了数と総数を表示する。
+- 非目標:
+  - IndexedDB を再集計して、取得が走っていない日の保存済み状態を永続表示すること。これは `RAU-WC-09` で扱う。
+  - 保存済み状態を、現在の `as_of_date` 完了と過去 `as_of_date` ありに分けること。これは `RAU-WC-10` で扱う。
+  - warm cache の取得対象、取得順、request 間隔、retry、停止条件を変更すること。
+- 受け入れ条件:
+  - warm cache queue 実行中、対象日の下線幅が `raw / reference / sameWeekday` の合計 `done / total` に応じて変わる。
+  - 完了日は緑の全幅下線、エラー日は赤の全幅下線として表示される。
+  - 取得が走っていない日には、この task だけでは永続保存済みシグナルを出さない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- 実装内容:
+  - `renderSalesSettingWarmCacheCalendarMarker()` が `SalesSettingWarmCacheDateProgress` を受け取り、CSS custom property に progress percent を設定するようにした。
+  - カレンダー marker CSS を固定幅 `box-shadow` から `::after` の幅指定へ変更した。
+  - `partial` の最小表示幅は、進捗が 0 より大きい場合に 8% とし、少量取得済みでも利用者が見落としにくいようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+- 未確認:
+  - Tampermonkey 再読込後のトップカレンダー GUI 目視確認。
+
 ### RAU-CP-02 競合価格 snapshot store と取得 adapter を実装する
 
 - 目的:
@@ -870,6 +900,36 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_002_curve_core.md`
 
+### RAU-WC-09 カレンダーへ保存済みデータありの静的シグナルを表示する
+
+- 目的:
+  - warm cache queue が現在走っていない日でも、IndexedDB に booking_curve raw source が保存済みであることをカレンダー上で確認できるようにする。
+- スコープ:
+  - 初期版では `current raw source` の保存有無だけを対象にする。
+  - 現在取得中の progress bar とは別の薄い静的シグナルとして表示する。
+  - 現在取得中の progress bar、完了、エラー表示を優先し、保存済みシグナルがそれらを上書きしない。
+- 非目標:
+  - reference source raw source、derived reference curve、同曜日 raw source まで含めた完全完了判定。
+  - 過去 `as_of_date` と現在 `as_of_date` の見た目分離。これは `RAU-WC-10` で扱う。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-WC-10 保存済みシグナルを current as_of_date と過去 as_of_date に分ける
+
+- 目的:
+  - カレンダー上の保存済みシグナルについて、現在の `as_of_date` で完了している日と、過去 `as_of_date` のデータだけがある日を誤読されないように分ける。
+- スコープ:
+  - `current as_of_date 完了` は緑の静的表示にする。
+  - `過去 as_of_date あり` は薄い点または短い線にし、現在基準の完了と同じ見た目にしない。
+- 非目標:
+  - warm cache の取得対象や queue 制御を変更すること。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
 ## Completed / Superseded Context
 
 ### RAU-AF-07 booking_curve raw source IndexedDB cache と ACT/0日前分離を実装する
@@ -960,7 +1020,8 @@ After Next:
 
 Later:
 
-- 未定
+- `RAU-WC-09` カレンダーへ保存済みデータありの静的シグナルを表示する
+- `RAU-WC-10` 保存済みシグナルを current as_of_date と過去 as_of_date に分ける
 
 統合判断:
 

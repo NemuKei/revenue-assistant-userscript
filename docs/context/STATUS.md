@@ -48,6 +48,7 @@
   - 月次カーブの切替 UX 改善として、compare button と `販売単価 / 売上` button の click 直後に選択状態と更新中 status を表示するようにした。非同期取得が連続した場合は、古い sync 結果を後から描画しない。
   - 月次実績画面を開いた直後に、対象月から未来 4 か月と、現在選択中の compare に必要な比較月の snapshot prefetch を background で開始するようにした。compare 切替時も、選択後の表示に必要な snapshot prefetch を先に開始する。
   - `RAU-MP-01` は GUI 確認済み。利用者が Tampermonkey 更新後に目視確認し、追加で Chrome CDP から `https://ra.jalan.net/monthly-progress/2026-05` を確認した。LT preview root、`LTブッキングカーブ` heading、2 panel、2 SVG、compare button、`販売単価 / 売上` button が存在した。compare click 直後に `比較年を更新中`、`aria-busy=true`、押した年の active 表示を確認した。cache hit では status は短時間で消える。
+  - `RAU-WC-08` はコード実装済み。トップカレンダーの日付セル下端の booking_curve 取得状態 line を、現在走っている warm cache queue の `done / total` に応じた progress bar 表示へ変更した。取得が走っていない日の保存済みデータあり表示は `RAU-WC-09`、現在 `as_of_date` と過去 `as_of_date` の見た目分離は `RAU-WC-10` に分けた。
 
 ## Current State
 
@@ -98,6 +99,7 @@
 - `RAU-AF-10` はコード実装済み。reference curve の `0日前` は core logic と IndexedDB derived cache では推測補完せず、表示層だけで `1日前` と `ACT` の線形補間値を使う。初期実装では `round(1日前 + (ACT - 1日前) * 0.5)` とし、整数室数に丸める。Tooltip では補間値であることを `（補間）` として明示する。
 - `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル下端に、一部取得済み、完了、エラーの line を表示する。
 - `RAU-WC-06` はコード実装済み。warm cache の通常対象を `as_of_date - 1日` から `as_of_date + 3か月` までへ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
+- `RAU-WC-08` はコード実装済み。トップカレンダーの一部取得済み line は固定幅ではなく、現在 queue の `raw / reference / sameWeekday` 合計進捗に応じた幅で表示する。完了は緑の全幅、エラーは赤の全幅とする。Tampermonkey 再読込後の GUI 目視確認は未実施。
 - `RAU-CP-01` は完了。2026-04-30 に Chrome CDP で Analyze 日付ページの Network request を確認し、`GET /api/v5/competitor_prices` が競合価格 endpoint であることを確認した。
 - `/api/v5/competitor_prices` には `x-requested-with: XMLHttpRequest` が必要で、query には少なくとも `date`、`min_num_guests`、`max_num_guests`、`yad_nos[]` が必要である。`1〜6名 / 食事条件指定なし` は取得できるが、競合施設一覧なしの広い取得は `400 BAD_REQUEST` になる。
 - `/api/v5/competitor_prices` の response は `own` と `competitors` を持つ。plan は人数、食事条件、プラン名、じゃらん部屋タイプ、URL、価格、自社価格との差分を持つが、在庫状態、販売停止、満室、ページング情報は持たない。

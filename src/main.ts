@@ -68,6 +68,7 @@ const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
 const GROUP_ROOM_INDICATOR_ATTRIBUTE = "data-ra-group-room-indicator";
 const SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-cell";
 const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker-state";
+const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY = "--ra-sales-setting-warm-cache-calendar-marker-progress";
 const CALENDAR_LAST_CHANGE_ATTRIBUTE = "data-ra-calendar-last-change";
 const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
 const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
@@ -2218,7 +2219,7 @@ function renderSalesSettingWarmCacheCalendarMarkers(): void {
     for (const cell of cells) {
         renderedStayDates.add(cell.stayDate);
         const progress = shouldShowMarkers ? salesSettingWarmCacheState.dateProgress[cell.stayDate] : undefined;
-        renderSalesSettingWarmCacheCalendarMarker(cell, getSalesSettingWarmCacheDateMarkerState(progress));
+        renderSalesSettingWarmCacheCalendarMarker(cell, progress, getSalesSettingWarmCacheDateMarkerState(progress));
     }
 
     for (const markedCell of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE}]`))) {
@@ -2229,25 +2230,59 @@ function renderSalesSettingWarmCacheCalendarMarkers(): void {
         if (stayDate === null || !renderedStayDates.has(stayDate) || !shouldShowMarkers) {
             markedCell.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE);
             markedCell.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE);
+            markedCell.style.removeProperty(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY);
             markedCell.removeAttribute("title");
         }
     }
 }
 
-function renderSalesSettingWarmCacheCalendarMarker(cell: MonthlyCalendarCell, state: SalesSettingWarmCacheDateMarkerState | null): void {
+function renderSalesSettingWarmCacheCalendarMarker(
+    cell: MonthlyCalendarCell,
+    progress: SalesSettingWarmCacheDateProgress | undefined,
+    state: SalesSettingWarmCacheDateMarkerState | null
+): void {
     if (state === null) {
         cell.anchorElement.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE);
         cell.anchorElement.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE);
+        cell.anchorElement.style.removeProperty(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY);
         cell.anchorElement.removeAttribute("title");
         return;
     }
 
     cell.anchorElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE, "");
     cell.anchorElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE, state);
-    cell.anchorElement.setAttribute("title", getSalesSettingWarmCacheCalendarMarkerTitle(state));
+    cell.anchorElement.style.setProperty(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY, `${getSalesSettingWarmCacheCalendarMarkerProgressPercent(progress, state)}%`);
+    cell.anchorElement.setAttribute("title", getSalesSettingWarmCacheCalendarMarkerTitle(state, progress));
 }
 
-function getSalesSettingWarmCacheCalendarMarkerTitle(state: SalesSettingWarmCacheDateMarkerState): string {
+function getSalesSettingWarmCacheCalendarMarkerProgressPercent(
+    progress: SalesSettingWarmCacheDateProgress | undefined,
+    state: SalesSettingWarmCacheDateMarkerState
+): number {
+    if (state === "complete" || state === "error") {
+        return 100;
+    }
+
+    if (progress === undefined) {
+        return 0;
+    }
+
+    const total = progress.rawTotal + progress.referenceTotal + progress.sameWeekdayTotal;
+    const done = progress.rawDone + progress.referenceDone + progress.sameWeekdayDone;
+    if (total <= 0 || done <= 0) {
+        return 0;
+    }
+
+    return Math.max(8, Math.min(100, Math.round((done / total) * 100)));
+}
+
+function getSalesSettingWarmCacheCalendarMarkerTitle(
+    state: SalesSettingWarmCacheDateMarkerState,
+    progress: SalesSettingWarmCacheDateProgress | undefined
+): string {
+    const progressLabel = progress === undefined
+        ? ""
+        : ` ${progress.rawDone + progress.referenceDone + progress.sameWeekdayDone} / ${progress.rawTotal + progress.referenceTotal + progress.sameWeekdayTotal}`;
     switch (state) {
         case "complete":
             return "booking_curve 取得完了";
@@ -2255,7 +2290,7 @@ function getSalesSettingWarmCacheCalendarMarkerTitle(state: SalesSettingWarmCach
             return "booking_curve 取得エラーあり";
         case "partial":
         default:
-            return "booking_curve 一部取得済み";
+            return `booking_curve 一部取得済み${progressLabel}`;
     }
 }
 
@@ -8863,16 +8898,31 @@ function ensureGroupRoomStyles(): void {
             cursor: pointer;
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="partial"] {
-            box-shadow: inset 0 -3px 0 rgba(91, 141, 239, 0.78);
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE}] {
+            position: relative;
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="complete"] {
-            box-shadow: inset 0 -3px 0 rgba(47, 143, 91, 0.82);
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE}]::after {
+            content: "";
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: var(${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY}, 0%);
+            height: 3px;
+            border-radius: 999px;
+            pointer-events: none;
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="error"] {
-            box-shadow: inset 0 -3px 0 rgba(208, 79, 79, 0.82);
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="partial"]::after {
+            background: rgba(91, 141, 239, 0.78);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="complete"]::after {
+            background: rgba(47, 143, 91, 0.82);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="error"]::after {
+            background: rgba(208, 79, 79, 0.82);
         }
 
         [${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}] {
