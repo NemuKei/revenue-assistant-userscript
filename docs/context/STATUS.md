@@ -4,9 +4,9 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- 主対象: `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 - この bundle で扱う Task ID:
-  - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+  - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -14,23 +14,23 @@
   - `docs/tasks_backlog.md`
   - `docs/context/DECISIONS.md`
   - `docs/spec_000_overview.md`
-  - 必要に応じて `README.md` の月次実績画面セクション
+  - `docs/spec_002_curve_core.md`
 - 次スレッドの範囲:
-  - 月次実績画面 `/monthly-progress/YYYY-MM` で、既存 LT preview が Revenue Assistant 標準の予約日基準 chart 直下に干渉なく入るかを GUI 確認する。
-  - 既存 preview の final graph 契約として、月末 anchor の LT bucket 集約、対象月から未来 4 か月の同時表示、前年/前々年/3年前 compare、`販売客室数` panel、右側の `販売単価 / 売上` 切替 panel を残す。
-  - GUI 確認で見つかった場合だけ、挿入位置、文言、tooltip、2 panel layout の最小修正を行う。
+  - 既存の `直近型カーブ`、`季節型カーブ`、current curve から、rooms-only 予測モデルを追加する価値があるか判断する。
+  - 予測対象、入力データ、出力、GUI 表示位置、評価前提を分けて整理する。
+  - 実装に入る場合は、対象ファイル、保持する既存挙動、最小 verify を決める。
 - 次スレッドでやらないこと:
   - 売上・ADR の表示活用を先に始めない。`RAU-SALES-02` は単価予測と売上予測の Later task として扱う。
-  - rooms-only 予測モデルの実装を始めない。`RAU-FC-01` は `RAU-MP-01` の後に導入要否を判断する。
+  - 導入要否判断なしに rooms-only 予測モデルの実装を始めない。
   - 月次 `/api/v1/booking_curve/monthly` の snapshot read path を、過去 batch の履歴比較や日次差分表示へ広げない。
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
 - 終了条件:
-  - `/monthly-progress/YYYY-MM` で LT preview section の挿入位置、表示項目、tooltip、compare 切替、`販売単価 / 売上` 切替を確認している。
-  - 修正する場合は、対象を `src/monthlyProgress.ts` に原則限定し、LT bucket 算出に不具合がある場合だけ `src/monthlyProgressLeadTime.ts` を触る。
-  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` を通している。
+  - `RAU-FC-01` で、rooms-only 予測モデルを今すぐ実装するか、評価設計を先に置くか、見送るかが決まっている。
+  - 判断理由と次の Task ID が `docs/tasks_backlog.md` に反映されている。
+  - 実装へ進む場合は、`docs/spec_002_curve_core.md` の更新要否を判断している。
 - subagent 利用方針:
   - 既定では使わない。
-  - 使う場合は、月次実績画面の既存実装調査や影響範囲確認など read-heavy な作業に限る。
+  - 使う場合は、`docs/spec_002_curve_core.md`、`src/curveCore.ts`、`src/referenceCurveStore.ts` の既存 contract 調査など read-heavy な作業に限る。
   - 仕様判断、task 分割、最終 verify、正本文書更新はメインスレッドで行う。
 - 今回の目的:
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
@@ -47,6 +47,7 @@
   - 月次カーブのレスポンス改善として、既定の `前年` compare では前年・前々年の月次 snapshot を追加取得しないようにした。`前々年` compare では前年月の snapshot、`3年前` compare では前年月と前々年月の snapshot だけを追加取得する。表示契約、IndexedDB schema、月末 anchor の LT bucket 集約は変更していない。
   - 月次カーブの切替 UX 改善として、compare button と `販売単価 / 売上` button の click 直後に選択状態と更新中 status を表示するようにした。非同期取得が連続した場合は、古い sync 結果を後から描画しない。
   - 月次実績画面を開いた直後に、対象月から未来 4 か月と、現在選択中の compare に必要な比較月の snapshot prefetch を background で開始するようにした。compare 切替時も、選択後の表示に必要な snapshot prefetch を先に開始する。
+  - `RAU-MP-01` は GUI 確認済み。利用者が Tampermonkey 更新後に目視確認し、追加で Chrome CDP から `https://ra.jalan.net/monthly-progress/2026-05` を確認した。LT preview root、`LTブッキングカーブ` heading、2 panel、2 SVG、compare button、`販売単価 / 売上` button が存在した。compare click 直後に `比較年を更新中`、`aria-busy=true`、押した年の active 表示を確認した。cache hit では status は短時間で消える。
 
 ## Current State
 
@@ -133,9 +134,9 @@
 
 最初にやること:
 
-1. `RAU-MP-01` として、Chrome CDP または Tampermonkey 再読込後の実画面で `/monthly-progress/YYYY-MM` を開き、LT preview section の挿入位置、2 panel layout、compare 切替、`販売単価 / 売上` 切替、tooltip を確認する。
-2. GUI 確認で修正が必要な場合だけ、`src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout を最小修正する。LT bucket 算出自体に問題がある場合だけ `src/monthlyProgressLeadTime.ts` を対象に加える。
-3. 月次実績画面の整理後、rooms-only 予測モデル導入判断 `RAU-FC-01` へ進む。売上・ADR の活用 `RAU-SALES-02` は、室数予測、単価予測、売上予測の接続設計として Later で扱う。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-FC-01` を確認し、rooms-only 予測モデルの導入要否を判断する。
+2. 予測対象を、最終販売室数、将来 LT 点、参考線との差分表示のどれにするか整理する。
+3. 売上・ADR の活用 `RAU-SALES-02` は、室数予測、単価予測、売上予測の接続設計として Later で扱う。
 
 変更しない契約:
 

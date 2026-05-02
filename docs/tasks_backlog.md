@@ -550,7 +550,7 @@
   - 競合価格 tab を開いたとき、`/api/v5/competitor_prices` の request に `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` が含まれることを確認した。
   - console log で `storedCount: 6` を確認し、競合価格 tab 起点で 6 snapshot が保存されたことを確認した。
 
-## Now
+## Recently Completed / GUI Confirmed
 
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
@@ -597,11 +597,16 @@
   - prefetch と preview 描画側の取得は、既存の `persistMonthlyBookingCurveSnapshot()` の pending map で同じ snapshot key ごとに dedupe する。同じ `facilityCacheKey + yearMonth + batchDateKey` を重複 request しない。
   - prefetch は表示を直接描画しない。表示は従来どおり `syncMonthlyProgressPreview()` が snapshot read path から作る。
 - 次の実装 slice:
-  - まず `/monthly-progress/YYYY-MM` の GUI 確認を行う。
-  - GUI 確認で修正が必要な場合だけ、`src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout を最小修正する。
-  - LT bucket の値そのものに問題がある場合だけ、`src/monthlyProgressLeadTime.ts` を対象に加える。
-  - 保持する既存挙動は、top / analyze 系同期の停止、monthly-progress 専用 storage namespace、kill switch、同じ batch date の snapshot skip、Revenue Assistant 標準 chart を置き換えないこと、`dist/*.user.js` を手編集しないことである。
-  - 最小 verify は `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` とし、GUI を触った場合は Chrome CDP または Tampermonkey 再読込後の `/monthly-progress/YYYY-MM` 目視確認を追加する。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+- GUI 確認:
+  - 利用者が Tampermonkey 更新後に `/monthly-progress/YYYY-MM` を目視確認した。
+  - 追加確認として、Chrome CDP で `https://ra.jalan.net/monthly-progress/2026-05` に接続し、LT preview root、`LTブッキングカーブ` heading、2 panel、2 SVG、compare button、`販売単価 / 売上` button が存在することを確認した。
+  - compare button click 直後に、押した年の active 表示、`比較年を更新中`、`aria-busy=true` を確認した。
+  - 取得済み snapshot がある場合、更新中 status は短時間で消え、2 panel / 2 SVG 表示へ戻ることを確認した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -943,19 +948,19 @@
 
 Now:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 
 Next:
 
-- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
+- `RAU-FC-02` 予測評価 dataset と metrics を設計する
 
 After Next:
 
-- `RAU-FC-02` 予測評価 dataset と metrics を設計する
+- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
 
 Later:
 
-- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+- 未定
 
 統合判断:
 
