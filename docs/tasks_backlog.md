@@ -552,32 +552,6 @@
 
 ## Now
 
-### RAU-SALES-02 booking_curve 売上・ADR adapter と表示候補 model を設計する
-
-- 目的:
-  - `/api/v4/booking_curve` raw source に含まれる売上と ADR を、Analyze 日付ページの表示や将来の競合価格比較で使える display model へ取り出す設計を決める。
-  - 既存の room count reference curve と同じ保存単位を使い、追加取得 queue を増やさずに売上・単価を扱う。
-- 背景:
-  - `RAU-SALES-01` で、既存 `/api/v4/booking_curve` の `all`、`transient`、`group` に売上と ADR が含まれることを確認した。
-  - 既存 IndexedDB raw source は response 全体を保存済みのため、まず read adapter と表示用 model を拡張すればよい。
-- スコープ:
-  - `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` の型と null handling を定義する。
-  - `all`、`transient`、`group` のどの segment を初期表示に使うか、既存の `個人 / 団体` toggle とどう対応させるか決める。
-  - API の ADR をそのまま使う場合と、`sales_sum / room_sum` で再計算する場合の優先順位と検算方法を決める。
-  - 最初の UI 反映先を、booking curve tooltip、overall summary、競合価格グラフ横の補助情報のどれにするか提案する。
-- 非目標:
-  - この task では UI 実装と IndexedDB schema migration を行わない。
-  - 月次 `/api/v1/booking_curve/monthly` の read path を変更しない。
-  - 競合価格グラフへ売上や単価を重ねない。
-- 受け入れ条件:
-  - 売上・ADR を扱う adapter 追加時の入力、出力、null handling、segment 対応が明文化される。
-  - 最初の UI 実装 task を 1 つに絞れる。
-  - 既存 booking curve raw source の保存単位を変更する必要があるかどうかを判断できる。
-- metadata:
-  - `spec-impact`: yes
-  - `spec-checkpoint`: before-impl
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
-
 ### RAU-MP-01 月次実績画面の LT 基準 custom booking curve を再開する
 
 - 目的:
@@ -820,6 +794,33 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_002_curve_core.md`
 
+### RAU-SALES-02 booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+
+- 目的:
+  - `/api/v4/booking_curve` raw source に含まれる売上と ADR を、将来の単価予測と売上予測で使える model へ取り出す設計を決める。
+  - 室数予測を実装する場合に、予測室数と予測単価から予測売上を算出できるようにする。
+- 背景:
+  - `RAU-SALES-01` で、既存 `/api/v4/booking_curve` の `all`、`transient`、`group` に売上と ADR が含まれることを確認した。
+  - 既存 IndexedDB raw source は response 全体を保存済みのため、売上・ADR の追加取得 queue は不要である。
+  - 直近の優先対象は売上・ADR の表示ではなく、月次実績画面と rooms-only 予測モデルの整理である。
+- スコープ:
+  - `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` の型と null handling を定義する。
+  - `all`、`transient`、`group` のどの segment を単価予測と売上予測の入力候補にするか決める。
+  - API の ADR をそのまま使う場合と、`sales_sum / room_sum` で再計算する場合の優先順位と検算方法を決める。
+  - rooms-only 予測モデルの出力と接続する場合の入力、処理、出力を明文化する。
+- 非目標:
+  - この task では UI 実装と IndexedDB schema migration を行わない。
+  - 月次 `/api/v1/booking_curve/monthly` の read path を変更しない。
+  - 競合価格グラフへ売上や単価を重ねない。
+- 受け入れ条件:
+  - 売上・ADR を扱う adapter 追加時の入力、出力、null handling、segment 対応が明文化される。
+  - 室数予測、単価予測、売上予測の接続順序が明文化される。
+  - 既存 booking curve raw source の保存単位を変更する必要があるかどうかを判断できる。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_002_curve_core.md`
+
 ## Completed / Superseded Context
 
 ### RAU-AF-07 booking_curve raw source IndexedDB cache と ACT/0日前分離を実装する
@@ -898,11 +899,10 @@
 
 Now:
 
-- `RAU-SALES-02` booking_curve 売上・ADR adapter と表示候補 model を設計する
+- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 
 Next:
 
-- `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 
 After Next:
@@ -911,12 +911,12 @@ After Next:
 
 Later:
 
-- なし
+- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
 
 統合判断:
 
-- `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。後続は新規取得 endpoint 探索ではなく、既存 raw source adapter と表示用 model の設計に進める。
-- `RAU-SALES-02` は、競合価格 snapshot のデータ量増加と同じ stay_date 軸で売上・ADR を扱うための設計 task とする。現時点では UI 実装先を決める前段のため、月次実績 graph 実装へ統合しない。
+- `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。売上・ADR はすでに室数と同じ raw source に保存されるため、直近で追加取得や表示活用を急がない。
+- `RAU-SALES-02` は、室数予測を実装した後に単価予測と売上予測へ接続するための設計 task として、予測モデル側の Later に寄せる。直近の Next は、月次実績画面 `RAU-MP-01` と rooms-only 予測モデル導入判断 `RAU-FC-01` に整理する。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。

@@ -7,7 +7,6 @@
 - 主対象: `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 - この bundle で扱う Task ID:
   - `RAU-SALES-01` Analyze 日付単位の売上・単価データ取得可否を調査する
-  - `RAU-SALES-02` booking_curve 売上・ADR adapter と表示候補 model を設計する
   - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 - 今回の目的:
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
@@ -17,7 +16,8 @@
   - `RAU-CP-08` は完了。競合価格 background queue の対象範囲、完了日数、対象日数、現在取得中の stay_date を indicator に表示するようにした。
   - `RAU-CP-09` は完了。競合価格 background queue 実行中に、表示中グラフの対象日と前回データ系列が周辺日程の保存処理で揺れないようにした。
   - `RAU-SALES-01` は完了。Analyze 日付単位の売上と ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。
-  - 次に、`RAU-SALES-02` として booking_curve 売上・ADR adapter と表示候補 model を設計する。月次実績画面 `RAU-MP-01` はその後に戻る。
+  - 売上・ADR はすでに室数と同じ raw source に保存されるため、直近では表示活用を急がない。`RAU-SALES-02` は、将来の室数予測、単価予測、売上予測の接続設計として Later に移す。
+  - 次に、`RAU-MP-01` として月次実績画面の LT 基準 custom booking curve を再開する。
 
 ## Current State
 
@@ -28,7 +28,7 @@
 - Phase 1 の booking curve は、custom SVG、hover tooltip、capacity 基準 y 軸、rank 変更履歴 marker、未来 stay_date の観測 LT 打ち切り、`ACT` 空表示を含む。
 - 現行 current UI では、legacy sales-setting card が無い場合でも synthetic room-type host を生成し、overall summary、rank overview、room-group table、室タイプ別 booking curve を表示できる。
 - 月次実績画面の LT 基準 custom booking curve は、Analyze reference curve が一段落するまで優先度を下げる。
-- Analyze / 販売設定タブの booking curve warm cache は `/api/v4/booking_curve` raw source を保存している。この response には室数だけでなく、`this_year_sales_sum`、過去年売上、`this_year_adr`、`last_year_adr` が含まれるため、Analyze 日付単位の売上・ADR 取得元として使える。
+- Analyze / 販売設定タブの booking curve warm cache は `/api/v4/booking_curve` raw source を保存している。この response には室数だけでなく、`this_year_sales_sum`、過去年売上、`this_year_adr`、`last_year_adr` が含まれるため、Analyze 日付単位の売上・ADR 取得元として使える。ただし、売上・ADR の表示活用は直近 task ではなく、将来の単価予測と売上予測の文脈で扱う。
 - `RAU-SALES-01` の Chrome CDP 調査では、2026-04-30 のホテル全体と室タイプ別シングルの両方で `/api/v4/booking_curve` に売上・ADR が含まれることを確認した。月次 `/api/v1/booking_curve/monthly?year_month=202606` は `sales_based` と `room_based` を返すが、予約日基準の月次系列であり、Analyze の stay_date 単位判断では既存 booking curve raw source を優先する。
 - `RAU-AF-01` は完了。2026-04-24 時点のログイン済み Revenue Assistant 環境で、`/api/v4/booking_curve` はホテル全体と全 6 室タイプについて、対象 `stay_date` 以外の比較対象日付でも 200 応答を返すことを確認した。
 - `/api/v4/booking_curve` の response に `batch-date` は含まれない。`batch-date` は既存の同期文脈または cache key 側で扱う。
@@ -101,9 +101,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-SALES-02` を確認し、booking_curve 売上・ADR adapter と表示候補 model を設計する。
-2. 売上・ADR の最初の UI 反映先を、booking curve tooltip、overall summary、競合価格グラフ横の補助情報のどれにするか決める。
-3. `RAU-SALES-02` 後に、月次実績画面 `RAU-MP-01` へ戻り、追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart をどこまで final graph へ寄せるか判断する。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-MP-01` を確認し、月次実績画面の LT 基準 custom booking curve を再開する。
+2. 追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart を確認し、final graph へ寄せる範囲を決める。
+3. 月次実績画面の整理後、rooms-only 予測モデル導入判断 `RAU-FC-01` へ進む。売上・ADR の活用 `RAU-SALES-02` は、室数予測、単価予測、売上予測の接続設計として Later で扱う。
 
 変更しない契約:
 
