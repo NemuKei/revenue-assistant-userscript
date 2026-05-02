@@ -8056,14 +8056,18 @@ function formatRoomTypeForDisplay(value: string): string {
     if (normalizedValue.includes("和室")) {
         return "和室";
     }
-    if (normalizedValue.includes("和洋")) {
+    if (
+        normalizedValue.includes("wayoushitsu")
+        || normalizedValue.includes("wayo")
+        || normalizedValue.includes("和洋")
+    ) {
         return "和洋室";
     }
     return value;
 }
 
 function compareCompetitorPriceRoomTypeLabels(left: string, right: string): number {
-    const displayOrder = ["シングル", "セミダブル", "ダブル", "ツイン", "トリプル", "フォース"];
+    const displayOrder = ["シングル", "セミダブル", "ダブル", "ツイン", "トリプル", "フォース", "和室", "和洋室"];
     const leftIndex = displayOrder.indexOf(left);
     const rightIndex = displayOrder.indexOf(right);
     if (leftIndex !== -1 || rightIndex !== -1) {
