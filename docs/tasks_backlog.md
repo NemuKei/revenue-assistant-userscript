@@ -556,8 +556,27 @@
 
 - 目的:
   - 追加済み route-scoped slice、IndexedDB write-only snapshot、2 カラム multi-month chart を、どこまで final graph へ寄せるか判断する。
+- 現状:
+  - `/monthly-progress/YYYY-MM` は、既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済み。
+  - monthly-progress 専用 storage namespace と kill switch `localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` を持つ。
+  - `/api/v1/booking_curve/monthly` の response は、write-only snapshot として IndexedDB へ保存済み。ただし、表示 read path はまだ現行 API response を正とし、保存済み snapshot へ切り替えていない。
+  - 予約日基準 chart 直下へ、month-end anchor の LT bucket 集約 preview chart を独立 section として差し込み済み。
+  - preview chart は、`販売客室数` と `販売単価` の 2 カラム、対象月から未来 3 か月の同時表示、`前年 / 前々年` compare 切替、hover tooltip を持つ。
+- 次に確認すること:
+  - 現在の `/monthly-progress/YYYY-MM` 画面で preview section が Revenue Assistant 標準 chart と干渉していないか。
+  - LT bucket 集約が、月次実績画面で見たい「月末に向けた予約日基準の積み上がり」として読めるか。
+  - 2 カラム構成、3 か月同時表示、`前年 / 前々年` compare のどれを final graph に残すか。
+  - IndexedDB write-only snapshot を read path に使う必要があるか。必要な場合は、API 正本から保存済み snapshot 正本へ切り替える条件と検証方法を決める。
 - 保留理由:
   - 現時点では Analyze 日別の rooms-only reference curve のほうが、部屋タイプ別レート調整の判断コストを直接下げるため優先度が高い。
+- 非目標:
+  - Analyze 日付ページ、競合価格 graph、booking curve warm cache の挙動変更。
+  - 売上・ADR の表示活用。これは `RAU-SALES-02` として Later の単価予測・売上予測側で扱う。
+  - rooms-only 予測モデルの実装。これは `RAU-FC-01` の導入要否判断後に扱う。
+- 受け入れ条件:
+  - 月次実績画面の現状実装、残す UI、直す UI、実装しない範囲が明文化される。
+  - 次の実装 slice が、対象ファイル、保持する既存挙動、最小 verify とともに 1 つに絞られる。
+  - 実装へ進む前に `docs/spec_000_overview.md` の更新要否が判断される。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl

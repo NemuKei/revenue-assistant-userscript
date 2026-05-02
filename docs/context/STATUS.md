@@ -6,8 +6,32 @@
 
 - 主対象: `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
 - この bundle で扱う Task ID:
-  - `RAU-SALES-01` Analyze 日付単位の売上・単価データ取得可否を調査する
   - `RAU-MP-01` 月次実績画面の LT 基準 custom booking curve を再開する
+- 次スレッドの種別:
+  - `mainline-task`
+- 次スレッドで参照する正本:
+  - `docs/context/STATUS.md`
+  - `docs/tasks_backlog.md`
+  - `docs/context/DECISIONS.md`
+  - `docs/spec_000_overview.md`
+  - 必要に応じて `README.md` の月次実績画面セクション
+- 次スレッドの範囲:
+  - 月次実績画面 `/monthly-progress/YYYY-MM` の既存実装状態を確認する。
+  - 追加済み route-scoped slice、monthly-progress 専用 storage namespace、IndexedDB write-only snapshot、2 カラム multi-month LT preview chart を確認する。
+  - 既存 preview を final graph へ寄せる場合に、何を残し、何を直し、何を実装対象から外すかを決める。
+- 次スレッドでやらないこと:
+  - 売上・ADR の表示活用を先に始めない。`RAU-SALES-02` は単価予測と売上予測の Later task として扱う。
+  - rooms-only 予測モデルの実装を始めない。`RAU-FC-01` は `RAU-MP-01` の後に導入要否を判断する。
+  - 月次 `/api/v1/booking_curve/monthly` の read path を、調査なしに IndexedDB snapshot 正本へ切り替えない。
+  - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
+- 終了条件:
+  - `RAU-MP-01` の現状実装、未確認 GUI、残す UI 契約、次の実装 slice が `docs/tasks_backlog.md` に明文化されている。
+  - 実装へ進む場合は、対象ファイル、保持する既存挙動、最小 verify が決まっている。
+  - docs-only で止める場合は、`git diff --check` と commit / push まで完了している。
+- subagent 利用方針:
+  - 既定では使わない。
+  - 使う場合は、月次実績画面の既存実装調査や影響範囲確認など read-heavy な作業に限る。
+  - 仕様判断、task 分割、最終 verify、正本文書更新はメインスレッドで行う。
 - 今回の目的:
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
@@ -85,6 +109,9 @@
 - `RAU-WC-07` はコード実装済み。2026-04-30 の GUI 確認で既存 booking curve localStorage 書き込みの `QuotaExceededError` が出たため、競合価格表示の次に保存量整理を行った。Chrome CDP 確認では、localStorage 全体約 5.18 MB のうち、booking curve localStorage key 36 件が約 5.16 MB を占めていた。
 - `RAU-WC-07` の実装では、`src/main.ts` の booking curve 取得経路から localStorage persistent cache の読み込みと書き込みを外し、既存 key は `revenue-assistant:group-room-count:v4:<facility>:booking-curve:` の facility prefix に限定して削除する。IndexedDB raw source、derived reference curve、競合価格 snapshot は削除対象にしない。
 - Tampermonkey 側を `a4c4cc9` の build に更新後、Chrome CDP で Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を再読み込みして確認した。localStorage の booking-curve key は 0 件、booking-curve bytes は 0 のまま維持された。販売設定タブ内では group rows 6 件、overall summary 1 件、rank overview 1 件、booking curve section 1 件、booking curve SVG 2 件を確認した。`QuotaExceededError` は再発していない。
+- 月次実績画面 `/monthly-progress/YYYY-MM` は、既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みである。monthly-progress 側は専用 storage namespace と kill switch `localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` を持つ。
+- 月次 `/api/v1/booking_curve/monthly` の response は、write-only snapshot として IndexedDB へ保存している。現在の表示 read path は API response を正とし、保存済み snapshot を表示正本にはしていない。
+- 月次実績画面には、予約日基準 chart 直下へ month-end anchor の LT bucket 集約 preview chart を独立 section として差し込んでいる。現在の preview は `販売客室数` と `販売単価` の 2 カラム、対象月から未来 3 か月の同時表示、`前年 / 前々年` compare 切替、hover tooltip を持つ。
 
 ## Next Re-entry
 
