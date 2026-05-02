@@ -272,12 +272,13 @@
   - `npm run check`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
   - `git diff --check`: passed
 - 未確認:
-  - Tampermonkey 再読込後のトップカレンダー GUI 目視確認。
+  - 現在の実データには `stored-past` 該当日がなかったため、過去基準だけの灰色 line の実データ GUI 確認。
 - GUI 確認:
   - 2026-05-02 に Chrome CDP で build 済み `dist/revenue-assistant-userscript.user.js` をトップカレンダーへ一時注入して確認した。
   - 現在の実データでは `partial` 1 件、`stored-current` 91 件、bar 92 件が表示された。
   - `stored-current` は title `booking_curve 現在基準の保存済みデータあり`、progress `24%`、緑の短い line として表示された。
   - 現在の実データには `stored-past` 該当日がなかったため、過去基準だけの灰色 line はコード経路と CSS rule の確認に留めた。
+  - 利用者が Tampermonkey 更新後に GUI 目視確認済み。
 
 ### RAU-CP-02 競合価格 snapshot store と取得 adapter を実装する
 
