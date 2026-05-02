@@ -436,7 +436,7 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
         let twoYearsAgoRoomSeries: MonthlyProgressLeadTimeSeries | null = null;
         let twoYearsAgoSalesSeries: MonthlyProgressLeadTimeSeries | null = null;
 
-        const previousYearMonth = shiftYearMonth(focusYearMonth, -12);
+        const previousYearMonth = compareMode >= 2 ? shiftYearMonth(focusYearMonth, -12) : null;
         if (previousYearMonth !== null) {
             const previousYearSnapshot = await ensureMonthlyProgressSnapshotRecord(context, previousYearMonth);
             if (previousYearSnapshot !== undefined) {
@@ -458,7 +458,7 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
             }
         }
 
-        const twoYearsAgoMonth = shiftYearMonth(focusYearMonth, -24);
+        const twoYearsAgoMonth = compareMode >= 3 ? shiftYearMonth(focusYearMonth, -24) : null;
         if (twoYearsAgoMonth !== null) {
             const twoYearsAgoSnapshot = await ensureMonthlyProgressSnapshotRecord(context, twoYearsAgoMonth);
             if (twoYearsAgoSnapshot !== undefined) {

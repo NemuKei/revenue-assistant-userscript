@@ -582,6 +582,11 @@
   - 残す UI は、予約日基準 chart 直下の独立 section、月末 anchor の LT bucket 集約、`販売客室数` panel、`販売単価 / 売上` 切替 panel、対象月から未来 4 か月の同時表示、`前年 / 前々年 / 3年前` compare、hover tooltip とする。
   - 直す可能性がある UI は、実画面での挿入位置、表示密度、説明文、tooltip、2 panel layout に限定する。
   - 実装しない範囲は、Analyze 日付ページ、競合価格 graph、booking curve warm cache、売上・ADR の予測活用、rooms-only 予測モデル、過去 batch の履歴比較、月次 read path の履歴正本化である。
+- レスポンス改善:
+  - 既定の `前年` compare では、対象月から未来 4 か月の current snapshot だけで表示できる。current snapshot の `lastYearSum` を使えば、前年比較に必要な値を追加 API request なしで得られるためである。
+  - `前々年` compare を選んだ場合だけ、対象月から 12 か月前の snapshot を追加取得し、その snapshot の `lastYearSum` を前々年値として使う。
+  - `3年前` compare を選んだ場合だけ、対象月から 12 か月前と 24 か月前の snapshot を追加取得し、24 か月前 snapshot の `lastYearSum` を 3年前値として使う。
+  - 表示に使わない比較年 snapshot を先に取得しないことで、初期表示前の直列 request 数を減らす。IndexedDB schema、snapshot key、LT bucket 算出、UI 契約は変更しない。
 - 次の実装 slice:
   - まず `/monthly-progress/YYYY-MM` の GUI 確認を行う。
   - GUI 確認で修正が必要な場合だけ、`src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout を最小修正する。
