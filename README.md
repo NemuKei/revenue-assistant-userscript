@@ -63,7 +63,9 @@ npm run check
 
 月次実績画面向けには、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。
 
-`/api/v1/booking_curve/monthly` の結果は write-only で IndexedDB へ日次 snapshot 保存を始めており、予約日基準 chart 直下へ month-end anchor の LT バケット集約 chart を独立 section で差し込んでいます。現在は `販売客室数` と `販売単価` の 2 カラム表示、対象月から未来 3 か月の同時表示、`前年 / 前々年` compare 切替、hover tooltip まで入っています。表示の read path はまだ現行 API を正とします。
+`/api/v1/booking_curve/monthly` の結果は、`facilityCacheKey + yearMonth + batchDateKey` ごとの IndexedDB snapshot として保存します。現在の preview は、同じ batch date の snapshot がなければ API 取得して保存し、その後に保存済み snapshot を読んで表示します。過去 batch の履歴比較や日次差分表示にはまだ使っていません。
+
+予約日基準 chart 直下には、month-end anchor の LT バケット集約 chart を独立 section で差し込んでいます。現在は `販売客室数` panel、`販売単価 / 売上` 切替 panel、対象月から未来 4 か月の同時表示、`前年 / 前々年 / 3年前` compare 切替、hover tooltip まで入っています。GUI 確認と final graph 契約の固定は `docs/tasks_backlog.md` の `RAU-MP-01` で扱います。
 
 ## ドキュメントの正本
 

@@ -559,14 +559,15 @@
 - 現状:
   - `/monthly-progress/YYYY-MM` は、既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済み。
   - monthly-progress 専用 storage namespace と kill switch `localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` を持つ。
-  - `/api/v1/booking_curve/monthly` の response は、write-only snapshot として IndexedDB へ保存済み。ただし、表示 read path はまだ現行 API response を正とし、保存済み snapshot へ切り替えていない。
+  - `/api/v1/booking_curve/monthly` の response は、`facilityCacheKey + yearMonth + batchDateKey` ごとの IndexedDB snapshot として保存済み。
+  - 現在の preview は、同じ batch date の snapshot がなければ API 取得して保存し、その後 `readLatestMonthlyBookingCurveSnapshot()` で保存済み snapshot を読む。過去 batch の履歴比較や日次差分表示にはまだ使っていない。
   - 予約日基準 chart 直下へ、month-end anchor の LT bucket 集約 preview chart を独立 section として差し込み済み。
-  - preview chart は、`販売客室数` と `販売単価` の 2 カラム、対象月から未来 3 か月の同時表示、`前年 / 前々年` compare 切替、hover tooltip を持つ。
+  - preview chart は、`販売客室数` panel、`販売単価 / 売上` 切替 panel、対象月から未来 4 か月の同時表示、`前年 / 前々年 / 3年前` compare 切替、hover tooltip を持つ。
 - 次に確認すること:
   - 現在の `/monthly-progress/YYYY-MM` 画面で preview section が Revenue Assistant 標準 chart と干渉していないか。
   - LT bucket 集約が、月次実績画面で見たい「月末に向けた予約日基準の積み上がり」として読めるか。
-  - 2 カラム構成、3 か月同時表示、`前年 / 前々年` compare のどれを final graph に残すか。
-  - IndexedDB write-only snapshot を read path に使う必要があるか。必要な場合は、API 正本から保存済み snapshot 正本へ切り替える条件と検証方法を決める。
+  - 2 panel 構成、4 か月同時表示、`前年 / 前々年 / 3年前` compare、`販売単価 / 売上` 切替を final graph に残す前提で、表示密度と tooltip が実画面で読めるか。
+  - IndexedDB snapshot は現在 batch の表示 read path として使う。次に検討するのは、過去 batch の履歴比較や日次差分表示へ使う必要があるかどうかである。
 - 保留理由:
   - 現時点では Analyze 日別の rooms-only reference curve のほうが、部屋タイプ別レート調整の判断コストを直接下げるため優先度が高い。
 - 非目標:
@@ -577,6 +578,16 @@
   - 月次実績画面の現状実装、残す UI、直す UI、実装しない範囲が明文化される。
   - 次の実装 slice が、対象ファイル、保持する既存挙動、最小 verify とともに 1 つに絞られる。
   - 実装へ進む前に `docs/spec_000_overview.md` の更新要否が判断される。
+- 現時点の判断:
+  - 残す UI は、予約日基準 chart 直下の独立 section、月末 anchor の LT bucket 集約、`販売客室数` panel、`販売単価 / 売上` 切替 panel、対象月から未来 4 か月の同時表示、`前年 / 前々年 / 3年前` compare、hover tooltip とする。
+  - 直す可能性がある UI は、実画面での挿入位置、表示密度、説明文、tooltip、2 panel layout に限定する。
+  - 実装しない範囲は、Analyze 日付ページ、競合価格 graph、booking curve warm cache、売上・ADR の予測活用、rooms-only 予測モデル、過去 batch の履歴比較、月次 read path の履歴正本化である。
+- 次の実装 slice:
+  - まず `/monthly-progress/YYYY-MM` の GUI 確認を行う。
+  - GUI 確認で修正が必要な場合だけ、`src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout を最小修正する。
+  - LT bucket の値そのものに問題がある場合だけ、`src/monthlyProgressLeadTime.ts` を対象に加える。
+  - 保持する既存挙動は、top / analyze 系同期の停止、monthly-progress 専用 storage namespace、kill switch、同じ batch date の snapshot skip、Revenue Assistant 標準 chart を置き換えないこと、`dist/*.user.js` を手編集しないことである。
+  - 最小 verify は `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` とし、GUI を触った場合は Chrome CDP または Tampermonkey 再読込後の `/monthly-progress/YYYY-MM` 目視確認を追加する。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl

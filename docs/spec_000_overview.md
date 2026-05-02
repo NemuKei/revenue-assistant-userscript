@@ -35,7 +35,7 @@
 
 analyze 画面の詳細仕様は `docs/spec_001_analyze_expansion.md` を正本とする。
 
-monthly-progress 画面の custom booking curve は調査と仕様整理の段階であり、現時点の公開挙動にはまだ含めない。
+monthly-progress 画面の custom booking curve は、route-scoped scaffold、月次専用 storage namespace、IndexedDB snapshot 保存、LT preview chart のコード実装まで進んでいる。ただし GUI 確認と final graph 契約の固定が未完了であるため、現時点の安定した公開挙動にはまだ含めない。詳細な現状と次の実装 slice は `docs/tasks_backlog.md` の `RAU-MP-01` を正本とする。
 
 ## Near-Term Product Direction
 
