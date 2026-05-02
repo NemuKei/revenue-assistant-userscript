@@ -62,13 +62,14 @@ const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
-const GROUP_ROOM_STYLE_VERSION = "20260502-warm-cache-marker-background-v1";
+const GROUP_ROOM_STYLE_VERSION = "20260502-warm-cache-marker-element-v1";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
 const GROUP_ROOM_INDICATOR_ATTRIBUTE = "data-ra-group-room-indicator";
 const SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-cell";
 const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker-state";
+const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker-bar";
 const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY = "--ra-sales-setting-warm-cache-calendar-marker-progress";
 const CALENDAR_LAST_CHANGE_ATTRIBUTE = "data-ra-calendar-last-change";
 const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
@@ -2242,6 +2243,7 @@ function renderSalesSettingWarmCacheCalendarMarkers(): void {
             markedCell.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE);
             markedCell.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE);
             markedCell.style.removeProperty(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY);
+            markedCell.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}]`)?.remove();
             markedCell.removeAttribute("title");
         }
     }
@@ -2303,6 +2305,7 @@ function renderSalesSettingWarmCacheCalendarMarker(
         cell.anchorElement.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE);
         cell.anchorElement.removeAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE);
         cell.anchorElement.style.removeProperty(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY);
+        cell.anchorElement.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}]`)?.remove();
         cell.anchorElement.removeAttribute("title");
         return;
     }
@@ -2310,6 +2313,12 @@ function renderSalesSettingWarmCacheCalendarMarker(
     cell.anchorElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE, "");
     cell.anchorElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE, state);
     cell.anchorElement.style.setProperty(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY, `${getSalesSettingWarmCacheCalendarMarkerProgressPercent(progress, state)}%`);
+    const markerBarElement = cell.anchorElement.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}]`)
+        ?? document.createElement("span");
+    markerBarElement.setAttribute(SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE, "");
+    if (markerBarElement.parentElement !== cell.anchorElement) {
+        cell.anchorElement.append(markerBarElement);
+    }
     cell.anchorElement.setAttribute("title", getSalesSettingWarmCacheCalendarMarkerTitle(state, progress));
 }
 
@@ -8962,27 +8971,35 @@ function ensureGroupRoomStyles(): void {
             cursor: pointer;
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE}] {
-            background-repeat: no-repeat;
-            background-position: left bottom;
-            background-size: var(${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY}, 0%) 3px;
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}] {
+            position: absolute;
+            left: 0;
+            bottom: 0;
+            width: var(${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY}, 0%);
+            height: 3px;
+            border-radius: 999px;
+            pointer-events: none;
+            z-index: 2;
+            transform: none;
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="partial"] {
-            background-image: linear-gradient(rgba(91, 141, 239, 0.78), rgba(91, 141, 239, 0.78));
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="partial"] > [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}] {
+            background: rgba(91, 141, 239, 0.78);
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="complete"] {
-            background-image: linear-gradient(rgba(47, 143, 91, 0.82), rgba(47, 143, 91, 0.82));
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="complete"] > [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}] {
+            background: rgba(47, 143, 91, 0.82);
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="error"] {
-            background-image: linear-gradient(rgba(208, 79, 79, 0.82), rgba(208, 79, 79, 0.82));
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="error"] > [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}] {
+            background: rgba(208, 79, 79, 0.82);
         }
 
-        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="stored"] {
-            background-position: center bottom;
-            background-image: linear-gradient(rgba(91, 110, 130, 0.42), rgba(91, 110, 130, 0.42));
+        [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE}="stored"] > [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}] {
+            left: 50%;
+            width: var(${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY}, 18%);
+            transform: translateX(-50%);
+            background: rgba(91, 110, 130, 0.42);
         }
 
         [${SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE}] {
