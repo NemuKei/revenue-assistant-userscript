@@ -126,7 +126,7 @@ const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-co
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
 const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v6";
-const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 12;
+const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
@@ -7798,8 +7798,11 @@ function createCompetitorPriceChartSvg(
         hitboxElement.setAttribute("height", String(plotHeight));
         hitboxElement.setAttribute("fill", "transparent");
         hitboxElement.setAttribute("tabindex", "0");
-        hitboxElement.addEventListener("mouseenter", () => {
-            showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points);
+        hitboxElement.addEventListener("mouseenter", (event) => {
+            showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points, event.clientX);
+        });
+        hitboxElement.addEventListener("mousemove", (event) => {
+            showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points, event.clientX);
         });
         hitboxElement.addEventListener("focus", () => {
             showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points);
@@ -7831,7 +7834,8 @@ function showCompetitorPriceTooltip(
     fetchDate: string,
     previousFetchDate: string | null,
     facilities: CompetitorPriceFacilitySeries[],
-    points: CompetitorPriceChartPoint[]
+    points: CompetitorPriceChartPoint[],
+    cursorClientX: number | null = null
 ): void {
     tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "true");
     guideLineElement.setAttribute("visibility", "visible");
@@ -7898,21 +7902,25 @@ function showCompetitorPriceTooltip(
     detailElement.append(tableElement);
 
     tooltipElement.replaceChildren(titleElement, valueElement, detailElement);
-    positionCompetitorPriceTooltip(tooltipElement, x, width);
+    positionCompetitorPriceTooltip(tooltipElement, x, width, cursorClientX);
 }
 
-function positionCompetitorPriceTooltip(tooltipElement: HTMLElement, x: number, chartViewBoxWidth: number): void {
+function positionCompetitorPriceTooltip(
+    tooltipElement: HTMLElement,
+    x: number,
+    chartViewBoxWidth: number,
+    cursorClientX: number | null
+): void {
     const panelRect = tooltipElement.parentElement?.getBoundingClientRect();
     const panelWidth = panelRect?.width ?? chartViewBoxWidth;
     const scale = chartViewBoxWidth > 0 ? panelWidth / chartViewBoxWidth : 1;
-    const xInPanel = x * scale;
+    const panelViewportLeft = panelRect?.left ?? 0;
+    const xInPanel = cursorClientX === null ? x * scale : cursorClientX - panelViewportLeft;
     const rightSideLeft = xInPanel + COMPETITOR_PRICE_TOOLTIP_OFFSET_X;
     const tooltipWidth = tooltipElement.offsetWidth;
-    const panelViewportLeft = panelRect?.left ?? 0;
     const viewportRight = window.innerWidth - COMPETITOR_PRICE_TOOLTIP_OFFSET_X;
-    const fitsRightOfCursor = panelViewportLeft + rightSideLeft + tooltipWidth <= viewportRight;
-    const fallbackLeft = xInPanel - tooltipWidth - COMPETITOR_PRICE_TOOLTIP_OFFSET_X;
-    tooltipElement.style.left = `${Math.max(COMPETITOR_PRICE_TOOLTIP_OFFSET_X, fitsRightOfCursor ? rightSideLeft : fallbackLeft)}px`;
+    const viewportConstrainedLeft = viewportRight - tooltipWidth - panelViewportLeft;
+    tooltipElement.style.left = `${Math.max(COMPETITOR_PRICE_TOOLTIP_OFFSET_X, Math.min(rightSideLeft, viewportConstrainedLeft))}px`;
 }
 
 function hideCompetitorPriceTooltip(tooltipElement: HTMLElement, guideLineElement: SVGLineElement): void {
