@@ -119,11 +119,14 @@ const SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE = "data-ra-sales-sett
 const SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-title";
 const SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-svg";
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip";
+const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-facility";
+const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-swatch";
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-tone";
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
 const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v6";
+const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 12;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
@@ -7831,7 +7834,6 @@ function showCompetitorPriceTooltip(
     points: CompetitorPriceChartPoint[]
 ): void {
     tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "true");
-    tooltipElement.style.left = `${Math.max(72, Math.min(width - 72, x))}px`;
     guideLineElement.setAttribute("visibility", "visible");
     guideLineElement.setAttribute("x1", x.toFixed(2));
     guideLineElement.setAttribute("x2", x.toFixed(2));
@@ -7875,7 +7877,13 @@ function showCompetitorPriceTooltip(
     for (const row of rows) {
         const rowElement = document.createElement("tr");
         const facilityElement = document.createElement("td");
-        facilityElement.textContent = row.facility.name;
+        const facilityLabelElement = document.createElement("span");
+        facilityLabelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE, "");
+        const swatchElement = document.createElement("span");
+        swatchElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE, "");
+        swatchElement.style.backgroundColor = row.facility.color;
+        facilityLabelElement.append(swatchElement, document.createTextNode(row.facility.name));
+        facilityElement.append(facilityLabelElement);
         const roomTypeElement = document.createElement("td");
         roomTypeElement.textContent = row.point.roomType === null ? "不明" : formatRoomTypeForDisplay(row.point.roomType);
         const priceElement = document.createElement("td");
@@ -7890,6 +7898,21 @@ function showCompetitorPriceTooltip(
     detailElement.append(tableElement);
 
     tooltipElement.replaceChildren(titleElement, valueElement, detailElement);
+    positionCompetitorPriceTooltip(tooltipElement, x, width);
+}
+
+function positionCompetitorPriceTooltip(tooltipElement: HTMLElement, x: number, chartViewBoxWidth: number): void {
+    const panelRect = tooltipElement.parentElement?.getBoundingClientRect();
+    const panelWidth = panelRect?.width ?? chartViewBoxWidth;
+    const scale = chartViewBoxWidth > 0 ? panelWidth / chartViewBoxWidth : 1;
+    const xInPanel = x * scale;
+    const rightSideLeft = xInPanel + COMPETITOR_PRICE_TOOLTIP_OFFSET_X;
+    const tooltipWidth = tooltipElement.offsetWidth;
+    const panelViewportLeft = panelRect?.left ?? 0;
+    const viewportRight = window.innerWidth - COMPETITOR_PRICE_TOOLTIP_OFFSET_X;
+    const fitsRightOfCursor = panelViewportLeft + rightSideLeft + tooltipWidth <= viewportRight;
+    const fallbackLeft = xInPanel - tooltipWidth - COMPETITOR_PRICE_TOOLTIP_OFFSET_X;
+    tooltipElement.style.left = `${Math.max(COMPETITOR_PRICE_TOOLTIP_OFFSET_X, fitsRightOfCursor ? rightSideLeft : fallbackLeft)}px`;
 }
 
 function hideCompetitorPriceTooltip(tooltipElement: HTMLElement, guideLineElement: SVGLineElement): void {
@@ -9651,7 +9674,6 @@ function ensureGroupRoomStyles(): void {
             position: absolute;
             top: 28px;
             left: 50%;
-            transform: translateX(-50%);
             z-index: 2;
             min-width: 220px;
             max-width: min(560px, 90vw);
@@ -9691,6 +9713,24 @@ function ensureGroupRoomStyles(): void {
             overflow: hidden;
             text-align: left;
             text-overflow: ellipsis;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE}] {
+            display: inline-flex;
+            max-width: 100%;
+            align-items: center;
+            gap: 5px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            vertical-align: top;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE}] {
+            width: 9px;
+            height: 9px;
+            border-radius: 2px;
+            flex: 0 0 auto;
+            box-shadow: inset 0 0 0 1px rgba(25, 38, 54, 0.16);
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] th {
