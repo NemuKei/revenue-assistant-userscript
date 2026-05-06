@@ -118,6 +118,8 @@ const SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE = "data-ra-sales-setti
 const SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-panel";
 const SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-title";
 const SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-svg";
+const SALES_SETTING_COMPETITOR_PRICE_CHART_GUIDE_LINE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-guide-line";
+const SALES_SETTING_COMPETITOR_PRICE_CHART_HITBOX_ACTIVE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-chart-hitbox-active";
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip";
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-facility";
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-swatch";
@@ -7749,6 +7751,7 @@ function createCompetitorPriceChartSvg(
     guideLineElement.setAttribute("y1", String(paddingTop));
     guideLineElement.setAttribute("y2", String(height - paddingBottom));
     guideLineElement.setAttribute("visibility", "hidden");
+    guideLineElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_GUIDE_LINE_ATTRIBUTE, "");
     guideLineElement.setAttribute("stroke", "#8fa1b8");
     guideLineElement.setAttribute("stroke-dasharray", "3 3");
     svgElement.append(guideLineElement);
@@ -7788,6 +7791,7 @@ function createCompetitorPriceChartSvg(
         }
     }
 
+    const hitboxElements: SVGRectElement[] = [];
     for (const [dateIndex, fetchDate] of fetchDates.entries()) {
         const x = getCompetitorPriceChartX(dateIndex, fetchDates.length, layout);
         const previousFetchDate = fetchDates[dateIndex - 1] ?? null;
@@ -7798,25 +7802,42 @@ function createCompetitorPriceChartSvg(
         hitboxElement.setAttribute("height", String(plotHeight));
         hitboxElement.setAttribute("fill", "transparent");
         hitboxElement.setAttribute("tabindex", "0");
+        hitboxElements.push(hitboxElement);
         hitboxElement.addEventListener("mouseenter", (event) => {
-            showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points, event.clientX);
-        });
-        hitboxElement.addEventListener("mousemove", (event) => {
+            setActiveCompetitorPriceChartHitbox(hitboxElements, hitboxElement);
             showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points, event.clientX);
         });
         hitboxElement.addEventListener("focus", () => {
+            setActiveCompetitorPriceChartHitbox(hitboxElements, hitboxElement);
             showCompetitorPriceTooltip(tooltipElement, guideLineElement, x, width, fetchDate, previousFetchDate, facilities, points);
         });
         hitboxElement.addEventListener("mouseleave", () => {
             hideCompetitorPriceTooltip(tooltipElement, guideLineElement);
+            clearActiveCompetitorPriceChartHitboxes(hitboxElements);
         });
         hitboxElement.addEventListener("blur", () => {
             hideCompetitorPriceTooltip(tooltipElement, guideLineElement);
+            clearActiveCompetitorPriceChartHitboxes(hitboxElements);
         });
         svgElement.append(hitboxElement);
     }
 
     return svgElement;
+}
+
+function setActiveCompetitorPriceChartHitbox(hitboxElements: SVGRectElement[], activeHitboxElement: SVGRectElement): void {
+    for (const hitboxElement of hitboxElements) {
+        hitboxElement.setAttribute(
+            SALES_SETTING_COMPETITOR_PRICE_CHART_HITBOX_ACTIVE_ATTRIBUTE,
+            hitboxElement === activeHitboxElement ? "true" : "false"
+        );
+    }
+}
+
+function clearActiveCompetitorPriceChartHitboxes(hitboxElements: SVGRectElement[]): void {
+    for (const hitboxElement of hitboxElements) {
+        hitboxElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_HITBOX_ACTIVE_ATTRIBUTE, "false");
+    }
 }
 
 function createCompetitorPriceTooltip(): HTMLElement {
@@ -9676,6 +9697,17 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] line {
             stroke: #d8e0ea;
             stroke-width: 1;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] [${SALES_SETTING_COMPETITOR_PRICE_CHART_GUIDE_LINE_ATTRIBUTE}] {
+            stroke: #3f5872;
+            stroke-width: 1.5;
+            stroke-dasharray: 2 3;
+            opacity: 0.95;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] rect[${SALES_SETTING_COMPETITOR_PRICE_CHART_HITBOX_ACTIVE_ATTRIBUTE}="true"] {
+            fill: rgba(47, 111, 187, 0.08);
         }
 
         [${SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_ATTRIBUTE}] {
