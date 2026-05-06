@@ -45,9 +45,11 @@ const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ATTRIBUTE = "data-ra-monthly-progress-pre
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ACTIVE_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-active";
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TITLE_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-title";
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_GRID_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-grid";
+const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-table";
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ROW_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-row";
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_MONTH_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-month";
 const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_VALUE_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-value";
+const MONTHLY_PROGRESS_PREVIEW_TOOLTIP_RATIO_ATTRIBUTE = "data-ra-monthly-progress-preview-tooltip-ratio";
 const MONTHLY_PROGRESS_PREVIEW_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-monthly-progress-preview-active-guide";
 const MONTHLY_PROGRESS_PREVIEW_ACTIVE_POINT_ATTRIBUTE = "data-ra-monthly-progress-preview-active-point";
 const MONTHLY_PROGRESS_COMPARE_MODE_STORAGE_KEY = "preview-compare-mode";
@@ -1158,38 +1160,58 @@ function showMonthlyProgressTooltip(
         return;
     }
 
-    titleElement.textContent = `${formatMonthlyProgressTooltipTickLabel(referencePoint.tick)}  現年 / ${panel.compareLabel}`;
-    const rows = panel.focusMonths
-        .map((month) => {
-            const point = resolveMonthlyProgressPanelPoints(month, panel.metric)[pointIndex];
-            if (point === undefined) {
-                return null;
-            }
+    titleElement.textContent = formatMonthlyProgressTooltipTickLabel(referencePoint.tick);
+    const tableElement = document.createElement("table");
+    tableElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE, "");
+    const headElement = document.createElement("thead");
+    const headRowElement = document.createElement("tr");
+    for (const label of ["対象月", "現年", panel.compareLabel, "対比％"]) {
+        const cellElement = document.createElement("th");
+        cellElement.scope = "col";
+        cellElement.textContent = label;
+        headRowElement.append(cellElement);
+    }
+    headElement.append(headRowElement);
 
-            const row = document.createElement("div");
-            row.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ROW_ATTRIBUTE, "");
+    const bodyElement = document.createElement("tbody");
+    for (const month of panel.focusMonths) {
+        const point = resolveMonthlyProgressPanelPoints(month, panel.metric)[pointIndex];
+        if (point === undefined) {
+            continue;
+        }
 
-            const monthElement = document.createElement("div");
-            monthElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_MONTH_ATTRIBUTE, "");
+        const rowElement = document.createElement("tr");
+        rowElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ROW_ATTRIBUTE, "");
 
-            const swatch = document.createElement("span");
-            swatch.setAttribute(MONTHLY_PROGRESS_PREVIEW_MONTH_SWATCH_ATTRIBUTE, "");
-            swatch.style.background = month.color;
-            const monthLabel = document.createElement("span");
-            monthLabel.textContent = `${month.label} / ${month.compareLabel}`;
-            monthElement.replaceChildren(swatch, monthLabel);
+        const monthElement = document.createElement("td");
+        const monthLabelElement = document.createElement("span");
+        monthLabelElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_MONTH_ATTRIBUTE, "");
 
-            const valueElement = document.createElement("div");
-            valueElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_VALUE_ATTRIBUTE, "");
-            valueElement.textContent = panel.metric === "room"
-                ? `${formatMetricValue(point.currentValue)} / ${formatMetricValue(point.compareValue)}`
-                : `${formatCurrencyValue(point.currentValue)} / ${formatCurrencyValue(point.compareValue)}`;
+        const swatch = document.createElement("span");
+        swatch.setAttribute(MONTHLY_PROGRESS_PREVIEW_MONTH_SWATCH_ATTRIBUTE, "");
+        swatch.style.background = month.color;
+        const monthLabel = document.createElement("span");
+        monthLabel.textContent = month.label;
+        monthLabelElement.replaceChildren(swatch, monthLabel);
+        monthElement.replaceChildren(monthLabelElement);
 
-            row.replaceChildren(monthElement, valueElement);
-            return row;
-        })
-        .filter((row): row is HTMLDivElement => row !== null);
-    gridElement.replaceChildren(...rows);
+        const currentValueElement = document.createElement("td");
+        currentValueElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_VALUE_ATTRIBUTE, "");
+        currentValueElement.textContent = formatMonthlyProgressTooltipMetricValue(point.currentValue, panel.metric);
+
+        const compareValueElement = document.createElement("td");
+        compareValueElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_VALUE_ATTRIBUTE, "");
+        compareValueElement.textContent = formatMonthlyProgressTooltipMetricValue(point.compareValue, panel.metric);
+
+        const ratioElement = document.createElement("td");
+        ratioElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_RATIO_ATTRIBUTE, "");
+        ratioElement.textContent = formatMonthlyProgressComparisonRatio(point.currentValue, point.compareValue);
+
+        rowElement.replaceChildren(monthElement, currentValueElement, compareValueElement, ratioElement);
+        bodyElement.append(rowElement);
+    }
+    tableElement.append(headElement, bodyElement);
+    gridElement.replaceChildren(tableElement);
 
     const canvasWidth = tooltipElement.parentElement?.clientWidth ?? width;
     const tooltipWidth = tooltipElement.offsetWidth > 0 ? tooltipElement.offsetWidth : 176;
@@ -1501,8 +1523,8 @@ function ensureMonthlyProgressPreviewStyles(): void {
       [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ATTRIBUTE}] {
         position: absolute;
         top: 8px;
-        min-width: 148px;
-        max-width: min(240px, calc(100% - 12px));
+        min-width: 260px;
+        max-width: min(360px, calc(100% - 12px));
         padding: 8px 10px;
         border: 1px solid #d7e0ef;
         border-radius: 10px;
@@ -1524,13 +1546,31 @@ function ensureMonthlyProgressPreviewStyles(): void {
         line-height: 1.25;
       }
       [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_GRID_ATTRIBUTE}] {
-        display: grid;
-        gap: 6px;
         margin-top: 6px;
       }
-      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ROW_ATTRIBUTE}] {
-        display: grid;
-        gap: 2px;
+      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE}] {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 10px;
+        line-height: 1.3;
+      }
+      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE}] th,
+      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE}] td {
+        padding: 3px 5px;
+        border-bottom: 1px solid #e5ebf2;
+        text-align: right;
+        white-space: nowrap;
+      }
+      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE}] th:first-child,
+      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE}] td:first-child {
+        text-align: left;
+      }
+      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE}] th {
+        color: #58708f;
+        font-weight: 700;
+      }
+      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_TABLE_ATTRIBUTE}] tr:last-child td {
+        border-bottom: 0;
       }
       [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_MONTH_ATTRIBUTE}] {
         display: inline-flex;
@@ -1542,9 +1582,11 @@ function ensureMonthlyProgressPreviewStyles(): void {
       }
       [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_VALUE_ATTRIBUTE}] {
         color: #243447;
-        font-size: 12px;
         font-weight: 700;
-        line-height: 1.25;
+      }
+      [${MONTHLY_PROGRESS_PREVIEW_TOOLTIP_RATIO_ATTRIBUTE}] {
+        color: #243447;
+        font-weight: 800;
       }
             [${MONTHLY_PROGRESS_PREVIEW_ACTIVE_GUIDE_ATTRIBUTE}] {
                 stroke: rgba(95, 118, 148, 0.42);
@@ -1621,6 +1663,21 @@ function formatSalesAxisValue(value: number | null): string {
     }
 
     return `${Math.round(value / 10000).toLocaleString("ja-JP")}万円`;
+}
+
+function formatMonthlyProgressTooltipMetricValue(value: number | null, metric: MonthlyProgressMetricKind): string {
+    return metric === "room" ? formatMetricValue(value) : formatCurrencyValue(value);
+}
+
+function formatMonthlyProgressComparisonRatio(currentValue: number | null, compareValue: number | null): string {
+    if (currentValue === null || compareValue === null || compareValue <= 0) {
+        return "-";
+    }
+
+    return `${((currentValue / compareValue) * 100).toLocaleString("ja-JP", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1
+    })}%`;
 }
 
 function divideNullable(numerator: number | null, denominator: number | null): number | null {
