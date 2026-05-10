@@ -725,7 +725,7 @@
   - 現時点では Analyze 日別の rooms-only reference curve のほうが、部屋タイプ別レート調整の判断コストを直接下げるため優先度が高い。
 - 非目標:
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の挙動変更。
-  - 売上・ADR の表示活用。これは `RAU-SALES-02` として Later の単価予測・売上予測側で扱う。
+  - 売上・ADR の表示活用。これは `RAU-SALES-02` として forecast bundle の後段で扱う。
   - rooms-only 予測モデルの実装。これは `RAU-FC-01` の導入要否判断後に扱う。
 - 受け入れ条件:
   - 月次実績画面の現状実装、残す UI、直す UI、実装しない範囲が明文化される。
@@ -964,7 +964,9 @@
 - 未確認:
   - Tampermonkey 再読込後の GUI 目視確認
 
-## Later
+## Forecast Bundle
+
+この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
 
 ### RAU-FC-01 rooms-only 予測モデルの導入要否を判断する
 
@@ -1120,7 +1122,7 @@ Later:
 統合判断:
 
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。売上・ADR はすでに室数と同じ raw source に保存されるため、直近で追加取得や表示活用を急がない。
-- `RAU-SALES-02` は、室数予測を実装した後に単価予測と売上予測へ接続するための設計 task として、予測モデル側の Later に寄せる。月次実績画面 `RAU-MP-01` は GUI 確認済みのため、直近の Now は rooms-only 予測モデル導入判断 `RAU-FC-01` に絞る。
+- `RAU-SALES-02` は、室数予測を実装した後に単価予測と売上予測へ接続するための設計 task として、forecast bundle の後段へ置く。月次実績画面 `RAU-MP-01` は GUI 確認済みのため、直近の Now は rooms-only 予測モデル導入判断 `RAU-FC-01` に絞る。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
