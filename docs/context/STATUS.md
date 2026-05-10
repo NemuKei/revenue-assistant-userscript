@@ -41,6 +41,7 @@
   - `RAU-CP-09` は完了。競合価格 background queue 実行中に、表示中グラフの対象日と前回データ系列が周辺日程の保存処理で揺れないようにした。
   - `RAU-CP-10` は完了。Analyze 日付ページ遷移直後に競合価格タブを開いた場合でも、日付・施設 cache key・batch date key がそろうまで競合価格タブ要求を短時間保留し、`competitor-tab` source の snapshot 保存とグラフ再描画を開始するようにした。
   - 競合価格グラフの部屋タイプ filter で、`WAYOUSHITSU` / `wayo` 系の raw value を `和洋室` として表示するようにした。保存データの raw value と filter 判定は従来どおり raw value を使う。
+  - 競合価格グラフの系列色は、自社の青色と競合施設の色を分離した。競合施設の差し替えで一時的に施設数が 5 件を超えても、追加された競合施設を自社と同じ青色で表示しない。
   - `RAU-SALES-01` は完了。Analyze 日付単位の売上と ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。
   - 売上・ADR はすでに室数と同じ raw source に保存されるため、直近では表示活用を急がない。`RAU-SALES-02` は、将来の室数予測、単価予測、売上予測の接続設計として Later に移す。
   - `RAU-MP-01` のコード状態を再確認した。既存実装は `src/monthlyProgress.ts` で `/monthly-progress/YYYY-MM` route を検知し、top / analyze 系同期を停止したうえで月次専用 observer と preview を起動する。
@@ -298,6 +299,7 @@
   - RAU-CP-08 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-22` の競合価格 tab 起点で、indicator に `競合価格: 周辺日程取得中 0 / 29日`、対象範囲 `2026-06-01〜2026-06-30`、現在取得中の stay_date `2026-06-21`、完了日数 `0 / 29日` が表示されることを確認
   - RAU-CP-09 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-23` の競合価格 tab 起点で、indicator が `競合価格: 周辺日程取得中` の間も、競合価格グラフ meta の `対象宿泊日 2026-06-23` が周辺日程へ切り替わらないことを確認
   - RAU-CP-10 Chrome CDP build 注入 GUI 確認: passed。`https://ra.jalan.net/analyze/2026-06-22` を約 5 秒開いたあと `https://ra.jalan.net/analyze/2026-06-23` へ移動し、競合価格タブ click 後に `/api/v5/competitor_prices` request、indicator の競合価格進捗、`競合価格 最安値推移`、4 件の SVG 表示を確認
+  - 競合価格グラフ系列色の Tampermonkey 正式再読込後 GUI 目視確認: passed。`2026-06-17` の競合価格 tab で、競合施設の差し替えにより一時的に競合数が 5 件を超える状態でも、追加された競合施設が自社と同じ青色で表示されないことを利用者確認済み
 
 ## Open Questions / Risks
 
