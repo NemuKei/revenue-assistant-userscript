@@ -43,6 +43,7 @@
   - `task-add-and-triage`: 新規タスク追加後に棚卸し、統合、実行順更新を同じ変更で行うとき
   - `verification-before-completion`: 完了報告前に verify を整理するとき
   - `thread-contract-handoff`: 長めのスレッドで目的、範囲、handoff 要否を整理するとき
+  - `second-brain-capture`: 作業結果、再開地点、判断理由、Codex から見た作業モデルを Obsidian SecondBrain へ保存するとき
   - `create-cli`: 新しい CLI、サブコマンド、引数体系、出力契約を設計または変更するとき
   - `playwright`: Chrome remote debugging と画面確認を伴う作業をするとき
 
@@ -70,6 +71,56 @@
 - `docs/spec_000_overview.md` は repo-wide の仕様地図と更新規則に限定し、個別画面の詳細仕様を書き溜める場所にしない。
 - 新しい `spec_*.md` は、独立した外部契約、受け入れ条件、更新単位のいずれかがある場合だけ作る。既存 `spec` と同じ責務境界に属する場合は、既存 `spec` への追記を優先する。
 - `AGENTS.md` には常設ルールだけを書く。手順書や一時メモを肥大化させない。
+
+## Obsidian SecondBrain Capture
+
+このリポジトリでの Codex 作業のうち、次回以降も参照する価値がある情報は、Obsidian SecondBrain vault へ記録する。
+
+Obsidian vault:
+
+```text
+C:\Users\n-kei\Documents\Obsidian\SecondBrain
+```
+
+### Source Of Truth
+
+このリポジトリの仕様、進捗、決定、タスクの正本は repo 内ドキュメントである。
+
+Obsidian は、repo をまたいで検索、比較、再利用するための横断索引と、Codex の作業文脈を維持するための補助情報である。
+
+repo 内正本と Obsidian が矛盾する場合は、repo 内正本を優先する。
+
+### Capture Triggers
+
+次の作業を行った場合、終了前に Obsidian への記録対象を判断する。
+
+- 非自明な実装、調査、設計判断、docs handoff
+- 次スレッドの再開地点が重要な作業
+- repo をまたいで再利用できる判断、検証方法、失敗知識
+- ユーザーの説明粒度、確認頻度、委任範囲に関する作業認識の更新
+- AGENTS.md、Skill、handoff、automation、Obsidian vault 運用の変更
+
+### Capture Rules
+
+- 新規作業記録は `00_Inbox/Codex Captures/` に作成する。
+- note には `audience`、`update_mode`、`confidence` を入れる。
+- `audience: codex` の note は、Codex が次回以降の作業文脈として使う。
+- `audience: user` の note は、ユーザー本人が後で読む知識体系として扱う。
+- `audience: shared` の note は、Codex とユーザーの両方が参照する運用ルールや判断基準として扱う。
+- Codex 側の作業プロファイルは `update_mode: automatic` として自動更新してよい。
+- 誤りが後続のやり取りで見つかった場合は、必要に応じて `Revision Notes` に修正理由を残す。
+
+### Do Not Capture
+
+- API key、Cookie、token、認証情報
+- 不必要な個人情報
+- 一時ログ全文
+- repo 内正本と矛盾する未確認情報
+- 人格評価、感情の断定、開発支援に不要な推測
+
+### Skill
+
+Obsidian capture を作成または更新する場合は、`second-brain-capture` Skill を使う。
 
 ## Engineering Defaults
 
