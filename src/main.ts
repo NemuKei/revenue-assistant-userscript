@@ -126,7 +126,20 @@ const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE = "data-ra-sales-s
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-tone";
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
-const COMPETITOR_PRICE_SERIES_COLORS = ["#2f6fbb", "#c4552d", "#2e7d58", "#7d5fb2", "#b47a12", "#5c6b7a"];
+const COMPETITOR_PRICE_OWN_SERIES_COLOR = "#2f6fbb";
+const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
+    "#c4552d",
+    "#2e7d58",
+    "#7d5fb2",
+    "#b47a12",
+    "#5c6b7a",
+    "#d14f7a",
+    "#008b8b",
+    "#8a5a44",
+    "#6f7f22",
+    "#9a4fb3",
+    "#4f7f9f"
+];
 const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v6";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
@@ -7616,9 +7629,10 @@ function buildCompetitorPriceGuestChartSeries(
         const fetchDate = formatCompetitorPriceFetchDate(record.fetchedAt);
         for (const facility of buildCompetitorPriceFacilities(record)) {
             if (!facilityMap.has(facility.yadNo)) {
+                const seriesIndex = facilityMap.size;
                 facilityMap.set(facility.yadNo, {
                     ...facility,
-                    color: COMPETITOR_PRICE_SERIES_COLORS[facilityMap.size % COMPETITOR_PRICE_SERIES_COLORS.length] ?? "#50627a"
+                    color: getCompetitorPriceFacilitySeriesColor(facility, seriesIndex)
                 });
             }
         }
@@ -7641,6 +7655,20 @@ function buildCompetitorPriceGuestChartSeries(
         facilities: Array.from(facilityMap.values()),
         pointsByGuestCount
     };
+}
+
+function getCompetitorPriceFacilitySeriesColor(
+    facility: { yadNo: string; name: string },
+    seriesIndex: number
+): string {
+    if (seriesIndex === 0 && facility.name === "自社") {
+        return COMPETITOR_PRICE_OWN_SERIES_COLOR;
+    }
+
+    const competitorIndex = Math.max(0, facility.name === "自社" ? seriesIndex : seriesIndex - 1);
+    return COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS[
+        competitorIndex % COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS.length
+    ] ?? "#50627a";
 }
 
 function createCompetitorPriceLegend(facilities: CompetitorPriceFacilitySeries[]): HTMLElement {
