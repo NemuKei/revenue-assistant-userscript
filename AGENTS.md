@@ -90,6 +90,28 @@ Obsidian は、repo をまたいで検索、比較、再利用するための横
 
 repo 内正本と Obsidian が矛盾する場合は、repo 内正本を優先する。
 
+### System Notes
+
+SecondBrain 全体の目的、保守、repo 連携、別端末再現は vault 内の次の system note を正本として扱う。
+
+- `99_System/SecondBrain Charter.md`
+- `99_System/SecondBrain Operations.md`
+- `99_System/SecondBrain Repo Integration Rule.md`
+- `99_System/SecondBrain Device Setup and Recovery.md`
+
+### Reuse Checkpoint
+
+作業開始時に、次の条件に該当する場合は SecondBrain を検索する。
+
+- レベニューマネジメント、ホテル、需要予測、価格、競合調査に関係する。
+- 論文、外部資料、Deep Research、専門用語、開発概念に関係する。
+- 過去の設計判断、失敗した方法、検証コマンド、repo 横断ルールに関係する。
+- ユーザーが「前に決めた」「知識体系」「単語帳」「論文」「他 repo でも」「別端末でも」といった継続文脈を示した。
+
+検索対象は `20_Areas/`、`30_References/`、`00_Inbox/Codex Captures/`、`99_System/`、`99_System/Bases/` を優先する。
+
+SecondBrain を参照した場合でも、repo 内 `STATUS`、`DECISIONS`、`tasks_backlog`、`spec`、root `AGENTS.md` を正本として優先する。参照した note が今回の判断に影響する場合は、作業メモまたは最終報告で短く示す。
+
 ### Capture Triggers
 
 次の作業を行った場合、終了前に Obsidian への記録対象を判断する。
@@ -116,6 +138,12 @@ repo 内正本と Obsidian が矛盾する場合は、repo 内正本を優先す
 `capture-needed: no` の場合は、保存しない理由を短く示す。例: 単発回答、repo 内正本に十分記録済み、再利用価値がない、秘密情報を含むため保存しない。
 
 この判定を省略したまま、非自明な作業を完了扱いにしない。
+
+### Git Sync Checkpoint
+
+SecondBrain vault は複数端末から更新される前提で扱う。Codex が SecondBrain の note、system file、Base、Canvas を作成または更新した場合、既定の完了状態は、関係する変更だけを commit し、active branch を `origin` へ push し、`git status --short --branch` で未コミット差分がなく remote と同期していることを確認した状態である。
+
+stage するのは現在 task に関係する vault 変更だけにする。Obsidian の local UI state、cache、plugin token、sync config、内容未確認のユーザー作成 note は stage しない。秘密情報混入の疑い、未完成 note、内容未確認のユーザー作成 note、git 失敗のいずれかで push できない場合は、最終報告で理由、残っている差分、remote との同期状態を明記する。
 ### Capture Rules
 
 - 新規作業記録は `00_Inbox/Codex Captures/` に作成する。
@@ -129,7 +157,7 @@ repo 内正本と Obsidian が矛盾する場合は、repo 内正本を優先す
 - 専門用語、略語、モデル名、評価指標、データ概念、設計概念、業務概念は glossary note または candidate queue へ接続する。
 - ユーザー向け note に書くと冗長だが今後の開発に応用できる補助メモは、Codex Application Memos へ分ける。
 - 未確認、出典確認、開発応用の棚卸しは Knowledge Dashboard と review 系 Base から辿れるようにする。
-- SecondBrain 更新が非自明な場合は subagent 利用を標準候補にし、メインスレッドが保存先、repo 正本との境界、最終差分、verify、commit、最終報告を担う。
+- SecondBrain 更新が非自明な場合は subagent 利用を標準候補にし、メインスレッドが保存先、repo 正本との境界、最終差分、verify、commit、push、最終報告を担う。
 
 ### Do Not Capture
 
