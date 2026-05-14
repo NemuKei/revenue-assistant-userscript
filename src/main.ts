@@ -7629,10 +7629,12 @@ function buildCompetitorPriceGuestChartSeries(
         const fetchDate = formatCompetitorPriceFetchDate(record.fetchedAt);
         for (const facility of buildCompetitorPriceFacilities(record)) {
             if (!facilityMap.has(facility.yadNo)) {
-                const seriesIndex = facilityMap.size;
+                const competitorSeriesIndex = Array.from(facilityMap.values())
+                    .filter((seriesFacility) => seriesFacility.name !== "自社")
+                    .length;
                 facilityMap.set(facility.yadNo, {
                     ...facility,
-                    color: getCompetitorPriceFacilitySeriesColor(facility, seriesIndex)
+                    color: getCompetitorPriceFacilitySeriesColor(facility, competitorSeriesIndex)
                 });
             }
         }
@@ -7659,15 +7661,14 @@ function buildCompetitorPriceGuestChartSeries(
 
 function getCompetitorPriceFacilitySeriesColor(
     facility: { yadNo: string; name: string },
-    seriesIndex: number
+    competitorSeriesIndex: number
 ): string {
-    if (seriesIndex === 0 && facility.name === "自社") {
+    if (facility.name === "自社") {
         return COMPETITOR_PRICE_OWN_SERIES_COLOR;
     }
 
-    const competitorIndex = Math.max(0, facility.name === "自社" ? seriesIndex : seriesIndex - 1);
     return COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS[
-        competitorIndex % COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS.length
+        competitorSeriesIndex % COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS.length
     ] ?? "#50627a";
 }
 
