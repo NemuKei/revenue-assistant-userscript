@@ -4,6 +4,9 @@ dist/
 
 # Browser automation
 .chrome-debug-profile/
+.o11y/
+*.har
+*.har.gz
 playwright-report/
 
 # Environment

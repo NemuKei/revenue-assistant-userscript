@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-05-02
+最終更新: 2026-05-14
 
 ## Current Task Bundle
 
@@ -58,6 +58,7 @@
 ## Current State
 
 - RAU の当面の主線は、`レート調整特化 + 人数なしの簡易フォーキャスト` とする。
+- Browser API Discovery ルールは `AGENTS.md` と `D-20260514-001` に反映済み。新しい画面、新しいタブ、未調査 API、response shape が不明な API を扱う場合は、実装前に `browser-trace` / `browser-to-api` の利用可否、生成物の保存範囲、Green / Yellow / Red 分類、commit 禁止データを確認する。
 - RAR の本格 RMS 実装は一旦保留し、人数データまたは DWH 連携の見通しが立った時点で再開判断する。
 - Analyze 日付ページの booking curve Phase 1 は実装済み。
 - Phase 1 では、ホテル全体 block と室タイプ別 card に、常時表示の `全体` 系列と、`個人 / 団体` toggle で切り替える second panel を表示する。
