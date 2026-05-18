@@ -46,7 +46,7 @@
   - `second-brain-capture`: 作業結果、再開地点、判断理由、Codex から見た作業モデルを Obsidian SecondBrain へ保存するとき
   - `create-cli`: 新しい CLI、サブコマンド、引数体系、出力契約を設計または変更するとき
   - `playwright`: Chrome remote debugging と画面確認を伴う作業をするとき
-  - `browser-trace` / `browser-to-api`: 新しい画面、新しいタブ、未調査 API、response shape が不明な API を実装前に調査するとき。optional global Skill なので、利用時は対象端末の Skill 同期状態と実際に読まれる Skill root を確認する。現時点の template repo では同期先として `C:\Users\n-kei\.codex\skills` を維持しているが、OpenAI docs 側では `$HOME/.agents/skills` が示されているため、実環境を確認してから使う。
+  - `browser-trace` / `browser-to-api`: 新しい画面、新しいタブ、未調査 API、response shape が不明な API を実装前に調査するとき。optional global Skill なので、利用時は対象端末の Skill 同期状態と実際に読まれる Skill root を確認する。現時点の template repo では Windows 側同期先として `C:\Users\n-kei\.codex\skills`、WSL から同じ Windows 側 home を参照する場合は `/mnt/c/Users/n-kei/.codex/skills` を維持しているが、OpenAI docs 側では `$HOME/.agents/skills` が示されているため、実環境を確認してから使う。
 
 ## Source Priority
 
@@ -80,7 +80,8 @@
 Obsidian vault:
 
 ```text
-C:\Users\n-kei\Documents\Obsidian\SecondBrain
+Windows canonical vault: C:\Users\n-kei\Documents\Obsidian\SecondBrain
+WSL access path: /mnt/c/Users/n-kei/Documents/Obsidian/SecondBrain
 ```
 
 ### Source Of Truth
