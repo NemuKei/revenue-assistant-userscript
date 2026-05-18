@@ -31,6 +31,7 @@
 
 - root `AGENTS.md` はリポジトリ全体で共通の常設ルールを定義し、特定作業だけで使う補助手順は必要なときだけ Skill で追加する。
 - リポジトリ全体で共通の判断基準や設計原則を Skill へ重複記載しない。
+- Codex lifecycle hooks は Skill や repo 内正本の代替ではない。secret guard、repo context guide、completion gate のような反復確認を lifecycle event に差し込む補助層として扱い、repo 固有判断は `AGENTS.md`、`docs/spec_*.md`、`docs/context/DECISIONS.md`、`docs/context/STATUS.md` などの正本へ置く。
 - このリポジトリでは固有 Skill を常設しない。必要な Skill は共有 Skill から使う。
 - スレッド開始時と終了時には、`thread-contract-handoff` の発火要否を判断し、使う/使わない理由を短く明示する。
 - 本線タスクでは handoff prompt を入口の前提にせず、必要なら `thread-contract-handoff` で正本確認、task bundle、subagent 利用、handoff 要否を判断する。
