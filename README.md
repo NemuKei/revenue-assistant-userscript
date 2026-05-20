@@ -37,6 +37,35 @@ npm run check
 - `npm run chrome:profiles`: 利用可能な Chrome プロファイルを一覧表示
 - `npm run chrome:pages`: CDP 経由で Chrome に接続し、開いているページを一覧表示
 
+## Verification
+
+```powershell
+# 通常の repo-wide verify
+npm run check
+
+# 型エラーだけを先に確認
+npm run typecheck
+
+# ESLint だけを確認
+npm run lint
+
+# userscript bundle 再生成だけを確認
+npm run build
+
+# commit 前の whitespace error 確認
+git diff --check
+```
+
+`npm run check` は `npm run typecheck`、`npm run lint`、`npm run build` を順に実行します。
+
+Codex automation shell などで `npm run ...` をそのまま実行できない場合は、次の direct command を fallback として使います。
+
+```powershell
+node .\node_modules\typescript\bin\tsc --noEmit
+node .\node_modules\eslint\bin\eslint.js .
+node .\scripts\build.mjs
+```
+
 ## 現在の実装状態
 
 ### Analyze 日付ページ
