@@ -97,6 +97,11 @@ const RANK_RECOMMENDATION_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-action
 const RANK_RECOMMENDATION_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-status";
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
 const RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-button-action";
+const RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE = "data-ra-rank-recommendation-stay-date";
+const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE = "data-ra-rank-recommendation-room-group-id";
+const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE = "data-ra-rank-recommendation-room-group-name";
+const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
+const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
@@ -616,6 +621,13 @@ interface PendingCompetitorPriceTabSnapshotRequest {
     timeoutIds: number[];
 }
 
+interface PendingRankRecommendationFocus {
+    stayDate: string;
+    roomGroupId: string;
+    roomGroupName: string;
+    createdAt: string;
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const rankRecommendationCurrentSettingsCache = new Map<string, Promise<RankRecommendationCurrentSettingsResponse>>();
@@ -745,6 +757,14 @@ function installInteractionHooks(): void {
         if (target instanceof Element) {
             if (isCompetitorPriceTabTrigger(target)) {
                 scheduleActiveCompetitorPriceSnapshotFromTab();
+            }
+
+            const rankRecommendationAnalyzeLink = target.closest<HTMLElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="analyze"]`
+            );
+            if (rankRecommendationAnalyzeLink !== null) {
+                persistPendingRankRecommendationFocusFromElement(rankRecommendationAnalyzeLink);
+                return;
             }
 
             const referenceToggleButton = target.closest<HTMLButtonElement>(`[${SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_ATTRIBUTE}]`);
@@ -970,6 +990,114 @@ function trySchedulePendingCompetitorPriceTabSnapshotRequest(): boolean {
     scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey, request.analysisDate);
     clearPendingCompetitorPriceTabSnapshotRequest();
     return true;
+}
+
+function persistPendingRankRecommendationFocusFromElement(element: HTMLElement): void {
+    const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
+    const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
+    const roomGroupName = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE);
+    if (stayDate === null || roomGroupId === null || roomGroupName === null) {
+        return;
+    }
+
+    const focus: PendingRankRecommendationFocus = {
+        stayDate,
+        roomGroupId,
+        roomGroupName,
+        createdAt: new Date().toISOString()
+    };
+    try {
+        window.sessionStorage.setItem(RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY, JSON.stringify(focus));
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to persist rank recommendation focus`, {
+            stayDate,
+            roomGroupId,
+            error
+        });
+    }
+}
+
+function readPendingRankRecommendationFocus(): PendingRankRecommendationFocus | null {
+    let rawValue: string | null;
+    try {
+        rawValue = window.sessionStorage.getItem(RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY);
+    } catch {
+        return null;
+    }
+
+    if (rawValue === null) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(rawValue) as Partial<PendingRankRecommendationFocus>;
+        if (
+            typeof parsed.stayDate !== "string"
+            || typeof parsed.roomGroupId !== "string"
+            || typeof parsed.roomGroupName !== "string"
+            || typeof parsed.createdAt !== "string"
+        ) {
+            return null;
+        }
+
+        return {
+            stayDate: parsed.stayDate,
+            roomGroupId: parsed.roomGroupId,
+            roomGroupName: parsed.roomGroupName,
+            createdAt: parsed.createdAt
+        };
+    } catch {
+        return null;
+    }
+}
+
+function clearPendingRankRecommendationFocus(): void {
+    try {
+        window.sessionStorage.removeItem(RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY);
+    } catch {
+        // ignore sessionStorage access failure
+    }
+}
+
+function preparePendingRankRecommendationFocusForAnalyze(analysisDate: string): void {
+    const focus = readPendingRankRecommendationFocus();
+    if (focus === null || focus.stayDate !== analysisDate) {
+        return;
+    }
+
+    setSalesSettingBookingCurveOpen(getSalesSettingBookingCurveToggleKey(focus.roomGroupName), true);
+}
+
+async function applyPendingRankRecommendationFocus(
+    analysisDate: string,
+    preparedData: SalesSettingPreparedData | null
+): Promise<void> {
+    const focus = readPendingRankRecommendationFocus();
+    if (focus === null || focus.stayDate !== analysisDate || preparedData === null) {
+        return;
+    }
+
+    const card = preparedData.cards.find((candidateCard) => candidateCard.roomGroupName === focus.roomGroupName)
+        ?? preparedData.cards.find((candidateCard) => candidateCard.roomGroupName.includes(focus.roomGroupName));
+    if (card === undefined) {
+        console.warn(`[${SCRIPT_NAME}] rank recommendation focus target not found`, {
+            analysisDate,
+            roomGroupId: focus.roomGroupId,
+            roomGroupName: focus.roomGroupName
+        });
+        return;
+    }
+
+    setSalesSettingBookingCurveOpen(getSalesSettingBookingCurveToggleKey(card.roomGroupName), true);
+    card.cardElement.setAttribute(RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE, "");
+    card.cardElement.scrollIntoView({
+        behavior: "smooth",
+        block: "center"
+    });
+    window.setTimeout(() => {
+        card.cardElement.removeAttribute(RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE);
+    }, 4500);
+    clearPendingRankRecommendationFocus();
 }
 
 function scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey: string, analysisDate: string): void {
@@ -3449,6 +3577,7 @@ async function runCalendarSync(): Promise<void> {
         const analysisDate = activeAnalyzeDate;
 
         if (analysisDate !== null) {
+            preparePendingRankRecommendationFocusForAnalyze(analysisDate);
             if (!hasCurrentSalesSettingUi()) {
                 cleanupCurrentUiSalesSettingRoot();
             }
@@ -3485,6 +3614,7 @@ async function runCalendarSync(): Promise<void> {
 
         if (analysisDate !== null) {
             await salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingRankInsights(analysisDate, syncContext, preparedData));
+            await salesSettingPreparedDataPromise.then((preparedData) => applyPendingRankRecommendationFocus(analysisDate, preparedData));
             scheduleCompetitorPriceSnapshot(analysisDate, batchDateKey, facilityCacheKey);
             trySchedulePendingCompetitorPriceTabSnapshotRequest();
         }
@@ -4363,6 +4493,9 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     const analyzeLinkElement = document.createElement("a");
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "analyze");
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, candidate.stayDate);
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, candidate.roomGroupId);
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, candidate.roomGroupName);
     analyzeLinkElement.href = `/analyze/${formatCompactDateForDisplay(candidate.stayDate)}`;
     analyzeLinkElement.textContent = "Analyzeで確認";
 
@@ -10324,6 +10457,12 @@ function ensureGroupRoomStyles(): void {
             color: #8a98a8;
             cursor: not-allowed;
             opacity: 0.75;
+        }
+
+        [${RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE}] {
+            outline: 3px solid #2f6fbb;
+            outline-offset: 4px;
+            transition: outline-color 0.2s ease;
         }
 
         @media (max-width: 900px) {
