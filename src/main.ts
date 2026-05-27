@@ -46,6 +46,14 @@ import {
     type CompetitorPriceSnapshotPlan,
     type CompetitorPriceSnapshotRecord
 } from "./competitorPriceSnapshotStore";
+import {
+    buildRankRecommendationCandidates,
+    type RankRecommendationAction,
+    type RankRecommendationCandidate,
+    type RankRecommendationCurrentSettingsResponse,
+    type RankRecommendationPriority,
+    type RankRecommendationStatus
+} from "./rankRecommendation";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Userscript"
@@ -79,6 +87,14 @@ const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
 const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
 const GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE = "data-ra-group-room-toggle-button";
 const GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-group-room-toggle-active";
+const RANK_RECOMMENDATION_LIST_ATTRIBUTE = "data-ra-rank-recommendation-list";
+const RANK_RECOMMENDATION_LIST_SIGNATURE_ATTRIBUTE = "data-ra-rank-recommendation-list-signature";
+const RANK_RECOMMENDATION_ROW_ATTRIBUTE = "data-ra-rank-recommendation-row";
+const RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE = "data-ra-rank-recommendation-priority";
+const RANK_RECOMMENDATION_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-action";
+const RANK_RECOMMENDATION_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-status";
+const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
+const RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-button-action";
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
@@ -235,6 +251,7 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE}]`,
     `[${GROUP_ROOM_TOGGLE_ATTRIBUTE}]`,
     `[${GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE}]`,
+    `[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`,
     `[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`,
     `[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`,
     `[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`,
@@ -400,6 +417,10 @@ interface SalesSettingCurrentSettingRoomGroup {
     rm_room_group_name?: string;
     remaining_num_room?: number;
     max_num_room?: number;
+    latest_current?: {
+        price_rank_code?: string | null;
+        price_rank_name?: string | null;
+    } | null;
 }
 
 interface SalesSettingCurrentSettingByDate {
@@ -595,6 +616,7 @@ interface PendingCompetitorPriceTabSnapshotRequest {
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
+const rankRecommendationCurrentSettingsCache = new Map<string, Promise<RankRecommendationCurrentSettingsResponse>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const lincolnSuggestStatusRangeCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const interactionSyncTimeoutIds: number[] = [];
@@ -3449,6 +3471,9 @@ async function runCalendarSync(): Promise<void> {
             syncMonthlyCalendarGroupRooms(batchDateKey),
             syncMonthlyCalendarLatestChanges(),
             analysisDate === null
+                ? syncRankRecommendationList(batchDateKey, facilityCacheKey)
+                : Promise.resolve(cleanupRankRecommendationList()),
+            analysisDate === null
                 ? Promise.resolve()
                 : salesSettingPreparedDataPromise.then((preparedData) => syncSalesSettingGroupRooms(preparedData, analysisDate, batchDateKey, syncContext)),
             analysisDate === null
@@ -4035,6 +4060,238 @@ function cleanupMonthlyCalendarLatestChanges(): void {
     for (const hostElement of Array.from(document.querySelectorAll<HTMLElement>(`[${CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE}]`))) {
         hostElement.removeAttribute(CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE);
     }
+}
+
+async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey: string): Promise<void> {
+    const cells = collectMonthlyCalendarCells();
+    if (cells.length === 0 || activeAnalyzeDate !== null) {
+        cleanupRankRecommendationList();
+        return;
+    }
+
+    const dateRange = getMonthlyCalendarDateRange(cells);
+    if (dateRange === null) {
+        cleanupRankRecommendationList();
+        return;
+    }
+
+    ensureGroupRoomStyles();
+
+    const generatedAt = new Date().toISOString();
+    const response = await getRankRecommendationCurrentSettingsForRange(dateRange.fromDateKey, dateRange.toDateKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to load rank recommendation current settings`, {
+                fromDateKey: dateRange.fromDateKey,
+                toDateKey: dateRange.toDateKey,
+                error
+            });
+            return null;
+        });
+
+    if (activeAnalyzeDate !== null || activeBatchDateKey !== batchDateKey || activeFacilityCacheKey !== facilityCacheKey) {
+        return;
+    }
+
+    if (response === null) {
+        renderRankRecommendationList([], {
+            signature: `error:${facilityCacheKey}:${batchDateKey}:${dateRange.fromDateKey}:${dateRange.toDateKey}`,
+            statusText: "料金調整候補: current settings を取得できませんでした"
+        });
+        return;
+    }
+
+    const candidates = buildRankRecommendationCandidates({
+        response,
+        facilityId: facilityCacheKey,
+        asOfDate: batchDateKey,
+        visibleStayDates: new Set(cells.map((cell) => cell.stayDate)),
+        generatedAt
+    });
+    renderRankRecommendationList(candidates, {
+        signature: [
+            facilityCacheKey,
+            batchDateKey,
+            dateRange.fromDateKey,
+            dateRange.toDateKey,
+            candidates.map((candidate) => candidate.reasonFingerprint).join("|")
+        ].join(":"),
+        statusText: null
+    });
+}
+
+function getRankRecommendationCurrentSettingsForRange(
+    fromDateKey: string,
+    toDateKey: string
+): Promise<RankRecommendationCurrentSettingsResponse> {
+    const cacheKey = `${fromDateKey}:${toDateKey}`;
+    const cached = rankRecommendationCurrentSettingsCache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const request = loadSalesSettingCurrentSettings(fromDateKey, toDateKey)
+        .catch((error: unknown) => {
+            rankRecommendationCurrentSettingsCache.delete(cacheKey);
+            throw error;
+        });
+    rankRecommendationCurrentSettingsCache.set(cacheKey, request);
+    return request;
+}
+
+function renderRankRecommendationList(
+    candidates: RankRecommendationCandidate[],
+    options: { signature: string; statusText: string | null }
+): void {
+    const host = resolveRankRecommendationListHost();
+    if (host === null) {
+        cleanupRankRecommendationList();
+        return;
+    }
+
+    const rootElement = document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`) ?? document.createElement("section");
+    rootElement.setAttribute(RANK_RECOMMENDATION_LIST_ATTRIBUTE, "");
+    rootElement.setAttribute(RANK_RECOMMENDATION_LIST_SIGNATURE_ATTRIBUTE, options.signature);
+
+    const titleElement = document.createElement("h2");
+    titleElement.textContent = "料金調整候補";
+
+    const metaElement = document.createElement("div");
+    metaElement.setAttribute("data-ra-rank-recommendation-meta", "");
+    metaElement.textContent = options.statusText ?? `優先度順 ${candidates.length}件`;
+
+    const tableElement = document.createElement("table");
+    const headElement = document.createElement("thead");
+    const headRowElement = document.createElement("tr");
+    for (const label of ["優先度", "宿泊日", "部屋タイプ", "現ランク", "推奨方向", "主要根拠", "状態", "操作"]) {
+        const cellElement = document.createElement("th");
+        cellElement.scope = "col";
+        cellElement.textContent = label;
+        headRowElement.append(cellElement);
+    }
+    headElement.append(headRowElement);
+
+    const bodyElement = document.createElement("tbody");
+    if (candidates.length === 0) {
+        const emptyRowElement = document.createElement("tr");
+        const emptyCellElement = document.createElement("td");
+        emptyCellElement.colSpan = 8;
+        emptyCellElement.textContent = "現在表示中のカレンダーに料金調整候補はありません";
+        emptyRowElement.append(emptyCellElement);
+        bodyElement.append(emptyRowElement);
+    } else {
+        for (const candidate of candidates) {
+            bodyElement.append(createRankRecommendationRow(candidate));
+        }
+    }
+    tableElement.append(headElement, bodyElement);
+    rootElement.replaceChildren(titleElement, metaElement, tableElement);
+
+    if (rootElement.parentElement !== host.parentElement || rootElement.previousElementSibling !== host.insertAfterElement) {
+        rootElement.remove();
+        host.parentElement.insertBefore(rootElement, host.insertAfterElement.nextSibling);
+    }
+}
+
+function createRankRecommendationRow(candidate: RankRecommendationCandidate): HTMLTableRowElement {
+    const rowElement = document.createElement("tr");
+    rowElement.setAttribute(RANK_RECOMMENDATION_ROW_ATTRIBUTE, "");
+    rowElement.setAttribute(RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE, candidate.priority);
+    rowElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
+    rowElement.setAttribute(RANK_RECOMMENDATION_STATUS_ATTRIBUTE, candidate.status);
+
+    const values = [
+        formatRankRecommendationPriority(candidate.priority),
+        formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate),
+        candidate.roomGroupName,
+        candidate.currentRankName ?? "-",
+        formatRankRecommendationAction(candidate.action),
+        candidate.reasonCodes.join(" / "),
+        formatRankRecommendationStatus(candidate.status)
+    ];
+    for (const value of values) {
+        const cellElement = document.createElement("td");
+        cellElement.textContent = value;
+        rowElement.append(cellElement);
+    }
+
+    const actionCellElement = document.createElement("td");
+    const analyzeLinkElement = document.createElement("a");
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "analyze");
+    analyzeLinkElement.href = `/analyze/${formatCompactDateForDisplay(candidate.stayDate)}`;
+    analyzeLinkElement.textContent = "Analyzeで確認";
+
+    const snoozeButtonElement = document.createElement("button");
+    snoozeButtonElement.type = "button";
+    snoozeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    snoozeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "snooze");
+    snoozeButtonElement.disabled = true;
+    snoozeButtonElement.title = "様子見の保存は RAU-RR-07 で実装する";
+    snoozeButtonElement.textContent = "様子見";
+
+    const dismissButtonElement = document.createElement("button");
+    dismissButtonElement.type = "button";
+    dismissButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    dismissButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "dismiss");
+    dismissButtonElement.disabled = true;
+    dismissButtonElement.title = "対応不要の保存は RAU-RR-07 で実装する";
+    dismissButtonElement.textContent = "対応不要";
+
+    actionCellElement.append(analyzeLinkElement, snoozeButtonElement, dismissButtonElement);
+    rowElement.append(actionCellElement);
+    return rowElement;
+}
+
+function resolveRankRecommendationListHost(): { parentElement: HTMLElement; insertAfterElement: HTMLElement } | null {
+    const segmentedControl = document.querySelector<HTMLElement>(`[data-testid="segmented-control"]`);
+    const toolbarElement = segmentedControl?.parentElement?.parentElement ?? null;
+    const parentElement = toolbarElement?.parentElement ?? null;
+    if (toolbarElement instanceof HTMLElement && parentElement instanceof HTMLElement) {
+        return { parentElement, insertAfterElement: toolbarElement };
+    }
+
+    const firstCell = collectMonthlyCalendarCells()[0];
+    const fallbackElement = firstCell?.anchorElement.parentElement ?? null;
+    const fallbackParentElement = fallbackElement?.parentElement ?? null;
+    if (fallbackElement instanceof HTMLElement && fallbackParentElement instanceof HTMLElement) {
+        return { parentElement: fallbackParentElement, insertAfterElement: fallbackElement };
+    }
+
+    return null;
+}
+
+function cleanupRankRecommendationList(): void {
+    document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`)?.remove();
+}
+
+function formatRankRecommendationPriority(priority: RankRecommendationPriority): string {
+    switch (priority) {
+        case "high":
+            return "高";
+        case "medium":
+            return "中";
+        case "low":
+        default:
+            return "低";
+    }
+}
+
+function formatRankRecommendationAction(action: RankRecommendationAction): string {
+    switch (action) {
+        case "raise_watch":
+            return "上げ検討";
+        case "lower_watch":
+            return "下げ注意";
+        case "not_eligible":
+            return "判定対象外";
+        case "watch":
+        default:
+            return "監視";
+    }
+}
+
+function formatRankRecommendationStatus(status: RankRecommendationStatus): string {
+    return status === "active" ? "確認待ち" : "判定対象外";
 }
 
 function renderCachedMonthlyCalendarGroupRooms(
@@ -9829,6 +10086,101 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
+        [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] {
+            margin: 12px 0 14px;
+            padding: 12px;
+            border: 1px solid #cfd8e3;
+            border-radius: 6px;
+            background: #f8fafc;
+            box-shadow: 0 1px 3px rgba(24, 39, 75, 0.08);
+            color: #243245;
+            font-family: inherit;
+        }
+
+        [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] h2 {
+            margin: 0 0 4px;
+            font-size: 15px;
+            font-weight: 800;
+            line-height: 1.4;
+        }
+
+        [data-ra-rank-recommendation-meta] {
+            margin-bottom: 8px;
+            color: #5b6b7d;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
+        [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] table {
+            width: 100%;
+            border-collapse: collapse;
+            table-layout: auto;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] th,
+        [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] td {
+            padding: 7px 8px;
+            border-top: 1px solid #e1e7ef;
+            text-align: left;
+            vertical-align: middle;
+            white-space: nowrap;
+        }
+
+        [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] th {
+            color: #50627a;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="high"] td:first-child {
+            color: #b54646;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="medium"] td:first-child {
+            color: #91620d;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="raise_watch"] td:nth-child(5) {
+            color: #0c7a43;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="lower_watch"] td:nth-child(5) {
+            color: #b54646;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_STATUS_ATTRIBUTE}="not_eligible"] {
+            color: #6a7684;
+        }
+
+        [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            min-height: 26px;
+            margin-right: 6px;
+            padding: 4px 8px;
+            border: 1px solid #b7c4d3;
+            border-radius: 5px;
+            background: #ffffff;
+            color: #243245;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.2;
+            text-decoration: none;
+            cursor: pointer;
+        }
+
+        [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][disabled] {
+            color: #8a98a8;
+            cursor: not-allowed;
+            opacity: 0.75;
+        }
+
         @media (max-width: 900px) {
             [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
                 width: 100%;
@@ -9863,6 +10215,10 @@ function ensureGroupRoomStyles(): void {
 
             [${SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE}] {
                 grid-template-columns: 1fr;
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] {
+                overflow-x: auto;
             }
         }
 

@@ -1074,6 +1074,12 @@
 
 ### RAU-RR-04 トップ料金調整候補リスト UI shell を実装する
 
+- 状態:
+  - 2026-05-28 実装済み。
+  - トップ画面に `料金調整候補` section を追加し、候補行は `stayDate x roomGroup` 単位で表示する。
+  - `src/rankRecommendation.ts` に current settings ベースの仮候補生成を分離した。これは shell 表示用の初期判定であり、reference deviation scoring は `RAU-RR-05` で差し替える。
+  - `Analyzeで確認` は Analyze URL への導線として表示する。対象 roomGroup focus は `RAU-RR-06` で扱う。
+  - `様子見` と `対応不要` は表示するが、永続保存は `RAU-RR-07` まで disabled とする。
 - 目的:
   - トップ画面に、RM が見るべき料金調整候補を優先度順に並べる UI shell を追加する。
 - 背景:
@@ -1428,15 +1434,14 @@
 
 Now:
 
-- `RAU-RR-04` トップ料金調整候補リスト UI shell を実装する
+- `RAU-RR-05` reference deviation ベースの初期 priority scoring を実装する
 
 Next:
 
-- `RAU-RR-05` reference deviation ベースの初期 priority scoring を実装する
+- `RAU-RR-06` Analyze 遷移・対象 roomGroup focus 導線を実装する
 
 After Next:
 
-- `RAU-RR-06` Analyze 遷移・対象 roomGroup focus 導線を実装する
 - `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
 - `RAU-RR-08` rank change history による resolved 化を実装する
 
@@ -1456,7 +1461,7 @@ Later:
 - Rank Recommendation Bundle は、`RAU-FC-01` の rooms-only 予測モデル導入判断と重なるが、UI、候補 lifecycle、user decision、rank history、rank response、future bulk apply を含むため、独立 bundle として扱う。
 - first phase の rank recommendation は forecast model を必須入力にしない。reference curve deviation、capacity、remaining rooms、transient / group 分解、直近 rank change、競合価格 snapshot、sales / ADR raw source を使って、RM の作業キューを先に作る。
 - `RAU-RR-03` は 2026-05-28 に実施済みである。current rank と rank ladder 候補は確認済みだが、`rank_sequences[].default_sequence` の方向、rank price table、現在販売中価格、rank 反映 API の request shape と安全制約は未確認として残す。
-- `RAU-RR-04` は、推奨金額なし、recommendedRank 名なしでも、`stayDate x roomGroup` の候補リスト shell と Analyze 導線を先に作れるため、API 調査後の最初の UI 実装候補にする。current rank 名は `RAU-RR-03` で取得候補が確認済みのため表示候補にできる。
+- `RAU-RR-04` は実装済みである。トップ画面に `stayDate x roomGroup` 単位の候補リスト shell を追加し、current settings の current rank、remaining、max を使う仮候補生成を `src/rankRecommendation.ts` に分離した。`Analyzeで確認` は URL 導線として表示し、`様子見` と `対応不要` は `RAU-RR-07` まで disabled button として置く。
 - `RAU-RR-05` は、forecast model なしで始められる reference deviation ベースの scoring とする。forecast model が必要かどうかは、first scoring の精度と不足 diagnostics を見てから `RAU-FC-01` で判断する。
 - `RAU-RR-07` と `RAU-RR-08` は、future bulk apply だけでなく first phase の候補リストのノイズ低減にも必要であるため、UI shell と初期 scoring の後に置く。
 - `RAU-RR-09` 以降は、first phase の active recommendation と user decision が蓄積してから扱う。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
