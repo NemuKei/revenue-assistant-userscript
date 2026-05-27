@@ -4354,7 +4354,20 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation decisions`, { error });
             return [] as RankRecommendationDecisionRecord[];
         });
-    const visibleCandidates = filterRankRecommendationCandidatesByDecision(candidates, decisionRecords, batchDateKey);
+    const statuses = await getLincolnSuggestStatusesForRange(dateRange.fromDateKey, dateRange.toDateKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to load rank recommendation resolved statuses`, {
+                fromDateKey: dateRange.fromDateKey,
+                toDateKey: dateRange.toDateKey,
+                error
+            });
+            return [] as LincolnSuggestStatus[];
+        });
+    const visibleCandidates = filterResolvedRankRecommendationCandidates(
+        filterRankRecommendationCandidatesByDecision(candidates, decisionRecords, batchDateKey),
+        statuses,
+        batchDateKey
+    );
 
     renderRankRecommendationList(visibleCandidates, {
         signature: [
@@ -4547,6 +4560,39 @@ function filterRankRecommendationCandidatesByDecision(
 
         return decision.cooldownUntilAsOfDate === null || decision.cooldownUntilAsOfDate <= asOfDate;
     });
+}
+
+function filterResolvedRankRecommendationCandidates(
+    candidates: RankRecommendationCandidate[],
+    statuses: LincolnSuggestStatus[],
+    asOfDate: string
+): RankRecommendationCandidate[] {
+    if (statuses.length === 0) {
+        return candidates;
+    }
+
+    const resolvedKeys = new Set<string>();
+    for (const status of statuses) {
+        const stayDate = status.date?.trim() ?? "";
+        const roomGroupId = status.rm_room_group_id?.trim() ?? "";
+        if (stayDate === "" || roomGroupId === "") {
+            continue;
+        }
+
+        const timestamp = getLincolnSuggestStatusTimestamp(status);
+        const reflectedDateKey = getDateKeyFromTimestamp(timestamp);
+        if (reflectedDateKey === null || reflectedDateKey < asOfDate) {
+            continue;
+        }
+
+        resolvedKeys.add(`${stayDate}:${roomGroupId}`);
+    }
+
+    if (resolvedKeys.size === 0) {
+        return candidates;
+    }
+
+    return candidates.filter((candidate) => !resolvedKeys.has(`${candidate.stayDate}:${candidate.roomGroupId}`));
 }
 
 function renderRankRecommendationList(
