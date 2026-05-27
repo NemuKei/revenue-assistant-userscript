@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
+- 主対象: `RAU-RR-08` rank change history による resolved 化を実装する
 - 完了済み前提:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -12,6 +12,7 @@
   - `RAU-RR-04` トップ料金調整候補リスト UI shell を実装する
   - `RAU-RR-05` reference deviation ベースの初期 priority scoring を実装する
   - `RAU-RR-06` Analyze 遷移・対象 roomGroup focus 導線を実装する
+  - `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
 - この bundle で扱う Task ID:
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
   - `RAU-RR-03` current rank / rank ladder / rank price table の取得可否を browser trace で調査する
@@ -34,7 +35,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - `docs/spec_003_rank_recommendation_signal.md` を正本として、トップ料金調整候補リストと推奨ランク方向の first wave を進める。
-  - 次の主対象は `RAU-RR-07` とする。`様子見` と `対応不要` の disabled button を、IndexedDB または同等の browser-local store に保存する user decision へ接続し、同じ recommendation の再表示抑制と cooldown を実装する。
+  - 次の主対象は `RAU-RR-08` とする。`/api/v3/lincoln/suggest/status` の rank change history を使い、recommendation 生成後または asOfDate 以降に rank 変更が確認された候補を active list から外す resolved 化を実装する。
   - `RAU-RR-02` では、`/api/v4/booking_curve` response に含まれる sales / ADR を raw source 保存で落とさない契約へ更新済みである。保存 schema version は `booking_curve_raw_source:v2`、IndexedDB database version は 1 のまま据え置きである。
   - `RAU-RR-03` では current rank と rank ladder 候補を確認した。ただし `rank_sequences[].default_sequence` の方向と実価格 field は未確認のため、first UI shell では current rank 名を表示候補にし、recommendedRank 名は必須にしない。
 - 次スレッドでやらないこと:
@@ -45,7 +46,7 @@
   - 月次 `/api/v1/booking_curve/monthly` の snapshot read path を、過去 batch の履歴比較や日次差分表示へ広げない。
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
 - 終了条件:
-  - `RAU-RR-07` と `RAU-RR-08` で、user decision 保存と rank change history による resolved 化が first phase の候補 lifecycle として動く。
+  - `RAU-RR-08` で、rank change history による resolved 化が first phase の候補 lifecycle として動く。
   - `RAU-RR-09` から `RAU-RR-11` で、rank response dataset、推奨 rank 算出、bulk apply feasibility の確認済み範囲と非目標が docs に残っている。
   - 未確認 API を確認済み仕様として扱っていない。
 - subagent 利用方針:
@@ -64,6 +65,7 @@
   - `RAU-RR-04` は実装済み。トップ画面に `stayDate x roomGroup` 単位の料金調整候補リスト shell を追加した。行項目は、優先度、宿泊日、部屋タイプ、現ランク、推奨方向、主要根拠、状態、操作である。`Analyzeで確認` は Analyze URL への導線として表示し、`様子見` と `対応不要` は `RAU-RR-07` で永続保存を実装するまで disabled button として出す。候補生成の初期実装は `src/rankRecommendation.ts` に分離し、current settings の current rank、remaining、max を使う仮 shell 用判定である。reference deviation scoring は `RAU-RR-05` で実装する。
   - `RAU-RR-05` は実装済み。`src/rankRecommendation.ts` の候補生成に、IndexedDB の `booking_curve_raw_source:v2` から読む roomGroup booking curve evidence を接続した。asOfDate 時点の `this_year_room_sum` と、`last_year_room_sum` / `two_years_ago_room_sum` / `three_years_ago_room_sum` の平均を、`all`、`transient`、`group` ごとに比較し、reference 上振れ / 下振れ / 不足を reasonCodes と diagnostics に残す。group が上振れ主因で transient が上振れていない場合は、個人価格 rank の上げ検討を `watch` へ抑制する。reference 欠損は推測で埋めず `reference不足` として表示する。
   - `RAU-RR-06` は実装済み。トップ候補リストの `Analyzeで確認` click 時に `sessionStorage` へ pending focus を保存し、Analyze 表示時に対象 roomGroup の booking curve card を開く状態にして scroll / highlight する。対象が見つからない場合は通常 Analyze 表示を維持し、console warning に診断を出す。Chrome CDP 一時注入確認では、トップ候補から `/analyze/2026-05-28` へ遷移し、pending focus が消え、highlight 1 件が付くことを確認した。
+  - `RAU-RR-07` は実装済み。`src/rankRecommendationDecisionStore.ts` に IndexedDB store `revenue-assistant-rank-recommendations` / `rank-recommendation-decisions` を追加し、`stayDate x roomGroup x action x reasonFingerprint` 単位で `snooze` と `dismiss` を保存する。`様子見` は LT 帯に応じた asOfDate 基準 cooldown を持ち、cooldown 中は同じ candidate を list から抑制する。`対応不要` は同じ reasonFingerprint を抑制する。Chrome CDP 一時注入確認では、`様子見` click 後に候補行が 10 件から 9 件になり、検証用 decision record 1 件を作成後に削除した。
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
   - `RAU-CP-06` は完了。Analyze open 起点でも、現在開いている宿泊日の `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。
@@ -183,11 +185,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-RR-07` を確認し、candidate の `reasonFingerprint` と `stayDate x roomGroup x action` を key にした user decision store を実装する。
-2. `様子見` は LT 帯に応じた default cooldown を設定し、`snoozed_by_user` または `suppressed_by_cooldown` としてリストから抑制する。
-3. `対応不要` は同じ reasonFingerprint の再表示抑制として保存し、`dismissed_by_user` として扱う。
-4. `RAU-RR-08` では rank change history による resolved 化を実装する。
-5. `RAU-RR-09` から `RAU-RR-11` は、first phase 実装後に rank response、推奨 rank 算出、bulk apply feasibility の確認済み範囲を正本化する。bulk apply は実装しない。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-RR-08` を確認し、トップ表示範囲の `/api/v3/lincoln/suggest/status` を読み、roomGroup ごとの rank change history を候補 lifecycle に接続する。
+2. recommendation の `asOfDate` または `generatedAt` 以降に同じ `stayDate x roomGroup` の rank change がある場合、candidate を active list から外す。
+3. `RAU-RR-09` から `RAU-RR-11` は、first phase 実装後に rank response、推奨 rank 算出、bulk apply feasibility の確認済み範囲を正本化する。bulk apply は実装しない。
 
 変更しない契約:
 

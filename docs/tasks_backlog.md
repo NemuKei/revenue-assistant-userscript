@@ -1174,6 +1174,12 @@
 
 ### RAU-RR-07 user snooze / dismissed decision と cooldown を保存する
 
+- 状態:
+  - 2026-05-28 実装済み。
+  - `src/rankRecommendationDecisionStore.ts` に browser-local IndexedDB store を追加した。
+  - `snooze` は LT 帯に応じた asOfDate 基準 cooldown を保存し、cooldown 中の同一 candidate を list から抑制する。
+  - `dismiss` は同じ `stayDate x roomGroup x action x reasonFingerprint` の再表示を抑制する。
+  - Chrome CDP 一時注入確認では、`様子見` click 後に候補行が 10 件から 9 件へ減り、検証用 decision record は確認後に削除した。
 - 目的:
   - 利用者が `様子見` または `対応不要` と判断した recommendation を、候補リストに出し続けないようにする。
 - 背景:
@@ -1445,19 +1451,18 @@
 
 Now:
 
-- `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
+- `RAU-RR-08` rank change history による resolved 化を実装する
 
 Next:
 
-- `RAU-RR-08` rank change history による resolved 化を実装する
+- `RAU-RR-09` rank response dataset / metrics を設計する
 
 After Next:
 
-- `RAU-RR-09` rank response dataset / metrics を設計する
+- `RAU-RR-10` 推奨ランク算出を設計する
 
 Later:
 
-- `RAU-RR-10` 推奨ランク算出を設計する
 - `RAU-RR-11` bulk apply feasibility を調査する
 - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 - `RAU-FC-02` 予測評価 dataset と metrics を設計する
@@ -1473,6 +1478,7 @@ Later:
 - `RAU-RR-04` は実装済みである。トップ画面に `stayDate x roomGroup` 単位の候補リスト shell を追加し、current settings の current rank、remaining、max を使う仮候補生成を `src/rankRecommendation.ts` に分離した。`Analyzeで確認` は URL 導線として表示し、`様子見` と `対応不要` は `RAU-RR-07` まで disabled button として置く。
 - `RAU-RR-05` は実装済みである。`booking_curve_raw_source:v2` の roomGroup raw source から asOfDate 時点の this_year rooms と過去年 rooms 平均を読み、`all`、`transient`、`group` ごとに reference deviation を計算する。欠損は推測で埋めず `reference不足` として出す。group が上振れ主因で transient が上振れていない場合は、個人価格 rank の上げ検討を抑制する。
 - `RAU-RR-06` は実装済みである。`Analyzeで確認` click 時に pending focus を `sessionStorage` へ保存し、Analyze 表示時に対象 roomGroup card を開く、scroll する、highlight する。対象が見つからない場合は通常 Analyze 表示を維持し、console warning へ診断を出す。
+- `RAU-RR-07` は実装済みである。IndexedDB store `revenue-assistant-rank-recommendations` / `rank-recommendation-decisions` に、`stayDate x roomGroup x action x reasonFingerprint` 単位で `snooze` と `dismiss` を保存する。`snooze` は LT 帯に応じた asOfDate 基準 cooldown を持ち、`dismiss` は同じ reasonFingerprint の再表示を抑制する。
 - `RAU-RR-07` と `RAU-RR-08` は、future bulk apply だけでなく first phase の候補リストのノイズ低減にも必要であるため、UI shell と初期 scoring の後に置く。
 - `RAU-RR-09` 以降は、first phase の active recommendation と user decision が蓄積してから扱う。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
 - `RAU-RR-11` の bulk apply は将来候補だが first phase の非目標である。API、current rank 再取得、別 rank change 確認、user decision、cooldown、low confidence、small capacity、group-driven 除外、preview、部分失敗記録が揃うまで実装しない。

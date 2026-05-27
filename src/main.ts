@@ -56,6 +56,14 @@ import {
     type RankRecommendationPriority,
     type RankRecommendationStatus
 } from "./rankRecommendation";
+import {
+    buildRankRecommendationDecisionCacheKey,
+    buildRankRecommendationDecisionRecord,
+    readRankRecommendationDecisionRecords,
+    writeRankRecommendationDecisionRecord,
+    type RankRecommendationDecisionRecord,
+    type RankRecommendationDecisionType
+} from "./rankRecommendationDecisionStore";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Userscript"
@@ -98,8 +106,10 @@ const RANK_RECOMMENDATION_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-status
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
 const RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-button-action";
 const RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE = "data-ra-rank-recommendation-stay-date";
+const RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE = "data-ra-rank-recommendation-as-of-date";
 const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE = "data-ra-rank-recommendation-room-group-id";
 const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE = "data-ra-rank-recommendation-room-group-name";
+const RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE = "data-ra-rank-recommendation-reason-fingerprint";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
@@ -767,6 +777,17 @@ function installInteractionHooks(): void {
                 return;
             }
 
+            const rankRecommendationDecisionButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="snooze"],`
+                + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="dismiss"]`
+            );
+            if (rankRecommendationDecisionButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                void persistRankRecommendationDecisionFromElement(rankRecommendationDecisionButton);
+                return;
+            }
+
             const referenceToggleButton = target.closest<HTMLButtonElement>(`[${SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_ATTRIBUTE}]`);
             if (referenceToggleButton !== null) {
                 event.preventDefault();
@@ -1015,6 +1036,88 @@ function persistPendingRankRecommendationFocusFromElement(element: HTMLElement):
             error
         });
     }
+}
+
+async function persistRankRecommendationDecisionFromElement(element: HTMLElement): Promise<void> {
+    const decisionType = parseRankRecommendationDecisionType(element.getAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE));
+    const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
+    const asOfDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE);
+    const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
+    const roomGroupName = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE);
+    const action = parseRankRecommendationAction(element.getAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE));
+    const reasonFingerprint = element.getAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE);
+    const facilityId = activeFacilityCacheKey;
+
+    if (
+        decisionType === null
+        || stayDate === null
+        || asOfDate === null
+        || roomGroupId === null
+        || roomGroupName === null
+        || action === null
+        || reasonFingerprint === null
+        || facilityId === null
+    ) {
+        return;
+    }
+
+    const cooldownUntilAsOfDate = decisionType === "snooze"
+        ? getRankRecommendationSnoozeCooldownUntilAsOfDate(stayDate, asOfDate)
+        : null;
+
+    await writeRankRecommendationDecisionRecord(buildRankRecommendationDecisionRecord({
+        keyParts: {
+            facilityId,
+            stayDate,
+            roomGroupId,
+            action,
+            reasonFingerprint
+        },
+        roomGroupName,
+        decisionType,
+        asOfDate,
+        cooldownUntilAsOfDate
+    })).catch((error: unknown) => {
+        console.warn(`[${SCRIPT_NAME}] failed to write rank recommendation decision`, {
+            decisionType,
+            stayDate,
+            roomGroupId,
+            action,
+            error
+        });
+    });
+
+    queueCalendarSync({ force: true, reason: `rank-recommendation-${decisionType}` });
+}
+
+function parseRankRecommendationDecisionType(value: string | null): RankRecommendationDecisionType | null {
+    if (value === "snooze" || value === "dismiss") {
+        return value;
+    }
+
+    return null;
+}
+
+function parseRankRecommendationAction(value: string | null): RankRecommendationAction | null {
+    switch (value) {
+        case "raise_watch":
+        case "lower_watch":
+        case "watch":
+        case "not_eligible":
+            return value;
+        default:
+            return null;
+    }
+}
+
+function getRankRecommendationSnoozeCooldownUntilAsOfDate(stayDate: string, asOfDate: string): string {
+    const leadDays = getDaysBetweenDateKeys(stayDate, asOfDate);
+    const cooldownDays = leadDays === null || leadDays <= 14
+        ? 2
+        : leadDays <= 30
+            ? 3
+            : 7;
+    return shiftDate(asOfDate, cooldownDays);
 }
 
 function readPendingRankRecommendationFocus(): PendingRankRecommendationFocus | null {
@@ -4246,13 +4349,20 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         generatedAt,
         curveEvidenceByKey
     });
-    renderRankRecommendationList(candidates, {
+    const decisionRecords = await readRankRecommendationDecisionRecords()
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation decisions`, { error });
+            return [] as RankRecommendationDecisionRecord[];
+        });
+    const visibleCandidates = filterRankRecommendationCandidatesByDecision(candidates, decisionRecords, batchDateKey);
+
+    renderRankRecommendationList(visibleCandidates, {
         signature: [
             facilityCacheKey,
             batchDateKey,
             dateRange.fromDateKey,
             dateRange.toDateKey,
-            candidates.map((candidate) => candidate.reasonFingerprint).join("|")
+            visibleCandidates.map((candidate) => candidate.reasonFingerprint).join("|")
         ].join(":"),
         statusText: null
     });
@@ -4413,6 +4523,32 @@ function averageBookingCurveRoomCounts(values: Array<number | null | undefined>)
     return normalizedValues.reduce((sum, value) => sum + value, 0) / normalizedValues.length;
 }
 
+function filterRankRecommendationCandidatesByDecision(
+    candidates: RankRecommendationCandidate[],
+    decisionRecords: RankRecommendationDecisionRecord[],
+    asOfDate: string
+): RankRecommendationCandidate[] {
+    const decisionByKey = new Map(decisionRecords.map((record) => [record.cacheKey, record]));
+    return candidates.filter((candidate) => {
+        const decision = decisionByKey.get(buildRankRecommendationDecisionCacheKey({
+            facilityId: candidate.facilityId,
+            stayDate: candidate.stayDate,
+            roomGroupId: candidate.roomGroupId,
+            action: candidate.action,
+            reasonFingerprint: candidate.reasonFingerprint
+        }));
+        if (decision === undefined) {
+            return true;
+        }
+
+        if (decision.decisionType === "dismiss") {
+            return false;
+        }
+
+        return decision.cooldownUntilAsOfDate === null || decision.cooldownUntilAsOfDate <= asOfDate;
+    });
+}
+
 function renderRankRecommendationList(
     candidates: RankRecommendationCandidate[],
     options: { signature: string; statusText: string | null }
@@ -4494,8 +4630,11 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "analyze");
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, candidate.stayDate);
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE, candidate.asOfDate);
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, candidate.roomGroupId);
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, candidate.roomGroupName);
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, candidate.reasonFingerprint);
     analyzeLinkElement.href = `/analyze/${formatCompactDateForDisplay(candidate.stayDate)}`;
     analyzeLinkElement.textContent = "Analyzeで確認";
 
@@ -4503,21 +4642,33 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     snoozeButtonElement.type = "button";
     snoozeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
     snoozeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "snooze");
-    snoozeButtonElement.disabled = true;
-    snoozeButtonElement.title = "様子見の保存は RAU-RR-07 で実装する";
+    setRankRecommendationDecisionButtonAttributes(snoozeButtonElement, candidate);
+    snoozeButtonElement.title = "同じ候補を一時的に非表示にする";
     snoozeButtonElement.textContent = "様子見";
 
     const dismissButtonElement = document.createElement("button");
     dismissButtonElement.type = "button";
     dismissButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
     dismissButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "dismiss");
-    dismissButtonElement.disabled = true;
-    dismissButtonElement.title = "対応不要の保存は RAU-RR-07 で実装する";
+    setRankRecommendationDecisionButtonAttributes(dismissButtonElement, candidate);
+    dismissButtonElement.title = "同じ根拠の候補を非表示にする";
     dismissButtonElement.textContent = "対応不要";
 
     actionCellElement.append(analyzeLinkElement, snoozeButtonElement, dismissButtonElement);
     rowElement.append(actionCellElement);
     return rowElement;
+}
+
+function setRankRecommendationDecisionButtonAttributes(
+    buttonElement: HTMLButtonElement,
+    candidate: RankRecommendationCandidate
+): void {
+    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, candidate.stayDate);
+    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE, candidate.asOfDate);
+    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, candidate.roomGroupId);
+    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, candidate.roomGroupName);
+    buttonElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
+    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, candidate.reasonFingerprint);
 }
 
 function resolveRankRecommendationListHost(): { parentElement: HTMLElement; insertAfterElement: HTMLElement } | null {
