@@ -146,17 +146,46 @@ first phase では次を行わない。
 `/api/v1/suggest/output/current_settings`
 
 - 現状では、部屋タイプ別 capacity、remaining、max の取得に使われている。
-- current rank、rank ladder、rank price table が取れるかは未確認である。
+- 2026-05-28 の Chrome DevTools Protocol read-only 調査で、`suggest_output_current_settings[].rm_room_groups[].latest_current.price_rank_code` と `latest_current.price_rank_name` が取得できることを確認した。これにより、`stayDate x roomGroup` 単位の current rank はこの endpoint を第一候補にできる。
+- 同じ response で `remaining_num_room` と `max_num_room` も取得できる。
+- 同じ observation では、`without_meal`、`with_only_breakfast`、`with_only_dinner`、`with_breakfast_and_dinner` は null だった。したがって、プラン別、人数別、食事条件別の価格や rank 関係は、この確認だけでは取得済みとして扱わない。
+
+`/api/v1/rank_sequences`
+
+- 2026-05-28 の Chrome DevTools Protocol read-only 調査で取得できることを確認した。
+- response は `rank_sequences[]` を持ち、各要素に `price_rank_code`、`price_rank_name`、`default_sequence` が含まれる。
+- rank ladder の候補として使える。ただし、`default_sequence` の大小が Revenue Assistant UI 上の rank 上げ / 下げとどの方向に対応するかは、画面操作または既存履歴との照合で別途確認する。方向が未確認の間は、UI は `recommendedRank` 名を断定せず、`recommendedRankDirection` を第一表示にする。
+
+`/api/v1/rank_colors`
+
+- 2026-05-28 の Chrome DevTools Protocol read-only 調査で取得できることを確認した。
+- response は `rank_colors[]` を持ち、各要素に `price_rank_code`、`price_rank_name`、`color_no` が含まれる。
+- rank 名や表示色の補助に使える。rank の上下関係や価格差を、この endpoint だけから判断しない。
+
+`/api/v1/plan_master/plan_rank_price`
+
+- 2026-05-28 の Chrome DevTools Protocol read-only 調査で、`from=YYYYMMDD` 形式の query では 200 応答を確認した。`from=YYYY-MM-DD` 形式は 400 応答だった。
+- response は `plan_rank_prices[]` を持ち、観測 field は `price_rank_code`、`price_rank_name`、`from`、`effective_date`、`manual_from`、`manual_effective_date`、`invalid` だった。
+- 観測範囲では実価格または金額 field は確認できなかった。したがって、rank price table、現在販売中価格、プラン別・人数別・食事条件別価格は引き続き未確認である。
+
+`/api/v1/lincoln/suggest/reflection_allow`
+
+- 2026-05-28 の Chrome DevTools Protocol read-only 調査で、`suggest_calc_datetime` を付けると 200 応答を返し、`is_allowed` が取得できることを確認した。
+- これは rank 反映の許可状態を示す候補であり、一括反映や自動反映の安全性を証明するものではない。request shape、対象行の指定方法、競合更新時の挙動、部分失敗、権限差、error response は未確認である。
+
+JavaScript bundle から見つかった write endpoint 候補
+
+- 2026-05-28 の Chrome DevTools Protocol 調査で、bundle 内に `POST /api/v1/lincoln/price_ranks`、`POST /api/v1/neppan/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/lincoln/suggest`、`POST /api/v3/lincoln/suggest/status` などの候補文字列を確認した。
+- これらの write endpoint は実行していない。request body、CSRF、権限、provider 差、対象日付範囲、partial failure、同時更新、rollback、Revenue Assistant 標準 UI との競合条件は未確認である。
+- first phase ではこれらの write endpoint を呼ばない。`RAU-RR-11` では feasibility と guardrail を調査し、実行は別判断にする。
 
 ### Unconfirmed / Investigation Tasks
 
 次は確認済み仕様として扱わず、browser-trace / browser-to-api 調査 task にする。
 
-- 現在 rank の取得可否。
-- rank ladder の取得可否。
-- rank の上下関係の取得可否。
+- `rank_sequences[].default_sequence` の大小が rank 上げ / 下げのどちらに対応するか。
 - rank 別、日付別、部屋タイプ別価格表の取得可否。
-- Revenue Assistant への rank 反映 API の有無、request shape、安全制約。
+- Revenue Assistant への rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動。
 - 現在販売中価格の全体像が取れるか。
 - プラン別、人数別、食事条件別の価格と rank の関係が取れるか。
 
@@ -422,10 +451,10 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 
 ## Open Questions
 
-1. current rank はどの endpoint から取得できるか。
-2. rank ladder と rank の上下関係は取得できるか。
-3. rank 別、日付別、roomGroup 別の price table は取得できるか。
-4. Revenue Assistant への rank 反映 API は存在するか。存在する場合、request shape、権限、CSRF、同時編集時の挙動、安全制約は何か。
+1. `rank_sequences[].default_sequence` の大小は、Revenue Assistant UI 上の rank 上げ / 下げのどちらに対応するか。
+2. rank 別、日付別、roomGroup 別の price table は取得できるか。
+3. Revenue Assistant への rank 反映 API 候補は存在するが、request shape、権限、CSRF、同時編集時の挙動、安全制約、partial failure は何か。
+4. `reflection_allow.is_allowed` が false のとき、標準 UI と API はどのように反映を止めるか。
 5. 現在販売中価格の全体像は取得できるか。
 6. プラン別、人数別、食事条件別の価格と rank の関係は取得できるか。
 7. 小キャパの eligibility threshold は何室以下、または残室率何%以下を初期値にするか。

@@ -1040,6 +1040,13 @@
 
 ### RAU-RR-03 current rank / rank ladder / rank price table の取得可否を browser trace で調査する
 
+- 状態:
+  - 2026-05-28 実施済み。
+  - `/api/v1/suggest/output/current_settings` から `latest_current.price_rank_code` と `latest_current.price_rank_name` を取得できるため、current rank は `stayDate x roomGroup` 単位で取得可能と扱う。
+  - `/api/v1/rank_sequences` から `price_rank_code`、`price_rank_name`、`default_sequence` を取得できるため、rank ladder 候補は取得可能と扱う。
+  - `/api/v1/rank_colors` から rank 表示色候補を取得できる。
+  - `/api/v1/plan_master/plan_rank_price` は `from=YYYYMMDD` で 200 応答を確認したが、観測範囲に実価格 field がなかったため、rank price table と現在販売中価格は未確認のまま扱う。
+  - bundle 内に rank 反映系の POST endpoint 候補は見つかったが、実行していない。request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動は未確認である。
 - 目的:
   - rank recommendation で current rank、rank ladder、recommendedRank、future bulk apply を扱えるか判断するため、Revenue Assistant の実通信と画面状態を調査する。
 - 背景:
@@ -1063,7 +1070,7 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
-  - `open-spec-questions`: current rank、rank ladder、price table、rank reflection endpoint が取得できるか。
+  - `open-spec-questions`: `rank_sequences[].default_sequence` の方向。rank price table と現在販売中価格の取得可否。rank reflection endpoint の request shape と安全制約。
 
 ### RAU-RR-04 トップ料金調整候補リスト UI shell を実装する
 
@@ -1079,7 +1086,7 @@
   - warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示と意味が混ざらない表示 layer にする。
 - 非目標:
   - 推奨レート金額を表示しない。
-  - 推奨 rank 名は、rank ladder / current rank 取得可否が確認されるまで表示必須にしない。
+  - 推奨 rank 名は、`rank_sequences[].default_sequence` の方向が確認されるまで表示必須にしない。current rank 名は `RAU-RR-03` で取得候補が確認済みのため表示候補にできる。
   - user decision の永続保存は `RAU-RR-07` で扱う。
   - rank change history による resolved 化は `RAU-RR-08` で扱う。
 - 受け入れ条件:
@@ -1421,15 +1428,14 @@
 
 Now:
 
-- `RAU-RR-03` current rank / rank ladder / rank price table の取得可否を browser trace で調査する
+- `RAU-RR-04` トップ料金調整候補リスト UI shell を実装する
 
 Next:
 
-- `RAU-RR-04` トップ料金調整候補リスト UI shell を実装する
+- `RAU-RR-05` reference deviation ベースの初期 priority scoring を実装する
 
 After Next:
 
-- `RAU-RR-05` reference deviation ベースの初期 priority scoring を実装する
 - `RAU-RR-06` Analyze 遷移・対象 roomGroup focus 導線を実装する
 - `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
 - `RAU-RR-08` rank change history による resolved 化を実装する
@@ -1449,8 +1455,8 @@ Later:
 - `RAU-RR-02` は 2026-05-27 に実装済みである。保存 schema version は `booking_curve_raw_source:v2`、保存方式は rooms / sales / ADR fields までの compact source 維持、IndexedDB database version は据え置きとしたため、Remaining Task Triage には含めない。
 - Rank Recommendation Bundle は、`RAU-FC-01` の rooms-only 予測モデル導入判断と重なるが、UI、候補 lifecycle、user decision、rank history、rank response、future bulk apply を含むため、独立 bundle として扱う。
 - first phase の rank recommendation は forecast model を必須入力にしない。reference curve deviation、capacity、remaining rooms、transient / group 分解、直近 rank change、競合価格 snapshot、sales / ADR raw source を使って、RM の作業キューを先に作る。
-- `RAU-RR-03` を Now に置く理由は、current rank、rank ladder、rank price table、rank 反映 API が未確認のままでは、推奨 rank 名、rank 上下関係、future bulk apply の安全制約を確定できないためである。
-- `RAU-RR-04` は、推奨金額なし、推奨 rank 名なしでも、`stayDate x roomGroup` の候補リスト shell と Analyze 導線を先に作れるため、API 調査後の最初の UI 実装候補にする。
+- `RAU-RR-03` は 2026-05-28 に実施済みである。current rank と rank ladder 候補は確認済みだが、`rank_sequences[].default_sequence` の方向、rank price table、現在販売中価格、rank 反映 API の request shape と安全制約は未確認として残す。
+- `RAU-RR-04` は、推奨金額なし、recommendedRank 名なしでも、`stayDate x roomGroup` の候補リスト shell と Analyze 導線を先に作れるため、API 調査後の最初の UI 実装候補にする。current rank 名は `RAU-RR-03` で取得候補が確認済みのため表示候補にできる。
 - `RAU-RR-05` は、forecast model なしで始められる reference deviation ベースの scoring とする。forecast model が必要かどうかは、first scoring の精度と不足 diagnostics を見てから `RAU-FC-01` で判断する。
 - `RAU-RR-07` と `RAU-RR-08` は、future bulk apply だけでなく first phase の候補リストのノイズ低減にも必要であるため、UI shell と初期 scoring の後に置く。
 - `RAU-RR-09` 以降は、first phase の active recommendation と user decision が蓄積してから扱う。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
