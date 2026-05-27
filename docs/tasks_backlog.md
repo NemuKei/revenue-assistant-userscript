@@ -1238,6 +1238,10 @@
 
 ### RAU-RR-09 rank response dataset / metrics を設計する
 
+- 状態:
+  - 2026-05-28 の docs 設計で完了。
+  - `docs/spec_003_rank_recommendation_signal.md` に、rank response dataset の grain、入力、rank change timestamp、event 重複時の扱い、booking_curve raw source v2 との接続、result window、baseline、output、欠損 diagnostics を定義した。
+  - 実価格または rank price table が取れるまでは、価格弾力性ではなく `ランク反応度` として扱う判断を `docs/context/DECISIONS.md` に残した。
 - 目的:
   - 過去 rank 変更に対して、変更後の booking curve、sales、ADR、競合価格がどう変化したかを評価できる dataset と metric を設計する。
 - 背景:
@@ -1263,6 +1267,10 @@
 
 ### RAU-RR-10 推奨ランク算出を設計する
 
+- 状態:
+  - 2026-05-28 の docs 設計で完了。
+  - current rank は `/api/v1/suggest/output/current_settings`、rank ladder 候補は `/api/v1/rank_sequences` を第一候補にする契約を `docs/spec_003_rank_recommendation_signal.md` に定義した。
+  - `rank_sequences[].default_sequence` の方向が Revenue Assistant UI の rank 上げ / 下げと対応することを確認するまでは `recommendedRank` を出さず、`recommendedRankDirection` のみを表示する。
 - 目的:
   - current rank と rank ladder が取得できる場合に、推奨ランク名または隣接 rank 方向を算出する契約を設計する。
 - 背景:
@@ -1289,6 +1297,10 @@
 
 ### RAU-RR-11 bulk apply feasibility を調査する
 
+- 状態:
+  - 2026-05-28 の feasibility 判断で完了。
+  - current rank、rank ladder 候補、reflection allow 候補は確認済みだが、write endpoint 候補は未実行であり、request shape、安全制約、partial failure、同時更新、preview、明示選択、反映結果保存が未確認または未実装である。
+  - 結論は `not-now` とし、first phase では bulk apply button も Revenue Assistant への write API 実行も追加しない。
 - 目的:
   - 将来の user-confirmed bulk apply を実装できるか、実装前に API、guardrail、状態管理、部分失敗時の記録を調査する。
 - 背景:
@@ -1455,21 +1467,19 @@
 
 Now:
 
-- `RAU-RR-09` rank response dataset / metrics を設計する
+- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
 
 Next:
 
-- `RAU-RR-10` 推奨ランク算出を設計する
+- `RAU-FC-02` 予測評価 dataset と metrics を設計する
 
 After Next:
 
-- `RAU-RR-11` bulk apply feasibility を調査する
+- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
 
 Later:
 
-- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
-- `RAU-FC-02` 予測評価 dataset と metrics を設計する
-- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+- 現時点ではなし。
 
 統合判断:
 
@@ -1484,11 +1494,12 @@ Later:
 - `RAU-RR-07` は実装済みである。IndexedDB store `revenue-assistant-rank-recommendations` / `rank-recommendation-decisions` に、`stayDate x roomGroup x action x reasonFingerprint` 単位で `snooze` と `dismiss` を保存する。`snooze` は LT 帯に応じた asOfDate 基準 cooldown を持ち、`dismiss` は同じ reasonFingerprint の再表示を抑制する。
 - `RAU-RR-08` は実装済みである。トップ候補 list の同期時に表示範囲の `/api/v3/lincoln/suggest/status` を読み、同じ `stayDate x roomGroupId` で asOfDate 以降の rank change がある candidate を active list から外す。
 - `RAU-RR-07` と `RAU-RR-08` は、future bulk apply だけでなく first phase の候補リストのノイズ低減にも必要であるため、UI shell と初期 scoring の後に置く。
-- `RAU-RR-09` 以降は、first phase の active recommendation と user decision が蓄積してから扱う。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
-- `RAU-RR-11` の bulk apply は将来候補だが first phase の非目標である。API、current rank 再取得、別 rank change 確認、user decision、cooldown、low confidence、small capacity、group-driven 除外、preview、部分失敗記録が揃うまで実装しない。
+- `RAU-RR-09` は 2026-05-28 の docs 設計で完了した。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
+- `RAU-RR-10` は 2026-05-28 の docs 設計で完了した。current rank と rank ladder 候補は使えるが、`rank_sequences[].default_sequence` の方向が未確認であるため、recommendedRank 名は方向確認まで出さない。
+- `RAU-RR-11` は 2026-05-28 の feasibility 判断で完了した。bulk apply は将来候補だが first phase の非目標である。API、current rank 再取得、別 rank change 確認、user decision、cooldown、low confidence、small capacity、group-driven 除外、preview、部分失敗記録が揃うまで実装しない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
-- `RAU-SALES-02` は、`RAU-RR-02` の保存契約更新後に、単価予測と売上予測へ接続する adapter / model 設計 task として Later に置く。
-- `RAU-FC-01` は削除しない。ただし、rank recommendation first phase は forecast model なしで始めるため、現在の Now から Later へ移す。
+- `RAU-SALES-02` は、`RAU-RR-02` の保存契約更新後に、単価予測と売上予測へ接続する adapter / model 設計 task として `RAU-FC-01` / `RAU-FC-02` の後に置く。
+- `RAU-FC-01` は削除しない。Rank Recommendation Bundle の first phase が `RAU-RR-11` まで完了したため、次の Now として rooms-only 予測モデルの導入要否を判断する。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。

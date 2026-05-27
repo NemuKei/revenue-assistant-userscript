@@ -356,6 +356,27 @@ rank response の評価対象:
 - 同曜日、同 LT、同 roomGroup、同 pace 帯で rank change がなかった近似日との比較。
 - 変更前 pace trend からの外れ。
 
+rank response dataset の first contract:
+
+- grain: `facilityId x stayDate x roomGroupId x rankChangeEvent`。
+- rank change event は `/api/v3/lincoln/suggest/status` の `date`、`rm_room_group_id`、`before_price_rank_name`、`after_price_rank_name`、`accepted_at`、`completed_at`、`reflector_name` を入力にする。
+- rank change timestamp は、初期実装では `accepted_at ?? completed_at ?? suggest_calc_datetime` を使う。複数 event が同じ `stayDate x roomGroupId` にある場合は、event ごとに別 record とし、同一 window の重なりは diagnostics に残す。
+- LT at change は `stayDate - rankChangeDate` で計算する。timestamp が日付化できない場合は `lt_missing` とする。
+- booking curve input は `booking_curve_raw_source:v2` を第一候補にし、`all`、`transient`、`group` の rooms、sales、ADR を event 前後の asOfDate で読む。
+- result window は、変更後 1 日、3 日、7 日、ACT または最終観測日を候補にする。該当 asOfDate の raw source がない場合は、推測補完せず `post_window_missing` を出す。
+- baseline は、直近型 reference curve、季節型 reference curve、同曜日・同 LT・同 roomGroup・同 pace 帯の非変更日、変更前 pace trend の順に候補とする。どの baseline を使ったかを `baselineKind` として残す。
+- output は、`pickupRooms`、`transientPickupRooms`、`groupPickupRooms`、`adrChange`、`salesChange`、`revparLikeChange`、`netPickup`、`baselineDelta`、`diagnostics` を持つ。
+- 実価格または rank price table が取れるまで、価格変化率や価格弾力性は出力しない。`rank response` は rank transition 後の需要、ADR、sales の反応を表す分析用 dataset とする。
+
+推奨 rank 算出の first contract:
+
+- current rank は `/api/v1/suggest/output/current_settings` の `latest_current.price_rank_code` / `price_rank_name` を第一候補にする。
+- rank ladder は `/api/v1/rank_sequences` の `price_rank_code`、`price_rank_name`、`default_sequence` を候補にする。
+- `default_sequence` の大小が Revenue Assistant UI の rank 上げ / 下げと対応する方向は未確認である。方向が確認されるまでは `recommendedRank` を出さず、`recommendedRankDirection` と UI 表示名 `上げ検討` / `下げ注意` / `監視` / `判定対象外` を出す。
+- 方向確認後も、first wave の recommendedRank は隣接 rank のみに限定する。2 段階以上の rank 移動、価格差最大化、売上最大化 rank の直接提示は行わない。
+- current rank が欠損する場合、rank ladder に current rank code が存在しない場合、または ladder の方向が未確認の場合は、`recommendedRank` を null にし、`recommendedRankDirection` のみを表示する。
+- rank price table または実販売価格が取れるまで、recommendedRank から推奨レート金額を導出しない。
+
 ## UI Contract
 
 ### Top
@@ -412,6 +433,16 @@ status は次を持つ。
 ## Future Bulk Apply
 
 bulk apply は将来候補として残すが、first phase では非目標とする。
+
+2026-05-28 時点の feasibility:
+
+- current rank は `/api/v1/suggest/output/current_settings` から取得候補を確認済みである。
+- rank ladder 候補は `/api/v1/rank_sequences` から取得候補を確認済みである。
+- 反映許可候補は `/api/v1/lincoln/suggest/reflection_allow?suggest_calc_datetime=...` の `is_allowed` として確認済みである。
+- write endpoint 候補は JavaScript bundle 内で確認したが、実行していない。request shape、必要 header、CSRF、provider 差、権限差、partial failure、同時更新、rollback、標準 UI との競合条件は未確認である。
+- rank price table と現在販売中価格は未確認である。
+- user decision、cooldown、dismissed、resolved の browser-local lifecycle は first phase の候補リスト用に実装済みである。ただし、bulk apply 用の preview、選択状態、反映結果保存、部分失敗保存は未実装である。
+- 以上により、`RAU-RR-11` の結論は `not-now` とする。bulk apply は future candidate のまま残すが、first phase では button も API 実行も追加しない。
 
 検討できる条件:
 
