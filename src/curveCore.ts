@@ -60,10 +60,18 @@ export interface ReferenceCurveResult {
 }
 
 export interface BookingCurveApiScopeCounts {
-    this_year_room_sum?: number;
-    last_year_room_sum?: number;
-    two_years_ago_room_sum?: number;
-    three_years_ago_room_sum?: number;
+    this_year_room_sum?: number | null;
+    last_year_room_sum?: number | null;
+    two_years_ago_room_sum?: number | null;
+    three_years_ago_room_sum?: number | null;
+    this_year_sales_sum?: number | null;
+    last_year_sales_sum?: number | null;
+    two_years_ago_sales_sum?: number | null;
+    three_years_ago_sales_sum?: number | null;
+    this_year_adr?: number | null;
+    last_year_adr?: number | null;
+    two_years_ago_adr?: number | null;
+    three_years_ago_adr?: number | null;
 }
 
 export interface BookingCurveApiPoint {
@@ -81,7 +89,11 @@ export interface BookingCurveApiResponse {
     booking_curve?: BookingCurveApiPoint[];
 }
 
-export type BookingCurveRoomSumKey = keyof BookingCurveApiScopeCounts;
+export type BookingCurveRoomSumKey =
+    | "this_year_room_sum"
+    | "last_year_room_sum"
+    | "two_years_ago_room_sum"
+    | "three_years_ago_room_sum";
 
 export interface BookingCurveResponseSource {
     response: BookingCurveApiResponse;

@@ -4,9 +4,10 @@
 
 ## Current Task Bundle
 
-- 主対象: `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
+- 主対象: `RAU-RR-03` current rank / rank ladder / rank price table の取得可否を browser trace で調査する
 - 完了済み前提:
   - `RAU-RR-01` rank recommendation signal spec を整備する
+  - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
 - この bundle で扱う Task ID:
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
   - `RAU-RR-03` current rank / rank ladder / rank price table の取得可否を browser trace で調査する
@@ -29,9 +30,9 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - `docs/spec_003_rank_recommendation_signal.md` を正本として、トップ料金調整候補リストと推奨ランク方向の first wave を進める。
-  - 最初の実装候補は `RAU-RR-02` とする。`/api/v4/booking_curve` response に含まれる sales / ADR を、raw source 保存で落とさない契約へ更新する。
-  - `RAU-RR-02` の実装前に、schema version を上げるか、既存 `compactBookingCurveResponse()` の責務を変えるかを決める。
-  - `RAU-RR-03` では、current rank、rank ladder、rank price table、rank 反映 API を確認済み扱いにせず、browser-trace / browser-to-api の調査対象として扱う。
+  - 次の主対象は `RAU-RR-03` とする。current rank、rank ladder、rank price table、rank 反映 API を確認済み扱いにせず、browser-trace / browser-to-api の調査対象として扱う。
+  - `RAU-RR-02` では、`/api/v4/booking_curve` response に含まれる sales / ADR を raw source 保存で落とさない契約へ更新済みである。保存 schema version は `booking_curve_raw_source:v2`、IndexedDB database version は 1 のまま据え置きである。
+  - `RAU-RR-03` の調査結果に応じて、推奨 rank 名を first UI shell に含められるか、または推奨方向だけで `RAU-RR-04` に進むか判断する。
 - 次スレッドでやらないこと:
   - 推奨レート金額を出さない。
   - Revenue Assistant への自動反映や選択範囲一括反映を実装しない。
@@ -40,10 +41,9 @@
   - 月次 `/api/v1/booking_curve/monthly` の snapshot read path を、過去 batch の履歴比較や日次差分表示へ広げない。
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
 - 終了条件:
-  - `RAU-RR-02` で、booking_curve raw source が sales / ADR を落とさない保存契約になっている。
-  - schema version を上げるか、既存 `compactBookingCurveResponse()` の責務を変えるかの判断が `docs/context/DECISIONS.md` または対象 spec に残っている。
-  - reference curve、warm cache、current curve 表示が rooms field を従来どおり読めることを verify している。
-  - `RAU-RR-03` へ進むか、先に `RAU-RR-02` の follow-up が必要か判断できる。
+  - `RAU-RR-03` で、current rank、rank ladder、rank price table、rank 反映 API の取得可否、endpoint 候補、request shape、response shape、未確認点が docs に残っている。
+  - 未確認 API を確認済み仕様として扱っていない。
+  - `RAU-RR-04` に進める場合、推奨 rank 名を出すか、推奨方向だけで UI shell を作るか判断できる。
 - subagent 利用方針:
   - 既定では使わない。
   - 使う場合は、browser trace 結果の要約、rank API 候補の read-heavy 調査、既存 raw source contract の棚卸しに限る。
@@ -53,6 +53,7 @@
   - 2026-05-27 の追補で、推奨ランク方向、トップ候補リスト、様子見 cooldown、sales / ADR 保存、一括反映の非目標、団体 / 個人分離、小キャパ、forecast との関係を、後続セッションが会話なしで復元できる粒度へ補強した。
   - `docs/spec_000_overview.md`、`docs/context/INTENT.md`、`docs/context/DECISIONS.md`、`docs/tasks_backlog.md` へ、rank recommendation の正本参照、判断原則、判断記録、後続 task bundle を同期した。
   - 2026-05-27 の現状確認で、`/api/v4/booking_curve` response 自体には sales / ADR が含まれる一方、`src/main.ts` の `compactBookingCurveResponse()` が保存前に rooms 系列だけを残していることを確認した。そのため、`RAU-RR-02` を raw source 保存契約の更新 task として最優先に置いた。
+  - `RAU-RR-02` は実装済み。`compactBookingCurveResponse()` の保持対象を rooms / sales / ADR fields へ拡張し、保存 schema version を `booking_curve_raw_source:v2` へ上げた。IndexedDB database version は object store と index 構造を変えないため 1 のまま据え置いた。既存 v1 record は同じ DB に残るが、v2 の cache key では読まれず、保存済み raw source signal も v2 record だけを有効扱いにする。
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
   - `RAU-CP-06` は完了。Analyze open 起点でも、現在開いている宿泊日の `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。
@@ -63,7 +64,7 @@
   - 競合価格グラフの部屋タイプ filter で、`WAYOUSHITSU` / `wayo` 系の raw value を `和洋室` として表示するようにした。保存データの raw value と filter 判定は従来どおり raw value を使う。
   - 競合価格グラフの系列色は、自社の青色と競合施設の色を分離した。競合施設の差し替えで一時的に施設数が 5 件を超えても、追加された競合施設を自社と同じ青色で表示しない。
   - `RAU-SALES-01` は完了。Analyze 日付単位の売上と ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。
-  - 2026-05-27 の現状確認では、保存前 compact が sales / ADR を落としているため、`RAU-RR-02` で raw source 保存契約を更新する。`RAU-SALES-02` は、将来の室数予測、単価予測、売上予測の接続設計として Later に移す。
+  - 2026-05-27 に、`RAU-RR-02` で raw source 保存契約を v2 へ更新した。`RAU-SALES-02` は、将来の室数予測、単価予測、売上予測の接続設計として Later に置く。
   - `RAU-MP-01` のコード状態を再確認した。既存実装は `src/monthlyProgress.ts` で `/monthly-progress/YYYY-MM` route を検知し、top / analyze 系同期を停止したうえで月次専用 observer と preview を起動する。
   - 月次 `/api/v1/booking_curve/monthly` は `src/monthlyProgressIndexedDb.ts` で `facilityCacheKey + yearMonth + batchDateKey` ごとに IndexedDB snapshot へ保存する。現在の preview は保存後に `readLatestMonthlyBookingCurveSnapshot()` で読む snapshot-backed read path であり、旧記述の「表示 read path は現行 API response を正とする」は実装状態と一致しない。
   - `RAU-MP-01` では、まず月次実績画面で GUI 確認し、必要なら `src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout だけを最小修正する。
@@ -90,7 +91,7 @@
 - 現行 current UI では、legacy sales-setting card が無い場合でも synthetic room-type host を生成し、overall summary、rank overview、room-group table、室タイプ別 booking curve を表示できる。
 - 月次実績画面の LT 基準 custom booking curve は、Analyze reference curve が一段落するまで優先度を下げる。
 - Analyze / 販売設定タブの booking curve warm cache は `/api/v4/booking_curve` raw source を保存している。この API response には室数だけでなく、`this_year_sales_sum`、過去年売上、`this_year_adr`、`last_year_adr` が含まれるため、Analyze 日付単位の売上・ADR 取得元として使える。
-- 2026-05-27 のコード現状確認では、`src/main.ts` の `compactBookingCurveResponse()` が保存前に rooms 系列だけを残し、sales / ADR を落としている。そのため、`RAU-RR-02` で schema version を上げるか既存 compact の責務を変えるかを判断し、raw source として sales / ADR を保持できる保存契約へ更新する。
+- `RAU-RR-02` で、`src/main.ts` の `compactBookingCurveResponse()` は rooms / sales / ADR fields を保持する compact source 作成へ更新済みである。保存 schema version は `booking_curve_raw_source:v2` とし、既存 `booking_curve_raw_source:v1` record は新しい read / write path で読まない。
 - `RAU-SALES-01` の Chrome CDP 調査では、2026-04-30 のホテル全体と室タイプ別シングルの両方で `/api/v4/booking_curve` に売上・ADR が含まれることを確認した。月次 `/api/v1/booking_curve/monthly?year_month=202606` は `sales_based` と `room_based` を返すが、予約日基準の月次系列であり、Analyze の stay_date 単位判断では既存 booking curve raw source を優先する。
 - `RAU-AF-01` は完了。2026-04-24 時点のログイン済み Revenue Assistant 環境で、`/api/v4/booking_curve` はホテル全体と全 6 室タイプについて、対象 `stay_date` 以外の比較対象日付でも 200 応答を返すことを確認した。
 - `/api/v4/booking_curve` の response に `batch-date` は含まれない。`batch-date` は既存の同期文脈または cache key 側で扱う。
@@ -172,11 +173,10 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-RR-02` を確認し、booking_curve raw source に sales / ADR を保存する契約を決める。
-2. `src/main.ts` の `compactBookingCurveResponse()` と `src/bookingCurveRawSourceStore.ts` の schema version を確認し、schema version を上げるか、compact の責務を変えるかを決める。
-3. `RAU-RR-03` では、current rank、rank ladder、rank price table、rank 反映 API を browser trace / browser-to-api の調査対象として扱い、確認済み仕様として書かない。
-4. `RAU-FC-01` は削除しない。rank recommendation の scoring に forecast が必要かを判断する補助候補として Later に置く。
-5. 競合価格、月次実績、warm cache calendar marker は直近の不具合修正と GUI 確認まで完了しているため、再発報告がない限り次スレッドの作業対象にしない。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-RR-03` を確認し、current rank、rank ladder、rank price table、rank 反映 API を browser trace / browser-to-api の調査対象として扱う。確認済み仕様として先に書かない。
+2. `RAU-RR-03` の結果を `docs/context/DECISIONS.md`、`docs/tasks_backlog.md`、必要な spec へ反映し、推奨 rank 名を first UI shell に含めるか、推奨方向だけで `RAU-RR-04` に進むか判断する。
+3. `RAU-FC-01` は削除しない。rank recommendation の scoring に forecast が必要かを判断する補助候補として Later に置く。
+4. 競合価格、月次実績、warm cache calendar marker は直近の不具合修正と GUI 確認まで完了しているため、再発報告がない限り次スレッドの作業対象にしない。
 
 変更しない契約:
 
@@ -198,9 +198,18 @@
 - 実装に入る場合の最小 verify は `npm run typecheck`、`npm run lint`、`npm run build` とする。
 - GUI まで触る場合は、Tampermonkey 側で `dist/*.user.js` を再読込してから Analyze 日付ページで確認する。
 - 2026-05-27 の rank recommendation docs 整備:
-  - 現在の再開入口は `RAU-RR-02`。
+  - 当時の再開入口は `RAU-RR-02`。
   - docs-only のため、最小 verify は `git diff --check` と docs 差分確認とする。
   - コード、package、`dist/*.user.js` は変更しない。
+- 2026-05-27 の `RAU-RR-02` code 実装:
+  - 現在の再開入口は `RAU-RR-03`。
+  - `compactBookingCurveResponse()` の保持対象を rooms / sales / ADR fields へ拡張した。
+  - 保存 schema version は `booking_curve_raw_source:v2`、IndexedDB database version は 1 のまま据え置きである。
+  - `git diff --check`: passed
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内では esbuild が workspace path を読めず失敗したため、同じ command を通常権限で再実行して通過した
+  - GUI 確認は未実施。今回の変更は保存対象 field と schema key の変更であり、sales / ADR の UI 表示は追加していない。
 - 2026-05-02 のスレッド移行前 docs 整備:
   - 当時の再開入口は `RAU-FC-01`。
   - 競合価格、月次実績、warm cache calendar marker は直近の修正と GUI 確認まで完了扱い。
@@ -340,7 +349,7 @@
 - rank recommendation first phase では推奨レート金額を出さない。金額推奨を行うには、プラン別、人数別、食事条件別、販売中価格、rank ladder、競合価格、施設方針の確認が必要であり、現時点では未確認項目が多い。
 - top 料金調整候補リストは、warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示と意味が混ざらない表示 layer にする必要がある。
 - user snooze / 対応不要の保存設計では、同じ recommendation の再表示抑制と、priority / confidence / reasonFingerprint 変化時の再表示条件を分ける必要がある。
-- booking_curve raw source は sales / ADR を含む保存契約へ更新する必要がある。現行 compact 処理が sales / ADR を落とすため、schema version を上げるか既存 compact の責務を変えるかを実装前に決める。
+- `booking_curve_raw_source:v2` は、次回 API 取得時に作成される。既存 `booking_curve_raw_source:v1` record は同じ IndexedDB に残るが、v2 の cache key と保存済み raw source signal では有効扱いにしないため、過去に保存済みだった日付でも v2 record が作られるまでは保存済み signal が出ない場合がある。
 - BCL-tuned `直近型カーブ` は、同じ曜日の履歴 stay_date を LT ごとに集計するため、仮実装より request 数が増える。
 - BCL-tuned `季節型カーブ` は、前年同月と 2 年前同月の同じ曜日の履歴 stay_date から final rooms と LT 比率を解決する必要がある。Revenue Assistant response だけで final rooms を常に解決できるかは実装中に確認する。
 - derived reference curve の IndexedDB 保持は、初期実装では `algorithmVersion` と `asOfDate` を key に含めて分離する。TTL や古い key の削除はまだ実装しない。

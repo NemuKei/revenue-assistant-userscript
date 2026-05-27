@@ -3,7 +3,7 @@ import type { BookingCurveApiResponse, CurveScope } from "./curveCore";
 const BOOKING_CURVE_RAW_SOURCE_DB_NAME = "revenue-assistant-booking-curve-sources";
 const BOOKING_CURVE_RAW_SOURCE_DB_VERSION = 1;
 const BOOKING_CURVE_RAW_SOURCE_STORE_NAME = "booking-curve-raw-sources";
-const BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION = "booking_curve_raw_source:v1";
+const BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION = "booking_curve_raw_source:v2";
 
 export interface BookingCurveRawSourceKeyParts {
     facilityId: string;
@@ -183,6 +183,11 @@ function getBookingCurveRawSourceStoredStayDateStatus(
             }
 
             const record = cursor.value as BookingCurveRawSourceRecord;
+            if (record.schemaVersion !== BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION) {
+                cursor.continue();
+                return;
+            }
+
             if (record.asOfDate === currentAsOfDate) {
                 resolve("currentAsOf");
                 return;

@@ -1003,6 +1003,11 @@
 
 ### RAU-RR-02 booking_curve raw source に sales / ADR を保存する
 
+- 状態:
+  - 2026-05-27 に実装済み。
+  - `compactBookingCurveResponse()` の保持対象を rooms / sales / ADR fields へ拡張した。
+  - 保存 schema version は `booking_curve_raw_source:v2` へ上げた。IndexedDB object store と index 構造は変えていないため、IndexedDB database version は 1 のまま据え置いた。
+  - 既存 `booking_curve_raw_source:v1` record は同じ IndexedDB に残るが、v2 の cache key では読まれない。トップカレンダーの保存済み raw source signal も v2 record だけを有効扱いにする。
 - 目的:
   - `/api/v4/booking_curve` response に含まれる sales / ADR を、raw source 保存で落とさず保持する。
   - rank response、ADR / sales health、将来の単価予測、将来の売上予測で使える入力証跡を作る。
@@ -1011,9 +1016,9 @@
   - 2026-05-27 の現状確認では、`src/main.ts` の `compactBookingCurveResponse()` が `this_year_room_sum`、`last_year_room_sum`、`two_years_ago_room_sum`、`three_years_ago_room_sum` だけを残し、sales / ADR を落としている。
   - raw source と呼ぶ保存契約を維持するなら、表示用 compact と raw source 保存の責務を分けるか、compact 対象を sales / ADR まで拡張する必要がある。
 - スコープ:
-  - `compactBookingCurveResponse()` の責務を、表示用軽量化と raw source 保存のどちらに寄せるか決める。
-  - schema version を上げる必要があるか判断する。
-  - `all`、`transient`、`group` の sales / ADR field を保存対象に含める。
+  - `compactBookingCurveResponse()` の責務は、Revenue Assistant response 全文の保存ではなく、RAU が扱う booking curve fields を保持する compact source 作成に寄せる。
+  - schema version を `booking_curve_raw_source:v2` へ上げる。
+  - `all`、`transient`、`group` の rooms / sales / ADR field を保存対象に含める。
   - 既存 raw source read path と reference curve adapter が、rooms だけを使う挙動を維持できるか確認する。
 - 非目標:
   - sales / ADR の UI 表示を追加しない。
@@ -1029,7 +1034,7 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`, `docs/spec_001_analyze_expansion.md`, `docs/spec_002_curve_core.md`
-  - `open-spec-questions`: schema version を上げるか。raw source 保存前に compact しない別 path を作るか。compact の対象 field を sales / ADR まで増やすか。
+  - `open-spec-questions`: なし。schema version は `booking_curve_raw_source:v2`、保存方式は rooms / sales / ADR fields までの compact source 維持、IndexedDB database version は据え置きとする。
 
 ### RAU-RR-03 current rank / rank ladder / rank price table の取得可否を browser trace で調査する
 
@@ -1315,8 +1320,8 @@
   - 室数予測を実装する場合に、予測室数と予測単価から予測売上を算出できるようにする。
 - 背景:
   - `RAU-SALES-01` で、既存 `/api/v4/booking_curve` の `all`、`transient`、`group` に売上と ADR が含まれることを確認した。
-  - 2026-05-27 の現状確認では、`src/main.ts` の `compactBookingCurveResponse()` が保存前に sales / ADR を落としているため、`RAU-RR-02` で raw source 保存契約を更新する必要がある。
-  - 売上・ADR の追加取得 queue は不要である。既存 `/api/v4/booking_curve` response を、sales / ADR まで保持できる raw source として保存する方向で扱う。
+  - 2026-05-27 の `RAU-RR-02` で、`src/main.ts` の `compactBookingCurveResponse()` は rooms / sales / ADR fields を保持する compact source 作成へ更新済みである。
+  - 売上・ADR の追加取得 queue は不要である。既存 `/api/v4/booking_curve` response を、sales / ADR まで保持できる raw source として保存したうえで adapter / model へ接続する。
   - 直近の優先対象は売上・ADR の表示ではなく、rank response、将来の単価予測、売上予測へ接続できる保存契約と adapter の整理である。
 - スコープ:
   - `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` の型と null handling を定義する。
@@ -1414,15 +1419,14 @@
 
 Now:
 
-- `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
+- `RAU-RR-03` current rank / rank ladder / rank price table の取得可否を browser trace で調査する
 
 Next:
 
-- `RAU-RR-03` current rank / rank ladder / rank price table の取得可否を browser trace で調査する
+- `RAU-RR-04` トップ料金調整候補リスト UI shell を実装する
 
 After Next:
 
-- `RAU-RR-04` トップ料金調整候補リスト UI shell を実装する
 - `RAU-RR-05` reference deviation ベースの初期 priority scoring を実装する
 - `RAU-RR-06` Analyze 遷移・対象 roomGroup focus 導線を実装する
 - `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
@@ -1440,17 +1444,17 @@ Later:
 統合判断:
 
 - `RAU-RR-01` は 2026-05-27 の docs-only 正本化で完了したため、Remaining Task Triage には含めない。
+- `RAU-RR-02` は 2026-05-27 に実装済みである。保存 schema version は `booking_curve_raw_source:v2`、保存方式は rooms / sales / ADR fields までの compact source 維持、IndexedDB database version は据え置きとしたため、Remaining Task Triage には含めない。
 - Rank Recommendation Bundle は、`RAU-FC-01` の rooms-only 予測モデル導入判断と重なるが、UI、候補 lifecycle、user decision、rank history、rank response、future bulk apply を含むため、独立 bundle として扱う。
 - first phase の rank recommendation は forecast model を必須入力にしない。reference curve deviation、capacity、remaining rooms、transient / group 分解、直近 rank change、競合価格 snapshot、sales / ADR raw source を使って、RM の作業キューを先に作る。
-- `RAU-RR-02` を Now に置く理由は、rank response、ADR / sales health、将来の単価予測、売上予測に必要な sales / ADR が、現行 compact 処理で保存前に落ちているためである。保存契約が曖昧なまま scoring や rank response へ進めない。
-- `RAU-RR-03` を Next に置く理由は、current rank、rank ladder、rank price table、rank 反映 API が未確認のままでは、推奨 rank 名、rank 上下関係、future bulk apply の安全制約を確定できないためである。
+- `RAU-RR-03` を Now に置く理由は、current rank、rank ladder、rank price table、rank 反映 API が未確認のままでは、推奨 rank 名、rank 上下関係、future bulk apply の安全制約を確定できないためである。
 - `RAU-RR-04` は、推奨金額なし、推奨 rank 名なしでも、`stayDate x roomGroup` の候補リスト shell と Analyze 導線を先に作れるため、API 調査後の最初の UI 実装候補にする。
 - `RAU-RR-05` は、forecast model なしで始められる reference deviation ベースの scoring とする。forecast model が必要かどうかは、first scoring の精度と不足 diagnostics を見てから `RAU-FC-01` で判断する。
 - `RAU-RR-07` と `RAU-RR-08` は、future bulk apply だけでなく first phase の候補リストのノイズ低減にも必要であるため、UI shell と初期 scoring の後に置く。
 - `RAU-RR-09` 以降は、first phase の active recommendation と user decision が蓄積してから扱う。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
 - `RAU-RR-11` の bulk apply は将来候補だが first phase の非目標である。API、current rank 再取得、別 rank change 確認、user decision、cooldown、low confidence、small capacity、group-driven 除外、preview、部分失敗記録が揃うまで実装しない。
-- `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 の現状確認では保存前 compact が sales / ADR を落としているため、直近の作業は追加取得ではなく `RAU-RR-02` の保存契約更新である。
-- `RAU-SALES-02` は、`RAU-RR-02` で保存契約を更新した後、単価予測と売上予測へ接続する adapter / model 設計 task として Later に置く。
+- `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
+- `RAU-SALES-02` は、`RAU-RR-02` の保存契約更新後に、単価予測と売上予測へ接続する adapter / model 設計 task として Later に置く。
 - `RAU-FC-01` は削除しない。ただし、rank recommendation first phase は forecast model なしで始めるため、現在の Now から Later へ移す。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。

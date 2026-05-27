@@ -19,6 +19,9 @@ import {
     getUtcWeekday,
     normalizeDateKey,
     toCompactDateKey,
+    type BookingCurveApiPoint,
+    type BookingCurveApiResponse,
+    type BookingCurveApiScopeCounts,
     type BookingCurveResponseSource,
     type CurveSegment,
     type CurveScope,
@@ -244,29 +247,13 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE}]`
 ].join(", ");
 
-interface BookingCurveScopeCounts {
-    this_year_room_sum?: number;
-    last_year_room_sum?: number;
-    two_years_ago_room_sum?: number;
-    three_years_ago_room_sum?: number;
-}
+type BookingCurveScopeCounts = BookingCurveApiScopeCounts;
 
-interface BookingCurvePoint {
-    date: string;
-    last_year_date?: string;
-    all?: BookingCurveScopeCounts;
-    transient?: BookingCurveScopeCounts;
-    group?: BookingCurveScopeCounts;
-}
+type BookingCurvePoint = BookingCurveApiPoint;
 
 type BookingCurveCountScope = "all" | "transient" | "group";
 
-interface BookingCurveResponse {
-    stay_date: string;
-    last_year_stay_date?: string;
-    max_room_count?: number;
-    booking_curve?: BookingCurvePoint[];
-}
+type BookingCurveResponse = BookingCurveApiResponse;
 
 interface YadInfoResponse {
     yad_no?: string;
@@ -2682,12 +2669,20 @@ function compactBookingCurveScopeCounts(counts: BookingCurveScopeCounts | undefi
         "this_year_room_sum",
         "last_year_room_sum",
         "two_years_ago_room_sum",
-        "three_years_ago_room_sum"
+        "three_years_ago_room_sum",
+        "this_year_sales_sum",
+        "last_year_sales_sum",
+        "two_years_ago_sales_sum",
+        "three_years_ago_sales_sum",
+        "this_year_adr",
+        "last_year_adr",
+        "two_years_ago_adr",
+        "three_years_ago_adr"
     ] as const;
 
     for (const key of countKeys) {
         const value = counts[key];
-        if (typeof value === "number") {
+        if (typeof value === "number" || value === null) {
             compactCounts[key] = value;
         }
     }

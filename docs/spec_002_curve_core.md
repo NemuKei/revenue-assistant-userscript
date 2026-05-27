@@ -42,7 +42,7 @@
 - `as_of_date`: 予約状態を評価する基準日。Revenue Assistant の `batch-date` が response に無い場合は、既存同期文脈または取得側の key から渡す。
 - `LT`: lead time。宿泊日から予約状態の基準日までの日数差。例: 宿泊日の 7 日前は `LT=7` とする。
 - `ACT`: 宿泊日着地後の最終実績を表す点。`0日前` は宿泊日当日時点で観測した予約状態、`ACT` は宿泊日後に確定した最終実績として扱い、同じ値であっても同一概念として扱わない。
-- `raw source`: Revenue Assistant API から取得した `/api/v4/booking_curve` response と、取得時点を復元するための key 情報を合わせた保存単位。core logic は raw source を直接保存しないが、adapter へ渡される前の入力証跡として扱う。
+- `raw source`: Revenue Assistant API から取得した `/api/v4/booking_curve` response のうち、RAU が扱う fields と、取得時点を復元するための key 情報を合わせた保存単位。2026-05-27 時点の `booking_curve_raw_source:v2` は rooms / sales / ADR fields を保持する。これは HAR や response 全文の保存を意味しない。core logic は raw source を直接保存しないが、adapter へ渡される前の入力証跡として扱う。
 - `scope`: ホテル全体または室タイプ別を区別する対象範囲。
 - `segment`: rooms 系列の区分。初期対象は `all` と `transient`。`group` は入力可能だが標準表示は別判断とする。
 - `final_rooms`: 履歴 stay_date の最終販売室数。季節型カーブの比率計算で分母になる。
@@ -118,6 +118,8 @@ Revenue Assistant 固有の field 名、例えば `this_year_room_sum`、`last_y
 - segment 解決に必要な response 全体。
 - API endpoint と query。少なくとも `/api/v4/booking_curve` の `date` と `rm_room_group_id` を復元できること。
 - 保存 schema version。
+
+`RAU-RR-02` では、raw source schema を `booking_curve_raw_source:v2` へ上げ、保存前 compact の保持対象を rooms / sales / ADR fields へ拡張した。ただし、この仕様の current reference curve adapter は引き続き rooms field だけを canonical input の `rooms` に変換する。sales / ADR は、rank response、将来の単価予測、将来の売上予測向けの入力証跡として保存し、rooms adapter が sales / ADR を room sum として読む形にはしない。
 
 既に実績確定後の response しか取得できない過去 stay_date では、本当の `0日前` と `ACT` の差分は確定できない。この制約は欠損として扱い、推測で補完しない。分離保存が有効になるのは、raw source 保存開始後に観測した stay_date 以降である。
 

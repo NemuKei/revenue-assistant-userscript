@@ -106,7 +106,8 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - tooltip は point または marker の hover / focus 中だけ表示し、カーソルまたはフォーカスが外れたら非表示にする
 - 同じ部屋タイプで同じ日に複数回 rank 変更がある場合、Phase 1 ではその日の最後の 1 件だけを marker として表示する
 - `/api/v4/booking_curve` の raw source は `stayDate`、`asOfDate`、`fetchedAt`、scope、roomGroupId、endpoint、query、schema を key 情報として IndexedDB に保存する
-- raw source は、response に含まれる rooms、sales、ADR を後続の reference curve、rank response、単価予測、売上予測で再利用できる保存契約にする。2026-05-27 の現状確認では、実装上の compact 処理が sales / ADR を落としているため、`RAU-RR-02` で保存契約を更新する
+- raw source は、response に含まれる rooms、sales、ADR を後続の reference curve、rank response、単価予測、売上予測で再利用できる保存契約にする。`RAU-RR-02` では、完全な response 全文ではなく、RAU が扱う rooms / sales / ADR fields を `compactBookingCurveResponse()` で保持する方針にした
+- `booking_curve_raw_source:v2` は、`all`、`transient`、`group` の rooms fields、sales fields、確認済みの ADR fields と、将来 response に含まれる可能性がある過去年 ADR optional fields を保持する。既存 `booking_curve_raw_source:v1` record は同じ IndexedDB に残るが、v2 の cache key では読まれず、次回取得で v2 record が作られる
 - 既存の short-lived cache は画面応答のために維持するが、`0日前` と `ACT` の分離や future reference curve の再計算に使う正本は raw source IndexedDB とする
 - `/api/v4/booking_curve` response 全体を localStorage に永続保存する旧 persistent cache は、新規書き込みを行わない。理由は、同じ raw source を IndexedDB に保存済みであり、localStorage 側は画面応答用の短期 memory cache と役割が重複するうえ、施設単位で数十件保存すると localStorage の容量上限に達するためである
 - 既存の localStorage booking curve key は、`revenue-assistant:group-room-count:v4:<facilityCacheKey>:booking-curve:` の facility prefix に限定して削除してよい。localStorage 全体、競合価格 IndexedDB、booking curve raw source IndexedDB、derived reference curve IndexedDB は削除対象にしない
@@ -217,7 +218,7 @@ BCL-tuned first wave の定義:
 - derived cache の key は、少なくとも `facility_id`、`scope`、`target_stay_date` または `target_month + weekday`、`as_of_date`、`rm_room_group_id`、`curve_kind`、`algorithm_version` を含める
 - first wave の derived cache は、TTL による自動失効ではなく、`as_of_date` と `algorithm_version` を key に含めて分離する。表示側は現在の key だけを読む。古い key の削除は、保存量または再計算頻度が問題になった時点で別 task として判断する
 - `/api/v4/booking_curve` の raw source も `IndexedDB` 保存対象にする。raw source は response 改善、`0日前` と `ACT` の分離、将来の予測評価 dataset の入力証跡を兼ねる。
-- raw source の key は、少なくとも施設識別子、`stay_date`、`as_of_date`、`fetched_at`、scope、`rm_room_group_id`、endpoint、query、schema version を含める。
+- raw source の key は、少なくとも施設識別子、`stay_date`、`as_of_date`、`fetched_at`、scope、`rm_room_group_id`、endpoint、query、schema version を含める。`booking_curve_raw_source:v2` 以降では、schema version が保存契約の一部であり、v1 rooms-only compact record と v2 rooms / sales / ADR compact record は別 key として扱う。
 - raw source の read path は API 取得より先に参照する。IndexedDB に有効な raw source があれば API request を省略し、不足している stay_date と scope だけ API から取得する。
 - raw source 保存開始前の過去 stay_date は、実績確定後に API 側で上書き済みの可能性があるため、本当の `0日前` と `ACT` を分離できる対象に含めない。
 - 同じ derived cache key の計算が進行中の場合、重複 request を発行せず、進行中の計算結果を共有する

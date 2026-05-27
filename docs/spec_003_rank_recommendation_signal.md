@@ -74,7 +74,7 @@ Analyze は詳細確認の場として扱う。トップ画面では候補一覧
    利用者が候補を見たうえで「今は触らない」と判断したものが出続けると、recommendation list は作業キューではなくノイズになる。`様子見` は false positive ではなく、人間が「今はタイミングではない」と判断したログである。`対応不要` は false positive 候補であり、同じ根拠を再表示しないための model 改善 input である。したがって `snoozed_by_user` と `dismissed_by_user` は別状態にする。様子見中でも、priority、confidence、個人需要 pickup、残室率、競合価格、主因、reasonFingerprint が大きく変われば再表示できるようにする。reasonFingerprint は、同じ根拠の繰り返し通知と、新しい根拠による再通知を分けるために持つ。
 
 4. sales / ADR 保存を進める理由。
-   rooms だけを見ると、値下げ後に pickup が増えたが ADR が落ちて売上や RevPAR 相当が悪化したケースを、良い反応として誤解する可能性がある。rank response の評価では、rooms だけでなく ADR、sales、RevPAR 相当、net pickup を合わせて見る必要がある。sales / ADR は将来の単価予測と売上予測にも使える。正本上は `/api/v4/booking_curve` response に sales / ADR が含まれることを確認済みだが、2026-05-27 の実装現状確認では compact 保存で落ちている可能性があるため、`RAU-RR-02` で保存契約を修正する。
+   rooms だけを見ると、値下げ後に pickup が増えたが ADR が落ちて売上や RevPAR 相当が悪化したケースを、良い反応として誤解する可能性がある。rank response の評価では、rooms だけでなく ADR、sales、RevPAR 相当、net pickup を合わせて見る必要がある。sales / ADR は将来の単価予測と売上予測にも使える。正本上は `/api/v4/booking_curve` response に sales / ADR が含まれることを確認済みである。`RAU-RR-02` では、保存前 compact の保持対象を rooms / sales / ADR fields へ拡張し、後続 task が rank response、単価予測、売上予測の入力証跡として使える状態にした。
 
 5. 一括反映を first phase に入れない理由。
    bulk apply には、rank 反映 API、rank ladder、current rank、反映直前の再取得、recommendation 生成後の別 rank change 確認、部分失敗時の記録、利用者の明示選択、対象除外 guardrail が必要である。精度が担保される前に bulk apply を入れると、誤った rank 変更をまとめて実行する危険がある。ただし、将来の user-confirmed bulk apply を見据え、first phase から recommendation lifecycle と user decision は保存できる設計にする。将来実装する場合も、自動反映ではなく user-confirmed bulk apply を前提にする。
@@ -125,7 +125,8 @@ first phase では次を行わない。
 - rooms 系列の主要取得元である。
 - response には sales / ADR も含まれることが過去調査で確認されている。
 - 保存単位は、facility、stayDate、asOfDate、scope、roomGroup、endpoint、query、schema version を持つ raw source とする。
-- 2026-05-27 の実装現状確認では、`src/main.ts` の `compactBookingCurveResponse()` が `this_year_room_sum`、`last_year_room_sum`、`two_years_ago_room_sum`、`three_years_ago_room_sum` だけを残し、sales / ADR を落としている。そのため、`raw source` と呼ぶ保存契約を維持するには、sales / ADR を落とさない契約更新 task が必要である。
+- `RAU-RR-02` では、`src/main.ts` の `compactBookingCurveResponse()` の保持対象を rooms / sales / ADR fields へ拡張し、保存 schema version を `booking_curve_raw_source:v2` へ上げた。保存する raw source は Revenue Assistant response 全文ではなく、RAU が扱う fields と key 情報を保持する compact source である。
+- 既存 `booking_curve_raw_source:v1` record は同じ IndexedDB に残るが、v2 の cache key では読まれない。v2 record は次回 API 取得時に作られる。IndexedDB object store と index 構造は変えないため、IndexedDB database version は据え置く。
 
 `/api/v3/lincoln/suggest/status`
 
