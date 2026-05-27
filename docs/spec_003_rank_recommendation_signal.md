@@ -1,0 +1,416 @@
+# spec_003_rank_recommendation_signal
+
+## Purpose
+
+この仕様は、Revenue Assistant のトップ画面と Analyze 画面に、料金調整候補を `stayDate x roomGroup` 単位で提示するための外部挙動、入力、判定単位、状態管理、UI 契約、未確認論点を定義する。
+
+最初の目的は、自動価格変更ではなく、RM（Revenue Manager）が今日確認すべき作業キューを作ることである。
+
+この仕様で扱う recommendation は、「この価格が正しい」と断定するものではない。利用者に対して、次のような判断支援を行う。
+
+- 今日見るべき候補はどの日付と部屋タイプか。
+- この部屋タイプは 1 段階上げを検討する候補か、下げを注意して見る候補か、監視に留める候補か。
+- 候補になった根拠は、個人 pace、残室、reference curve からの差分、過去の rank 変更反応、直近 rank 変更の有無、競合価格 snapshot、売上または ADR の状態のどれか。
+- 判定に使えるデータが足りない場合、何が不足しているため `判定対象外` または低 confidence なのか。
+
+first phase では、推奨レート金額を出さない。Revenue Assistant の実操作単位に合わせ、`ランク方向` または将来取得できる場合の `推奨ランク` を中心に扱う。
+
+## Ownership And Update Trigger
+
+所有者:
+
+- Revenue Assistant userscript の top / analyze 画面における料金調整候補表示。
+- `docs/spec_001_analyze_expansion.md` の Analyze booking curve、rank marker、競合価格 snapshot、warm cache と接続する feature line。
+- `docs/spec_002_curve_core.md` の reference curve、forecast extension、evaluation extension を、料金調整候補の根拠として使う後続 feature line。
+
+更新トリガー:
+
+- 料金調整候補の表示単位、UI 表示位置、user decision、lifecycle が変わるとき。
+- 推奨方向、推奨ランク、priority、confidence、reason code、reason fingerprint の入出力契約が変わるとき。
+- Revenue Assistant から current rank、rank ladder、rank price table、rank 反映 API を取得できると確認したとき。
+- `rank response`、sales / ADR、競合価格 snapshot、reference curve、forecast result のどれかを scoring に追加するとき。
+- bulk apply を検討対象から実装対象へ進めるとき。
+
+## Product Intent / Background
+
+RAU の主線は、独立した本格 RMS（Revenue Management System）を先に作ることではなく、Revenue Assistant 画面上でレート調整判断を軽くすることである。Analyze 日付ページでは、booking curve、部屋タイプ別 card、全体 / 個人 / 団体、reference curve、rank marker、競合価格 snapshot、warm cache が段階的に入っている。次の価値は、トップ画面で「どの宿泊日と部屋タイプから見るべきか」を一覧化し、Analyze 画面で詳細根拠を確認できるようにすることである。
+
+推奨レート金額を出すには、少なくとも次の情報が必要になる。
+
+- プラン別料金。
+- 人数別料金。
+- 食事条件別料金。
+- 現在販売中価格。
+- rank ladder と各 rank の上下関係。
+- rank 別、日付別、部屋タイプ別の価格表。
+- 競合価格の現在値と過去 snapshot。
+- 施設ごとの価格方針、最低価格、上限、販売停止、在庫制約。
+
+これらが揃わない段階で金額を出すと、利用者は「RAU が提示した金額が正しい」と受け取りやすい。金額推奨は責任が大きく、間違った場合の影響も大きい。一方で、Revenue Assistant の実操作が販売 rank の変更中心であるなら、first phase の recommendation は `維持`、`1段階上げ検討`、`1段階下げ検討`、`監視`、`判定対象外` のような離散判断として扱うほうが自然である。
+
+トップカレンダーの badge だけでは、RM が「何から作業するか」を決めにくい。日付セル内の表示は、その日付に何らかの状態があることを示すには向いているが、複数日、複数部屋タイプを比較して優先順に並べるには向いていない。トップ画面に料金調整候補リストを追加し、優先度の高い `stayDate x roomGroup` から並べることで、RM の作業順に直結させる。
+
+Analyze は詳細確認の場として扱う。トップ画面では候補一覧と根拠要約を出し、Analyze では booking curve、全体 / 個人 / 団体、reference curve、rank 履歴、競合価格、sales / ADR などの詳細根拠を見る。リスト行から Analyze へ遷移できるようにし、将来的には対象 roomGroup card を開く、対象位置へ scroll する、対象 card を highlight する。
+
+全体 rooms の上振れだけを根拠に個人価格 rank を上げると、団体による押し上げを個人需要の上振れとして誤読する可能性がある。したがって `all` だけではなく、`transient` と `group` を分ける。`all` が基準より多くても `group` が主因なら、個人価格 rank の上げ検討は抑制する。`transient` または個人需要の推定が基準より多いかを重視する。
+
+極小キャパの部屋タイプでは、1 室の変動が稼働率や pace deviation に与える影響が大きい。通常 threshold をそのまま適用すると、1 室の変化で頻繁に候補化される。first phase では、capacity、remaining rooms、観測点数、reference curve 欠損を使い、`eligibility`、`confidence`、`判定対象外` を持たせる。
+
+利用者が「見たが今は触らない」と判断した候補を出し続けると、候補リストが作業キューではなくノイズになる。そのため、user snooze と様子見 cooldown を持つ。様子見は false positive ではない。人間が「今はタイミングではない」と判断したログである。一方、対応不要は「この reasonFingerprint では候補として扱わなくてよい」という false positive 候補としてモデル改善に使える。両者を同じ dismiss として扱わない。
+
+将来の一括反映には、active recommendation だけではなく、user decision、cooldown、resolved、dismissed の状態管理が必要になる。first phase で一括反映を入れない理由は、UI 操作の実装量だけではない。rank ladder、current rank、反映 endpoint、反映直前再検証、部分失敗時の記録、user decision の尊重、small capacity や group-driven の除外など、誤反映を避けるための guardrail が揃っていないためである。
+
+## Scope
+
+### First Phase
+
+first phase では次を行う。
+
+- トップ画面に料金調整候補リストを出す。
+- 候補単位は原則 `stayDate x roomGroup` とする。
+- 候補には、優先度、宿泊日、部屋タイプ、現ランク、推奨方向、根拠、状態、Analyze 導線を出す。
+- 推奨方向の初期表現は、断定度の高い金額推奨ではなく、`raise_watch`、`lower_watch`、`watch`、`not_eligible` のような確認候補として扱う。
+- UI 表示名は日本語とし、初期候補は `上げ検討`、`下げ注意`、`監視`、`判定対象外` とする。
+- 推奨ランク名の表示は、rank ladder と current rank の取得可否が確認できてから追加する。
+- 既存 warm cache marker、団体室数表示、最終変更表示、競合価格 indicator と意味を混同しない表示 layer にする。
+- リストから該当日程の Analyze を開けるようにする。
+- rank change history による resolved 化は後続で含めるが、first UI shell では `active`、`snoozed_by_user`、`dismissed_by_user` の保存を優先する。
+
+### Non-goals For First Phase
+
+first phase では次を行わない。
+
+- 推奨レート金額を出さない。
+- Revenue Assistant への自動反映を行わない。
+- 選択範囲の一括反映を行わない。
+- PMS、DWH、人数 forecast を必須入力にしない。
+- Revenue Assistant 外の外部保存先を必須にしない。
+- 未確認 API を確認済みとして扱わない。
+- `価格弾力性` という名前を厳密な意味で使わない。実価格変化率が取れない段階では、`ランク反応度` または `rank response` と呼ぶ。
+
+## Data Sources
+
+### Confirmed / Existing
+
+`/api/v4/booking_curve`
+
+- rooms 系列の主要取得元である。
+- response には sales / ADR も含まれることが過去調査で確認されている。
+- 保存単位は、facility、stayDate、asOfDate、scope、roomGroup、endpoint、query、schema version を持つ raw source とする。
+- 2026-05-27 の実装現状確認では、`src/main.ts` の `compactBookingCurveResponse()` が `this_year_room_sum`、`last_year_room_sum`、`two_years_ago_room_sum`、`three_years_ago_room_sum` だけを残し、sales / ADR を落としている。そのため、`raw source` と呼ぶ保存契約を維持するには、sales / ADR を落とさない契約更新 task が必要である。
+
+`/api/v3/lincoln/suggest/status`
+
+- `rm_room_group_id`。
+- `rm_room_group_name`。
+- `accepted_at`。
+- `completed_at`。
+- `before_price_rank_name`。
+- `after_price_rank_name`。
+- `reflector_name`。
+- rank change history、resolved 判定、過去 rank response 評価に使う。
+
+`/api/v1/booking_curve/rm_room_groups`
+
+- roomGroup 一覧を取得する。
+
+`/api/v1/suggest/output/current_settings`
+
+- 現状では、部屋タイプ別 capacity、remaining、max の取得に使われている。
+- current rank、rank ladder、rank price table が取れるかは未確認である。
+
+### Unconfirmed / Investigation Tasks
+
+次は確認済み仕様として扱わず、browser-trace / browser-to-api 調査 task にする。
+
+- 現在 rank の取得可否。
+- rank ladder の取得可否。
+- rank の上下関係の取得可否。
+- rank 別、日付別、部屋タイプ別価格表の取得可否。
+- Revenue Assistant への rank 反映 API の有無、request shape、安全制約。
+- 現在販売中価格の全体像が取れるか。
+- プラン別、人数別、食事条件別の価格と rank の関係が取れるか。
+
+## Recommendation Unit
+
+Recommendation の最小単位は `facilityId x stayDate x asOfDate x roomGroupId` とする。UI 上の主単位は `stayDate x roomGroup` だが、保存上は施設と asOfDate を含める。
+
+候補 record は少なくとも次を持つ。
+
+- `facilityId`
+- `stayDate`
+- `asOfDate`
+- `roomGroupId`
+- `roomGroupName`
+- `currentRank`
+- `recommendedRank` or `recommendedRankDirection`
+- `action`
+- `priority`
+- `confidence`
+- `reasonCodes`
+- `reasonFingerprint`
+- `diagnostics`
+- `status`
+- `generatedAt`
+- `expiresAt`
+- `cooldownUntil`
+- `snoozedUntilAsOfDate` or `snoozedUntil`
+- `resolvedAt`
+
+初期 type 案:
+
+```ts
+type RankRecommendationAction =
+  | "raise_one"
+  | "lower_one"
+  | "keep"
+  | "watch"
+  | "not_eligible";
+
+type RankRecommendationStatus =
+  | "active"
+  | "snoozed_by_user"
+  | "dismissed_by_user"
+  | "resolved_by_rank_change"
+  | "expired"
+  | "suppressed_by_cooldown";
+
+type RankRecommendationPriority = "high" | "medium" | "low";
+```
+
+初期 UI では、`raise_one` と `lower_one` をそのまま命令として見せない。表示名は `上げ検討`、`下げ注意` のように、利用者が Analyze で確認して判断する前提の文言にする。
+
+## User Decisions
+
+first phase の UI は、最低限次の user decision を持つ。
+
+`Analyzeで確認`
+
+- その候補の詳細確認へ進む。
+- 初期実装では該当 stayDate の Analyze を開く。
+- 後続では、sessionStorage などで pending focus を保持し、対象 roomGroup card を開く、scroll する、highlight する。
+
+`様子見`
+
+- 一時抑制を表す。
+- 内部状態は `snoozed_by_user` とする。
+- 通常の rank 変更後 cooldown とは別に扱う。
+- 一定期間、または条件変化まで active list に再表示しない。
+
+`対応不要`
+
+- より強い抑制を表す。
+- 内部状態は `dismissed_by_user` とする。
+- 同じ `stayDate x roomGroup x action x reasonFingerprint` では基本的に再表示しない。
+- false positive 候補として保存し、後続の scoring 改善に使う。
+
+### User Snooze / 様子見 Cooldown
+
+様子見 cooldown は、rank 変更後 cooldown とは別の user decision lifecycle として扱う。
+
+- LT 帯によって既定期間を変える。
+- できれば `最終データ更新` または `asOfDate` 基準で管理する。
+- UI は最初から複雑にしない。初期 UI は `様子見` button だけでもよい。
+- 内部では、LT に応じた default cooldown を設定する。
+
+再表示条件:
+
+- cooldown が終了した。
+- priority が上がった。
+- confidence が一定以上上がった。
+- 個人需要 pickup が大きく増えた。
+- 残室率が閾値を下回った。
+- 競合価格が大きく変化した。
+- 候補の主因が団体起因から個人起因へ変わった。
+- reasonFingerprint が変わった。
+
+### Dismiss / 対応不要
+
+対応不要は、一時的な様子見ではなく、同じ根拠での再表示を抑制する user decision として扱う。
+
+- 同じ `stayDate x roomGroup x action x reasonFingerprint` は抑制する。
+- 方向、主要根拠、または reasonFingerprint が大きく変わった場合は、再表示候補にできる。
+- 対応不要の履歴は、future scoring で false positive として使えるように残す。
+
+## Priority / Scoring
+
+初期 scoring は別 task で実装する。仕様上の考え方は次の通りとする。
+
+```text
+priorityScore =
+  demand pace deviation
++ final occupancy expectation
++ capacity / remaining-room urgency
++ LT urgency
++ transient contribution
++ ADR / sales health
++ competitor price movement
++ historical rank response
+- group-driven penalty
+- small-capacity uncertainty
+- recent rank-change cooldown
+- data missing penalty
+- historically poor rank-transition response
+```
+
+scoring では次を守る。
+
+- `all` が基準より多くても、`group` が主因なら、個人価格 rank の上げ検討は抑制する。
+- `transient` または個人需要推定が基準より多いかを重視する。
+- 小キャパの roomGroup は、`not_eligible` または低 confidence へ落とす。
+- reference curve、forecast、capacity、current rank、rank ladder、競合価格 snapshot が欠損している場合は、推測で埋めず diagnostics に不足理由を出す。
+- 直近に rank 変更がある場合は、同じ方向の recommendation を出し続けないよう cooldown を使う。
+- 過去に反応が悪かった rank transition は、priority または confidence を下げる。
+
+## Rank Response / Elasticity
+
+厳密な価格弾力性は、価格変化率が取れないと算出できない。rank change history だけで最初に評価できるのは、`rank response` または `ランク反応度` である。
+
+実価格、または rank price table が取得できるようになった場合、rank response を価格弾力性へ拡張できる。ただし first phase では、価格弾力性という用語を厳密な意味で使わない。
+
+rank response の評価対象:
+
+- rank transition: `beforeRank -> afterRank`
+- roomGroup
+- stayDate
+- LT at change
+- capacity
+- current all / transient / group rooms
+- sales / ADR
+- competitor snapshot
+
+結果指標:
+
+- 変更後 1 日 pickup。
+- 変更後 3 日 pickup。
+- 変更後 7 日 pickup。
+- final rooms。
+- final occupancy。
+- ADR。
+- sales。
+- RevPAR 相当。
+- net pickup。
+
+反実仮想の初期候補:
+
+- 直近型 reference curve に対する変更後 pickup 差分。
+- 季節型 reference curve に対する変更後 pickup 差分。
+- 同曜日、同 LT、同 roomGroup、同 pace 帯で rank change がなかった近似日との比較。
+- 変更前 pace trend からの外れ。
+
+## UI Contract
+
+### Top
+
+トップ画面には、料金調整候補リストを追加する。
+
+- 日付 x 部屋タイプ単位の候補を優先度順に表示する。
+- 最大件数は初期値を持つ。初期候補は top 10 とする。
+- top 10 の外にも候補がある場合は、件数だけでも分かる表示を候補にする。
+
+行項目:
+
+- 優先度。
+- 宿泊日。
+- 部屋タイプ。
+- 現ランク。
+- 推奨方向または推奨ランク方向。
+- 主要根拠。
+- 状態。
+- `Analyzeで確認`。
+- `様子見`。
+- `対応不要`。
+
+トップカレンダー badge は optional とする。入れる場合でも、warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示と意味を混同しない。候補リストを作業順の主導線とし、badge は補助表示に留める。
+
+### Analyze
+
+Analyze 画面では、該当日付の候補一覧と部屋タイプ別 signal detail を表示する。
+
+- 該当 stayDate の候補一覧を表示する。
+- 部屋タイプ別 card に signal detail を出す。
+- トップのリストから遷移した場合、sessionStorage などで pending focus を保持する。
+- 後続 task で、対象 roomGroup card を開く、scroll する、highlight する。
+- rank change が発生したら `resolved_by_rank_change` として active list から外す。ただし履歴は削除しない。
+
+## Lifecycle
+
+status は次を持つ。
+
+- `active`
+- `snoozed_by_user`
+- `dismissed_by_user`
+- `resolved_by_rank_change`
+- `expired`
+- `suppressed_by_cooldown`
+
+消込規則:
+
+- 同じ `stayDate x roomGroup` で、recommendation `generatedAt` より後の rank change が確認されたら `resolved_by_rank_change` にする。
+- 完全削除ではなく状態更新にする。
+- future scoring と精度評価に使うため、`active -> user decision -> resolved / expired` の履歴を残す。
+- `expiresAt` は、stayDate が過ぎた、asOfDate が古くなった、または reasonFingerprint の前提が変わった場合に使う。
+
+## Future Bulk Apply
+
+bulk apply は将来候補として残すが、first phase では非目標とする。
+
+検討できる条件:
+
+- recommendation の精度が実データで確認されている。
+- current rank が取得できる。
+- rank ladder と隣接 rank が取得できる。
+- rank 反映 endpoint と request shape が確認されている。
+- Revenue Assistant 側の安全制約と権限範囲が確認されている。
+- user decision、cooldown、resolved、dismissed の状態管理が実装されている。
+
+必須 guardrail:
+
+- 反映直前に current rank を再取得する。
+- recommendation `generatedAt` 以降に別 rank change がないか確認する。
+- `snoozed_by_user`、`dismissed_by_user`、cooldown 中、low confidence、small capacity、group-driven の候補は一括対象から外す。
+- 推奨は隣接 rank のみに限定する。
+- 全件 preview を出す。
+- 利用者が明示選択した行だけ反映する。
+- 部分失敗時の結果を保存する。
+- 自動反映ではなく、user-confirmed bulk apply とする。
+
+## Implementation Order Candidate
+
+実装順序の候補は次の通りとする。正本上の Task ID と詳細は `docs/tasks_backlog.md` を参照する。
+
+1. `RAU-RR-01` で、この仕様と関連 docs を整備する。
+2. `RAU-RR-02` で、booking_curve raw source に sales / ADR を落とさず保存する契約を決めて実装する。
+3. `RAU-RR-03` で、current rank、rank ladder、rank price table、rank 反映 API の取得可否を browser trace で調査する。
+4. `RAU-RR-04` で、トップ料金調整候補リスト UI shell を実装する。
+5. `RAU-RR-05` で、reference deviation ベースの初期 priority scoring を実装する。
+6. `RAU-RR-06` で、Analyze 遷移と対象 roomGroup focus 導線を実装する。
+7. `RAU-RR-07` で、user snooze、dismissed decision、cooldown を保存する。
+8. `RAU-RR-08` で、rank change history による resolved 化を実装する。
+9. `RAU-RR-09` で、rank response dataset と metrics を設計する。
+10. `RAU-RR-10` で、推奨 rank 算出を設計する。
+11. `RAU-RR-11` で、bulk apply feasibility を調査する。
+
+## Open Questions
+
+1. current rank はどの endpoint から取得できるか。
+2. rank ladder と rank の上下関係は取得できるか。
+3. rank 別、日付別、roomGroup 別の price table は取得できるか。
+4. Revenue Assistant への rank 反映 API は存在するか。存在する場合、request shape、権限、CSRF、同時編集時の挙動、安全制約は何か。
+5. 現在販売中価格の全体像は取得できるか。
+6. プラン別、人数別、食事条件別の価格と rank の関係は取得できるか。
+7. 小キャパの eligibility threshold は何室以下、または残室率何%以下を初期値にするか。
+8. 様子見 cooldown の LT 帯別 default duration をどう設定するか。
+9. reasonFingerprint に含める reasonCodes、threshold、data version、scoring version の境界をどう切るか。
+10. 競合価格 snapshot のどの変化量を `competitor price movement` として扱うか。
+11. sales / ADR の欠損、0 室、売上 0、ADR null を scoring でどう扱うか。
+
+## References
+
+- Overview: `docs/spec_000_overview.md`
+- Analyze 画面仕様: `docs/spec_001_analyze_expansion.md`
+- Booking curve core logic: `docs/spec_002_curve_core.md`
+- 判断原則: `docs/context/INTENT.md`
+- 判断記録: `docs/context/DECISIONS.md`
+- 現在地: `docs/context/STATUS.md`
+- 実行順: `docs/tasks_backlog.md`

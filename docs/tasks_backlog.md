@@ -964,6 +964,311 @@
 - 未確認:
   - Tampermonkey 再読込後の GUI 目視確認
 
+## Rank Recommendation Bundle
+
+この section は、トップ料金調整候補リスト、推奨ランク方向、user decision、cooldown、rank response、future bulk apply に関する task をまとめる。仕様正本は `docs/spec_003_rank_recommendation_signal.md` とする。
+
+`RAU-FC-01` の rooms-only 予測モデル導入判断とは重なる部分があるが、rank recommendation は UI、候補 lifecycle、user decision、rank history、rank response、future bulk apply を含む独立した bundle として扱う。first phase では forecast model を必須入力にしない。reference curve からの差分、capacity、remaining rooms、transient / group 分解、直近 rank change、競合価格 snapshot、sales / ADR の保存契約を使い、RM の作業キューを先に作る。
+
+### RAU-RR-01 rank recommendation signal spec を整備する
+
+- 状態:
+  - 2026-05-27 の docs-only 整備で完了。
+- 目的:
+  - トップ料金調整候補リスト、推奨ランク方向、user decision、candidate lifecycle、rank response、future bulk apply の正本仕様を作る。
+- 背景:
+  - 会話内容は正本ではないため、次の Codex セッションや別 ChatGPT セッションが GitHub 経由で再開できるように、背景、意図、仕様候補、実装順序、未確認論点を repo 内 docs へ反映する必要がある。
+- スコープ:
+  - `docs/spec_003_rank_recommendation_signal.md` を作成する。
+  - `docs/spec_000_overview.md`、`docs/context/INTENT.md`、`docs/context/DECISIONS.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md` を同期する。
+  - 推奨レート金額ではなく推奨ランク方向を first wave にする理由を正本化する。
+  - トップ候補リスト、様子見 cooldown、対応不要、sales / ADR raw source、rank response、future bulk apply の判断理由を正本化する。
+- 非目標:
+  - コード実装。
+  - Revenue Assistant API の新規調査。
+  - Tampermonkey や `dist/*.user.js` の更新。
+- 受け入れ条件:
+  - `docs/spec_003_rank_recommendation_signal.md` に、目的、背景、scope、data source、recommendation unit、user decisions、priority、rank response、UI、lifecycle、future bulk apply、open questions が記載されている。
+  - overview、INTENT、DECISIONS、STATUS、backlog が同じ方向を指している。
+  - 未確認 API が確認済み仕様として書かれていない。
+  - `git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`: なし。後続の API 調査論点は `RAU-RR-03` 以降で扱う。
+
+### RAU-RR-02 booking_curve raw source に sales / ADR を保存する
+
+- 目的:
+  - `/api/v4/booking_curve` response に含まれる sales / ADR を、raw source 保存で落とさず保持する。
+  - rank response、ADR / sales health、将来の単価予測、将来の売上予測で使える入力証跡を作る。
+- 背景:
+  - `RAU-SALES-01` で、`/api/v4/booking_curve` response に `this_year_sales_sum`、過去年売上、`this_year_adr`、`last_year_adr` が含まれることを確認済みである。
+  - 2026-05-27 の現状確認では、`src/main.ts` の `compactBookingCurveResponse()` が `this_year_room_sum`、`last_year_room_sum`、`two_years_ago_room_sum`、`three_years_ago_room_sum` だけを残し、sales / ADR を落としている。
+  - raw source と呼ぶ保存契約を維持するなら、表示用 compact と raw source 保存の責務を分けるか、compact 対象を sales / ADR まで拡張する必要がある。
+- スコープ:
+  - `compactBookingCurveResponse()` の責務を、表示用軽量化と raw source 保存のどちらに寄せるか決める。
+  - schema version を上げる必要があるか判断する。
+  - `all`、`transient`、`group` の sales / ADR field を保存対象に含める。
+  - 既存 raw source read path と reference curve adapter が、rooms だけを使う挙動を維持できるか確認する。
+- 非目標:
+  - sales / ADR の UI 表示を追加しない。
+  - 単価予測や売上予測 model をこの task で実装しない。
+  - 月次 `/api/v1/booking_curve/monthly` の read path を変更しない。
+  - Revenue Assistant 外の保存先を追加しない。
+- 受け入れ条件:
+  - IndexedDB raw source record に、`all`、`transient`、`group` の sales / ADR field が保存される。
+  - 保存 schema version を変える場合、cache key と既存 record との混在条件が説明されている。
+  - reference curve、warm cache、current curve 表示が rooms field を従来どおり読める。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`, `docs/spec_001_analyze_expansion.md`, `docs/spec_002_curve_core.md`
+  - `open-spec-questions`: schema version を上げるか。raw source 保存前に compact しない別 path を作るか。compact の対象 field を sales / ADR まで増やすか。
+
+### RAU-RR-03 current rank / rank ladder / rank price table の取得可否を browser trace で調査する
+
+- 目的:
+  - rank recommendation で current rank、rank ladder、recommendedRank、future bulk apply を扱えるか判断するため、Revenue Assistant の実通信と画面状態を調査する。
+- 背景:
+  - 現行 docs では `/api/v1/suggest/output/current_settings` を capacity / remaining / max の取得に使っているが、current rank、rank ladder、rank price table が取れるかは未確認である。
+  - 未確認 API を確認済み仕様として扱うと、推奨 rank 名、rank 上下関係、一括反映の安全制約を誤って設計する可能性がある。
+- スコープ:
+  - current rank の取得可否を確認する。
+  - rank ladder と rank の上下関係の取得可否を確認する。
+  - rank 別、日付別、部屋タイプ別 price table の取得可否を確認する。
+  - Revenue Assistant への rank 反映 API の有無、request shape、安全制約を確認する。
+  - browser-trace / browser-to-api を使う場合は、raw trace、HAR、request body、response body、credential、個人情報、予約情報、価格・在庫の非公開データを commit しない。
+- 非目標:
+  - rank 反映 API を実行しない。
+  - 自動反映や bulk apply を実装しない。
+  - 未確認 API の response body をそのまま docs へ保存しない。
+- 受け入れ条件:
+  - current rank、rank ladder、rank price table、rank 反映 API について、確認済み、未確認、取得不可、追加調査必要のどれかに分類されている。
+  - docs に残す場合は、実データを削除または合成データへ置き換え、field 名、型、null 許容、optional 判定、confidence だけを反映している。
+  - `docs/spec_003_rank_recommendation_signal.md` または `docs/context/DECISIONS.md` に、確認済み範囲と未確認範囲が反映されている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`: current rank、rank ladder、price table、rank reflection endpoint が取得できるか。
+
+### RAU-RR-04 トップ料金調整候補リスト UI shell を実装する
+
+- 目的:
+  - トップ画面に、RM が見るべき料金調整候補を優先度順に並べる UI shell を追加する。
+- 背景:
+  - トップカレンダー badge だけでは、どの日付と部屋タイプから作業するかを比較しにくい。
+  - 候補リストは、`stayDate x roomGroup` 単位で作業順を提示する主導線である。
+- スコープ:
+  - トップ画面に料金調整候補リストの container を追加する。
+  - 行項目として、優先度、宿泊日、部屋タイプ、現ランク、推奨方向、主要根拠、状態、Analyze 導線、様子見、対応不要を置く。
+  - 初期表示件数を持たせる。候補は top 10 を第一候補にする。
+  - warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示と意味が混ざらない表示 layer にする。
+- 非目標:
+  - 推奨レート金額を表示しない。
+  - 推奨 rank 名は、rank ladder / current rank 取得可否が確認されるまで表示必須にしない。
+  - user decision の永続保存は `RAU-RR-07` で扱う。
+  - rank change history による resolved 化は `RAU-RR-08` で扱う。
+- 受け入れ条件:
+  - トップ画面に料金調整候補リストが表示される。
+  - 候補単位が `stayDate x roomGroup` として読める。
+  - `Analyzeで確認` の導線がある。
+  - 既存のトップカレンダー表示、団体室数、最終変更表示、warm cache indicator を壊さない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`: 初期 UI shell の挿入位置。候補 0 件時の表示。top 10 超過時の件数表示。
+
+### RAU-RR-05 reference deviation ベースの初期 priority scoring を実装する
+
+- 目的:
+  - current booking curve と reference curve の差分を使い、最初の料金調整候補 priority と confidence を作る。
+- 背景:
+  - first phase では forecast model を必須にしない。
+  - 既存の `直近型カーブ`、`季節型カーブ`、capacity、remaining rooms、transient / group 分解を使えば、推奨金額なしでも作業候補の優先順位を作れる可能性がある。
+- スコープ:
+  - demand pace deviation、final occupancy expectation、capacity / remaining-room urgency、LT urgency、transient contribution を初期 scoring の主入力にする。
+  - group-driven penalty、small-capacity uncertainty、recent rank-change cooldown、data missing penalty を入れる。
+  - 欠損理由は diagnostics に出し、推測補完しない。
+  - `raise_watch`、`lower_watch`、`watch`、`not_eligible` など、断定度の高すぎない action へ落とす。
+- 非目標:
+  - 推奨レート金額を算出しない。
+  - rank price table が未確認のまま recommendedRank 名を出さない。
+  - historical rank response を本格 scoring に入れることは `RAU-RR-09` 以降に回す。
+- 受け入れ条件:
+  - 候補ごとに priority、confidence、reasonCodes、reasonFingerprint、diagnostics が生成される。
+  - `all` が多くても group が主因の場合、個人価格 rank の上げ検討が抑制される。
+  - 小キャパまたは reference curve 欠損では `not_eligible` または低 confidence になる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`, `docs/spec_002_curve_core.md`
+  - `open-spec-questions`: 初期 threshold、small capacity 判定、confidence の段階、reasonFingerprint の構成。
+
+### RAU-RR-06 Analyze 遷移・対象 roomGroup focus 導線を実装する
+
+- 目的:
+  - トップ候補リストから Analyze へ移動した利用者が、該当する日付と部屋タイプの根拠へ迷わず到達できるようにする。
+- 背景:
+  - トップは候補一覧と根拠要約の場であり、Analyze は詳細確認の場である。
+  - リストから日付だけを開けても、対象 roomGroup card を探す手間が残る。
+- スコープ:
+  - `Analyzeで確認` で該当 stayDate の Analyze を開く。
+  - sessionStorage などで pending focus を保持する。
+  - Analyze 表示後に対象 roomGroup card を開く、scroll する、highlight する候補を実装する。
+  - focus が失敗した場合は、通常 Analyze 表示を維持し、エラーで画面を壊さない。
+- 非目標:
+  - scoring を変更しない。
+  - user decision の永続保存を実装しない。
+  - Revenue Assistant の標準操作を送信しない。
+- 受け入れ条件:
+  - トップ候補リストから Analyze へ遷移できる。
+  - 対象 roomGroup が特定できる場合、対象 card を開く、scroll する、highlight する。
+  - 対象 card が見つからない場合、診断ログまたは UI status で不足理由を確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`, `docs/spec_001_analyze_expansion.md`
+  - `open-spec-questions`: pending focus の保存形式。Revenue Assistant の SPA 遷移後に card DOM が安定するタイミング。
+
+### RAU-RR-07 user snooze / dismissed decision と cooldown を保存する
+
+- 目的:
+  - 利用者が `様子見` または `対応不要` と判断した recommendation を、候補リストに出し続けないようにする。
+- 背景:
+  - 同じ recommendation が出続けると、候補リストが作業キューではなくノイズになる。
+  - 様子見は一時抑制、対応不要は同じ根拠の再表示抑制と false positive 候補であり、同じ状態として扱わない。
+- スコープ:
+  - `snoozed_by_user` と `dismissed_by_user` を保存する。
+  - `cooldownUntil`、`snoozedUntilAsOfDate` または `snoozedUntil` を持つ。
+  - `stayDate x roomGroup x action x reasonFingerprint` を再表示抑制の主 key にする。
+  - priority、confidence、個人需要 pickup、残室率、競合価格、group-driven から transient-driven への変化、reasonFingerprint 変化時の再表示条件を扱う。
+- 非目標:
+  - rank change history による resolved 化は `RAU-RR-08` で扱う。
+  - bulk apply は実装しない。
+  - scoring model の本格改善は行わない。
+- 受け入れ条件:
+  - `様子見` を押した候補は、cooldown 中に active list へ出続けない。
+  - `対応不要` を押した候補は、同じ reasonFingerprint で再表示されない。
+  - 方向や主要根拠が大きく変わった場合は、再表示候補にできる。
+  - user decision の履歴が後続評価に使える形で残る。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`: LT 帯別 cooldown 既定値。asOfDate 基準と実時間基準のどちらを主にするか。decision store の保存 namespace。
+
+### RAU-RR-08 rank change history による resolved 化を実装する
+
+- 目的:
+  - recommendation 生成後に rank 変更が行われた候補を、active list から外し、履歴として残す。
+- 背景:
+  - 将来の bulk apply と rank response 評価には、active、user decision、resolved、expired の lifecycle が必要である。
+  - rank 変更後も同じ候補が active に残ると、利用者に再対応を促す誤表示になる。
+- スコープ:
+  - `/api/v3/lincoln/suggest/status` の rank change history を使う。
+  - 同じ `stayDate x roomGroup` で recommendation `generatedAt` より後の rank change がある場合、`resolved_by_rank_change` にする。
+  - 完全削除ではなく状態更新にする。
+  - `before_price_rank_name`、`after_price_rank_name`、`accepted_at`、`completed_at`、`reflector_name` を履歴として参照できるようにする。
+- 非目標:
+  - rank response metric の本格計算は `RAU-RR-09` で扱う。
+  - Revenue Assistant への反映実行は行わない。
+- 受け入れ条件:
+  - rank 変更が確認された recommendation が active list から外れる。
+  - resolved になった履歴を将来評価に使える形で保持する。
+  - 同日複数 rank change がある場合の扱いが documented または diagnostics で確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`: `accepted_at` と `completed_at` のどちらを rank change 発生時刻として使うか。同じ日付と roomGroup で複数 change がある場合の resolved 条件。
+
+### RAU-RR-09 rank response dataset / metrics を設計する
+
+- 目的:
+  - 過去 rank 変更に対して、変更後の booking curve、sales、ADR、競合価格がどう変化したかを評価できる dataset と metric を設計する。
+- 背景:
+  - 厳密な価格弾力性は実価格変化率が取れないと算出できない。
+  - rank change history だけで最初に出せるのは `rank response` または `ランク反応度` である。
+- スコープ:
+  - rank transition、roomGroup、stayDate、LT at change、capacity、all / transient / group rooms、sales / ADR、competitor snapshot を入力候補にする。
+  - 変更後 1 日 pickup、3 日 pickup、7 日 pickup、final rooms、final occupancy、ADR、sales、RevPAR 相当、net pickup を結果指標候補にする。
+  - 直近型 reference curve、季節型 reference curve、近似日比較、変更前 pace trend からの外れを反実仮想候補にする。
+- 非目標:
+  - 価格弾力性という名称で厳密指標を出さない。
+  - 実価格または rank price table が未確認のまま価格変化率を推定しない。
+  - scoring へ即時接続しない。
+- 受け入れ条件:
+  - rank response dataset の入力、処理、出力、欠損理由が明文化される。
+  - 実価格が取れない段階で何を `rank response` と呼ぶかが明確になっている。
+  - sales / ADR raw source、競合価格 snapshot、reference curve との接続条件が明確になっている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`, `docs/spec_002_curve_core.md`
+  - `open-spec-questions`: 実価格または rank price table の取得可否。競合価格 snapshot の時点合わせ。sales / ADR 欠損時の扱い。
+
+### RAU-RR-10 推奨ランク算出を設計する
+
+- 目的:
+  - current rank と rank ladder が取得できる場合に、推奨ランク名または隣接 rank 方向を算出する契約を設計する。
+- 背景:
+  - first phase は推奨方向だけで開始できるが、Revenue Assistant の操作単位に合わせるなら、将来的には `現在ランク A -> 推奨ランク B` のような表示が有用になる。
+  - ただし rank ladder と rank price table が未確認のまま recommendedRank を出すと、上下関係や価格差を誤る可能性がある。
+- スコープ:
+  - currentRank、rank ladder、隣接 rank、rank price table の入力契約を設計する。
+  - 推奨は first wave では隣接 rank のみに限定する。
+  - `raise_one`、`lower_one`、`keep`、`watch`、`not_eligible` と recommendedRank の関係を整理する。
+  - rank ladder 欠損時は recommendedRank を出さず、recommendedRankDirection だけに戻す。
+- 非目標:
+  - 推奨レート金額を出さない。
+  - rank 反映 API を呼ばない。
+  - bulk apply は設計対象にしない。
+- 受け入れ条件:
+  - current rank と rank ladder がある場合、recommendedRank を出す条件が明文化される。
+  - current rank または ladder が欠損する場合、recommendedRankDirection に戻る条件が明文化される。
+  - 隣接 rank 以外を推奨しない guardrail が明文化される。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`: rank ladder の上下関係。rank price table の取得可否。rank 名の同一性と facility / roomGroup / date ごとの差分。
+
+### RAU-RR-11 bulk apply feasibility を調査する
+
+- 目的:
+  - 将来の user-confirmed bulk apply を実装できるか、実装前に API、guardrail、状態管理、部分失敗時の記録を調査する。
+- 背景:
+  - 一括反映は作業時間を減らせる可能性があるが、first phase で入れるには安全制約が不足している。
+  - active recommendation だけでなく、user decision、cooldown、resolved、dismissed、confidence、small capacity、group-driven 判定が対象除外に必要である。
+- スコープ:
+  - rank 反映 endpoint の有無、request shape、必要 header、権限、CSRF、error response を調査する。
+  - 反映直前 current rank 再取得の可否を調査する。
+  - recommendation 生成後の別 rank change 検出方法を整理する。
+  - preview、明示選択、部分失敗記録、rollback 不可時の表示を設計候補として整理する。
+- 非目標:
+  - 実際の rank 反映 API を実行しない。
+  - 自動反映を作らない。
+  - first phase の UI shell に一括反映 button を追加しない。
+- 受け入れ条件:
+  - bulk apply を実装するための必須条件と不足条件が一覧化される。
+  - 実装に進めない場合、その理由が API 未確認、guardrail 未実装、状態管理不足、精度不足のどれかに分類される。
+  - `docs/spec_003_rank_recommendation_signal.md` または `docs/context/DECISIONS.md` に、進める / 見送る判断が反映される。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`: rank 反映 endpoint の有無。反映直前再検証の方法。部分失敗時の保存形式。利用者確認 UI。
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -1007,8 +1312,9 @@
   - 室数予測を実装する場合に、予測室数と予測単価から予測売上を算出できるようにする。
 - 背景:
   - `RAU-SALES-01` で、既存 `/api/v4/booking_curve` の `all`、`transient`、`group` に売上と ADR が含まれることを確認した。
-  - 既存 IndexedDB raw source は response 全体を保存済みのため、売上・ADR の追加取得 queue は不要である。
-  - 直近の優先対象は売上・ADR の表示ではなく、月次実績画面と rooms-only 予測モデルの整理である。
+  - 2026-05-27 の現状確認では、`src/main.ts` の `compactBookingCurveResponse()` が保存前に sales / ADR を落としているため、`RAU-RR-02` で raw source 保存契約を更新する必要がある。
+  - 売上・ADR の追加取得 queue は不要である。既存 `/api/v4/booking_curve` response を、sales / ADR まで保持できる raw source として保存する方向で扱う。
+  - 直近の優先対象は売上・ADR の表示ではなく、rank response、将来の単価予測、売上予測へ接続できる保存契約と adapter の整理である。
 - スコープ:
   - `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` の型と null handling を定義する。
   - `all`、`transient`、`group` のどの segment を単価予測と売上予測の入力候補にするか決める。
@@ -1021,7 +1327,7 @@
 - 受け入れ条件:
   - 売上・ADR を扱う adapter 追加時の入力、出力、null handling、segment 対応が明文化される。
   - 室数予測、単価予測、売上予測の接続順序が明文化される。
-  - 既存 booking curve raw source の保存単位を変更する必要があるかどうかを判断できる。
+  - `RAU-RR-02` の raw source 保存契約更新後、既存 booking curve raw source の保存単位をさらに変更する必要があるかどうかを判断できる。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -1105,24 +1411,44 @@
 
 Now:
 
-- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
+- `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
 
 Next:
 
-- `RAU-FC-02` 予測評価 dataset と metrics を設計する
+- `RAU-RR-03` current rank / rank ladder / rank price table の取得可否を browser trace で調査する
 
 After Next:
 
-- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+- `RAU-RR-04` トップ料金調整候補リスト UI shell を実装する
+- `RAU-RR-05` reference deviation ベースの初期 priority scoring を実装する
+- `RAU-RR-06` Analyze 遷移・対象 roomGroup focus 導線を実装する
+- `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
+- `RAU-RR-08` rank change history による resolved 化を実装する
 
 Later:
 
-- なし
+- `RAU-RR-09` rank response dataset / metrics を設計する
+- `RAU-RR-10` 推奨ランク算出を設計する
+- `RAU-RR-11` bulk apply feasibility を調査する
+- `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
+- `RAU-FC-02` 予測評価 dataset と metrics を設計する
+- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
 
 統合判断:
 
-- `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` raw source に含まれることを確認した。売上・ADR はすでに室数と同じ raw source に保存されるため、直近で追加取得や表示活用を急がない。
-- `RAU-SALES-02` は、室数予測を実装した後に単価予測と売上予測へ接続するための設計 task として、forecast bundle の後段へ置く。月次実績画面 `RAU-MP-01` は GUI 確認済みのため、直近の Now は rooms-only 予測モデル導入判断 `RAU-FC-01` に絞る。
+- `RAU-RR-01` は 2026-05-27 の docs-only 正本化で完了したため、Remaining Task Triage には含めない。
+- Rank Recommendation Bundle は、`RAU-FC-01` の rooms-only 予測モデル導入判断と重なるが、UI、候補 lifecycle、user decision、rank history、rank response、future bulk apply を含むため、独立 bundle として扱う。
+- first phase の rank recommendation は forecast model を必須入力にしない。reference curve deviation、capacity、remaining rooms、transient / group 分解、直近 rank change、競合価格 snapshot、sales / ADR raw source を使って、RM の作業キューを先に作る。
+- `RAU-RR-02` を Now に置く理由は、rank response、ADR / sales health、将来の単価予測、売上予測に必要な sales / ADR が、現行 compact 処理で保存前に落ちているためである。保存契約が曖昧なまま scoring や rank response へ進めない。
+- `RAU-RR-03` を Next に置く理由は、current rank、rank ladder、rank price table、rank 反映 API が未確認のままでは、推奨 rank 名、rank 上下関係、future bulk apply の安全制約を確定できないためである。
+- `RAU-RR-04` は、推奨金額なし、推奨 rank 名なしでも、`stayDate x roomGroup` の候補リスト shell と Analyze 導線を先に作れるため、API 調査後の最初の UI 実装候補にする。
+- `RAU-RR-05` は、forecast model なしで始められる reference deviation ベースの scoring とする。forecast model が必要かどうかは、first scoring の精度と不足 diagnostics を見てから `RAU-FC-01` で判断する。
+- `RAU-RR-07` と `RAU-RR-08` は、future bulk apply だけでなく first phase の候補リストのノイズ低減にも必要であるため、UI shell と初期 scoring の後に置く。
+- `RAU-RR-09` 以降は、first phase の active recommendation と user decision が蓄積してから扱う。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
+- `RAU-RR-11` の bulk apply は将来候補だが first phase の非目標である。API、current rank 再取得、別 rank change 確認、user decision、cooldown、low confidence、small capacity、group-driven 除外、preview、部分失敗記録が揃うまで実装しない。
+- `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 の現状確認では保存前 compact が sales / ADR を落としているため、直近の作業は追加取得ではなく `RAU-RR-02` の保存契約更新である。
+- `RAU-SALES-02` は、`RAU-RR-02` で保存契約を更新した後、単価予測と売上予測へ接続する adapter / model 設計 task として Later に置く。
+- `RAU-FC-01` は削除しない。ただし、rank recommendation first phase は forecast model なしで始めるため、現在の Now から Later へ移す。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。

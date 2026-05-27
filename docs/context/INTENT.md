@@ -1,6 +1,6 @@
 # INTENT
 
-最終更新: 2026-04-24
+最終更新: 2026-05-27
 
 ## Purpose
 
@@ -17,6 +17,9 @@
 - `request 数を増やして比較系列を豊かにすること` と `画面遷移、タブ切替、フォーカス復帰で安定して動くこと` が競合する場合は、後者を優先する。
 - `Analyze 画面へ最短で直置きすること` と `booking curve core logic を UI、API 取得、storage から分離して再利用可能にすること` が競合する場合は、first wave の進行を大きく遅らせない範囲で後者を優先する。
 - `予測モデルを早く表示すること` と `予測評価に使える入力、出力、diagnostics を先に固定すること` が競合する場合は、後者を優先する。
+- `推奨レート金額を出すこと` と `Revenue Assistant の販売 rank 操作単位に合う推奨ランク方向を出すこと` が競合する場合は、first wave では後者を優先する。
+- `Revenue Assistant への自動反映を早く作ること` と `RM が今日確認すべき作業キューを安全に作ること` が競合する場合は、当面は後者を優先する。
+- `同じ recommendation を繰り返し表示して見落としを防ぐこと` と `利用者が様子見または対応不要と判断した結果を尊重すること` が競合する場合は、user decision と cooldown を尊重する。
 
 ## Non-Goals
 
@@ -25,9 +28,10 @@
 - 当面は、RAU の first wave に PMS データ、DWH データ、BCL Python 実装、RAR 同期を必須化しない。
 - 当面は、予測モデルの採用、学習済みパラメータの固定、予測評価の合格基準固定を first wave の完了条件にしない。
 - 当面は、月次実績画面の custom booking curve を Analyze reference curve より優先しない。
+- 当面は、RAU から Revenue Assistant へ選択範囲の rank 変更を一括反映することを first wave の目標にしない。
 
 ## How To Use
 
-- reference curve、baseline、core logic、forecast、evaluation、cache、request 数、表示密度の判断で迷った場合は、この文書の優先順位を先に確認する。
+- reference curve、baseline、core logic、forecast、evaluation、rank recommendation、cache、request 数、表示密度の判断で迷った場合は、この文書の優先順位を先に確認する。
 - 判断原則を変える場合だけ、この文書を更新する。
 - 単発の採否判断は `docs/context/DECISIONS.md` に記録する。
