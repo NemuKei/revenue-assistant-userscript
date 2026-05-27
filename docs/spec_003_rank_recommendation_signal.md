@@ -60,6 +60,34 @@ Analyze は詳細確認の場として扱う。トップ画面では候補一覧
 
 将来の一括反映には、active recommendation だけではなく、user decision、cooldown、resolved、dismissed の状態管理が必要になる。first phase で一括反映を入れない理由は、UI 操作の実装量だけではない。rank ladder、current rank、反映 endpoint、反映直前再検証、部分失敗時の記録、user decision の尊重、small capacity や group-driven の除外など、誤反映を避けるための guardrail が揃っていないためである。
 
+### Rationale That Must Survive Thread Migration
+
+この section は、後続セッションが元の会話を読めない前提で、主要判断の理由を復元するために置く。実装 task ではこの section の意図を崩さない。
+
+1. 推奨レート金額ではなく推奨ランク方向を優先する理由。
+   Revenue Assistant の実操作は、販売 rank の変更を中心に行う可能性が高い。first wave では、操作単位に合う `上げ検討`、`下げ注意`、`監視`、`判定対象外` を出すほうが、未確認データを使った金額提示より安全である。推奨レート金額を出すには、プラン、人数、食事条件、販売中価格、競合価格、rank ladder、rank 別価格表、施設方針を合わせて確認する必要がある。これらが揃わない状態で金額を出すと、RAU が価格を断定したように見える。現在 rank と rank ladder が取得できると確認できた場合は、`推奨ランク方向` から `1段階上げ検討` や `1段階下げ検討` のような隣接 rank recommendation へ進める。実価格または rank price table が取れるまでは、厳密な価格弾力性ではなく `ランク反応度` として扱う。
+
+2. トップ画面にリストを置く理由。
+   カレンダー badge は、日付セルに何らかの状態があることを示す補助表示には向いている。一方で、RM にとって価値があるのは「どの日付に印があるか」だけではなく、「今日どの宿泊日と部屋タイプから見るべきか」である。候補リストは、RM の作業キューとして、priority の高い `stayDate x roomGroup` を上から並べる。日付単位だけでは、同じ日付のどの部屋タイプを触るべきか分からないため、候補単位は `stayDate x roomGroup` を原則にする。トップリストは作業開始地点であり、Analyze は根拠確認の場である。
+
+3. 様子見 cooldown が必要な理由。
+   利用者が候補を見たうえで「今は触らない」と判断したものが出続けると、recommendation list は作業キューではなくノイズになる。`様子見` は false positive ではなく、人間が「今はタイミングではない」と判断したログである。`対応不要` は false positive 候補であり、同じ根拠を再表示しないための model 改善 input である。したがって `snoozed_by_user` と `dismissed_by_user` は別状態にする。様子見中でも、priority、confidence、個人需要 pickup、残室率、競合価格、主因、reasonFingerprint が大きく変われば再表示できるようにする。reasonFingerprint は、同じ根拠の繰り返し通知と、新しい根拠による再通知を分けるために持つ。
+
+4. sales / ADR 保存を進める理由。
+   rooms だけを見ると、値下げ後に pickup が増えたが ADR が落ちて売上や RevPAR 相当が悪化したケースを、良い反応として誤解する可能性がある。rank response の評価では、rooms だけでなく ADR、sales、RevPAR 相当、net pickup を合わせて見る必要がある。sales / ADR は将来の単価予測と売上予測にも使える。正本上は `/api/v4/booking_curve` response に sales / ADR が含まれることを確認済みだが、2026-05-27 の実装現状確認では compact 保存で落ちている可能性があるため、`RAU-RR-02` で保存契約を修正する。
+
+5. 一括反映を first phase に入れない理由。
+   bulk apply には、rank 反映 API、rank ladder、current rank、反映直前の再取得、recommendation 生成後の別 rank change 確認、部分失敗時の記録、利用者の明示選択、対象除外 guardrail が必要である。精度が担保される前に bulk apply を入れると、誤った rank 変更をまとめて実行する危険がある。ただし、将来の user-confirmed bulk apply を見据え、first phase から recommendation lifecycle と user decision は保存できる設計にする。将来実装する場合も、自動反映ではなく user-confirmed bulk apply を前提にする。
+
+6. 団体と個人を分離する理由。
+   `all` が基準より多くても、`group` が主因なら、個人向け販売 rank を上げる根拠としては弱い。団体起因の全体上振れを個人需要の上振れとして扱うと、個人価格 rank を上げる判断を誤る。scoring では `transient` と `group` を分け、個人需要の寄与を確認する。団体起因の候補は、`監視` に留めるか、confidence を下げる。
+
+7. 小キャパを別扱いする理由。
+   極小キャパの roomGroup では、1 室の増減だけで稼働率や pace deviation が大きく動く。通常 threshold をそのまま使うと、実務上の優先候補ではないものが頻繁に出る。small capacity は `判定対象外`、または低 confidence として扱う。判定不能やデータ不足は、何も出さずに消すのではなく、diagnostics と reason code に残す。これにより、後続で threshold を調整するときに、なぜ候補化しなかったのかを確認できる。
+
+8. Forecast との関係。
+   rank recommendation は forecast そのものではなく、RM 作業キューである。forecast が使えるようになると priority と confidence の精度は上がるが、first wave は reference curve deviation と既存 booking curve で始められる。`RAU-FC-01` は関連 task として残すが、rank recommendation は UI、lifecycle、user decision、rank response、future bulk apply 設計まで含むため、独立 bundle として扱う。
+
 ## Scope
 
 ### First Phase

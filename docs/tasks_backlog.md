@@ -974,6 +974,7 @@
 
 - 状態:
   - 2026-05-27 の docs-only 整備で完了。
+  - 2026-05-27 の追補で、背景・意図を後続セッションが会話なしで復元できる粒度へ補強した。
 - 目的:
   - トップ料金調整候補リスト、推奨ランク方向、user decision、candidate lifecycle、rank response、future bulk apply の正本仕様を作る。
 - 背景:
@@ -983,12 +984,14 @@
   - `docs/spec_000_overview.md`、`docs/context/INTENT.md`、`docs/context/DECISIONS.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md` を同期する。
   - 推奨レート金額ではなく推奨ランク方向を first wave にする理由を正本化する。
   - トップ候補リスト、様子見 cooldown、対応不要、sales / ADR raw source、rank response、future bulk apply の判断理由を正本化する。
+  - 団体と個人の分離、小キャパの扱い、forecast との関係を、実装 task の前提として読める粒度で正本化する。
 - 非目標:
   - コード実装。
   - Revenue Assistant API の新規調査。
   - Tampermonkey や `dist/*.user.js` の更新。
 - 受け入れ条件:
   - `docs/spec_003_rank_recommendation_signal.md` に、目的、背景、scope、data source、recommendation unit、user decisions、priority、rank response、UI、lifecycle、future bulk apply、open questions が記載されている。
+  - `docs/spec_003_rank_recommendation_signal.md` に、推奨レートではなく推奨ランク方向を優先する理由、トップにリストを置く理由、様子見 cooldown が必要な理由、sales / ADR 保存を進める理由、一括反映を first phase に入れない理由、団体と個人を分ける理由、小キャパを別扱いする理由、forecast との関係が明記されている。
   - overview、INTENT、DECISIONS、STATUS、backlog が同じ方向を指している。
   - 未確認 API が確認済み仕様として書かれていない。
   - `git diff --check` が通る。

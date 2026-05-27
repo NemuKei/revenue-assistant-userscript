@@ -50,6 +50,7 @@
   - 仕様判断、task 分割、最終 verify、正本文書更新はメインスレッドで行う。
 - このスレッドで完了したこと:
   - `RAU-RR-01` docs-only 正本化を実施した。`docs/spec_003_rank_recommendation_signal.md` を新規作成し、推奨レート金額ではなく推奨ランク方向を first wave にする理由、トップ候補リスト、user snooze / dismissed、rank response、future bulk apply の非目標と guardrail、未確認 API 調査対象を整理した。
+  - 2026-05-27 の追補で、推奨ランク方向、トップ候補リスト、様子見 cooldown、sales / ADR 保存、一括反映の非目標、団体 / 個人分離、小キャパ、forecast との関係を、後続セッションが会話なしで復元できる粒度へ補強した。
   - `docs/spec_000_overview.md`、`docs/context/INTENT.md`、`docs/context/DECISIONS.md`、`docs/tasks_backlog.md` へ、rank recommendation の正本参照、判断原則、判断記録、後続 task bundle を同期した。
   - 2026-05-27 の現状確認で、`/api/v4/booking_curve` response 自体には sales / ADR が含まれる一方、`src/main.ts` の `compactBookingCurveResponse()` が保存前に rooms 系列だけを残していることを確認した。そのため、`RAU-RR-02` を raw source 保存契約の更新 task として最優先に置いた。
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
