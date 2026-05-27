@@ -1009,7 +1009,7 @@
   - 保存 schema version は `booking_curve_raw_source:v2` へ上げた。IndexedDB object store と index 構造は変えていないため、IndexedDB database version は 1 のまま据え置いた。
   - 既存 `booking_curve_raw_source:v1` record は同じ IndexedDB に残るが、v2 の cache key では読まれない。トップカレンダーの保存済み raw source signal も v2 record だけを有効扱いにする。
   - 2026-05-28 に、Tampermonkey `0.1.0.235` を入れた通常 Chrome の Revenue Assistant で Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を確認した。overall summary、rank overview、ホテル全体 booking curve 2 SVG、室タイプ別 toggle、シングル card booking curve 2 SVG、console error 0 件を確認した。
-  - 実ブラウザでの IndexedDB raw source record 内 sales / ADR field 確認は未実施である。Chrome 拡張の評価コンテキストでは IndexedDB が見えず、Chrome remote debugging port `9222` も起動していなかったため、次回 CDP 接続または許可された browser trace で確認する。
+  - 2026-05-28 に、既存 Chrome profile を `remote-debugging-port=9222` 付きで再起動し、CDP 経由で Revenue Assistant origin の IndexedDB を確認した。`booking_curve_raw_source:v2` record 192 件すべてで、`booking_curve[]` 配下の `all`、`transient`、`group` に `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` が保持されていた。値は出力していない。`two_years_ago_adr`、`three_years_ago_adr` は optional 許容のみで、今回の観測 record には存在しなかった。
 - 目的:
   - `/api/v4/booking_curve` response に含まれる sales / ADR を、raw source 保存で落とさず保持する。
   - rank response、ADR / sales health、将来の単価予測、将来の売上予測で使える入力証跡を作る。

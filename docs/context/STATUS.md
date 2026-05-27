@@ -54,7 +54,8 @@
   - `docs/spec_000_overview.md`、`docs/context/INTENT.md`、`docs/context/DECISIONS.md`、`docs/tasks_backlog.md` へ、rank recommendation の正本参照、判断原則、判断記録、後続 task bundle を同期した。
   - 2026-05-27 の現状確認で、`/api/v4/booking_curve` response 自体には sales / ADR が含まれる一方、`src/main.ts` の `compactBookingCurveResponse()` が保存前に rooms 系列だけを残していることを確認した。そのため、`RAU-RR-02` を raw source 保存契約の更新 task として最優先に置いた。
   - `RAU-RR-02` は実装済み。`compactBookingCurveResponse()` の保持対象を rooms / sales / ADR fields へ拡張し、保存 schema version を `booking_curve_raw_source:v2` へ上げた。IndexedDB database version は object store と index 構造を変えないため 1 のまま据え置いた。既存 v1 record は同じ DB に残るが、v2 の cache key では読まれず、保存済み raw source signal も v2 record だけを有効扱いにする。
-  - 2026-05-28 に、Tampermonkey 側で userscript `0.1.0.235` へ更新済みの通常 Chrome 上で `https://ra.jalan.net/analyze/2026-06-17` を確認した。overall summary 1 件、rank overview 1 件、ホテル全体 booking curve section 1 件、SVG 2 件、室タイプ別 toggle button 6 件を確認した。シングルの room card を開くと、card booking curve section 1 件が追加され、booking curve SVG は合計 4 件になった。console error は 0 件だった。Chrome 拡張の評価コンテキストでは IndexedDB が見えず、Chrome remote debugging port `9222` も起動していなかったため、IndexedDB raw source record 内の sales / ADR field 実保存までは未確認である。
+  - 2026-05-28 に、Tampermonkey 側で userscript `0.1.0.235` へ更新済みの通常 Chrome 上で `https://ra.jalan.net/analyze/2026-06-17` を確認した。overall summary 1 件、rank overview 1 件、ホテル全体 booking curve section 1 件、SVG 2 件、室タイプ別 toggle button 6 件を確認した。シングルの room card を開くと、card booking curve section 1 件が追加され、booking curve SVG は合計 4 件になった。console error は 0 件だった。
+  - 2026-05-28 に、既存 Chrome profile を `remote-debugging-port=9222` 付きで再起動し、CDP 経由で Revenue Assistant origin の IndexedDB を確認した。`booking_curve_raw_source:v2` record は 192 件あり、全 192 件で `booking_curve[]` 配下の `all`、`transient`、`group` に `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` が保持されていた。値は出力していない。`two_years_ago_adr`、`three_years_ago_adr` は観測 record では存在しなかった。
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
   - `RAU-CP-06` は完了。Analyze open 起点でも、現在開いている宿泊日の `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の 6 snapshot を保存するようにした。
@@ -211,7 +212,7 @@
   - `npm run lint`: passed
   - `npm run build`: passed。sandbox 内では esbuild が workspace path を読めず失敗したため、同じ command を通常権限で再実行して通過した
   - GUI 確認: 2026-05-28 に Tampermonkey `0.1.0.235` を入れた通常 Chrome の Revenue Assistant で確認した。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` で、overall summary、rank overview、ホテル全体 booking curve 2 SVG、室タイプ別 toggle、シングル card booking curve 2 SVG の表示を確認し、console error は 0 件だった。
-  - 未確認: Chrome 拡張の評価コンテキストでは IndexedDB が見えず、Chrome remote debugging port `9222` も起動していなかったため、IndexedDB raw source record に sales / ADR field が実保存されたことは未確認である。これは次回 CDP 接続または許可された browser trace で確認する。
+  - IndexedDB 保存確認: 2026-05-28 に CDP で Revenue Assistant origin の IndexedDB を確認した。`booking_curve_raw_source:v2` record 192 件すべてで、`booking_curve[]` 配下の `all`、`transient`、`group` に sales / ADR の確認済み field が保存されていた。確認対象 field は `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` である。値は出力していない。`two_years_ago_adr`、`three_years_ago_adr` は optional 許容のみで、今回の観測 record には存在しなかった。
 - 2026-05-02 のスレッド移行前 docs 整備:
   - 当時の再開入口は `RAU-FC-01`。
   - 競合価格、月次実績、warm cache calendar marker は直近の修正と GUI 確認まで完了扱い。
