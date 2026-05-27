@@ -40,12 +40,23 @@ export interface RankRecommendationCandidate {
     generatedAt: string;
 }
 
+export interface RankRecommendationCurveEvidence {
+    currentAllRooms: number | null;
+    referenceAllRooms: number | null;
+    currentTransientRooms: number | null;
+    referenceTransientRooms: number | null;
+    currentGroupRooms: number | null;
+    referenceGroupRooms: number | null;
+    diagnostics: string[];
+}
+
 export function buildRankRecommendationCandidates(options: {
     response: RankRecommendationCurrentSettingsResponse;
     facilityId: string;
     asOfDate: string;
     visibleStayDates: Set<string>;
     generatedAt: string;
+    curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>;
 }): RankRecommendationCandidate[] {
     const candidates: RankRecommendationCandidate[] = [];
 
@@ -69,6 +80,7 @@ export function buildRankRecommendationCandidates(options: {
                 roomGroupId,
                 roomGroupName,
                 roomGroup,
+                curveEvidence: options.curveEvidenceByKey?.get(buildRankRecommendationEvidenceKey(stayDate, roomGroupId)) ?? null,
                 generatedAt: options.generatedAt
             }));
         }
@@ -86,6 +98,7 @@ function buildRankRecommendationCandidate(options: {
     roomGroupId: string;
     roomGroupName: string;
     roomGroup: RankRecommendationCurrentSettingRoomGroup;
+    curveEvidence: RankRecommendationCurveEvidence | null;
     generatedAt: string;
 }): RankRecommendationCandidate {
     const maxRooms = normalizeFiniteNumber(options.roomGroup.max_num_room);
@@ -93,6 +106,11 @@ function buildRankRecommendationCandidate(options: {
     const diagnostics: string[] = [];
     const reasonCodes: string[] = [];
     const daysToStay = getDaysBetweenDateKeys(options.stayDate, options.asOfDate);
+    const curveEvidence = options.curveEvidence;
+    const allDeviation = getDeviation(curveEvidence?.currentAllRooms ?? null, curveEvidence?.referenceAllRooms ?? null);
+    const transientDeviation = getDeviation(curveEvidence?.currentTransientRooms ?? null, curveEvidence?.referenceTransientRooms ?? null);
+    const groupDeviation = getDeviation(curveEvidence?.currentGroupRooms ?? null, curveEvidence?.referenceGroupRooms ?? null);
+    const isGroupDriven = isPositive(groupDeviation) && !isPositive(transientDeviation);
 
     let action: RankRecommendationAction;
     let priority: RankRecommendationPriority;
@@ -113,21 +131,52 @@ function buildRankRecommendationCandidate(options: {
     } else {
         const remainingRatio = Math.max(0, Math.min(1, remainingRooms / maxRooms));
         const occupancyRatio = 1 - remainingRatio;
-        if (remainingRooms <= 2 || occupancyRatio >= 0.85) {
+        if (isGroupDriven && (remainingRooms <= 2 || occupancyRatio >= 0.85)) {
+            action = "watch";
+            priority = "medium";
+            confidence = 0.35;
+            diagnostics.push("group_driven_raise_suppressed");
+            reasonCodes.push("団体主因");
+        } else if ((remainingRooms <= 2 || occupancyRatio >= 0.85) && (curveEvidence === null || allDeviation === null || allDeviation >= 0 || isPositive(transientDeviation))) {
             action = "raise_watch";
             priority = "high";
-            confidence = 0.55;
+            confidence = curveEvidence === null || allDeviation === null ? 0.45 : 0.62;
             reasonCodes.push("残室少");
-        } else if (daysToStay !== null && daysToStay <= 30 && occupancyRatio <= 0.4) {
+            if (isPositive(transientDeviation)) {
+                reasonCodes.push("個人pace上振れ");
+            }
+        } else if (
+            daysToStay !== null
+            && daysToStay <= 30
+            && occupancyRatio <= 0.4
+            && (allDeviation === null || allDeviation < 0 || transientDeviation === null || transientDeviation < 0)
+        ) {
             action = "lower_watch";
             priority = "medium";
-            confidence = 0.45;
+            confidence = curveEvidence === null || allDeviation === null ? 0.35 : 0.5;
             reasonCodes.push("近日程で稼働低め");
         } else {
             action = "watch";
-            priority = occupancyRatio >= 0.65 ? "medium" : "low";
-            confidence = 0.35;
-            reasonCodes.push("監視");
+            priority = occupancyRatio >= 0.65 || isPositive(allDeviation) ? "medium" : "low";
+            confidence = curveEvidence === null ? 0.25 : 0.38;
+            reasonCodes.push(allDeviation === null ? "監視" : "reference差分小");
+        }
+    }
+
+    if (curveEvidence === null) {
+        diagnostics.push("booking_curve_source_missing");
+        reasonCodes.push("データ不足");
+    } else {
+        diagnostics.push(...curveEvidence.diagnostics);
+        if (allDeviation === null) {
+            diagnostics.push("reference_deviation_missing");
+            reasonCodes.push("reference不足");
+        } else if (allDeviation > 0) {
+            reasonCodes.push("reference上振れ");
+        } else if (allDeviation < 0) {
+            reasonCodes.push("reference下振れ");
+        } else {
+            reasonCodes.push("reference同水準");
         }
     }
 
@@ -173,6 +222,18 @@ function buildRankRecommendationCandidate(options: {
         status,
         generatedAt: options.generatedAt
     };
+}
+
+export function buildRankRecommendationEvidenceKey(stayDate: string, roomGroupId: string): string {
+    return `${stayDate}:${roomGroupId}`;
+}
+
+function getDeviation(current: number | null, reference: number | null): number | null {
+    return current === null || reference === null ? null : current - reference;
+}
+
+function isPositive(value: number | null): boolean {
+    return value !== null && value > 0;
 }
 
 function normalizeCurrentSettingStayDate(value: string | undefined): string | null {

@@ -47,9 +47,11 @@ import {
     type CompetitorPriceSnapshotRecord
 } from "./competitorPriceSnapshotStore";
 import {
+    buildRankRecommendationEvidenceKey,
     buildRankRecommendationCandidates,
     type RankRecommendationAction,
     type RankRecommendationCandidate,
+    type RankRecommendationCurveEvidence,
     type RankRecommendationCurrentSettingsResponse,
     type RankRecommendationPriority,
     type RankRecommendationStatus
@@ -4100,12 +4102,19 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         return;
     }
 
+    const curveEvidenceByKey = await buildRankRecommendationCurveEvidenceByKey(response, {
+        facilityId: facilityCacheKey,
+        asOfDate: batchDateKey,
+        visibleStayDates: new Set(cells.map((cell) => cell.stayDate))
+    });
+
     const candidates = buildRankRecommendationCandidates({
         response,
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
         visibleStayDates: new Set(cells.map((cell) => cell.stayDate)),
-        generatedAt
+        generatedAt,
+        curveEvidenceByKey
     });
     renderRankRecommendationList(candidates, {
         signature: [
@@ -4136,6 +4145,142 @@ function getRankRecommendationCurrentSettingsForRange(
         });
     rankRecommendationCurrentSettingsCache.set(cacheKey, request);
     return request;
+}
+
+async function buildRankRecommendationCurveEvidenceByKey(
+    response: RankRecommendationCurrentSettingsResponse,
+    options: {
+        facilityId: string;
+        asOfDate: string;
+        visibleStayDates: Set<string>;
+    }
+): Promise<Map<string, RankRecommendationCurveEvidence>> {
+    const entries = await Promise.all((response.suggest_output_current_settings ?? []).flatMap((currentSetting) => {
+        const stayDate = toCompactDateKey(currentSetting.stay_date ?? "");
+        if (stayDate === null || !options.visibleStayDates.has(stayDate)) {
+            return [];
+        }
+
+        return (currentSetting.rm_room_groups ?? []).flatMap((roomGroup) => {
+            const roomGroupId = roomGroup.rm_room_group_id?.trim() ?? "";
+            if (roomGroupId === "") {
+                return [];
+            }
+
+            return [readRankRecommendationCurveEvidence({
+                facilityId: options.facilityId,
+                stayDate,
+                asOfDate: options.asOfDate,
+                roomGroupId
+            })];
+        });
+    }));
+
+    return new Map(entries.filter((entry): entry is [string, RankRecommendationCurveEvidence] => entry !== null));
+}
+
+async function readRankRecommendationCurveEvidence(options: {
+    facilityId: string;
+    stayDate: string;
+    asOfDate: string;
+    roomGroupId: string;
+}): Promise<[string, RankRecommendationCurveEvidence] | null> {
+    const query = buildBookingCurveQuerySignature(options.stayDate, options.roomGroupId);
+    const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+        facilityId: options.facilityId,
+        stayDate: options.stayDate,
+        asOfDate: options.asOfDate,
+        scope: "roomGroup",
+        roomGroupId: options.roomGroupId,
+        endpoint: BOOKING_CURVE_ENDPOINT,
+        query
+    });
+    const evidenceKey = buildRankRecommendationEvidenceKey(options.stayDate, options.roomGroupId);
+    const record = await readBookingCurveRawSourceRecord(rawSourceKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation curve evidence`, {
+                stayDate: options.stayDate,
+                asOfDate: options.asOfDate,
+                roomGroupId: options.roomGroupId,
+                error
+            });
+            return undefined;
+        });
+
+    if (record === undefined) {
+        return [evidenceKey, {
+            currentAllRooms: null,
+            referenceAllRooms: null,
+            currentTransientRooms: null,
+            referenceTransientRooms: null,
+            currentGroupRooms: null,
+            referenceGroupRooms: null,
+            diagnostics: ["booking_curve_source_missing"]
+        }];
+    }
+
+    const point = findLatestBookingCurvePoint(record.response, options.asOfDate);
+    if (point === null) {
+        return [evidenceKey, {
+            currentAllRooms: null,
+            referenceAllRooms: null,
+            currentTransientRooms: null,
+            referenceTransientRooms: null,
+            currentGroupRooms: null,
+            referenceGroupRooms: null,
+            diagnostics: ["booking_curve_point_missing"]
+        }];
+    }
+
+    return [evidenceKey, {
+        currentAllRooms: normalizeBookingCurveRoomCount(point.all?.this_year_room_sum),
+        referenceAllRooms: averageBookingCurveRoomCounts([
+            point.all?.last_year_room_sum,
+            point.all?.two_years_ago_room_sum,
+            point.all?.three_years_ago_room_sum
+        ]),
+        currentTransientRooms: normalizeBookingCurveRoomCount(point.transient?.this_year_room_sum),
+        referenceTransientRooms: averageBookingCurveRoomCounts([
+            point.transient?.last_year_room_sum,
+            point.transient?.two_years_ago_room_sum,
+            point.transient?.three_years_ago_room_sum
+        ]),
+        currentGroupRooms: normalizeBookingCurveRoomCount(point.group?.this_year_room_sum),
+        referenceGroupRooms: averageBookingCurveRoomCounts([
+            point.group?.last_year_room_sum,
+            point.group?.two_years_ago_room_sum,
+            point.group?.three_years_ago_room_sum
+        ]),
+        diagnostics: []
+    }];
+}
+
+function findLatestBookingCurvePoint(response: BookingCurveResponse, asOfDate: string): BookingCurvePoint | null {
+    let latestPoint: BookingCurvePoint | null = null;
+    let latestDate = "";
+    for (const point of response.booking_curve ?? []) {
+        if (point.date > asOfDate || point.date < latestDate) {
+            continue;
+        }
+
+        latestPoint = point;
+        latestDate = point.date;
+    }
+
+    return latestPoint;
+}
+
+function normalizeBookingCurveRoomCount(value: number | null | undefined): number | null {
+    return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function averageBookingCurveRoomCounts(values: Array<number | null | undefined>): number | null {
+    const normalizedValues = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    if (normalizedValues.length === 0) {
+        return null;
+    }
+
+    return normalizedValues.reduce((sum, value) => sum + value, 0) / normalizedValues.length;
 }
 
 function renderRankRecommendationList(

@@ -1109,6 +1109,12 @@
 
 ### RAU-RR-05 reference deviation ベースの初期 priority scoring を実装する
 
+- 状態:
+  - 2026-05-28 実装済み。
+  - `booking_curve_raw_source:v2` の roomGroup raw source を読み、asOfDate 時点の `this_year_room_sum` と、`last_year_room_sum` / `two_years_ago_room_sum` / `three_years_ago_room_sum` の平均を `all`、`transient`、`group` ごとに比較する。
+  - reference 欠損は推測で埋めず、`reference不足` と diagnostics に出す。
+  - group が上振れ主因で transient が上振れていない場合は、個人価格 rank の上げ検討を `watch` へ抑制する。
+  - forecast model と historical rank response はまだ使わない。
 - 目的:
   - current booking curve と reference curve の差分を使い、最初の料金調整候補 priority と confidence を作る。
 - 背景:
@@ -1434,15 +1440,14 @@
 
 Now:
 
-- `RAU-RR-05` reference deviation ベースの初期 priority scoring を実装する
+- `RAU-RR-06` Analyze 遷移・対象 roomGroup focus 導線を実装する
 
 Next:
 
-- `RAU-RR-06` Analyze 遷移・対象 roomGroup focus 導線を実装する
+- `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
 
 After Next:
 
-- `RAU-RR-07` user snooze / dismissed decision と cooldown を保存する
 - `RAU-RR-08` rank change history による resolved 化を実装する
 
 Later:
@@ -1462,7 +1467,7 @@ Later:
 - first phase の rank recommendation は forecast model を必須入力にしない。reference curve deviation、capacity、remaining rooms、transient / group 分解、直近 rank change、競合価格 snapshot、sales / ADR raw source を使って、RM の作業キューを先に作る。
 - `RAU-RR-03` は 2026-05-28 に実施済みである。current rank と rank ladder 候補は確認済みだが、`rank_sequences[].default_sequence` の方向、rank price table、現在販売中価格、rank 反映 API の request shape と安全制約は未確認として残す。
 - `RAU-RR-04` は実装済みである。トップ画面に `stayDate x roomGroup` 単位の候補リスト shell を追加し、current settings の current rank、remaining、max を使う仮候補生成を `src/rankRecommendation.ts` に分離した。`Analyzeで確認` は URL 導線として表示し、`様子見` と `対応不要` は `RAU-RR-07` まで disabled button として置く。
-- `RAU-RR-05` は、forecast model なしで始められる reference deviation ベースの scoring とする。forecast model が必要かどうかは、first scoring の精度と不足 diagnostics を見てから `RAU-FC-01` で判断する。
+- `RAU-RR-05` は実装済みである。`booking_curve_raw_source:v2` の roomGroup raw source から asOfDate 時点の this_year rooms と過去年 rooms 平均を読み、`all`、`transient`、`group` ごとに reference deviation を計算する。欠損は推測で埋めず `reference不足` として出す。group が上振れ主因で transient が上振れていない場合は、個人価格 rank の上げ検討を抑制する。
 - `RAU-RR-07` と `RAU-RR-08` は、future bulk apply だけでなく first phase の候補リストのノイズ低減にも必要であるため、UI shell と初期 scoring の後に置く。
 - `RAU-RR-09` 以降は、first phase の active recommendation と user decision が蓄積してから扱う。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
 - `RAU-RR-11` の bulk apply は将来候補だが first phase の非目標である。API、current rank 再取得、別 rank change 確認、user decision、cooldown、low confidence、small capacity、group-driven 除外、preview、部分失敗記録が揃うまで実装しない。
