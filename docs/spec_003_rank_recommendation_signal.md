@@ -86,7 +86,7 @@ Analyze は詳細確認の場として扱う。トップ画面では候補一覧
    極小キャパの roomGroup では、1 室の増減だけで稼働率や pace deviation が大きく動く。通常 threshold をそのまま使うと、実務上の優先候補ではないものが頻繁に出る。small capacity は `判定対象外`、または低 confidence として扱う。判定不能やデータ不足は、何も出さずに消すのではなく、diagnostics と reason code に残す。これにより、後続で threshold を調整するときに、なぜ候補化しなかったのかを確認できる。
 
 8. Forecast との関係。
-   rank recommendation は forecast そのものではなく、RM 作業キューである。forecast が使えるようになると priority と confidence の精度は上がるが、first wave は reference curve deviation と既存 booking curve で始められる。`RAU-FC-01` は関連 task として残すが、rank recommendation は UI、lifecycle、user decision、rank response、future bulk apply 設計まで含むため、独立 bundle として扱う。
+   rank recommendation は forecast そのものではなく、RM 作業キューである。forecast が使えるようになると priority と confidence の精度は上がるが、first wave は reference curve deviation と既存 booking curve で始められる。`RAU-FC-01` の結論は、今すぐ forecast model を実装して scoring に接続するのではなく、`RAU-FC-02` で evaluation dataset、metrics、`ForecastResult v1 candidate` を先に設計することである。forecast を使う場合も、評価済みで diagnostics が許容できると判断した後に priority / confidence の補助要素として接続する。rank recommendation は UI、lifecycle、user decision、rank response、future bulk apply 設計まで含むため、forecast bundle とは独立して扱う。
 
 ## Scope
 
@@ -314,11 +314,20 @@ priorityScore =
 scoring では次を守る。
 
 - `all` が基準より多くても、`group` が主因なら、個人価格 rank の上げ検討は抑制する。
-- `transient` または個人需要推定が基準より多いかを重視する。
+- `transient` または個人需要推定が基準より多いかを重視する。UI 表示では `transient` を「個人」と呼ぶが、core / storage / spec の segment 名は `transient` を正とする。
 - 小キャパの roomGroup は、`not_eligible` または低 confidence へ落とす。
 - reference curve、forecast、capacity、current rank、rank ladder、競合価格 snapshot が欠損している場合は、推測で埋めず diagnostics に不足理由を出す。
 - 直近に rank 変更がある場合は、同じ方向の recommendation を出し続けないよう cooldown を使う。
 - 過去に反応が悪かった rank transition は、priority または confidence を下げる。
+
+forecast の扱い:
+
+- forecast は first wave の必須入力にしない。forecast が欠損しても、reference deviation、capacity、remaining rooms、`all` / `transient` / `group` 分解、直近 rank change、競合価格 snapshot、sales / ADR raw source で候補生成を継続する。
+- forecast を使う前に、`docs/spec_002_curve_core.md` の `ForecastResult v1 candidate` と evaluation dataset を `RAU-FC-02` で確定する。
+- forecast を接続する場合は、`scope="roomGroup"`、`segment="transient"` を個人向け rank 判断の主入力候補にする。`segment="all"` は全体着地見込み、`segment="group"` は団体起因の抑制条件と diagnostics に使う。
+- forecast 欠損時、reference curve 欠損時、sourceCount 不足時、capacity 不足時、`0日前` / `ACT` 分離制約がある場合は、推測で補完せず diagnostics に残す。
+- forecast による priority / confidence 補正は、過去 stayDate 評価で誤差、bias、小キャパ、group-driven case、rank recommendation impact proxy を確認してから実装する。
+- `snoozed_by_user`、`dismissed_by_user`、`resolved_by_rank_change` は、初期評価では真の正解ラベルではなく evaluation proxy として扱う。`snoozed_by_user` は false positive ではなく一時判断ログである。
 
 ## Rank Response / Elasticity
 
@@ -400,6 +409,8 @@ rank response dataset の first contract:
 - `様子見`。
 - `対応不要`。
 
+first wave の top list では forecast 数値を直接表示しない。forecast が評価後に scoring 補助として使われる場合でも、top list では priority、confidence、主要根拠、diagnostics に反映する。`予測最終室数` のような数値を top list に出すと、利用者が current、reference curve、forecast、推奨ランク方向を混同しやすいためである。
+
 トップカレンダー badge は optional とする。入れる場合でも、warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示と意味を混同しない。候補リストを作業順の主導線とし、badge は補助表示に留める。
 
 ### Analyze
@@ -411,6 +422,8 @@ Analyze 画面では、該当日付の候補一覧と部屋タイプ別 signal d
 - トップのリストから遷移した場合、sessionStorage などで pending focus を保持する。
 - 後続 task で、対象 roomGroup card を開く、scroll する、highlight する。
 - rank change が発生したら `resolved_by_rank_change` として active list から外す。ただし履歴は削除しない。
+
+forecast 実装前は、Analyze detail に forecast 数値を表示しない。評価後に表示する場合も、最初は Analyze detail の diagnostics として扱い、top list への簡易表示とは別 task で判断する。表示する場合は、current、reference curve、forecast の入力、処理、出力を区別できる label と missing diagnostics を持たせる。
 
 ## Lifecycle
 
@@ -493,6 +506,8 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 9. reasonFingerprint に含める reasonCodes、threshold、data version、scoring version の境界をどう切るか。
 10. 競合価格 snapshot のどの変化量を `competitor price movement` として扱うか。
 11. sales / ADR の欠損、0 室、売上 0、ADR null を scoring でどう扱うか。
+12. forecast evaluation で、`maeRooms`、`smape`、`biasRooms` と rank recommendation impact proxy をどの保存単位で集計するか。
+13. `ForecastResult v1 candidate` の field、diagnostics、`scope`、`roomGroupId`、capacity、observed prefix のどこまでを RAU-FC-02 で確定するか。
 
 ## References
 
