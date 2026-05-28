@@ -471,7 +471,7 @@ rank response dataset の first contract:
 - 推奨方向または推奨ランク方向。
 - rank order の現在 source と、高ランクから低ランクへの順序。
 - 利用者が high-to-low の rank 順序を手動保存する入口、現在の入力順を逆順にして保存する入口、保存失敗理由を具体的に表示する status、推定順序へ戻す reset 入口。
-- 主要根拠。
+- 主要根拠。cell 本体には reason code の非数値要約だけを表示し、hover tooltip では同じ主要根拠と、不足または注意の種類を非数値で表示する。これは利用者が根拠欄を読む流れのまま、booking curve / forecast / sales / ADR / 同曜日 / 競合価格対応 / 団体主因 / 小キャパ / 隣接ランク制約の注意を確認できるようにするためである。
 - 状態。
 - `Analyzeで確認`。
 - `様子見`。

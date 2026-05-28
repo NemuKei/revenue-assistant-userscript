@@ -2147,6 +2147,49 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-33 主要根拠 cell で不足理由と注意を確認できるようにする
+
+- 状態:
+  - 2026-05-28 実装済み。
+- 目的:
+  - top list の `主要根拠` cell を読む流れのまま、不足または注意の種類を確認できるようにする。
+  - `確度` cell の tooltip だけに注意情報が寄ることで、利用者が候補理由を読んだときに注意を見落とす可能性を下げる。
+- 背景:
+  - `RAU-RR-23` で `確度` tooltip には、予測精度や推奨金額を保証しないこと、主要根拠、不足または注意の種類を表示済みである。
+  - ただし、作業キューを読む利用者は `主要根拠` cell を先に読むため、同じ注意情報を根拠欄の hover でも確認できるほうが判断手順に合う。
+- スコープ:
+  - `主要根拠` cell に hover tooltip を追加する。
+  - tooltip には、cell 本体と同じ主要根拠と、不足または注意の種類を非数値で表示する。
+  - 不足または注意の種類は、既存の diagnostics から作る `booking_curve または reference 不足`、`forecast 比較不足`、`sales / ADR 比較不足`、`同曜日比較不足`、`競合価格の部屋タイプ対応未確認`、`団体主因のため上げ判断を抑制`、`部屋数条件により判定制限`、`隣接ランク表示に制約あり` を使う。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - cell 本体に forecast 数値、sales / ADR 数値、競合価格の金額、差額、比率を表示しない。
+  - reasonCodes、diagnostics、reasonFingerprint、candidate scoring、priority、confidence を変更しない。
+  - API request 範囲、request 件数、request 間隔を変更しない。
+  - 推奨レート金額、Revenue Assistant write / bulk apply を追加しない。
+  - Analyze detail の新規表示はこの task では扱わない。
+- 受け入れ条件:
+  - `主要根拠` cell の hover tooltip で、主要根拠と不足または注意の種類を確認できる。
+  - 不足または注意がない候補でも、主要根拠 tooltip は空にならない。
+  - top list の列数、表示文言、reasonFingerprint、priority、confidence、candidate filtering は変わらない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome Extension backend の可用性を確認し、実 DOM 確認は Chrome DevTools Protocol で行う。
+- 実装内容:
+  - `主要根拠` cell の `title` に、既存 reasonCodes と既存 diagnostics summary から作る非数値 tooltip を設定した。
+  - `確度` tooltip と同じ diagnostics summary helper を再利用し、新しい判定ロジックや scoring は追加していない。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に同じ command を再実行して通過した。
+  - `git diff --check`: passed
+  - Chrome Extension runtime surface: `agent.browsers` はこの thread では未露出。
+  - Chrome DevTools Protocol: `npm run chrome:pages` で通常 Chrome の Revenue Assistant tab を確認した。
+  - Chrome DevTools Protocol 実 DOM 確認: 最新 dist 一時注入後、top list は 10 行、`主要根拠` cell は 10 件、`主要根拠:` を含む tooltip は 10 件、`注意:` を含む tooltip は 10 件、空 tooltip は 0 件だった。sample では `主要根拠: 残室少 / 個人pace上振れ / reference上振れ / LT近い` と `注意: forecast 比較不足` が同じ tooltip に表示された。検証用に差し替えた `requestAnimationFrame` は確認後に元へ戻した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。

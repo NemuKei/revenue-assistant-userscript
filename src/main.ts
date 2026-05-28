@@ -5955,7 +5955,10 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
         { value: candidate.roomGroupName },
         { value: candidate.currentRankName ?? "-" },
         { value: formatRankRecommendationAction(candidate) },
-        { value: candidate.reasonCodes.join(" / ") },
+        {
+            value: candidate.reasonCodes.join(" / "),
+            title: formatRankRecommendationReasonTitle(candidate)
+        },
         { value: formatRankRecommendationStatus(candidate.status) }
     ];
     for (const cell of cells) {
@@ -6113,6 +6116,19 @@ function formatRankRecommendationConfidenceTitle(candidate: RankRecommendationCa
         "予測精度、推奨金額の正確さ、Revenue Assistant への反映可否を保証する値ではありません。"
     ];
     const reasonText = Array.from(new Set(candidate.reasonCodes)).slice(0, 5).join(" / ");
+    if (reasonText !== "") {
+        parts.push(`主要根拠: ${reasonText}`);
+    }
+    const cautionText = summarizeRankRecommendationConfidenceCautions(candidate.diagnostics).join(" / ");
+    if (cautionText !== "") {
+        parts.push(`注意: ${cautionText}`);
+    }
+    return parts.join("\n");
+}
+
+function formatRankRecommendationReasonTitle(candidate: RankRecommendationCandidate): string {
+    const parts: string[] = [];
+    const reasonText = Array.from(new Set(candidate.reasonCodes)).join(" / ");
     if (reasonText !== "") {
         parts.push(`主要根拠: ${reasonText}`);
     }
