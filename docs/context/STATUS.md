@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-07` まで完了済み。次の Now は `RAU-SALES-08` で、`raise_watch` と sales / ADR 弱含み signal が同時に出る候補の表示または補正を調整する。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-08` まで完了済み。次の Now は `RAU-RR-12` で、`rank_sequences[].default_sequence` の方向を確認する。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -28,6 +28,7 @@
   - `RAU-SALES-05` sales / ADR health signal の実データ発火と閾値を確認する
   - `RAU-SALES-06` rank recommendation 候補の booking_curve raw source coverage を改善する
   - `RAU-SALES-07` ログイン済み通常 Chrome で sales / ADR health signal の DOM 再描画分布を確認する
+  - `RAU-SALES-08` `raise_watch` と sales / ADR 弱含み signal が同時に出る候補の表示または補正を調整する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -39,7 +40,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の `Now` は `RAU-SALES-08` とする。次は、`raise_watch` と sales / ADR 弱含み signal が同時に出る候補を、表示、priority、confidence のどこで表すかを決め、必要なら実装する。
+  - `docs/tasks_backlog.md` の `Now` は `RAU-RR-12` とする。次は、`rank_sequences[].default_sequence` の方向を通常 Chrome と CDP の read-only 観測で確認し、recommended rank 名を安全に出せるか判断する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -55,8 +56,8 @@
   - 月次 `/api/v1/booking_curve/monthly` の snapshot read path を、過去 batch の履歴比較や日次差分表示へ広げない。
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
 - 終了条件:
-  - `RAU-SALES-08` で、`raise_watch` と sales / ADR 弱含み signal が同時に出た場合の扱いを、表示、priority、confidence のどこで表すか決めている。
-  - 実装する場合は、top list に sales / ADR 数値、金額、比率を出さず、Chrome DevTools Protocol または Chrome拡張で action、priority、weak signal reason 表示、数値非表示を確認する。
+  - `RAU-RR-12` で、`rank_sequences[].default_sequence` の昇順または降順が Revenue Assistant UI の rank 上げ / 下げのどちらに対応するか確認する。
+  - 確認できる場合は recommended rank 名を表示してよい条件を `docs/spec_003_rank_recommendation_signal.md` に反映し、確認できない場合は `recommendedRankDirection` のみを継続する理由を `docs/context/DECISIONS.md` に残す。
   - sales / ADR reason は引き続き数値を直接出さず、非数値要約に留める。
   - 未確認 API を確認済み仕様として扱わない。
 - subagent 利用方針:
@@ -105,6 +106,7 @@
   - `RAU-SALES-05` は完了した。Chrome拡張 backend は `openTabs()` まで利用可能で、通常 Chrome の接続確認に使った。Chrome DevTools Protocol では通常 Chrome の Revenue Assistant root へ build 済み userscript を一時注入し、top list 10 行の diagnostics 分布を確認した。分布は `booking_curve_source_missing` 6 行、`sales_adr_current_adr_missing` 4 行、`sales_adr_current_sales_missing` 4 行、`reference_deviation_missing` 10 行、`forecast_missing` 4 行だった。比較可能な `sales_adr_signal_*` は 0 行だったため、ADR 95% 以下、sales 90% 以下の初期閾値は変更しない。
   - `RAU-SALES-06` は実装済み。top list の表示中 candidates と一致する既存 `currentRaw x roomGroup` warm cache task を優先し、優先 task 取得後に `rank-recommendation-warm-cache` reason で calendar sync を強制再実行する。request 範囲や件数は増やしていない。`booking_curve_source_missing` の主因は key 不一致ではなく、既存 queue の処理順で表示候補の roomGroup raw source が後回しになることだった。併せて、sales / ADR health の latest point / latest observation 比較で `YYYYMMDD` と `YYYY-MM-DD` が混ざらないよう date key を正規化した。Chrome DevTools Protocol では、IndexedDB 上の exact roomGroup record が top list 10 行すべてに存在し、6 行で最新 observation の sales / ADR を抽出できることを確認した。最新 build 注入時の通常 Chrome では Revenue Assistant API が 401 を返したため、DOM 再描画後の `sales_adr_signal_*` 分布確認は `RAU-SALES-07` に分ける。
   - `RAU-SALES-07` は完了した。Chrome拡張 backend で通常 Chrome の Revenue Assistant root tab を確認し、Chrome DevTools Protocol で同 tab の `/api/v1/suggest/output/current_settings?from=20260501&to=20260531` が 200 を返すことを確認した。最新 build 一時注入後の top list 10 行は、`booking_curve_source_missing` 0 行、`sales_adr_current_adr_missing` 3 行、`sales_adr_current_sales_missing` 3 行、`sales_adr_signal_neutral` 2 行、`sales_adr_signal_adr_down` 4 行、`sales_adr_signal_sales_down` 0 行、`sales_adr_signal_adr_and_sales_down` 1 行だった。`ADR弱含み` は 4 行、`ADR・売上弱含み` は 1 行で表示され、sales / ADR の数値、金額、比率は top list に表示されなかった。page error と console error は 0 件だった。1 snapshot だけでは閾値の良否を判断できないため、ADR 95% 以下、sales 90% 以下の初期閾値は変更しない。
+  - `RAU-SALES-08` は完了した。`raise_watch` と `adr_down`、`sales_down`、`adr_and_sales_down` が同時に出る場合は、action を `raise_watch` のまま維持し、priority を最大 `medium` まで下げる。合成入力による候補生成確認では、weak signal なしは `raise_watch` / `high`、各 weak signal ありは `raise_watch` / `medium` になることを確認した。通常 Chrome の最新 dist 一時注入後の top list 10 行は、今回の snapshot では weak signal reason が 0 行で、全行 `raise_watch` / `high` だった。sales / ADR の数値、金額、比率は top list に表示されず、page error と console error は 0 件だった。実データで weak signal 行が再発火した場合の `medium` 表示確認は `RAU-SALES-09` に分ける。
   - `RAU-MP-01` のコード状態を再確認した。既存実装は `src/monthlyProgress.ts` で `/monthly-progress/YYYY-MM` route を検知し、top / analyze 系同期を停止したうえで月次専用 observer と preview を起動する。
   - 月次 `/api/v1/booking_curve/monthly` は `src/monthlyProgressIndexedDb.ts` で `facilityCacheKey + yearMonth + batchDateKey` ごとに IndexedDB snapshot へ保存する。現在の preview は保存後に `readLatestMonthlyBookingCurveSnapshot()` で読む snapshot-backed read path であり、旧記述の「表示 read path は現行 API response を正とする」は実装状態と一致しない。
   - `RAU-MP-01` では、まず月次実績画面で GUI 確認し、必要なら `src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout だけを最小修正する。
@@ -216,10 +218,11 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-SALES-08` を確認する。
-2. `src/rankRecommendation.ts` の priority / confidence 補正と、`src/main.ts` の top list 表示文言を確認する。
-3. `raise_watch` かつ `adr_and_sales_down`、`raise_watch` かつ `adr_down`、`raise_watch` かつ `sales_down` の扱いを分ける必要があるか判断する。
-4. Rank Recommendation Bundle に戻る場合は、forecast 数値を top list へ直接表示しない契約と、`rank_sequences[].default_sequence` の方向、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-RR-12` を確認する。
+2. 通常 Chrome の Revenue Assistant 画面と CDP の read-only API 観測で、current rank と `rank_sequences[].default_sequence` の並びを比較する。
+3. `default_sequence` の方向を確認できる場合は、recommended rank 名を表示してよい条件を `docs/spec_003_rank_recommendation_signal.md` に反映する。
+4. 確認できない場合は、`recommendedRankDirection` のみを継続する理由を `docs/context/DECISIONS.md` に残す。
+5. Rank Recommendation Bundle に戻る場合は、forecast 数値を top list へ直接表示しない契約と、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
 
 変更しない契約:
 

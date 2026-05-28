@@ -193,6 +193,7 @@ function buildRankRecommendationCandidate(options: {
         if (salesAdrHealthSignal === "adr_and_sales_down") {
             reasonCodes.push("ADR・売上弱含み");
             if (action === "raise_watch") {
+                priority = minPriority(priority, "medium");
                 confidence = decreaseConfidence(confidence, 0.08);
             } else if (action === "lower_watch") {
                 confidence = increaseConfidence(confidence, 0.06);
@@ -203,6 +204,7 @@ function buildRankRecommendationCandidate(options: {
         } else if (salesAdrHealthSignal === "adr_down") {
             reasonCodes.push("ADR弱含み");
             if (action === "raise_watch") {
+                priority = minPriority(priority, "medium");
                 confidence = decreaseConfidence(confidence, 0.05);
             } else if (action === "lower_watch") {
                 confidence = increaseConfidence(confidence, 0.03);
@@ -210,6 +212,7 @@ function buildRankRecommendationCandidate(options: {
         } else if (salesAdrHealthSignal === "sales_down") {
             reasonCodes.push("売上弱含み");
             if (action === "raise_watch") {
+                priority = minPriority(priority, "medium");
                 confidence = decreaseConfidence(confidence, 0.04);
             } else if (action === "lower_watch") {
                 confidence = increaseConfidence(confidence, 0.05);
@@ -303,6 +306,12 @@ function decreaseConfidence(current: number, delta: number): number {
 
 function maxPriority(current: RankRecommendationPriority, candidate: RankRecommendationPriority): RankRecommendationPriority {
     return getRankRecommendationPriorityWeight(candidate) > getRankRecommendationPriorityWeight(current)
+        ? candidate
+        : current;
+}
+
+function minPriority(current: RankRecommendationPriority, candidate: RankRecommendationPriority): RankRecommendationPriority {
+    return getRankRecommendationPriorityWeight(candidate) < getRankRecommendationPriorityWeight(current)
         ? candidate
         : current;
 }

@@ -340,7 +340,7 @@ sales / ADR health の扱い:
 - reference は同じ raw source の latest point に含まれる `last_year_*`、`two_years_ago_*`、`three_years_ago_*` の平均を使う。これは top list scoring の補助 signal を作るための内部比較であり、正式な売上予測や価格弾力性評価ではない。
 - 初期 signal は `adr_down`、`sales_down`、`adr_and_sales_down`、`neutral` とする。ADR は current ADR が reference ADR の 95% 以下、sales は current sales が reference sales の 90% 以下の場合に弱含みとして扱う。
 - reference が欠損している場合、reference が 0 で比率比較できない場合、current sales / ADR が欠損している場合は、該当 signal を推測で補完しない。候補には diagnostics を残し、既存 scoring を継続する。
-- sales / ADR health signal は候補 action を単独で決めない。`raise_watch` では弱含み signal を confidence の抑制として使い、`lower_watch` では confidence の補強として使う。`watch` では近い LT の場合だけ priority / confidence を小さく補正する。
+- sales / ADR health signal は候補 action を単独で決めない。`raise_watch` では弱含み signal を confidence の抑制として使い、作業順が「上げてよい候補」と誤読されないよう priority を最大 `medium` まで下げる。`lower_watch` では confidence の補強として使う。`watch` では近い LT の場合だけ priority / confidence を小さく補正する。
 - top list には ADR、sales、比率、金額を直接表示しない。主要根拠に出す場合も、`ADR弱含み`、`売上弱含み`、`ADR・売上弱含み` のような非数値要約に留める。
 - `neutral` は内部 diagnostics として残してよいが、候補行の主要根拠を増やす目的では表示しない。実データでの発火率と false positive は後続 task で確認する。
 - sales / ADR health の `asOfDate` 比較では、`YYYYMMDD` と `YYYY-MM-DD` を混在させない。`booking_curve_raw_source:v2` の point date、`SalesAdrObservation.observedDate`、rank recommendation の `asOfDate` は比較前に同じ日付形式へ正規化し、asOfDate より後の将来 observation を current として使わない。

@@ -1329,6 +1329,31 @@
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
   - `open-spec-questions`: rank 反映 endpoint の有無。反映直前再検証の方法。部分失敗時の保存形式。利用者確認 UI。
 
+### RAU-RR-12 `rank_sequences[].default_sequence` の方向を確認する
+
+- 目的:
+  - current rank と rank ladder 候補から、`recommendedRankDirection` だけでなく隣接 rank 名を安全に出せるか判断する。
+- 背景:
+  - `RAU-RR-10` では current rank と rank ladder 候補を使う契約を設計済みである。
+  - ただし `rank_sequences[].default_sequence` の大小が、Revenue Assistant UI 上の rank 上げ / 下げのどちらに対応するか未確認である。
+  - この方向を確認しないまま recommended rank 名を表示すると、上げ方向と下げ方向を取り違える危険がある。
+- スコープ:
+  - 通常 Chrome の Revenue Assistant 画面と CDP の read-only API 観測を使い、current rank と rank ladder の並びを比較する。
+  - `default_sequence` の昇順または降順が、UI 上の rank 上げ / 下げに対応するかを判断する。
+  - 判断できる場合は `docs/spec_003_rank_recommendation_signal.md` と `docs/context/DECISIONS.md` に反映する。
+- 非目標:
+  - 推奨レート金額を出さない。
+  - Revenue Assistant への write API を実行しない。
+  - bulk apply を実装しない。
+- 受け入れ条件:
+  - `default_sequence` の方向を確認済み、または確認不能理由を明記している。
+  - 確認済みの場合、recommended rank 名を表示してよい条件と、表示しない条件が仕様へ反映されている。
+  - 確認不能の場合、`recommendedRankDirection` のみを継続する理由が `docs/context/DECISIONS.md` に残っている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -1703,7 +1728,7 @@
   - CDP 実行中の page error と console error は 0 件だった。
 - 判断:
   - 比較可能な sales / ADR health signal は発火したが、1 snapshot だけでは閾値の良否を判断できないため、ADR 95% 以下、sales 90% 以下の初期閾値は変更しない。
-  - 次は `RAU-SALES-08` で、`raise_watch` と sales / ADR 弱含み signal が同時に出る候補を、作業順と表示上どう扱うかを調整する。
+  - その後の `RAU-SALES-08` で、`raise_watch` と sales / ADR 弱含み signal が同時に出る候補を、作業順と表示上どう扱うかを調整した。
 - 目的:
   - `RAU-SALES-06` の date 正規化修正と warm cache 優先化後に、通常 Chrome のログイン済み Revenue Assistant 画面で top list が保存済み raw source を読み直し、sales / ADR health diagnostics を更新することを確認する。
 - 背景:
@@ -1728,6 +1753,13 @@
 
 ### RAU-SALES-08 `raise_watch` と sales / ADR 弱含み signal が同時に出る候補の表示または補正を調整する
 
+- 状態:
+  - 2026-05-28 に実装済み。
+  - `raise_watch` と `adr_down`、`sales_down`、`adr_and_sales_down` が同時に出る場合は、action を変えずに priority を最大 `medium` まで下げる。
+  - confidence は既存どおり弱含みの種類に応じて小さく抑制する。
+  - top list へ sales / ADR 数値、金額、比率は追加していない。
+  - 合成入力による候補生成確認では、weak signal なしの場合は `raise_watch` / `high`、`adr_down`、`sales_down`、`adr_and_sales_down` の場合は `raise_watch` / `medium` になることを確認した。
+  - 通常 Chrome の最新 dist 一時注入後の実画面確認では、top list 10 行すべてが `raise_watch` / `high` で、今回の snapshot では sales / ADR 弱含み reason が 0 行だった。そのため、実データ上の weak signal 行が `medium` になる表示はこの snapshot では発火しなかった。
 - 目的:
   - top list で `上げ検討` と `ADR弱含み` または `ADR・売上弱含み` が同時に出る候補について、利用者が「上げてよい候補」ではなく「上げ検討だが慎重確認が必要な候補」と理解できるようにする。
   - sales / ADR health signal を、単なる理由文字列ではなく、作業順、priority、confidence、または表示文言のいずれかへ反映する。
@@ -1750,6 +1782,29 @@
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-SALES-09 sales / ADR 弱含み行の priority downgrade を実データで再確認する
+
+- 目的:
+  - `RAU-SALES-08` の priority downgrade が、通常 Chrome の Revenue Assistant 実データで weak signal 行に表示されることを確認する。
+- 背景:
+  - `RAU-SALES-08` の実装時点では、合成入力では `raise_watch + weak signal -> medium` を確認できた。
+  - しかし通常 Chrome の確認 snapshot では、top list 10 行に sales / ADR 弱含み reason が出なかったため、実データでの `medium` 表示は観測できなかった。
+- スコープ:
+  - Chrome拡張で通常 Chrome の Revenue Assistant 対象タブを確認する。
+  - CDP で最新 dist を一時注入し、top list の action、priority、weak signal reason、sales / ADR 数値非表示を確認する。
+- 非目標:
+  - 閾値をこの task だけで変更しない。
+  - 推奨レート金額を出さない。
+  - Revenue Assistant への write / bulk apply を行わない。
+- 受け入れ条件:
+  - weak signal 行が発火した場合、その行の priority が `medium` 以下であることを確認している。
+  - weak signal 行が発火しない場合、その snapshot では確認不能であることを `docs/context/STATUS.md` または `docs/context/DECISIONS.md` に残している。
+  - top list に sales / ADR 数値、金額、比率が表示されないことを確認している。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: after-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
 ## Completed / Superseded Context
@@ -1830,7 +1885,7 @@
 
 Now:
 
-- `RAU-SALES-08` `raise_watch` と sales / ADR 弱含み signal が同時に出る候補の表示または補正を調整する
+- `RAU-RR-12` `rank_sequences[].default_sequence` の方向を確認する
 
 Next:
 
@@ -1842,7 +1897,7 @@ After Next:
 
 Later:
 
-- なし
+- `RAU-SALES-09` sales / ADR 弱含み行の priority downgrade を実データで再確認する
 
 統合判断:
 
@@ -1860,6 +1915,7 @@ Later:
 - `RAU-RR-09` は 2026-05-28 の docs 設計で完了した。rank response は価格弾力性ではなく、実価格または rank price table が取れるまで `ランク反応度` として扱う。
 - `RAU-RR-10` は 2026-05-28 の docs 設計で完了した。current rank と rank ladder 候補は使えるが、`rank_sequences[].default_sequence` の方向が未確認であるため、recommendedRank 名は方向確認まで出さない。
 - `RAU-RR-11` は 2026-05-28 の feasibility 判断で完了した。bulk apply は将来候補だが first phase の非目標である。API、current rank 再取得、別 rank change 確認、user decision、cooldown、low confidence、small capacity、group-driven 除外、preview、部分失敗記録が揃うまで実装しない。
+- `RAU-RR-12` は、`RAU-RR-10` の未確認点である `rank_sequences[].default_sequence` の方向を確認する task である。recommended rank 名を出すかどうかの前提になるため、次の `Now` とする。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
@@ -1871,7 +1927,9 @@ Later:
 - `RAU-SALES-04` は 2026-05-28 に実装済みである。`RAU-SALES-03` の adapter を使って、rank recommendation の候補根拠へ ADR / sales health diagnostics を段階接続した。top list へ sales / ADR 数値を直接表示せず、非数値 reason / diagnostics だけを追加する契約を維持する。Chrome DevTools Protocol の実画面確認では、候補 list root と候補 row 10 件が表示され、重大な console / page error は 0 件だった。現在の実データでは sales / ADR reason の表示発火は 0 件だったため、`RAU-SALES-05` で diagnostics 分布と閾値を確認する。
 - `RAU-SALES-05` は 2026-05-28 に完了した。top list 10 行の diagnostics 分布は、`booking_curve_source_missing` 6 行、`sales_adr_current_adr_missing` 4 行、`sales_adr_current_sales_missing` 4 行で、比較可能な `sales_adr_signal_*` は 0 行だった。初期閾値は変更せず、次は `RAU-SALES-06` で raw source coverage を改善する。
 - `RAU-SALES-06` は 2026-05-28 に実装済みである。top list の表示中 candidates と一致する既存 `currentRaw x roomGroup` warm cache task を優先し、取得後に rank recommendation list を再同期する。request 範囲や件数は増やしていない。さらに、sales / ADR health の latest observation 比較で `YYYYMMDD` と `YYYY-MM-DD` が混ざらないよう date key を正規化した。Chrome DevTools Protocol では IndexedDB 上の exact roomGroup record が top list 10 行すべてに存在し、6 行で最新 sales / ADR を抽出できることを確認した。一方、最新 build 注入時に Revenue Assistant API が 401 を返したため、ログイン済み通常 Chrome での DOM 再描画後 signal 分布確認は `RAU-SALES-07` へ分ける。
-- `RAU-SALES-07` は 2026-05-28 に完了した。Chrome拡張 backend で通常 Chrome の Revenue Assistant root tab を確認し、Chrome DevTools Protocol で `/api/v1/suggest/output/current_settings?from=20260501&to=20260531` が 200 を返すことを確認した。最新 build 一時注入後の top list 10 行では、`booking_curve_source_missing` 0 行、`sales_adr_current_adr_missing` 3 行、`sales_adr_current_sales_missing` 3 行、`sales_adr_signal_neutral` 2 行、`sales_adr_signal_adr_down` 4 行、`sales_adr_signal_sales_down` 0 行、`sales_adr_signal_adr_and_sales_down` 1 行だった。sales / ADR の数値、金額、比率は表示されなかった。初期閾値は変更せず、次は `RAU-SALES-08` で `raise_watch` と weak signal の同時発火時の表示または補正を調整する。
+- `RAU-SALES-07` は 2026-05-28 に完了した。Chrome拡張 backend で通常 Chrome の Revenue Assistant root tab を確認し、Chrome DevTools Protocol で `/api/v1/suggest/output/current_settings?from=20260501&to=20260531` が 200 を返すことを確認した。最新 build 一時注入後の top list 10 行では、`booking_curve_source_missing` 0 行、`sales_adr_current_adr_missing` 3 行、`sales_adr_current_sales_missing` 3 行、`sales_adr_signal_neutral` 2 行、`sales_adr_signal_adr_down` 4 行、`sales_adr_signal_sales_down` 0 行、`sales_adr_signal_adr_and_sales_down` 1 行だった。sales / ADR の数値、金額、比率は表示されなかった。初期閾値は変更せず、`RAU-SALES-08` で `raise_watch` と weak signal の同時発火時の表示または補正を調整した。
+- `RAU-SALES-08` は 2026-05-28 に実装済みである。`raise_watch` と `adr_down`、`sales_down`、`adr_and_sales_down` が同時に出る場合、action は `raise_watch` のまま維持し、priority を最大 `medium` まで下げる。合成入力では `raise_watch + weak signal -> medium` を確認した。通常 Chrome の最新 dist 一時注入後の snapshot では top list 10 行に weak signal reason が出なかったため、実データでの weak 行 `medium` 表示は `RAU-SALES-09` のデータ依存確認へ分ける。
+- `RAU-SALES-09` は、weak signal 行が実データで再発火したときの表示確認に限定する。現在の `Now` には置かず、データ依存の確認 task として `Later` に置く。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
