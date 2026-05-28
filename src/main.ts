@@ -646,6 +646,11 @@ interface PendingRankRecommendationFocus {
     createdAt: string;
 }
 
+interface RankRecommendationWarmCachePriorityCandidate {
+    stayDate: string;
+    roomGroupId: string;
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const rankRecommendationCurrentSettingsCache = new Map<string, Promise<RankRecommendationCurrentSettingsResponse>>();
@@ -678,6 +683,7 @@ let competitorPriceSnapshotBackgroundRunning = false;
 let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
 let pendingCompetitorPriceTabSnapshotRequest: PendingCompetitorPriceTabSnapshotRequest | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
+let rankRecommendationWarmCachePriorityCandidates: RankRecommendationWarmCachePriorityCandidate[] = [];
 let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
 let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
 let salesSettingWarmCacheStoredCalendarMarkerStates = new Map<string, SalesSettingWarmCacheStoredMarkerState>();
@@ -1755,6 +1761,10 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
         && salesSettingWarmCacheState.asOfDate === batchDateKey
         && salesSettingWarmCacheState.priorityStayDate === priorityStayDate;
     if (sameContext && (salesSettingWarmCacheState.total > 0 || salesSettingWarmCacheState.status === "building")) {
+        salesSettingWarmCacheState = {
+            ...salesSettingWarmCacheState,
+            queue: prioritizeSalesSettingWarmCacheQueueForRankRecommendations(salesSettingWarmCacheState.queue)
+        };
         renderSalesSettingWarmCacheIndicator();
         if (canResumeSalesSettingWarmCache()) {
             scheduleSalesSettingWarmCacheDrain(0);
@@ -1857,7 +1867,7 @@ async function buildSalesSettingWarmCacheQueue(startDate: string, priorityStayDa
         }
     }
 
-    return tasks;
+    return prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks);
 }
 
 const SALES_SETTING_WARM_CACHE_REFERENCE_SEGMENTS = ["all", "transient", "group"] as const satisfies readonly CurveSegment[];
@@ -1888,6 +1898,72 @@ function addSalesSettingWarmCacheTask(tasks: SalesSettingWarmCacheTask[], taskKe
 
     taskKeys.add(taskKey);
     tasks.push(task);
+}
+
+function rememberRankRecommendationWarmCachePriorityCandidates(candidates: RankRecommendationCandidate[]): void {
+    const seen = new Set<string>();
+    rankRecommendationWarmCachePriorityCandidates = candidates.flatMap((candidate) => {
+        const taskKey = buildRankRecommendationWarmCachePriorityTaskKey(candidate.stayDate, candidate.roomGroupId);
+        if (seen.has(taskKey)) {
+            return [];
+        }
+
+        seen.add(taskKey);
+        return [{
+            stayDate: candidate.stayDate,
+            roomGroupId: candidate.roomGroupId
+        }];
+    });
+}
+
+function clearRankRecommendationWarmCachePriorityCandidates(): void {
+    rankRecommendationWarmCachePriorityCandidates = [];
+}
+
+function prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks: SalesSettingWarmCacheTask[]): SalesSettingWarmCacheTask[] {
+    if (rankRecommendationWarmCachePriorityCandidates.length === 0 || tasks.length <= 1) {
+        return tasks;
+    }
+
+    const priorityOrderByTaskKey = new Map(rankRecommendationWarmCachePriorityCandidates.map((candidate, index) => [
+        buildRankRecommendationWarmCachePriorityTaskKey(candidate.stayDate, candidate.roomGroupId),
+        index
+    ]));
+    return tasks
+        .map((task, index) => ({ task, index }))
+        .sort((left, right) => {
+            const leftOrder = priorityOrderByTaskKey.get(buildSalesSettingWarmCacheTaskKey(left.task)) ?? Number.POSITIVE_INFINITY;
+            const rightOrder = priorityOrderByTaskKey.get(buildSalesSettingWarmCacheTaskKey(right.task)) ?? Number.POSITIVE_INFINITY;
+            if (leftOrder !== rightOrder) {
+                return leftOrder - rightOrder;
+            }
+
+            return left.index - right.index;
+        })
+        .map(({ task }) => task);
+}
+
+function buildRankRecommendationWarmCachePriorityTaskKey(stayDate: string, roomGroupId: string): string {
+    return [
+        "currentRaw",
+        "raw",
+        `target:${stayDate}`,
+        `stay:${stayDate}`,
+        "scope:roomGroup",
+        `roomGroup:${roomGroupId}`,
+        "segment:-",
+        "curve:-"
+    ].join("|");
+}
+
+function isRankRecommendationWarmCachePriorityTask(task: SalesSettingWarmCacheTask): boolean {
+    return task.kind === "currentRaw"
+        && task.scope === "roomGroup"
+        && task.roomGroupId !== undefined
+        && rankRecommendationWarmCachePriorityCandidates.some((candidate) => (
+            candidate.stayDate === task.stayDate
+            && candidate.roomGroupId === task.roomGroupId
+        ));
 }
 
 function buildSalesSettingWarmCacheTaskKey(task: SalesSettingWarmCacheTask): string {
@@ -2127,6 +2203,9 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
             ...(taskResult === "fetched" ? { lastFetchedAt: new Date().toISOString() } : {})
         };
         renderSalesSettingWarmCacheIndicator();
+        if (taskResult === "fetched" && isRankRecommendationWarmCachePriorityTask(task)) {
+            queueCalendarSync({ force: true, reason: "rank-recommendation-warm-cache" });
+        }
         scheduleSalesSettingWarmCacheDrain(nextDelayMs);
         return;
     } catch (error: unknown) {
@@ -4308,12 +4387,14 @@ function cleanupMonthlyCalendarLatestChanges(): void {
 async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey: string): Promise<void> {
     const cells = collectMonthlyCalendarCells();
     if (cells.length === 0 || activeAnalyzeDate !== null) {
+        clearRankRecommendationWarmCachePriorityCandidates();
         cleanupRankRecommendationList();
         return;
     }
 
     const dateRange = getMonthlyCalendarDateRange(cells);
     if (dateRange === null) {
+        clearRankRecommendationWarmCachePriorityCandidates();
         cleanupRankRecommendationList();
         return;
     }
@@ -4336,6 +4417,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     }
 
     if (response === null) {
+        clearRankRecommendationWarmCachePriorityCandidates();
         renderRankRecommendationList([], {
             signature: `error:${facilityCacheKey}:${batchDateKey}:${dateRange.fromDateKey}:${dateRange.toDateKey}`,
             statusText: "料金調整候補: current settings を取得できませんでした"
@@ -4377,6 +4459,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         batchDateKey
     );
 
+    rememberRankRecommendationWarmCachePriorityCandidates(visibleCandidates);
     renderRankRecommendationList(visibleCandidates, {
         signature: [
             facilityCacheKey,
@@ -4798,15 +4881,17 @@ function isRankRecommendationGroupDriven(options: {
 }
 
 function findLatestBookingCurvePoint(response: BookingCurveResponse, asOfDate: string): BookingCurvePoint | null {
+    const normalizedAsOfDate = normalizeDateKey(asOfDate) ?? asOfDate;
     let latestPoint: BookingCurvePoint | null = null;
     let latestDate = "";
     for (const point of response.booking_curve ?? []) {
-        if (point.date > asOfDate || point.date < latestDate) {
+        const pointDate = normalizeDateKey(point.date);
+        if (pointDate === null || pointDate > normalizedAsOfDate || pointDate < latestDate) {
             continue;
         }
 
         latestPoint = point;
-        latestDate = point.date;
+        latestDate = pointDate;
     }
 
     return latestPoint;
@@ -4834,10 +4919,11 @@ function countBookingCurveRoomCounts(values: Array<number | null | undefined>): 
 }
 
 function findLatestSalesAdrObservation(observations: SalesAdrObservation[], asOfDate: string): SalesAdrObservation | null {
+    const normalizedAsOfDate = normalizeDateKey(asOfDate) ?? asOfDate;
     let latestObservation: SalesAdrObservation | null = null;
     let latestObservedDate = "";
     for (const observation of observations) {
-        if (observation.observedDate > asOfDate || observation.observedDate < latestObservedDate) {
+        if (observation.observedDate > normalizedAsOfDate || observation.observedDate < latestObservedDate) {
             continue;
         }
 

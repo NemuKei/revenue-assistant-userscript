@@ -1617,6 +1617,8 @@
 
 ### RAU-SALES-05 sales / ADR health signal の実データ発火と閾値を確認する
 
+- 状態:
+  - 完了。
 - 目的:
   - `RAU-SALES-04` で接続した sales / ADR health signal が、実データでどの程度発火するかを確認する。
   - 初期閾値で候補根拠が増えすぎないか、逆に実務上気づきたい弱含みを拾えていないかを調整判断できる状態にする。
@@ -1632,6 +1634,77 @@
   - Chrome DevTools Protocol または Chrome拡張で、通常 Chrome 上の Revenue Assistant 候補 list と diagnostics 分布を確認する。
   - 閾値を変更する場合は、変更理由、入力、判断、出力を正本文書へ残す。
   - 閾値を変更しない場合も、現時点の実データでは維持する理由を `STATUS.md` または `tasks_backlog.md` に残す。
+- 実施結果:
+  - Chrome拡張 backend は `browser-client.mjs` の bootstrap 後に利用可能であり、`openTabs()` が 3 件を返すことを確認した。タブ本文は読まず、通常 Chrome の接続確認に限定した。
+  - Chrome DevTools Protocol で通常 Chrome の Revenue Assistant root に build 済み userscript を一時注入し、候補 list 10 行を確認した。
+  - diagnostics 分布は `booking_curve_source_missing` 6 行、`sales_adr_current_adr_missing` 4 行、`sales_adr_current_sales_missing` 4 行、`reference_deviation_missing` 10 行、`forecast_missing` 4 行だった。
+  - `sales_adr_signal_neutral`、`sales_adr_signal_adr_down`、`sales_adr_signal_sales_down`、`sales_adr_signal_adr_and_sales_down` は 0 行だった。
+  - 候補 list 内に forecast 数値 label と sales / ADR 数値 label は表示されていなかった。重大な console / page error は 0 件だった。
+- 判断:
+  - 比較可能な sales / ADR health signal が 0 件のため、初期閾値は変更しない。
+  - 現時点で閾値を変更すると、閾値の問題ではなく raw source 未保存または current sales / ADR 欠損を誤って補正しようとする危険がある。
+  - 次は閾値変更ではなく、rank recommendation 候補で `booking_curve_raw_source:v2` roomGroup record が揃う範囲を広げる task に進む。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-SALES-06 rank recommendation 候補の booking_curve raw source coverage を改善する
+
+- 状態:
+  - 実装済み。
+  - 通常 Chrome の Revenue Assistant tab では、Chrome DevTools Protocol で IndexedDB と DOM を確認した。`booking_curve_source_missing` は top list 10 行で 0 行になった。
+  - 同じ確認で、top list 10 行すべてに `booking_curve_raw_source:v2` の exact roomGroup record があり、うち 6 行は最新 observation の sales / ADR を抽出できることを確認した。
+  - ただし、最新 build の一時注入後に Revenue Assistant API が 401 を返したため、ログイン済み状態での DOM 再描画後 `sales_adr_signal_*` 分布確認は `RAU-SALES-07` に分ける。
+- 実装内容:
+  - top list の表示中 candidates を、warm cache の優先候補として保持する。
+  - 既存 warm cache queue 内の `currentRaw x roomGroup` task のうち、表示中 candidates と一致する `stayDate x roomGroupId` を先頭側へ安定 sort する。
+  - 優先 task を新規取得した場合は `rank-recommendation-warm-cache` reason で calendar sync を強制再実行し、top list が保存済み raw source を読み直せるようにした。
+  - sales / ADR health の latest point / latest observation 比較では、`YYYYMMDD` と `YYYY-MM-DD` の文字列比較が混ざらないよう、比較前に date key を正規化する。
+- 変更しない契約:
+  - warm cache の対象日付範囲、request 件数、request 間隔、hidden tab pause、run limit、cooldown、重複排除、既存 raw source skip は変更しない。
+  - top list には sales / ADR 数値、比率、金額を直接表示しない。
+  - Revenue Assistant への write / bulk apply は追加しない。
+- 目的:
+  - sales / ADR health signal、forecast signal、reference deviation が、raw source 未保存のために候補根拠へ入らない状態を減らす。
+  - top list の `stayDate x roomGroup` 候補に対して、既存 `booking_curve_raw_source:v2` の roomGroup record が揃う範囲を増やし、次回の sales / ADR health 閾値評価を比較可能な実データで行えるようにする。
+- スコープ:
+  - 既存 warm cache、IndexedDB raw source store、rank recommendation evidence read path の関係を確認する。
+  - top list 候補で `booking_curve_source_missing` になった `stayDate x roomGroup` を、既存 queue または既存 raw source request policy の範囲で補えるか判断する。
+  - 追加 request が必要な場合は、対象件数、頻度、停止条件、document hidden 時の扱い、既存 warm cache との重複排除を先に決める。
+- 非目標:
+  - Revenue Assistant への write / bulk apply。
+  - 推奨レート金額、ADR 金額、sales 金額、比率の表示。
+  - 未確認 API を新規に実装すること。
+  - 既存 warm cache の無制限な request 増加。
+- 受け入れ条件:
+  - `booking_curve_source_missing` が出る原因を、未保存、query key 不一致、asOfDate 不一致、roomGroupId 不一致、取得失敗のどれかに分けて説明できる。
+  - 実装する場合は、既存 request safety rule と重複排除を維持する。
+  - 実装する場合は、Chrome DevTools Protocol または Chrome拡張で通常 Chrome 上の候補 list と diagnostics 分布を再確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: implemented
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-SALES-07 ログイン済み通常 Chrome で sales / ADR health signal の DOM 再描画分布を確認する
+
+- 目的:
+  - `RAU-SALES-06` の date 正規化修正と warm cache 優先化後に、通常 Chrome のログイン済み Revenue Assistant 画面で top list が保存済み raw source を読み直し、sales / ADR health diagnostics を更新することを確認する。
+- 背景:
+  - `RAU-SALES-06` の CDP 確認では、IndexedDB 上の top list 10 行 exact roomGroup record は揃い、6 行で最新 observation の sales / ADR を抽出できた。
+  - しかし最新 build を通常 Chrome へ一時注入した時点で Revenue Assistant API が 401 を返したため、current settings 再取得を含む DOM 再描画確認は完了できなかった。
+- スコープ:
+  - 通常 Chrome のログイン済み状態を確認する。
+  - Chrome DevTools Protocol または Chrome拡張で、top list の row count、`booking_curve_source_missing`、`sales_adr_current_adr_missing`、`sales_adr_current_sales_missing`、`sales_adr_signal_*` 分布を確認する。
+  - 比較可能な `sales_adr_signal_*` が出た場合だけ、`RAU-SALES-05` で据え置いた ADR 95% 以下、sales 90% 以下の閾値を見直す必要があるかを判断する。
+- 非目標:
+  - Revenue Assistant への write / bulk apply。
+  - 推奨レート金額、ADR 金額、sales 金額、比率の表示。
+  - 未確認 API の新規実装。
+- 受け入れ条件:
+  - ログイン済み通常 Chrome で、最新 build 注入または Tampermonkey 更新後の top list diagnostics 分布を確認している。
+  - 401 などの認証失敗がある場合は、実装不具合と認証状態を分けて記録している。
+  - sales / ADR health signal の閾値を変更する場合は、変更理由、入力分布、判断、出力影響を `docs/context/DECISIONS.md` と対象 spec に残している。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-impl
@@ -1715,7 +1788,7 @@
 
 Now:
 
-- `RAU-SALES-05` sales / ADR health signal の実データ発火と閾値を確認する
+- `RAU-SALES-07` ログイン済み通常 Chrome で sales / ADR health signal の DOM 再描画分布を確認する
 
 Next:
 
@@ -1754,6 +1827,8 @@ Later:
 - `RAU-SALES-02` は 2026-05-28 に完了した。`docs/spec_002_curve_core.md` に sales / ADR adapter、unit price forecast、sales forecast の契約を追加した。既存 `booking_curve_raw_source:v2` の保存単位は追加変更しない。次は `RAU-SALES-03` で pure function 実装を行う。
 - `RAU-SALES-03` は 2026-05-28 に実装済みである。室数予測、単価予測、売上予測の接続順序を保つため、UI や rank recommendation scoring へ接続せず、core logic の pure function と diagnostics だけを追加した。
 - `RAU-SALES-04` は 2026-05-28 に実装済みである。`RAU-SALES-03` の adapter を使って、rank recommendation の候補根拠へ ADR / sales health diagnostics を段階接続した。top list へ sales / ADR 数値を直接表示せず、非数値 reason / diagnostics だけを追加する契約を維持する。Chrome DevTools Protocol の実画面確認では、候補 list root と候補 row 10 件が表示され、重大な console / page error は 0 件だった。現在の実データでは sales / ADR reason の表示発火は 0 件だったため、`RAU-SALES-05` で diagnostics 分布と閾値を確認する。
+- `RAU-SALES-05` は 2026-05-28 に完了した。top list 10 行の diagnostics 分布は、`booking_curve_source_missing` 6 行、`sales_adr_current_adr_missing` 4 行、`sales_adr_current_sales_missing` 4 行で、比較可能な `sales_adr_signal_*` は 0 行だった。初期閾値は変更せず、次は `RAU-SALES-06` で raw source coverage を改善する。
+- `RAU-SALES-06` は 2026-05-28 に実装済みである。top list の表示中 candidates と一致する既存 `currentRaw x roomGroup` warm cache task を優先し、取得後に rank recommendation list を再同期する。request 範囲や件数は増やしていない。さらに、sales / ADR health の latest observation 比較で `YYYYMMDD` と `YYYY-MM-DD` が混ざらないよう date key を正規化した。Chrome DevTools Protocol では IndexedDB 上の exact roomGroup record が top list 10 行すべてに存在し、6 行で最新 sales / ADR を抽出できることを確認した。一方、最新 build 注入時に Revenue Assistant API が 401 を返したため、ログイン済み通常 Chrome での DOM 再描画後 signal 分布確認は `RAU-SALES-07` へ分ける。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
