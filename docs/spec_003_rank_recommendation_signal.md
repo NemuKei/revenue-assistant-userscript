@@ -459,7 +459,7 @@ rank response dataset の first contract:
 - 最大件数は初期値を持つ。初期候補は top 10 とする。
 - 表示 top 10 は、user decision と rank change resolved による lifecycle filter を適用した後の active candidates から選ぶ。candidate pool を作る段階で先に top 10 へ切ると、上位候補が `様子見`、`対応不要`、または `反映済み` で非表示になった場合に、11 件目以降の有効候補で作業キューを埋め戻せないためである。
 - top 10 の外にも候補がある場合は、件数だけでも分かる表示を候補にする。
-- リスト上部の summary には、表示中候補の件数、基準日、推奨方向別件数、優先度別件数、確度別件数、不足または注意の種類別件数を表示する。基準日は表示中候補の `asOfDate` であり、`宿泊まで` の日数計算に使う日付を利用者が確認するための表示である。これは top list に出ている候補の内訳であり、全候補母数、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額または percent を示すものではない。
+- リスト上部の summary には、表示中候補の件数、基準日、推奨方向別件数、優先度別件数、確度別件数、不足または注意の種類別件数を表示する。基準日は表示中候補の `asOfDate` であり、`宿泊まで` の日数計算に使う日付を利用者が確認するための表示である。表示中候補の `asOfDate` がブラウザの当日より前である場合は、`基準日 5/28・前日`、`基準日 5/27・2日前` のように、当日から見た鮮度を追加表示する。これは top list に出ている候補の内訳であり、全候補母数、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額または percent を示すものではない。
 - 不足または注意の種類別件数は、表示中候補の diagnostics から作る `booking_curve または reference 不足`、`forecast 比較不足`、`sales / ADR 比較不足`、`同曜日比較不足`、`競合価格の部屋タイプ対応未確認`、`団体主因のため上げ判断を抑制`、`部屋数条件により判定制限`、`隣接ランク表示に制約あり` の非数値要約である。これは候補行を読む前に、判断材料の不足がどこに偏っているかを知るための表示であり、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨金額は変更しない。
 - lifecycle filter 後に表示上限を超える active candidates がある場合は、summary に `他 n件` を表示する。これは top 10 外にも確認候補が残っていることを示すための件数であり、展開 UI、filter UI、sort UI、推奨金額表示を追加するものではない。
 - user decision または rank change resolved により active list から外れた候補がある場合は、summary に非表示件数を表示する。分類は、利用者判断による非表示と、rank 変更反映済みによる非表示に分ける。これは候補 list が短い、または空に見える理由を説明するための表示であり、candidate lifecycle、scoring、rank order、API request 範囲、推奨金額は変更しない。

@@ -2453,6 +2453,50 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-40 top list meta の基準日鮮度を表示する
+
+- 状態:
+  - 2026-05-29 完了。
+- 目的:
+  - 料金調整候補 list 上部で、表示中候補の基準日が今日から見て前日以前かどうかをすぐ確認できるようにする。
+- 背景:
+  - `RAU-RR-39` で top list meta に `基準日` を表示した。
+  - ただし、日をまたいで Revenue Assistant 画面を見ると、`基準日 5/28` が今日の候補なのか、昨日以前の候補なのかを利用者が日付から読み替える必要がある。
+  - RM が今日確認すべき候補か、候補の前提が古い可能性があるかを判断しやすくするため、基準日と当日の差を非数値の短い補助として表示する。
+- スコープ:
+  - 表示中候補の `asOfDate` が 1 種類で、ブラウザの当日より 1 日前なら `基準日 M/D・前日` と表示する。
+  - 表示中候補の `asOfDate` が 1 種類で、ブラウザの当日より 2 日以上前なら `基準日 M/D・n日前` と表示する。
+  - 表示中候補の `asOfDate` がブラウザの当日と同じ、または未来日の場合は、従来どおり `基準日 M/D` と表示する。
+  - 表示中候補の `asOfDate` が複数混在する場合は、従来どおり `基準日 複数` と表示する。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonCodes、reasonFingerprint を変更すること。
+  - rank order、manual override、user decision、resolved 判定を変更すること。
+  - API request 範囲、request 件数、request 間隔を変更すること。
+  - forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示すること。
+  - Revenue Assistant write / bulk apply。
+- 受け入れ条件:
+  - top list meta の `基準日` が当日より前の場合、`前日` または `n日前` が表示される。
+  - top list meta の `基準日` が当日の場合、余計な鮮度 suffix を表示しない。
+  - top list に forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で最新 dist 一時注入後の meta 表示を確認する。
+- 実装内容:
+  - `src/main.ts` の top list meta 用 `基準日` summary に、表示中候補の `asOfDate` とブラウザ local 当日の差を表示する helper を追加した。
+  - `asOfDate` が当日より 1 日前なら `前日`、2 日以上前なら `n日前` を追加し、当日または未来日の場合は suffix を出さない。
+  - 日数計算では `YYYYMMDD` 形式を使う既存 helper に合わせ、`asOfDate` を compact date key に変換してから比較する。
+- verify:
+  - `npm run typecheck`: passed。
+  - `npm run lint`: passed。
+  - `npm run build`: sandbox では esbuild spawn が `EPERM` で停止したため、承認付きで再実行して passed。`dist/revenue-assistant-userscript.user.js` と sourcemap を生成した。
+  - `git diff --check`: passed。
+  - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
+  - Chrome拡張 backend capability 確認: extension browser 取得、runtime bootstrap、`openTabs()`、tab count 3 を確認した。
+  - Chrome DevTools Protocol 合成 DOM 確認: headless Chrome を CDP 接続し、Revenue Assistant origin の合成 calendar と合成 API response に最新 `dist/revenue-assistant-userscript.user.js` を一時注入した。ブラウザ local 当日 `2026-05-29`、基準日 `2026-05-28` では meta `基準日 5/28・前日`、基準日 `2026-05-29` では meta `基準日 5/29` を確認した。どちらも row 1 件、header は `優先度|確度|宿泊日|宿泊まで|部屋タイプ|現ランク|推奨方向|主要根拠|状態|操作`、金額または percent 0 件、forecast 数値 label 0 件、sales / ADR 数値 label 0 件、page error 0 件、console error 0 件、unexpected request 0 件だった。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。

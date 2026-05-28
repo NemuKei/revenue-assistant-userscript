@@ -5930,7 +5930,24 @@ function formatRankRecommendationAsOfDateSummary(candidates: readonly RankRecomm
     if (asOfDate === undefined) {
         return null;
     }
-    return `基準日 ${formatCompactMonthDayForDisplay(asOfDate) ?? formatCompactDateForDisplay(asOfDate)}`;
+
+    const displayDate = formatCompactMonthDayForDisplay(asOfDate) ?? formatCompactDateForDisplay(asOfDate);
+    const freshness = formatRankRecommendationAsOfDateFreshness(asOfDate);
+    return `基準日 ${displayDate}${freshness === null ? "" : `・${freshness}`}`;
+}
+
+function formatRankRecommendationAsOfDateFreshness(asOfDate: string): string | null {
+    const compactAsOfDate = toCompactDateKey(asOfDate);
+    if (compactAsOfDate === null) {
+        return null;
+    }
+
+    const daysFromAsOfDate = getDaysBetweenDateKeys(getLocalTodayDateKey(), compactAsOfDate);
+    if (daysFromAsOfDate === null || daysFromAsOfDate <= 0) {
+        return null;
+    }
+
+    return daysFromAsOfDate === 1 ? "前日" : `${daysFromAsOfDate}日前`;
 }
 
 function formatRankRecommendationOverflowSummary(hiddenSummary?: RankRecommendationHiddenSummary): string | null {
@@ -7776,6 +7793,15 @@ function getCurrentBatchDateKey(): string {
         }
     }
 
+    const now = new Date();
+    const year = String(now.getFullYear());
+    const month = String(now.getMonth() + 1).padStart(2, "0");
+    const day = String(now.getDate()).padStart(2, "0");
+
+    return `${year}${month}${day}`;
+}
+
+function getLocalTodayDateKey(): string {
     const now = new Date();
     const year = String(now.getFullYear());
     const month = String(now.getMonth() + 1).padStart(2, "0");

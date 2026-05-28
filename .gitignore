@@ -4,6 +4,7 @@ dist/
 
 # Browser automation
 .chrome-debug-profile/
+.tmp-playwright/
 .o11y/
 *.har
 *.har.gz
