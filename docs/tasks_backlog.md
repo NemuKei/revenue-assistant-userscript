@@ -1803,6 +1803,42 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-26 user decision / resolved 非表示件数を top list meta に表示する
+
+- 状態:
+  - 2026-05-28 実装済み。
+  - verify は `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check`、Chrome DevTools Protocol 合成確認で通過した。`npm run build` は sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過した。
+  - Chrome拡張 runtime は usable browser instance を返さなかったため、通常 Chrome の tab 候補は `npm run chrome:pages` で確認し、実 DOM は Chrome DevTools Protocol の合成 page で確認した。
+- 目的:
+  - 候補 list が短い、または空に見える場合に、利用者判断や rank 変更反映済みにより active list から外れた候補があるかを meta で分かるようにする。
+  - RM が「候補がない」のか「判断済みまたは反映済みなので非表示になっている」のかを区別できるようにし、top list を作業キューとして信頼しやすくする。
+- 背景:
+  - `RAU-RR-07` で `様子見` と `対応不要` の保存、`RAU-RR-08` で rank change history による resolved 化、`RAU-RR-24` で top list meta の内訳表示を実装済みである。
+  - ただし、現在の meta は表示中候補の内訳だけを示すため、user decision または resolved によって候補が隠れている場合、その理由が画面上では分からない。
+- スコープ:
+  - user decision filter で非表示になった候補数を数える。
+  - rank change resolved filter で非表示になった候補数を数える。
+  - 非表示件数が 1 件以上ある場合だけ、`data-ra-rank-recommendation-meta` の text に `非表示 利用者判断 n件・反映済み n件` のような非数値業務指標として表示する。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - 候補生成、priority / confidence、reasonFingerprint、diagnostics、rank order source、manual override を変更しない。
+  - user decision や resolved の判定条件を変更しない。
+  - top 10 外を展開する UI、filter、sort UI は追加しない。
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を表示しない。
+  - Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - user decision により非表示になった候補がある場合、top list meta に利用者判断による非表示件数が表示される。
+  - rank change resolved により非表示になった候補がある場合、top list meta に反映済みによる非表示件数が表示される。
+  - 非表示件数が 0 件の場合、meta は従来どおり表示中候補の内訳だけを表示する。
+  - current settings 取得失敗などの `statusText` がある場合は、従来どおり statusText を優先表示する。
+  - 候補生成、scoring、rank order 表示、manual override、user decision の保存、resolved の判定条件は従来どおりである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab 候補を確認し、Chrome DevTools Protocol で合成候補を使った top list meta 表示を確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2386,6 +2422,7 @@ Later:
 - `RAU-RR-23` は 2026-05-28 に実装済みである。top list の `確度` cell に hover tooltip を追加し、主要根拠と不足または注意の種類を非数値で表示する。tooltip でも forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。
 - `RAU-RR-24` は 2026-05-28 に実装済みである。top list の meta に、表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示する。これは表示中候補の内訳であり、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。
 - `RAU-RR-25` は 2026-05-28 に実装済みである。`current_settings` 取得失敗時の top list status を HTTP 401、HTTP 403、その他 HTTP status、status 不明に分け、ログイン切れまたは権限不足を利用者が区別できるようにした。候補生成、rank order、scoring、API request 範囲は変更していない。
+- `RAU-RR-26` は 2026-05-28 に実装済みである。user decision と rank change resolved による非表示件数を top list meta に表示し、候補 list が短い、または空に見える理由を説明する。候補生成、scoring、rank order、manual override、user decision 保存条件、resolved 判定条件、API request 範囲は変更していない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

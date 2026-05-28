@@ -4652,11 +4652,17 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             });
             return [] as LincolnSuggestStatus[];
         });
-    const visibleCandidates = filterResolvedRankRecommendationCandidates(
-        filterRankRecommendationCandidatesByDecision(candidates, decisionRecords, batchDateKey),
+    const decisionFilterResult = applyRankRecommendationDecisionFilter(candidates, decisionRecords, batchDateKey);
+    const resolvedFilterResult = applyResolvedRankRecommendationFilter(
+        decisionFilterResult.candidates,
         statuses,
         batchDateKey
     );
+    const visibleCandidates = resolvedFilterResult.candidates;
+    const hiddenSummary = {
+        userDecision: decisionFilterResult.hiddenCount,
+        resolvedRankChange: resolvedFilterResult.hiddenCount
+    };
 
     rememberRankRecommendationWarmCachePriorityCandidates(visibleCandidates);
     renderRankRecommendationList(visibleCandidates, {
@@ -4667,6 +4673,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             dateRange.toDateKey,
             rankOrderResolution.source,
             rankOrderResolution.ranksHighToLow.map((rank) => rank.code).join(">"),
+            `hidden-user:${hiddenSummary.userDecision}`,
+            `hidden-resolved:${hiddenSummary.resolvedRankChange}`,
             visibleCandidates.map((candidate) => [
                 candidate.reasonFingerprint,
                 candidate.action,
@@ -4681,7 +4689,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statusText: null,
         facilityCacheKey,
         rankLadder,
-        rankOrder: rankOrderResolution
+        rankOrder: rankOrderResolution,
+        hiddenSummary
     });
 }
 
@@ -5453,13 +5462,24 @@ function isCurrentValueDownAgainstReference(options: {
         && current / reference <= options.downRatioThreshold;
 }
 
-function filterRankRecommendationCandidatesByDecision(
+interface RankRecommendationCandidateFilterResult {
+    candidates: RankRecommendationCandidate[];
+    hiddenCount: number;
+}
+
+interface RankRecommendationHiddenSummary {
+    userDecision: number;
+    resolvedRankChange: number;
+}
+
+function applyRankRecommendationDecisionFilter(
     candidates: RankRecommendationCandidate[],
     decisionRecords: RankRecommendationDecisionRecord[],
     asOfDate: string
-): RankRecommendationCandidate[] {
+): RankRecommendationCandidateFilterResult {
     const decisionByKey = new Map(decisionRecords.map((record) => [record.cacheKey, record]));
-    return candidates.filter((candidate) => {
+    let hiddenCount = 0;
+    const visibleCandidates = candidates.filter((candidate) => {
         const decision = decisionByKey.get(buildRankRecommendationDecisionCacheKey({
             facilityId: candidate.facilityId,
             stayDate: candidate.stayDate,
@@ -5472,20 +5492,33 @@ function filterRankRecommendationCandidatesByDecision(
         }
 
         if (decision.decisionType === "dismiss") {
+            hiddenCount += 1;
             return false;
         }
 
-        return decision.cooldownUntilAsOfDate === null || decision.cooldownUntilAsOfDate <= asOfDate;
+        const isVisible = decision.cooldownUntilAsOfDate === null || decision.cooldownUntilAsOfDate <= asOfDate;
+        if (!isVisible) {
+            hiddenCount += 1;
+        }
+        return isVisible;
     });
+
+    return {
+        candidates: visibleCandidates,
+        hiddenCount
+    };
 }
 
-function filterResolvedRankRecommendationCandidates(
+function applyResolvedRankRecommendationFilter(
     candidates: RankRecommendationCandidate[],
     statuses: LincolnSuggestStatus[],
     asOfDate: string
-): RankRecommendationCandidate[] {
+): RankRecommendationCandidateFilterResult {
     if (statuses.length === 0) {
-        return candidates;
+        return {
+            candidates,
+            hiddenCount: 0
+        };
     }
 
     const resolvedKeys = new Set<string>();
@@ -5506,10 +5539,25 @@ function filterResolvedRankRecommendationCandidates(
     }
 
     if (resolvedKeys.size === 0) {
-        return candidates;
+        return {
+            candidates,
+            hiddenCount: 0
+        };
     }
 
-    return candidates.filter((candidate) => !resolvedKeys.has(`${candidate.stayDate}:${candidate.roomGroupId}`));
+    let hiddenCount = 0;
+    const visibleCandidates = candidates.filter((candidate) => {
+        const isResolved = resolvedKeys.has(`${candidate.stayDate}:${candidate.roomGroupId}`);
+        if (isResolved) {
+            hiddenCount += 1;
+        }
+        return !isResolved;
+    });
+
+    return {
+        candidates: visibleCandidates,
+        hiddenCount
+    };
 }
 
 function renderRankRecommendationList(
@@ -5520,6 +5568,7 @@ function renderRankRecommendationList(
         facilityCacheKey?: string;
         rankLadder?: readonly RankRecommendationRankLadderEntry[];
         rankOrder?: RankRecommendationRankOrderResolution;
+        hiddenSummary?: RankRecommendationHiddenSummary;
     }
 ): void {
     const host = resolveRankRecommendationListHost();
@@ -5537,7 +5586,7 @@ function renderRankRecommendationList(
 
     const metaElement = document.createElement("div");
     metaElement.setAttribute("data-ra-rank-recommendation-meta", "");
-    metaElement.textContent = formatRankRecommendationListMeta(candidates, options.statusText);
+    metaElement.textContent = formatRankRecommendationListMeta(candidates, options.statusText, options.hiddenSummary);
 
     const rankOrderControlElement = options.facilityCacheKey !== undefined
         && options.rankLadder !== undefined
@@ -5652,7 +5701,8 @@ function formatRankRecommendationOrderSummary(rankOrder: RankRecommendationRankO
 
 function formatRankRecommendationListMeta(
     candidates: readonly RankRecommendationCandidate[],
-    statusText: string | null
+    statusText: string | null,
+    hiddenSummary?: RankRecommendationHiddenSummary
 ): string {
     if (statusText !== null) {
         return statusText;
@@ -5661,9 +5711,22 @@ function formatRankRecommendationListMeta(
         `優先度順 ${candidates.length}件`,
         formatRankRecommendationActionSummary(candidates),
         formatRankRecommendationPrioritySummary(candidates),
-        formatRankRecommendationConfidenceSummary(candidates)
+        formatRankRecommendationConfidenceSummary(candidates),
+        formatRankRecommendationHiddenSummary(hiddenSummary)
     ].filter((part): part is string => part !== null);
     return parts.join(" / ");
+}
+
+function formatRankRecommendationHiddenSummary(hiddenSummary?: RankRecommendationHiddenSummary): string | null {
+    if (hiddenSummary === undefined) {
+        return null;
+    }
+
+    const parts = [
+        hiddenSummary.userDecision > 0 ? `利用者判断 ${hiddenSummary.userDecision}件` : null,
+        hiddenSummary.resolvedRankChange > 0 ? `反映済み ${hiddenSummary.resolvedRankChange}件` : null
+    ].filter((part): part is string => part !== null);
+    return parts.length === 0 ? null : `非表示 ${parts.join("・")}`;
 }
 
 function formatRankRecommendationActionSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
