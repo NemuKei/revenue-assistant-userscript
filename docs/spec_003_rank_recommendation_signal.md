@@ -460,6 +460,7 @@ rank response dataset の first contract:
 - 優先度。
 - 確度。`confidence` の内部値をそのまま数値表示せず、`高`、`中`、`低` の段階表示に丸める。hover tooltip では、確度が予測精度、推奨金額の正確さ、または Revenue Assistant への反映可否を保証する値ではないことを示し、主要根拠と不足または注意の種類だけを非数値で表示する。
 - 宿泊日。
+- 宿泊まで。`stayDate - asOfDate` を日数で表示する。当日は `当日`、日数を計算できない場合または宿泊日が `asOfDate` より過去の場合は `-` と表示する。これは作業の緊急度を読みやすくするための表示であり、priority、confidence、candidate lifecycle、API request 範囲は変更しない。
 - 部屋タイプ。
 - 現ランク。
 - 推奨方向または推奨ランク方向。

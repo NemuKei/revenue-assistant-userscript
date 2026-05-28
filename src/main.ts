@@ -5640,7 +5640,7 @@ function renderRankRecommendationList(
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
     const headRowElement = document.createElement("tr");
-    for (const label of ["優先度", "確度", "宿泊日", "部屋タイプ", "現ランク", "推奨方向", "主要根拠", "状態", "操作"]) {
+    for (const label of ["優先度", "確度", "宿泊日", "宿泊まで", "部屋タイプ", "現ランク", "推奨方向", "主要根拠", "状態", "操作"]) {
         const cellElement = document.createElement("th");
         cellElement.scope = "col";
         cellElement.textContent = label;
@@ -5652,7 +5652,7 @@ function renderRankRecommendationList(
     if (candidates.length === 0) {
         const emptyRowElement = document.createElement("tr");
         const emptyCellElement = document.createElement("td");
-        emptyCellElement.colSpan = 9;
+        emptyCellElement.colSpan = 10;
         emptyCellElement.textContent = "現在表示中のカレンダーに料金調整候補はありません";
         emptyRowElement.append(emptyCellElement);
         bodyElement.append(emptyRowElement);
@@ -5835,6 +5835,7 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
             title: formatRankRecommendationConfidenceTitle(candidate)
         },
         { value: formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate) },
+        { value: formatRankRecommendationLeadDays(candidate) },
         { value: candidate.roomGroupName },
         { value: candidate.currentRankName ?? "-" },
         { value: formatRankRecommendationAction(candidate) },
@@ -5955,6 +5956,17 @@ function formatRankRecommendationConfidence(confidence: number): string {
         default:
             return "低";
     }
+}
+
+function formatRankRecommendationLeadDays(candidate: RankRecommendationCandidate): string {
+    const leadDays = getDaysBetweenDateKeys(candidate.stayDate, candidate.asOfDate);
+    if (leadDays === null || leadDays < 0) {
+        return "-";
+    }
+    if (leadDays === 0) {
+        return "当日";
+    }
+    return `${leadDays}日`;
 }
 
 function getRankRecommendationConfidenceLevel(confidence: number): RankRecommendationDecisionConfidenceLevel {
@@ -11958,12 +11970,12 @@ function ensureGroupRoomStyles(): void {
             font-weight: 800;
         }
 
-        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="raise_watch"] td:nth-child(6) {
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="raise_watch"] td:nth-child(7) {
             color: #0c7a43;
             font-weight: 800;
         }
 
-        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="lower_watch"] td:nth-child(6) {
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="lower_watch"] td:nth-child(7) {
             color: #b54646;
             font-weight: 800;
         }

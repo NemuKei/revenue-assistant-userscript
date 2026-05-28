@@ -1903,6 +1903,57 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-28 top list に宿泊までの日数を表示する
+
+- 状態:
+  - 2026-05-28 実装済み。
+  - verify は `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check`、Chrome DevTools Protocol 実 DOM 確認で通過した。`npm run build` は sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過した。
+  - Chrome Extension backend はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。
+- 目的:
+  - 料金調整候補リストで、宿泊日だけでなく `asOfDate` から宿泊日までの日数を読めるようにする。
+  - RM が候補の緊急度を毎回頭で計算しなくても、近い日程と先の日程を素早く見分けられるようにする。
+- 背景:
+  - 現在の top list は priority 順で `宿泊日` を表示しているが、候補同士の LT、つまり宿泊日までの残り日数は列として表示していない。
+  - rank recommendation の scoring では LT を使っているため、候補の解釈にも LT が必要である。
+- スコープ:
+  - top list の行項目に `宿泊まで` 列を追加する。
+  - `stayDate - asOfDate` を日数で表示する。
+  - 当日は `当日` と表示する。
+  - 日数を計算できない場合、または宿泊日が `asOfDate` より過去の場合は `-` を表示する。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - priority、confidence、reasonCodes、reasonFingerprint、diagnostics の計算を変更しない。
+  - top list の sort order、filter、最大件数を変更しない。
+  - forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を表示しない。
+  - Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - top list header に `宿泊まで` が表示される。
+  - 各候補行で、`stayDate - asOfDate` が `n日` として表示される。
+  - 当日候補では `当日` が表示される。
+  - 日数を計算できない候補、または宿泊日が `asOfDate` より過去の候補では `-` が表示される。
+  - 空行表示の colspan が列数と一致する。
+  - 候補生成、scoring、rank order 表示、manual override、user decision、resolved 判定は従来どおりである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張または Chrome Extension backend の可用性を確認し、実 DOM 確認は Chrome DevTools Protocol で行う。
+- 実装内容:
+  - top list header に `宿泊まで` を追加した。
+  - 候補行の `宿泊日` の次に、`stayDate - asOfDate` の日数を追加した。
+  - 日数が 0 の場合は `当日`、計算不能または過去日の場合は `-` を表示するようにした。
+  - 空行表示の `colSpan` を 10 に更新した。
+  - 推奨方向列が 6 列目から 7 列目へ移ったため、`raise_watch` / `lower_watch` の CSS column selector を更新した。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+  - Chrome Extension runtime surface: `agent.browsers` はこの thread では未露出、Chrome browser client file は存在
+  - Chrome DevTools Protocol: `npm run chrome:pages` で通常 Chrome の Revenue Assistant tab を確認
+  - Chrome DevTools Protocol 実 DOM 確認: 最新 dist 一時注入後、top list root、header 10 列、`宿泊まで` header、row 10 件、lead cell 10 件、lead cell 非空、金額または percent 表示 0 件を確認
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2488,6 +2539,7 @@ Later:
 - `RAU-RR-25` は 2026-05-28 に実装済みである。`current_settings` 取得失敗時の top list status を HTTP 401、HTTP 403、その他 HTTP status、status 不明に分け、ログイン切れまたは権限不足を利用者が区別できるようにした。候補生成、rank order、scoring、API request 範囲は変更していない。
 - `RAU-RR-26` は 2026-05-28 に実装済みである。user decision と rank change resolved による非表示件数を top list meta に表示し、候補 list が短い、または空に見える理由を説明する。候補生成、scoring、rank order、manual override、user decision 保存条件、resolved 判定条件、API request 範囲は変更していない。
 - `RAU-RR-27` は 2026-05-28 に実装済みである。user decision record に判断時点の confidence 表示段階を保存し、同じ `stayDate x roomGroup x action x reasonFingerprint` でも現在候補の confidence 表示段階が保存時より上がった場合は active list に再表示する。既存 decision record は confidence 表示段階を持たないため、従来どおり exact fingerprint match で抑制する。
+- `RAU-RR-28` は 2026-05-28 に実装済みである。top list に `宿泊まで` 列を追加し、`stayDate - asOfDate` を `n日`、当日を `当日`、計算不能または過去日を `-` として表示する。priority、confidence、scoring、rank order、user decision、resolved 判定、API request 範囲は変更していない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
