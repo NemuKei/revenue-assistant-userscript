@@ -466,6 +466,15 @@ export function resolveRankRecommendationRankOrder(options: {
         };
     }
 
+    const settingsScreenOrder = resolveSettingsScreenRankOrder(normalized, options.rankLadder.length);
+    if (settingsScreenOrder !== null) {
+        return {
+            source: "settings_screen",
+            ranksHighToLow: settingsScreenOrder,
+            diagnostics: []
+        };
+    }
+
     const numericRanks = normalized.filter((entry) => entry.orderValue !== null);
     return numericRanks.length === normalized.length
         ? {
@@ -480,6 +489,25 @@ export function resolveRankRecommendationRankOrder(options: {
             ranksHighToLow: normalized.map(({ code, name }) => ({ code, name })),
             diagnostics: ["rank_order_unresolved"]
         };
+}
+
+function resolveSettingsScreenRankOrder(
+    rankLadder: Array<{ code: string; name: string; orderValue: number | null }>,
+    sourceLength: number
+): RankRecommendationRankOrderEntry[] | null {
+    if (rankLadder.length === 0 || rankLadder.length !== sourceLength) {
+        return null;
+    }
+
+    const usedCodes = new Set<string>();
+    for (const rank of rankLadder) {
+        if (usedCodes.has(rank.code)) {
+            return null;
+        }
+        usedCodes.add(rank.code);
+    }
+
+    return rankLadder.map(({ code, name }) => ({ code, name }));
 }
 
 function resolveManualRankOrder(
