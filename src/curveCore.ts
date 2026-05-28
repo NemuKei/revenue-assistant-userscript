@@ -59,6 +59,120 @@ export interface ReferenceCurveResult {
     diagnostics: ReferenceCurveDiagnostics;
 }
 
+export interface ForecastResultV1Candidate {
+    modelId: string;
+    modelVersion: string;
+    facilityId: string;
+    targetStayDate: string;
+    asOfDate: string;
+    scope: CurveScope;
+    roomGroupId?: string;
+    segment: CurveSegment;
+    observedLt: number | null;
+    currentRooms: number | null;
+    capacityRooms?: number | null;
+    predictedFinalRooms: number | null;
+    expectedOccupancyRatio?: number | null;
+    predictedCurve?: CurvePoint[];
+    diagnostics: ForecastResultDiagnostics;
+}
+
+export interface ForecastResultDiagnostics {
+    featureNames: string[];
+    missingReason?: string;
+    warnings: string[];
+    sourceCounts: {
+        observedPrefixPointCount: number;
+        recentReferenceSourceCount?: number;
+        seasonalReferenceSourceCount?: number;
+    };
+    constraints: {
+        actSeparated: boolean;
+        smallCapacity: boolean;
+        groupDriven: boolean;
+    };
+}
+
+export interface ForecastEvaluationLabels {
+    snoozedByUser?: boolean;
+    dismissedByUser?: boolean;
+    resolvedByRankChange?: boolean;
+}
+
+export type ForecastEvaluationMissingReason =
+    | "invalid_target_or_as_of_date"
+    | "actual_final_missing"
+    | "observed_prefix_missing"
+    | "future_info_required"
+    | "act_not_separated"
+    | "room_group_id_missing"
+    | "segment_unknown";
+
+export interface ForecastEvaluationCase {
+    facilityId: string;
+    targetStayDate: string;
+    asOfDate: string;
+    scope: CurveScope;
+    roomGroupId?: string;
+    segment: CurveSegment;
+    observedLt: number | null;
+    observedPrefix: CurveObservation[];
+    referenceCurves: {
+        recentWeighted90?: ReferenceCurveResult;
+        seasonalComponent?: ReferenceCurveResult;
+    };
+    capacityRooms?: number | null;
+    actualFinalRooms: number | null;
+    labels: ForecastEvaluationLabels;
+    diagnostics: {
+        missingReason?: ForecastEvaluationMissingReason;
+        warnings: string[];
+    };
+}
+
+export interface BuildForecastEvaluationCaseOptions {
+    targetStayDate: string;
+    asOfDate: string;
+    scope: CurveScope;
+    roomGroupId?: string;
+    segment: CurveSegment;
+    referenceCurves?: {
+        recentWeighted90?: ReferenceCurveResult | null;
+        seasonalComponent?: ReferenceCurveResult | null;
+    };
+    capacityRooms?: number | null;
+    labels?: ForecastEvaluationLabels;
+    groupDriven?: boolean;
+    smallCapacityThreshold?: number;
+}
+
+export interface ForecastEvaluationResult {
+    modelId: string;
+    modelVersion: string;
+    segment: CurveSegment;
+    scope: CurveScope;
+    caseCount: number;
+    excludedCaseCount: number;
+    metrics: {
+        maeRooms?: number;
+        smape?: number;
+        biasRooms?: number;
+    };
+    impactProxy?: {
+        priorityOrderChangedCount: number;
+        dismissedProxyCount: number;
+        snoozedProxyCount: number;
+        resolvedByRankChangeProxyCount: number;
+    };
+    warnings: string[];
+}
+
+export interface ForecastEvaluationResultInput {
+    case: ForecastEvaluationCase;
+    result: ForecastResultV1Candidate;
+    priorityOrderChanged?: boolean;
+}
+
 export interface BookingCurveApiScopeCounts {
     this_year_room_sum?: number | null;
     last_year_room_sum?: number | null;
@@ -328,6 +442,135 @@ export function buildSeasonalComponentReferenceCurve(input: CurveInput, options:
     };
 }
 
+export function buildForecastEvaluationCase(
+    input: CurveInput,
+    options: BuildForecastEvaluationCaseOptions
+): ForecastEvaluationCase {
+    const targetStayDate = normalizeDateKey(options.targetStayDate);
+    const asOfDate = normalizeDateKey(options.asOfDate);
+    const warnings: string[] = [];
+    const normalizedRoomGroupId = options.roomGroupId?.trim();
+    const roomGroupId = normalizedRoomGroupId === "" ? undefined : normalizedRoomGroupId;
+    const labels = options.labels ?? {};
+    const smallCapacityThreshold = options.smallCapacityThreshold ?? 2;
+
+    const invalidDates = targetStayDate === null || asOfDate === null;
+    const observedLt = invalidDates ? null : getDaysBetweenDateKeys(targetStayDate, asOfDate);
+    const missingReasonOptions = {
+        targetStayDate: targetStayDate ?? options.targetStayDate,
+        asOfDate: asOfDate ?? options.asOfDate,
+        scope: options.scope,
+        ...(roomGroupId === undefined ? {} : { roomGroupId }),
+        segment: options.segment,
+        ...(options.referenceCurves === undefined ? {} : { referenceCurves: options.referenceCurves }),
+        ...(options.capacityRooms === undefined ? {} : { capacityRooms: options.capacityRooms }),
+        ...(options.labels === undefined ? {} : { labels: options.labels }),
+        ...(options.groupDriven === undefined ? {} : { groupDriven: options.groupDriven }),
+        ...(options.smallCapacityThreshold === undefined ? {} : { smallCapacityThreshold: options.smallCapacityThreshold }),
+        observedLt
+    };
+    const missingReason = invalidDates
+        ? "invalid_target_or_as_of_date"
+        : getForecastEvaluationMissingReason(input, missingReasonOptions);
+
+    const scopedObservations = invalidDates
+        ? []
+        : selectEvaluationObservations(input.observations, {
+            targetStayDate,
+            scope: options.scope,
+            ...(roomGroupId === undefined ? {} : { roomGroupId }),
+            segment: options.segment
+        });
+    const observedPrefix = asOfDate === null
+        ? []
+        : scopedObservations.filter((observation) => observation.observedDate <= asOfDate);
+    const actualFinalRooms = resolveActualFinalRooms(scopedObservations);
+    const capacityRooms = options.capacityRooms ?? resolveCapacityRooms(scopedObservations);
+    const actSeparated = hasActSeparatedEvidence(scopedObservations, asOfDate);
+
+    if (missingReason !== undefined) {
+        warnings.push(missingReason);
+    }
+    if (!actSeparated) {
+        warnings.push("act_not_separated");
+    }
+    if (capacityRooms !== null && capacityRooms !== undefined && capacityRooms > 0 && capacityRooms <= smallCapacityThreshold) {
+        warnings.push("small_capacity");
+    }
+    if (options.groupDriven === true) {
+        warnings.push("group_driven");
+    }
+
+    return {
+        facilityId: input.facilityId,
+        targetStayDate: targetStayDate ?? options.targetStayDate,
+        asOfDate: asOfDate ?? options.asOfDate,
+        scope: options.scope,
+        ...(roomGroupId === undefined ? {} : { roomGroupId }),
+        segment: options.segment,
+        observedLt,
+        observedPrefix,
+        referenceCurves: {
+            ...(options.referenceCurves?.recentWeighted90 == null ? {} : { recentWeighted90: options.referenceCurves.recentWeighted90 }),
+            ...(options.referenceCurves?.seasonalComponent == null ? {} : { seasonalComponent: options.referenceCurves.seasonalComponent })
+        },
+        ...(capacityRooms === undefined ? {} : { capacityRooms }),
+        actualFinalRooms,
+        labels,
+        diagnostics: {
+            ...(missingReason === undefined ? {} : { missingReason }),
+            warnings: Array.from(new Set(warnings))
+        }
+    };
+}
+
+export function summarizeForecastEvaluationResults(options: {
+    modelId: string;
+    modelVersion: string;
+    scope: CurveScope;
+    segment: CurveSegment;
+    inputs: readonly ForecastEvaluationResultInput[];
+}): ForecastEvaluationResult {
+    const usableInputs = options.inputs.filter((input) => (
+        input.case.diagnostics.missingReason === undefined
+        && typeof input.case.actualFinalRooms === "number"
+        && typeof input.result.predictedFinalRooms === "number"
+    ));
+    const errors = usableInputs.map((input) => {
+        const predicted = input.result.predictedFinalRooms as number;
+        const actual = input.case.actualFinalRooms as number;
+        return {
+            predicted,
+            actual,
+            error: predicted - actual,
+            absoluteError: Math.abs(predicted - actual),
+            smape: calculateSmape(predicted, actual)
+        };
+    });
+    const warnings = Array.from(new Set(options.inputs.flatMap((input) => [
+        ...input.case.diagnostics.warnings,
+        ...input.result.diagnostics.warnings
+    ])));
+    const impactProxy = buildForecastEvaluationImpactProxy(usableInputs);
+    const metrics = errors.length === 0 ? {} : {
+        maeRooms: errors.reduce((sum, error) => sum + error.absoluteError, 0) / errors.length,
+        smape: errors.reduce((sum, error) => sum + error.smape, 0) / errors.length,
+        biasRooms: errors.reduce((sum, error) => sum + error.error, 0) / errors.length
+    };
+
+    return {
+        modelId: options.modelId,
+        modelVersion: options.modelVersion,
+        segment: options.segment,
+        scope: options.scope,
+        caseCount: usableInputs.length,
+        excludedCaseCount: options.inputs.length - usableInputs.length,
+        metrics,
+        impactProxy,
+        warnings
+    };
+}
+
 export function getRecentWeighted90CandidateStayDates(options: {
     targetStayDate: string;
     asOfDate: string;
@@ -471,6 +714,109 @@ function selectObservations(observations: CurveObservation[], options: Reference
         && observation.segment === options.segment
         && (options.scope === "hotel" || observation.roomGroupId === options.roomGroupId)
     ));
+}
+
+function selectEvaluationObservations(
+    observations: CurveObservation[],
+    options: {
+        targetStayDate: string;
+        scope: CurveScope;
+        roomGroupId?: string;
+        segment: CurveSegment;
+    }
+): CurveObservation[] {
+    return observations.filter((observation) => (
+        observation.stayDate === options.targetStayDate
+        && observation.scope === options.scope
+        && observation.segment === options.segment
+        && (options.scope === "hotel" || observation.roomGroupId === options.roomGroupId)
+    ));
+}
+
+function getForecastEvaluationMissingReason(
+    input: CurveInput,
+    options: BuildForecastEvaluationCaseOptions & {
+        targetStayDate: string;
+        asOfDate: string;
+        roomGroupId?: string;
+        observedLt: number | null;
+    }
+): ForecastEvaluationMissingReason | undefined {
+    if (options.scope === "roomGroup" && options.roomGroupId === undefined) {
+        return "room_group_id_missing";
+    }
+    if (!isKnownCurveSegment(options.segment)) {
+        return "segment_unknown";
+    }
+    if (options.observedLt === null) {
+        return "invalid_target_or_as_of_date";
+    }
+    if (options.observedLt < 0) {
+        return "future_info_required";
+    }
+
+    const scopedObservations = selectEvaluationObservations(input.observations, options);
+    const observedPrefix = scopedObservations.filter((observation) => observation.observedDate <= options.asOfDate);
+    if (observedPrefix.length === 0) {
+        return "observed_prefix_missing";
+    }
+    if (resolveActualFinalRooms(scopedObservations) === null) {
+        return "actual_final_missing";
+    }
+    if (!hasActSeparatedEvidence(scopedObservations, options.asOfDate)) {
+        return "act_not_separated";
+    }
+    return undefined;
+}
+
+function isKnownCurveSegment(segment: CurveSegment): boolean {
+    return segment === "all" || segment === "transient" || segment === "group";
+}
+
+function resolveActualFinalRooms(observations: CurveObservation[]): number | null {
+    const finalObservation = observations
+        .filter((observation) => typeof observation.rooms === "number")
+        .filter((observation) => observation.lt >= 0)
+        .sort((left, right) => left.lt - right.lt)[0];
+    return finalObservation?.rooms ?? null;
+}
+
+function resolveCapacityRooms(observations: CurveObservation[]): number | null | undefined {
+    return observations.find((observation) => typeof observation.capacity === "number")?.capacity;
+}
+
+function hasActSeparatedEvidence(observations: CurveObservation[], asOfDate: string | null): boolean {
+    if (asOfDate === null) {
+        return false;
+    }
+    return observations.some((observation) => (
+        observation.observedDate > asOfDate
+        && observation.lt >= 0
+        && typeof observation.rooms === "number"
+    ));
+}
+
+function calculateSmape(predicted: number, actual: number): number {
+    if (predicted === 0 && actual === 0) {
+        return 0;
+    }
+
+    const denominator = (Math.abs(predicted) + Math.abs(actual)) / 2;
+    if (denominator === 0) {
+        return 0;
+    }
+    return Math.min(2, Math.abs(predicted - actual) / denominator);
+}
+
+function buildForecastEvaluationImpactProxy(
+    inputs: readonly ForecastEvaluationResultInput[]
+): NonNullable<ForecastEvaluationResult["impactProxy"]> {
+    return {
+        priorityOrderChangedCount: inputs.filter((input) => input.priorityOrderChanged === true).length,
+        dismissedProxyCount: inputs.filter((input) => input.case.labels.dismissedByUser === true).length,
+        snoozedProxyCount: inputs.filter((input) => input.case.labels.snoozedByUser === true).length,
+        resolvedByRankChangeProxyCount: inputs.filter((input) => input.case.labels.resolvedByRankChange === true).length
+    };
 }
 
 function buildActComparisonDiagnostics(points: CurvePoint[]): ReferenceCurveActComparisonDiagnostics {

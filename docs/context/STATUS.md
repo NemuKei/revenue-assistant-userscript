@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` と `RAU-FC-02` は完了済み。次は、`RAU-FC-02` で確定した contract に従って forecast evaluation dataset を実装する。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` から `RAU-FC-03` まで完了済み。次は、評価 dataset を使う first forecast model を pure function として実装する。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -19,6 +19,7 @@
   - `RAU-RR-11` bulk apply feasibility を調査する
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
+  - `RAU-FC-03` forecast evaluation dataset を実装する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -30,8 +31,9 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の `Now` は `RAU-FC-03` とする。次は、forecast evaluation dataset を実装し、過去 stay_date の raw source から `RAU-FC-02` の contract に従った evaluation case を作れるようにする。
+  - `docs/tasks_backlog.md` の `Now` は `RAU-FC-04` とする。次は、`RAU-FC-02` / `RAU-FC-03` の評価基盤を使い、最初の rooms-only forecast model を UI、API、storage から分離した pure function として実装する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
+  - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-RR-09` では rank response dataset の grain、入力、baseline、result window、欠損 diagnostics を `docs/spec_003_rank_recommendation_signal.md` に定義済みである。
   - `RAU-RR-10` では current rank と rank ladder 候補を使う recommendedRank の条件を定義した。ただし `rank_sequences[].default_sequence` の方向が未確認のため、方向確認までは `recommendedRankDirection` のみを表示する。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
@@ -39,13 +41,12 @@
   - 推奨レート金額を出さない。
   - Revenue Assistant への自動反映や選択範囲一括反映を実装しない。
   - 未確認 API を確認済み仕様として扱わない。
-  - `RAU-FC-03` で evaluation dataset を実装する前に、rooms-only forecast model の実装を始めない。
   - forecast を rank recommendation scoring へ接続しない。
   - forecast 数値を top list または Analyze detail へ表示しない。
   - 月次 `/api/v1/booking_curve/monthly` の snapshot read path を、過去 batch の履歴比較や日次差分表示へ広げない。
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
 - 終了条件:
-  - `RAU-FC-03` で、過去 stay_date の raw source から evaluation case を作れるようにする。
+  - `RAU-FC-04` で、first forecast model を pure function として実装する。
   - `RAU-FC-02` で確定した未来情報混入防止、除外理由、metric、diagnostics の契約を壊さない。
   - 未確認 API を確認済み仕様として扱わない。
 - subagent 利用方針:
@@ -71,6 +72,7 @@
   - `RAU-RR-11` は feasibility 判断済み。bulk apply は `not-now` とし、first phase では一括反映 button も Revenue Assistant への write API 実行も追加しない。将来検討には、反映直前 current rank 再取得、別 rank change 確認、snoozed / dismissed / cooldown / low confidence / small capacity / group-driven 除外、全件 preview、明示選択、partial failure 保存が必要である。
   - `RAU-FC-01` は docs 判断済み。rooms-only forecast は priority / confidence 改善や rank response baseline として有望だが、未評価のまま forecast model を実装したり UI へ数値表示したりしない。先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を確定する。
   - `RAU-FC-02` は docs 設計済み。`docs/spec_002_curve_core.md` に、evaluation dataset の grain を `facilityId x targetStayDate x asOfDate x scope x roomGroupId? x segment` とすること、`ForecastResult v1 candidate` の field と diagnostics、`maeRooms` / `smape` / `biasRooms`、rank recommendation impact proxy、`snoozed_by_user` を false positive と誤読しない注意を反映した。
+  - `RAU-FC-03` は実装済み。`src/curveCore.ts` に `ForecastResultV1Candidate`、`ForecastEvaluationCase`、`ForecastEvaluationResult`、`buildForecastEvaluationCase()`、`summarizeForecastEvaluationResults()` を追加した。`actualFinalRooms` と `observedPrefix` を分け、未来情報混入防止、`0日前` / `ACT` 分離制約、小キャパ、group-driven diagnostics、`maeRooms` / `smape` / `biasRooms` 集計、rank recommendation impact proxy を扱えるようにした。
   - 2026-05-28 に Tampermonkey dashboard から Revenue Assistant Userscript を `0.1.0.236` から公開最新 `0.1.0.243` へ更新した。Revenue Assistant top を再読み込みし、実 Tampermonkey 経由で `料金調整候補` heading 1 件、候補 list root 1 件、候補 row 10 件、console error 0 件を Chrome DevTools Protocol で確認した。
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
@@ -101,7 +103,7 @@
 - トップ画面には、カレンダー badge だけではなく、`stayDate x roomGroup` 単位の料金調整候補リストを追加する方針とした。Analyze 画面は、候補の詳細根拠を確認する場所として扱う。
 - user decision は `Analyzeで確認`、`様子見`、`対応不要` を最低限持つ。`様子見` は一時抑制、`対応不要` は同じ reasonFingerprint の再表示抑制と false positive 候補として分ける。
 - bulk apply は将来候補だが first phase では非目標である。current rank、rank ladder、rank 反映 endpoint、user decision、cooldown、resolved、dismissed、guardrail が揃うまで実装対象にしない。
-- rooms-only forecast は first wave の必須入力にしない。`RAU-FC-01` では、今すぐ forecast model を実装せず、`RAU-FC-02` で evaluation dataset / metrics と `ForecastResult v1 candidate` を先に設計すると判断した。`RAU-FC-02` は完了済みであり、次は evaluation dataset の実装である。
+- rooms-only forecast は first wave の必須入力にしない。`RAU-FC-01` では、今すぐ forecast model を実装せず、`RAU-FC-02` で evaluation dataset / metrics と `ForecastResult v1 candidate` を先に設計すると判断した。`RAU-FC-02` と `RAU-FC-03` は完了済みであり、次は first forecast model の実装である。
 - forecast は評価済みで diagnostics が許容できる場合だけ、rank recommendation の priority / confidence 補助として扱う。top list へ forecast 数値を直接表示せず、実装前は Analyze detail にも表示しない。
 - core / storage 上の segment 名は `all` / `transient` / `group` を正とする。UI 表示では `transient` を「個人」と呼ぶ場合があるが、spec と保存契約では `transient` を使う。
 - Browser API Discovery ルールは `AGENTS.md` と `D-20260514-001` に反映済み。新しい画面、新しいタブ、未調査 API、response shape が不明な API を扱う場合は、実装前に `browser-trace` / `browser-to-api` の利用可否、生成物の保存範囲、Green / Yellow / Red 分類、commit 禁止データを確認する。
@@ -194,8 +196,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-FC-03` を確認し、`docs/spec_002_curve_core.md` の evaluation dataset contract に従って実装範囲を決める。
-2. `RAU-FC-03` では、過去 stay_date の raw source から `EvaluationCase` を作り、`actualFinalRooms`、`observedPrefix`、reference curve、capacity、labels、diagnostics を分けて扱う。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-FC-04` を確認し、first forecast model を `src/curveCore.ts` の pure function として追加する。
+2. 初期候補は、現在値と `recent_weighted_90` の差分で `seasonal_component` の final rooms 推定値を補正する単純モデルとする。seasonal LT 比率換算は evaluation baseline として扱う。
 3. 未来情報混入防止を守る。`actualFinalRooms`、user decision、rank change label は評価 target または evaluation proxy としてだけ使い、forecast model の入力特徴量にしない。
 4. Rank Recommendation Bundle に戻る場合は、`docs/spec_003_rank_recommendation_signal.md` の Open Questions を確認し、`rank_sequences[].default_sequence` の方向、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない。
 
@@ -206,7 +208,6 @@
 - 推奨レート金額を first phase で出さない。
 - Revenue Assistant への自動反映や選択範囲一括反映は first phase で扱わない。
 - 未確認 API を確認済み仕様として扱わない。
-- `RAU-FC-03` で evaluation dataset を実装する前に、rooms-only forecast model を実装しない。
 - forecast を rank recommendation scoring へ接続しない。
 - forecast 数値を top list または Analyze detail へ表示しない。
 - 既存の `全体 / 個人` 系列、rank marker、tooltip、`ACT` 空表示、current-ui supplement portal を壊さない。

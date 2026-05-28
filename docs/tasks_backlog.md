@@ -1404,6 +1404,9 @@
 
 ### RAU-FC-03 forecast evaluation dataset を実装する
 
+- 状態:
+  - 実装済み。
+  - `src/curveCore.ts` に `ForecastResultV1Candidate`、`ForecastEvaluationCase`、`ForecastEvaluationResult` と、`buildForecastEvaluationCase()`、`summarizeForecastEvaluationResults()` を追加した。
 - 目的:
   - `RAU-FC-02` で確定した evaluation dataset contract に従い、過去 stay_date の raw source から forecast 評価用 case を作れるようにする。
 - スコープ:
@@ -1414,6 +1417,16 @@
   - forecast model の精度改善。
   - UI 表示。
   - 外部 DB 追加。
+- 実装内容:
+  - `ForecastEvaluationCase` の grain は `facilityId x targetStayDate x asOfDate x scope x roomGroupId? x segment` とし、`buildForecastEvaluationCase()` がこの単位の case を作る。
+  - `observedPrefix` は `asOfDate` 時点で観測済みの `CurveObservation` だけを入れ、`actualFinalRooms` は評価 target として分離する。
+  - `actual_final_missing`、`observed_prefix_missing`、`future_info_required`、`act_not_separated`、`room_group_id_missing`、`segment_unknown` を diagnostics の missing reason として返す。
+  - `summarizeForecastEvaluationResults()` は `ForecastResultV1Candidate` と evaluation case の組を受け取り、`maeRooms`、`smape`、`biasRooms`、rank recommendation impact proxy を集計する。
+  - `smape` は `RAU-FC-02` の契約どおり、予測と実績がどちらも 0 の場合は 0、片方だけが 0 の場合は最大 2.0 を上限にする。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内では esbuild spawn が `EPERM` になったため、同じ command を通常権限で再実行して通過した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -1560,19 +1573,19 @@
 
 Now:
 
-- `RAU-FC-03` forecast evaluation dataset を実装する
+- `RAU-FC-04` first forecast model を pure function として実装する
 
 Next:
 
-- `RAU-FC-04` first forecast model を pure function として実装する
+- `RAU-FC-05` rank recommendation scoring へ forecast diagnostics を接続する
 
 After Next:
 
-- `RAU-FC-05` rank recommendation scoring へ forecast diagnostics を接続する
+- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
 
 Later:
 
-- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+- なし
 
 統合判断:
 
@@ -1593,10 +1606,10 @@ Later:
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
-- `RAU-FC-03` は、`RAU-FC-02` の contract に従って evaluation dataset を実装する task とする。評価基盤なしに forecast model の採否を判断しないため、Now に置く。
-- `RAU-FC-04` は、評価 dataset ができた後に first forecast model を pure function として実装する task とする。初期候補は recent deviation で seasonal final rooms を補正する単純モデルとし、seasonal LT 比率換算は baseline として扱う。
+- `RAU-FC-03` は 2026-05-28 に実装済みである。`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加し、raw source adapter が作る `CurveInput` から forecast 評価用 case を作れるようにした。
+- `RAU-FC-04` は、評価 dataset ができた後に first forecast model を pure function として実装する task とする。初期候補は recent deviation で seasonal final rooms を補正する単純モデルとし、seasonal LT 比率換算は baseline として扱うため、Now に置く。
 - `RAU-FC-05` は、forecast が評価済みになった後で rank recommendation scoring へ diagnostics を接続する task とする。forecast 欠損時は既存 reference deviation scoring を継続し、top list へ forecast 数値を直接表示しない。
-- `RAU-SALES-02` は、rooms-only forecast の evaluation dataset と初期 model の後に置く。室数予測、単価予測、売上予測の接続順序を保つため、forecast contract が固まる前に単価・売上予測へ進めない。
+- `RAU-SALES-02` は、rooms-only forecast の evaluation dataset と初期 model の後に置く。室数予測、単価予測、売上予測の接続順序を保つため、forecast model が固まる前に単価・売上予測へ進めない。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
