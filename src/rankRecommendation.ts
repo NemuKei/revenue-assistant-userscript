@@ -2,6 +2,7 @@ export type RankRecommendationAction = "raise_watch" | "lower_watch" | "watch" |
 export type RankRecommendationPriority = "high" | "medium" | "low";
 export type RankRecommendationStatus = "active" | "not_eligible";
 export type RankRecommendationForecastSignal = "high_occupancy" | "low_occupancy" | "neutral";
+export type RankRecommendationSalesAdrHealthSignal = "adr_down" | "sales_down" | "adr_and_sales_down" | "neutral";
 
 export interface RankRecommendationCurrentSettingRoomGroup {
     rm_room_group_id?: string;
@@ -49,6 +50,7 @@ export interface RankRecommendationCurveEvidence {
     currentGroupRooms: number | null;
     referenceGroupRooms: number | null;
     forecastSignal: RankRecommendationForecastSignal | null;
+    salesAdrHealthSignal: RankRecommendationSalesAdrHealthSignal | null;
     diagnostics: string[];
 }
 
@@ -114,6 +116,7 @@ function buildRankRecommendationCandidate(options: {
     const groupDeviation = getDeviation(curveEvidence?.currentGroupRooms ?? null, curveEvidence?.referenceGroupRooms ?? null);
     const isGroupDriven = isPositive(groupDeviation) && !isPositive(transientDeviation);
     const forecastSignal = curveEvidence?.forecastSignal ?? null;
+    const salesAdrHealthSignal = curveEvidence?.salesAdrHealthSignal ?? null;
 
     let action: RankRecommendationAction;
     let priority: RankRecommendationPriority;
@@ -182,6 +185,37 @@ function buildRankRecommendationCandidate(options: {
             } else if (action === "watch" && (daysToStay === null || daysToStay <= 30)) {
                 priority = maxPriority(priority, "medium");
                 confidence = increaseConfidence(confidence, 0.05);
+            }
+        }
+    }
+
+    if (action !== "not_eligible" && salesAdrHealthSignal !== null) {
+        if (salesAdrHealthSignal === "adr_and_sales_down") {
+            reasonCodes.push("ADR・売上弱含み");
+            if (action === "raise_watch") {
+                confidence = decreaseConfidence(confidence, 0.08);
+            } else if (action === "lower_watch") {
+                confidence = increaseConfidence(confidence, 0.06);
+            } else if (action === "watch" && (daysToStay === null || daysToStay <= 30)) {
+                priority = maxPriority(priority, "medium");
+                confidence = increaseConfidence(confidence, 0.04);
+            }
+        } else if (salesAdrHealthSignal === "adr_down") {
+            reasonCodes.push("ADR弱含み");
+            if (action === "raise_watch") {
+                confidence = decreaseConfidence(confidence, 0.05);
+            } else if (action === "lower_watch") {
+                confidence = increaseConfidence(confidence, 0.03);
+            }
+        } else if (salesAdrHealthSignal === "sales_down") {
+            reasonCodes.push("売上弱含み");
+            if (action === "raise_watch") {
+                confidence = decreaseConfidence(confidence, 0.04);
+            } else if (action === "lower_watch") {
+                confidence = increaseConfidence(confidence, 0.05);
+            } else if (action === "watch" && (daysToStay === null || daysToStay <= 30)) {
+                priority = maxPriority(priority, "medium");
+                confidence = increaseConfidence(confidence, 0.03);
             }
         }
     }
@@ -261,6 +295,10 @@ function isPositive(value: number | null): boolean {
 
 function increaseConfidence(current: number, delta: number): number {
     return Math.min(0.95, Math.round((current + delta) * 100) / 100);
+}
+
+function decreaseConfidence(current: number, delta: number): number {
+    return Math.max(0.05, Math.round((current - delta) * 100) / 100);
 }
 
 function maxPriority(current: RankRecommendationPriority, candidate: RankRecommendationPriority): RankRecommendationPriority {

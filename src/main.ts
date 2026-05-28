@@ -15,6 +15,7 @@ import {
     buildCurveInputFromBookingCurveResponses,
     buildRecentWeighted90ReferenceCurve,
     buildRoomsOnlyForecastResult,
+    buildSalesAdrInputFromBookingCurveResponses,
     buildSeasonalComponentReferenceCurve,
     getRecentWeighted90CandidateStayDates,
     getSeasonalComponentCandidateStayDates,
@@ -30,7 +31,8 @@ import {
     type CurveScope,
     type ForecastResultV1Candidate,
     type ReferenceCurveKind,
-    type ReferenceCurveResult
+    type ReferenceCurveResult,
+    type SalesAdrObservation
 } from "./curveCore";
 import {
     buildReferenceCurveCacheKey,
@@ -59,6 +61,7 @@ import {
     type RankRecommendationCurrentSettingsResponse,
     type RankRecommendationForecastSignal,
     type RankRecommendationPriority,
+    type RankRecommendationSalesAdrHealthSignal,
     type RankRecommendationStatus
 } from "./rankRecommendation";
 import {
@@ -4474,6 +4477,7 @@ async function readRankRecommendationCurveEvidence(options: {
             currentGroupRooms: null,
             referenceGroupRooms: null,
             forecastSignal: null,
+            salesAdrHealthSignal: null,
             diagnostics: ["booking_curve_source_missing"]
         }];
     }
@@ -4488,6 +4492,7 @@ async function readRankRecommendationCurveEvidence(options: {
             currentGroupRooms: null,
             referenceGroupRooms: null,
             forecastSignal: null,
+            salesAdrHealthSignal: null,
             diagnostics: ["booking_curve_point_missing"]
         }];
     }
@@ -4521,6 +4526,14 @@ async function readRankRecommendationCurveEvidence(options: {
             groupDeviation: getNullableDifference(currentGroupRooms, referenceGroupRooms)
         })
     });
+    const salesAdrHealthEvidence = buildRankRecommendationSalesAdrHealthEvidence({
+        facilityId: options.facilityId,
+        stayDate: options.stayDate,
+        asOfDate: options.asOfDate,
+        roomGroupId: options.roomGroupId,
+        response: record.response as BookingCurveResponse,
+        point
+    });
 
     return [evidenceKey, {
         currentAllRooms,
@@ -4530,7 +4543,11 @@ async function readRankRecommendationCurveEvidence(options: {
         currentGroupRooms,
         referenceGroupRooms,
         forecastSignal: forecastEvidence.signal,
-        diagnostics: forecastEvidence.diagnostics
+        salesAdrHealthSignal: salesAdrHealthEvidence.signal,
+        diagnostics: [
+            ...forecastEvidence.diagnostics,
+            ...salesAdrHealthEvidence.diagnostics
+        ]
     }];
 }
 
@@ -4588,6 +4605,93 @@ function buildRankRecommendationForecastEvidence(options: {
     return {
         signal,
         diagnostics: buildRankRecommendationForecastDiagnostics(forecastResult)
+    };
+}
+
+function buildRankRecommendationSalesAdrHealthEvidence(options: {
+    facilityId: string;
+    stayDate: string;
+    asOfDate: string;
+    roomGroupId: string;
+    response: BookingCurveResponse;
+    point: BookingCurvePoint;
+}): { signal: RankRecommendationSalesAdrHealthSignal | null; diagnostics: string[] } {
+    const input = buildSalesAdrInputFromBookingCurveResponses({
+        facilityId: options.facilityId,
+        asOfDate: options.asOfDate,
+        sources: [{
+            response: options.response,
+            scope: "roomGroup",
+            roomGroupId: options.roomGroupId
+        }],
+        segments: ["transient"]
+    });
+    const currentObservation = findLatestSalesAdrObservation(input.observations, options.asOfDate);
+    const diagnostics = currentObservation === null
+        ? ["sales_adr_observation_missing"]
+        : currentObservation.diagnostics.map((diagnostic) => `sales_adr:${diagnostic}`);
+    const currentAdr = currentObservation?.adr ?? null;
+    const currentSales = currentObservation?.sales ?? null;
+    const referenceAdr = averageBookingCurveNumericValues([
+        options.point.transient?.last_year_adr,
+        options.point.transient?.two_years_ago_adr,
+        options.point.transient?.three_years_ago_adr
+    ]);
+    const referenceSales = averageBookingCurveNumericValues([
+        options.point.transient?.last_year_sales_sum,
+        options.point.transient?.two_years_ago_sales_sum,
+        options.point.transient?.three_years_ago_sales_sum
+    ]);
+    const adrDown = isCurrentValueDownAgainstReference({
+        current: currentAdr,
+        reference: referenceAdr,
+        downRatioThreshold: 0.95
+    });
+    const salesDown = isCurrentValueDownAgainstReference({
+        current: currentSales,
+        reference: referenceSales,
+        downRatioThreshold: 0.9
+    });
+    const adrComparable = isPositiveReferenceComparable(currentAdr, referenceAdr);
+    const salesComparable = isPositiveReferenceComparable(currentSales, referenceSales);
+
+    if (currentAdr === null) {
+        diagnostics.push("sales_adr_current_adr_missing");
+    }
+    if (currentSales === null) {
+        diagnostics.push("sales_adr_current_sales_missing");
+    }
+    if (referenceAdr === null) {
+        diagnostics.push("sales_adr_reference_adr_missing");
+    } else if (referenceAdr === 0) {
+        diagnostics.push("sales_adr_reference_adr_zero");
+    }
+    if (referenceSales === null) {
+        diagnostics.push("sales_adr_reference_sales_missing");
+    } else if (referenceSales === 0) {
+        diagnostics.push("sales_adr_reference_sales_zero");
+    }
+
+    if (!adrComparable && !salesComparable) {
+        return {
+            signal: null,
+            diagnostics: Array.from(new Set(diagnostics))
+        };
+    }
+
+    let signal: RankRecommendationSalesAdrHealthSignal = "neutral";
+    if (adrDown && salesDown) {
+        signal = "adr_and_sales_down";
+    } else if (adrDown) {
+        signal = "adr_down";
+    } else if (salesDown) {
+        signal = "sales_down";
+    }
+
+    diagnostics.push(`sales_adr_signal_${signal}`);
+    return {
+        signal,
+        diagnostics: Array.from(new Set(diagnostics))
     };
 }
 
@@ -4713,6 +4817,10 @@ function normalizeBookingCurveRoomCount(value: number | null | undefined): numbe
 }
 
 function averageBookingCurveRoomCounts(values: Array<number | null | undefined>): number | null {
+    return averageBookingCurveNumericValues(values);
+}
+
+function averageBookingCurveNumericValues(values: Array<number | null | undefined>): number | null {
     const normalizedValues = values.filter((value): value is number => typeof value === "number" && Number.isFinite(value));
     if (normalizedValues.length === 0) {
         return null;
@@ -4723,6 +4831,37 @@ function averageBookingCurveRoomCounts(values: Array<number | null | undefined>)
 
 function countBookingCurveRoomCounts(values: Array<number | null | undefined>): number {
     return values.filter((value): value is number => typeof value === "number" && Number.isFinite(value)).length;
+}
+
+function findLatestSalesAdrObservation(observations: SalesAdrObservation[], asOfDate: string): SalesAdrObservation | null {
+    let latestObservation: SalesAdrObservation | null = null;
+    let latestObservedDate = "";
+    for (const observation of observations) {
+        if (observation.observedDate > asOfDate || observation.observedDate < latestObservedDate) {
+            continue;
+        }
+
+        latestObservation = observation;
+        latestObservedDate = observation.observedDate;
+    }
+
+    return latestObservation;
+}
+
+function isPositiveReferenceComparable(current: number | null, reference: number | null): boolean {
+    return current !== null && reference !== null && reference > 0;
+}
+
+function isCurrentValueDownAgainstReference(options: {
+    current: number | null;
+    reference: number | null;
+    downRatioThreshold: number;
+}): boolean {
+    const { current, reference } = options;
+    return current !== null
+        && reference !== null
+        && reference > 0
+        && current / reference <= options.downRatioThreshold;
 }
 
 function filterRankRecommendationCandidatesByDecision(

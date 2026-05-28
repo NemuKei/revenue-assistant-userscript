@@ -1581,6 +1581,8 @@
 
 ### RAU-SALES-04 sales / ADR health diagnostics を rank recommendation scoring へ段階接続する
 
+- 状態:
+  - 実装済み。
 - 目的:
   - `RAU-SALES-03` の adapter を使い、rank recommendation の候補根拠へ ADR / sales health diagnostics を追加する。
   - rooms pickup だけでは判断しにくい、ADR 低下や売上悪化を候補の priority / confidence 補助へ反映できるようにする。
@@ -1597,8 +1599,41 @@
   - sales / ADR が欠損しても既存候補生成が継続する。
   - sales / ADR reason は数値を直接出さず、非数値要約に留める。
   - Chrome DevTools Protocol または Chrome拡張で通常 Chrome 上の Revenue Assistant 候補 list を確認する。
+- 実装内容:
+  - `src/main.ts` で `booking_curve_raw_source:v2` の roomGroup response から `buildSalesAdrInputFromBookingCurveResponses()` を呼び、`scope="roomGroup"`、`segment="transient"`、`asOfDate` 時点の最新 sales / ADR observation を rank recommendation evidence に接続した。
+  - 同じ latest booking curve point の `last_year_*`、`two_years_ago_*`、`three_years_ago_*` を reference とし、ADR は過去年平均比 95% 以下、sales は過去年平均比 90% 以下を弱含み signal とした。
+  - `src/rankRecommendation.ts` に `RankRecommendationSalesAdrHealthSignal` を追加し、`adr_down`、`sales_down`、`adr_and_sales_down`、`neutral` を priority / confidence の小さな補助として扱うようにした。
+  - top list には sales / ADR 数値、比率、金額を出さず、表示する場合も `ADR弱含み`、`売上弱含み`、`ADR・売上弱含み` の非数値 reason に限定した。
+  - 欠損、reference 欠損、reference 0 の場合は signal を推測補完せず、diagnostics だけを残して既存候補生成を継続する。
+- verify:
+  - `npm run check`: passed
+  - Chrome DevTools Protocol で通常 Chrome の `https://ra.jalan.net/` に build 済み userscript を一時注入し、`料金調整候補` heading 1 件、候補 list root 1 件、候補 row 10 件、重大 console / page error 0 件を確認した。
+  - 候補 list 内に forecast 数値 label と sales / ADR 数値 label が表示されていないことを確認した。
+  - 現在の実データでは `ADR弱含み` / `売上弱含み` / `ADR・売上弱含み` reason の発火は 0 件だったため、実データ発火時の見え方は後続確認に残す。
 - metadata:
   - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-SALES-05 sales / ADR health signal の実データ発火と閾値を確認する
+
+- 目的:
+  - `RAU-SALES-04` で接続した sales / ADR health signal が、実データでどの程度発火するかを確認する。
+  - 初期閾値で候補根拠が増えすぎないか、逆に実務上気づきたい弱含みを拾えていないかを調整判断できる状態にする。
+- スコープ:
+  - top list の候補行ごとに `sales_adr_signal_*` diagnostics の分布を確認する。
+  - 発火した場合の表示文言が、数値を出さずに判断補助として読めるかを確認する。
+  - 閾値を変更する場合は、`docs/spec_003_rank_recommendation_signal.md` と `docs/context/DECISIONS.md` を同時に更新する。
+- 非目標:
+  - Revenue Assistant への write / bulk apply。
+  - 推奨レート金額、ADR 金額、sales 金額、比率の表示。
+  - 未確認 API の追加調査や追加 request。
+- 受け入れ条件:
+  - Chrome DevTools Protocol または Chrome拡張で、通常 Chrome 上の Revenue Assistant 候補 list と diagnostics 分布を確認する。
+  - 閾値を変更する場合は、変更理由、入力、判断、出力を正本文書へ残す。
+  - 閾値を変更しない場合も、現時点の実データでは維持する理由を `STATUS.md` または `tasks_backlog.md` に残す。
+- metadata:
+  - `spec-impact`: unknown
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
@@ -1680,7 +1715,7 @@
 
 Now:
 
-- `RAU-SALES-04` sales / ADR health diagnostics を rank recommendation scoring へ段階接続する
+- `RAU-SALES-05` sales / ADR health signal の実データ発火と閾値を確認する
 
 Next:
 
@@ -1718,7 +1753,7 @@ Later:
 - `RAU-FC-05` は 2026-05-28 に完了した。forecast 欠損時は既存 reference deviation scoring を継続し、top list へ forecast 数値を直接表示しない。Chrome DevTools Protocol の実画面確認では、候補 list root と候補 row 10 件が表示され、重大な console / page error は 0 件だった。現在の実データでは forecast reason の表示発火は 0 件だったため、後続で forecast 閾値や実データ確認を行う場合は別 task として扱う。
 - `RAU-SALES-02` は 2026-05-28 に完了した。`docs/spec_002_curve_core.md` に sales / ADR adapter、unit price forecast、sales forecast の契約を追加した。既存 `booking_curve_raw_source:v2` の保存単位は追加変更しない。次は `RAU-SALES-03` で pure function 実装を行う。
 - `RAU-SALES-03` は 2026-05-28 に実装済みである。室数予測、単価予測、売上予測の接続順序を保つため、UI や rank recommendation scoring へ接続せず、core logic の pure function と diagnostics だけを追加した。
-- `RAU-SALES-04` は、`RAU-SALES-03` の adapter を使って、rank recommendation の候補根拠へ ADR / sales health diagnostics を段階接続する task とする。top list へ sales / ADR 数値を直接表示せず、非数値 reason / diagnostics から入れる。
+- `RAU-SALES-04` は 2026-05-28 に実装済みである。`RAU-SALES-03` の adapter を使って、rank recommendation の候補根拠へ ADR / sales health diagnostics を段階接続した。top list へ sales / ADR 数値を直接表示せず、非数値 reason / diagnostics だけを追加する契約を維持する。Chrome DevTools Protocol の実画面確認では、候補 list root と候補 row 10 件が表示され、重大な console / page error は 0 件だった。現在の実データでは sales / ADR reason の表示発火は 0 件だったため、`RAU-SALES-05` で diagnostics 分布と閾値を確認する。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
