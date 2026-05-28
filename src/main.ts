@@ -5626,19 +5626,25 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     rowElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
     rowElement.setAttribute(RANK_RECOMMENDATION_STATUS_ATTRIBUTE, candidate.status);
 
-    const values = [
-        formatRankRecommendationPriority(candidate.priority),
-        formatRankRecommendationConfidence(candidate.confidence),
-        formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate),
-        candidate.roomGroupName,
-        candidate.currentRankName ?? "-",
-        formatRankRecommendationAction(candidate),
-        candidate.reasonCodes.join(" / "),
-        formatRankRecommendationStatus(candidate.status)
+    const cells = [
+        { value: formatRankRecommendationPriority(candidate.priority) },
+        {
+            value: formatRankRecommendationConfidence(candidate.confidence),
+            title: formatRankRecommendationConfidenceTitle(candidate)
+        },
+        { value: formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate) },
+        { value: candidate.roomGroupName },
+        { value: candidate.currentRankName ?? "-" },
+        { value: formatRankRecommendationAction(candidate) },
+        { value: candidate.reasonCodes.join(" / ") },
+        { value: formatRankRecommendationStatus(candidate.status) }
     ];
-    for (const value of values) {
+    for (const cell of cells) {
         const cellElement = document.createElement("td");
-        cellElement.textContent = value;
+        cellElement.textContent = cell.value;
+        if (cell.title !== undefined) {
+            cellElement.title = cell.title;
+        }
         rowElement.append(cellElement);
     }
 
@@ -5730,6 +5736,54 @@ function formatRankRecommendationConfidence(confidence: number): string {
         return "中";
     }
     return "低";
+}
+
+function formatRankRecommendationConfidenceTitle(candidate: RankRecommendationCandidate): string {
+    const parts = [
+        `確度: ${formatRankRecommendationConfidence(candidate.confidence)}`,
+        "予測精度、推奨金額の正確さ、Revenue Assistant への反映可否を保証する値ではありません。"
+    ];
+    const reasonText = Array.from(new Set(candidate.reasonCodes)).slice(0, 5).join(" / ");
+    if (reasonText !== "") {
+        parts.push(`主要根拠: ${reasonText}`);
+    }
+    const cautionText = summarizeRankRecommendationConfidenceCautions(candidate.diagnostics).join(" / ");
+    if (cautionText !== "") {
+        parts.push(`注意: ${cautionText}`);
+    }
+    return parts.join("\n");
+}
+
+function summarizeRankRecommendationConfidenceCautions(diagnostics: readonly string[]): string[] {
+    const labels: string[] = [];
+    const hasDiagnostic = (pattern: string | RegExp): boolean => diagnostics.some((diagnostic) => (
+        typeof pattern === "string" ? diagnostic === pattern : pattern.test(diagnostic)
+    ));
+    if (hasDiagnostic("booking_curve_source_missing") || hasDiagnostic("reference_deviation_missing")) {
+        labels.push("booking_curve または reference 不足");
+    }
+    if (hasDiagnostic(/^forecast_missing:/) || hasDiagnostic("forecast_expected_occupancy_missing")) {
+        labels.push("forecast 比較不足");
+    }
+    if (hasDiagnostic(/sales_adr.*_missing$/) || hasDiagnostic(/sales_adr_reference_.*_zero$/)) {
+        labels.push("sales / ADR 比較不足");
+    }
+    if (hasDiagnostic(/^weekday_context_/) || hasDiagnostic("weekday_reference_source_count_low")) {
+        labels.push("同曜日比較不足");
+    }
+    if (hasDiagnostic("competitor_price_room_group_scope_unconfirmed")) {
+        labels.push("競合価格の部屋タイプ対応未確認");
+    }
+    if (hasDiagnostic("group_driven_raise_suppressed")) {
+        labels.push("団体主因のため上げ判断を抑制");
+    }
+    if (hasDiagnostic("small_capacity") || hasDiagnostic("capacity_missing")) {
+        labels.push("部屋数条件により判定制限");
+    }
+    if (hasDiagnostic(/^recommended_rank_/)) {
+        labels.push("隣接ランク表示に制約あり");
+    }
+    return Array.from(new Set(labels)).slice(0, 4);
 }
 
 function formatRankRecommendationAction(candidate: RankRecommendationCandidate): string {
