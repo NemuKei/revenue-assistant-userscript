@@ -159,6 +159,7 @@ first phase では次を行わない。
 - 大国町では、設定画面 `料金ランクの並び順` が高ランクから低ランクの順に `1` から `20` へ並んでいる。RAU はこの保存済み順序を source `settings_screen` として優先し、`1` を最高ランク、`20` を最低ランクとして扱う。
 - rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ数字系や文字系でも、`1` や `A` が最高ランクになる運用と、最低ランクになる運用の両方があり得る。名前パターンだけでは上下関係を安全に断定できないため、数字、ローマ字、英字、記号の推定ロジックを積み増して確認済み source と同等に扱わない。
 - カレンダーベースの曜日別関係や、競合価格内での自社料金位置は、rank order source として上下関係を確定する入力にはしない。これらは、rank order が `settings_screen` または `manual_override` で確定している前提で、候補の priority、confidence、reasonCodes、diagnostics を補助する入力候補として扱う。
+- 今後、rank order の推定ロジックを追加する場合でも、推定結果は既定値または fallback として扱う。利用者が方向または上下関係を任意変更できる入口を維持し、推定値を確認済みの施設設定または利用者指定より優先しない。
 - 設定画面の保存済み順序が取得できない場合に限り、rank 名がすべて整数として読めるなら、RAU は rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定する。この fallback は、設定画面順序や manual override と同じ確定 source ではなく、source `numeric_rank_name` として UI と diagnostics に明示する。
 - `raise_watch` の隣接 recommended rank は、高ランクから低ランクへの順序上で current rank の 1 つ高い rank とする。`lower_watch` の隣接 recommended rank は、同じ順序上で current rank の 1 つ低い rank とする。
 - rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` のいずれかとして扱う。source 優先順位は、利用者が browser-local に保存した `manual_override`、Revenue Assistant 設定画面の保存済み順序である `settings_screen`、設定順序が使えない場合の fallback である `numeric_rank_name`、解決不能の `unresolved` とする。
@@ -441,6 +442,7 @@ rank response dataset の first contract:
 - manual override がない場合は、`/api/v1/rank_sequences` の配列順を、Revenue Assistant 設定画面 `料金ランクの並び順` の保存済み順序として使い、source `settings_screen` とする。大国町ではこの設定画面が高ランクから低ランクの順に `1` から `20` へ並んでいる。
 - 設定画面の保存済み順序が取得できない場合だけ、rank 名がすべて整数として読めるなら、rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定し、source を `numeric_rank_name` とする。この fallback は、すべての施設で数字が小さいほど高ランクであると断定するものではない。
 - rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ表記系でも高低が逆になる運用があり得るため、名前パターンだけで `settings_screen` と同等の確定 source にはしない。ローマ字または英字順、記号の有無、曜日別販売傾向、競合価格内の自社料金位置は、rank order source としては使わない。
+- 追加の推定ロジックを設計する場合は、推定できるかどうか、どの source を使ったか、利用者が任意変更できるかを UI と diagnostics で区別する。推定値は、`manual_override` と `settings_screen` を置き換えるものではない。
 - `raise_watch` では current rank の 1 つ高い rank を、`lower_watch` では current rank の 1 つ低い rank を、first wave の隣接 `recommendedRank` として扱う。
 - 方向確認後も、first wave の recommendedRank は隣接 rank のみに限定する。2 段階以上の rank 移動、価格差最大化、売上最大化 rank の直接提示は行わない。
 - current rank が欠損する場合、rank ladder に current rank code が存在しない場合、rank order を推定できない場合、または隣接 rank が存在しない場合は、`recommendedRank` を null にする。

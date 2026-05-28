@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-05-28
+最終更新: 2026-05-29
 
 ## Current Task Bundle
 
@@ -82,6 +82,7 @@
   - `RAU-RR-15` では、rank order source を `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` として扱う。top list に現在 source と高ランクから低ランクへの順序を表示し、利用者が high-to-low の rank 順序を browser-local に保存できる manual override と reset を追加済みである。
   - `RAU-RR-16` では、設定画面 `設定 > 表示 > 料金ランクの並び順` の route が `/settings/price-rank-sequence` であり、`GET /api/v1/rank_sequences` の配列順が設定画面のドラッグリスト順序として表示されることを Chrome DevTools Protocol read-only で確認した。大国町では表示順が `1` から `20` であり、利用者確認どおり高ランクから低ランクの順である。RAU は manual override がない場合、この配列順を source `settings_screen` として使う。rank 名は企業や施設により数字系、ローマ字または英字系、記号混在系のいずれもあり得て、同じ表記系でも上下関係が逆になる運用があるため、名前パターン推定を確認済み source と同等に扱わない。
   - `RAU-RR-17` では、曜日別関係と競合価格内の自社料金位置を rank order source ではなく、priority / confidence / reasonCodes / diagnostics の補助 input として採用すると判断した。rank rule は企業またはホテルごとに異なり、rank 名は数字系、ローマ字または英字系、記号混在系のいずれもあり得るため、名前パターン、曜日別販売傾向、競合価格内自社料金位置だけで上下関係を断定しない。大国町では Revenue Assistant 設定画面の `料金ランクの並び順` が高ランクから低ランクへ `1` から `20` の順に並んでいるため、`1` を最高ランク、`20` を最低ランクとして扱う。曜日別関係と競合価格内自社料金位置は追加 request なしで既存保存済み evidence から作り、既存 action を単独で変えない小さな補助として扱う。
+  - 2026-05-29 の利用者補足により、rank rule は企業またはホテルごとに異なり、数字系、ローマ字または英字系、記号混在系があり、同じ表記系でも上下関係が逆になる運用がある前提を再確認した。RAU は今後も、rank order を `manual_override`、`settings_screen`、`numeric_rank_name` fallback、`unresolved` の順で扱い、曜日別関係や競合価格内の自社料金位置は上下関係の確定 source ではなく scoring 補助 input として扱う。詳細判断は `D-20260529-001` を参照する。
   - `RAU-RR-18` では、weekday context signal と competitor own price position signal を `src/rankRecommendation.ts` の pure scoring contract へ追加した。`src/main.ts` では、weekday context を保存済み `booking_curve_raw_source:v2` の同曜日候補から作り、競合価格内自社料金位置を保存済み `competitor-price-snapshots` の最新 snapshot から作る。追加 API request は行わない。Chrome拡張 backend では通常 Chrome の Revenue Assistant tab が 1 件あることを確認し、Chrome DevTools Protocol で最新 dist を一時注入した確認では、候補 list 10 行、page error 0 件、console error 0 件、`自社安め` 7 行、weekday reason 0 行、金額・差額・比率の直接表示 0 行だった。
   - `RAU-RR-19` では、Chrome拡張 backend で通常 Chrome の Revenue Assistant tab が 1 件あることを確認し、Chrome DevTools Protocol で最新 dist を一時注入して top list の support reason / diagnostics 分布を確認した。top list は 10 行、page error 0 件、console error 0 件だった。10 行すべてが `raise_watch` / `high` / `active` で、`自社安め` は 7 行、`自社高め` は 0 行、weekday 強弱 reason は 0 行、金額・差額・比率の直接表示は 0 行だった。この 1 画面では閾値変更の根拠として不十分なため、競合価格内自社料金位置の 95% / 105% 閾値と weekday context の 115% / 85% 閾値は変更しない。次は roomGroup と `jalan` 側部屋タイプの対応 source を read-only で確認する。
   - `RAU-RR-20` では、`current_settings`、`rm_room_groups`、`competitors_filter_settings`、保存済み `competitor-price-snapshots` を Chrome DevTools Protocol read-only で確認した。`current_settings` と `rm_room_groups` は roomGroup field を持つが `jalan` 側部屋タイプ code を持たず、競合価格 snapshot は `jalanFacilityRoomType` と `jalanRoomTypes` を持つが `rm_room_group_id` 相当を持たない。したがって、roomGroup 名と `jalan` 側部屋タイプ名の文字列類似だけで対応を確定しない。
@@ -468,7 +469,7 @@
 
 - current rank と rank ladder 候補は `RAU-RR-03` で確認済みである。`rank_sequences[].default_sequence` は `RAU-RR-12` で名前順初期化用と確認済みであり、rank 上げ / 下げ方向には使わない。
 - rank order は、manual override、Revenue Assistant 設定画面の保存済み順序、数値 rank 名 fallback、unresolved の順に解決する。大国町では設定画面の `1` から `20` が高ランクから低ランクへの順序であり、`1` を最高ランク、`20` を最低ランクとして扱う。
-- rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系があり、同じ表記系でも上下関係が逆になる場合がある。曜日別傾向や競合価格内での自社料金位置は rank order source ではなく、priority、confidence、reasonCodes、diagnostics の補助入力候補として扱う。
+- rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系があり、同じ表記系でも上下関係が逆になる場合がある。曜日別傾向や競合価格内での自社料金位置は rank order source ではなく、priority、confidence、reasonCodes、diagnostics の補助入力候補として扱う。推定ロジックを追加する場合でも、利用者が方向または上下関係を任意変更できる入口を維持する。
 - rank 別価格表と現在販売中価格は、`RAU-RR-36` の追加確認後も、推奨レート金額を導出できる入力としては未確認である。`/api/v1/plan_master/plan_rank_price` は rank metadata を返すが、実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は観測できていない。
 - rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動は未確認である。
 - rank recommendation first phase では推奨レート金額を出さない。金額推奨を行うには、プラン別、人数別、食事条件別、販売中価格、rank ladder、競合価格、施設方針の確認が必要であり、現時点では未確認項目が多い。
