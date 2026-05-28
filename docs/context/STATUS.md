@@ -340,6 +340,8 @@
   - `npm run typecheck`: passed
   - `npm run lint`: passed
   - `npm run build`: passed
+  - 2026-05-28 の Chrome拡張 backend capability 確認では、通常 Chrome の extension browser を取得でき、open tab 3 件の中に Revenue Assistant tab があることを確認した。`npm run chrome:pages` では、通常 Chrome の `https://ra.jalan.net/analyze/2026-06-17` tab を確認した。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Revenue Assistant tab へ build 済み `dist/revenue-assistant-userscript.user.js` を一時注入した。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` で warm cache indicator が表示され、page error と console error は 0 件だった。
   - Tampermonkey 再読込 GUI 確認: 未実施
   - 実ブラウザ上で request 間隔、skip、hidden pause の挙動確認: 未実施
 - 2026-04-29 の `RAU-WC-02` コード実装 verify:
@@ -351,16 +353,17 @@
   - トップカレンダー GUI 確認: indicator 表示と取得開始は確認済み。表示は `データ取得: 取得中 0 / 31日`、詳細は `完了 なし / 保存 5 / skip 1 / 今日 0/30分` だった。日次上限撤廃後は `今日 x/30分` を表示しない。
   - hidden pause 復帰補正: `pageshow` と `focus` でも warm cache drain を再開する修正を追加し、`npm run typecheck`、`npm run lint`、`npm run build` は再通過
   - 日次合計稼働時間の上限撤廃後、`npm run typecheck`、`npm run lint`、`npm run build` は再通過
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、トップカレンダー `https://ra.jalan.net/` に build 済み `dist` を一時注入し、warm cache indicator が `データ取得: 取得中 0 / 94日・進行 8日（5/27〜8/28）`、詳細が `対象 2026-05-27〜2026-08-28 / 完了 なし / 保存 12 / skip 45` になることを確認した。calendar marker は 92 件で、保存済み current source の `stored-current` marker が表示されていた。page error と console error は 0 件だった。
   - Tampermonkey 再読込 GUI 確認: 未実施
-  - 実ブラウザ上でトップカレンダー表示中の indicator、日付単位完了範囲、クールダウン後自動再開の確認: 未実施
+  - クールダウン後自動再開の確認: 未実施
 - 2026-04-29 の `RAU-WC-03` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` に build 済み `dist` を一時注入し、indicator detail に `この日 2026-06-17 raw 100%（7/7） 参考線 ... 同曜日 100%（28/28）` が表示されることを確認した。約 30 秒の sampling では、参考線 progress が `16%（7/42）` から `50%（21/42）` まで進んだ。page error と console error は 0 件だった。
   - Tampermonkey 再読込 GUI 確認: 未実施
-  - Analyze 日付ページで、その日、同週、同月の順に取得が優先されること: 未実施
-  - Indicator の `raw / 参考線 / 同曜日` 取得率が実データに応じて進むこと: 未実施
+  - Analyze 日付ページで、その日、同週、同月の順に request が発行されることの直接確認: 未実施
 - 2026-04-29 の `RAU-WC-04` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
@@ -379,17 +382,19 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、トップカレンダーで `stored-current` marker 92 件を確認した。Analyze 日付ページでは `calendar-date-2026-06-17` に `partial` marker が 1 件表示され、title は `booking_curve 一部取得済み 43 / 77`、progress は `56%` だった。page error と console error は 0 件だった。
   - Tampermonkey 再読込 GUI 確認: 未実施
-  - トップカレンダー上で一部取得済み、完了、エラー line が実データに応じて表示されること: 未実施
+  - 完了 line とエラー line が実データに応じて表示されること: 未実施
 - 2026-04-29 の `RAU-WC-06` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、トップカレンダーと Analyze 日付ページの indicator で通常対象が `2026-05-27〜2026-08-28` と表示されることを確認した。これは 2026-05-28 の `as_of_date` に対して `as_of_date - 1日` から `as_of_date + 3か月` までの範囲である。
+  - 同じ確認で、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` の indicator detail に priority stay date の `raw / 参考線 / 同曜日` 進捗が表示され、参考線 progress が sampling 中に進むことを確認した。
   - Tampermonkey 再読込 GUI 確認: 未実施
-  - 通常対象が `as_of_date - 1日` から `as_of_date + 3か月` までになること: 未実施
   - retry 発生時に `再試行待ち n` が表示されること: 未実施
-  - トップカレンダー cooldown 中に Analyze 日付ページを開いたとき priority queue が動き始めること: 未実施
+  - トップカレンダー cooldown 中に Analyze 日付ページを開いたとき、cooldown を上書きして priority queue が動き始めることの直接確認: 未実施
 - 2026-04-30 の `RAU-CP-01` Chrome CDP 調査:
   - `npm run chrome:pages`: passed。open pages は Tampermonkey dashboard と Revenue Assistant root
   - Analyze 日付ページ `https://ra.jalan.net/analyze/2026-04-30` を開き、Network request を確認

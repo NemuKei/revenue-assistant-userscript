@@ -412,11 +412,12 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
+  - 2026-05-28 の Chrome拡張 backend capability 確認では、通常 Chrome の extension browser を取得でき、open tab 3 件の中に Revenue Assistant tab があることを確認した。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Revenue Assistant tab に build 済み `dist/revenue-assistant-userscript.user.js` を一時注入した。トップカレンダーでは indicator が `データ取得: 取得中 0 / 94日・進行 8日（5/27〜8/28）`、詳細が `対象 2026-05-27〜2026-08-28 / 完了 なし / 保存 12 / skip 45` になった。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` では、indicator detail に `この日 2026-06-17 raw 100%（7/7） 参考線 ... 同曜日 100%（28/28）` が表示され、約 30 秒の sampling で参考線 progress が `16%（7/42）` から `50%（21/42）` まで進んだ。page error と console error は 0 件だった。
 - 未確認:
   - Tampermonkey 再読込後の GUI 目視確認
-  - 実ブラウザ上で、通常対象が `as_of_date - 1日` から `as_of_date + 3か月` までになること
   - retry 発生時に `再試行待ち n` が表示され、成功時に赤 line にならないこと
-  - トップカレンダー cooldown 中に Analyze 日付ページを開いたとき、priority queue が動き始めること
+  - トップカレンダー cooldown 中に Analyze 日付ページを開いたとき、cooldown を上書きして priority queue が動き始めることの直接確認
 
 ### RAU-WC-05 warm cache indicator の対象期間表示とカレンダー marker を改善する
 
@@ -451,9 +452,10 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、トップカレンダーで `stored-current` marker 92 件を確認した。Analyze 日付ページでは `calendar-date-2026-06-17` に `partial` marker が 1 件表示され、title は `booking_curve 一部取得済み 43 / 77`、progress は `56%` だった。page error と console error は 0 件だった。
 - 未確認:
   - Tampermonkey 再読込後の GUI 目視確認
-  - トップカレンダー上で一部取得済み、完了、エラー line が実データに応じて表示されること
+  - 完了 line とエラー line が実データに応じて表示されること
 
 ### RAU-AF-10 reference curve の 0日前表示補間を実装する
 
@@ -532,10 +534,10 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` に build 済み `dist` を一時注入し、indicator detail に `この日 2026-06-17 raw 100%（7/7） 参考線 ... 同曜日 100%（28/28）` が表示されることを確認した。約 30 秒の sampling では、参考線 progress が `16%（7/42）` から `50%（21/42）` まで進んだ。page error と console error は 0 件だった。
 - 未確認:
   - Tampermonkey 再読込後の GUI 目視確認
-  - Analyze 日付ページで、その日、同週、同月の順に取得が優先されること
-  - Indicator の `raw / 参考線 / 同曜日` 取得率が実データに応じて進むこと
+  - Analyze 日付ページで、その日、同週、同月の順に request が発行されることの直接確認
 
 ## Completed / Recent Implementation
 
@@ -864,9 +866,9 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、トップカレンダー `https://ra.jalan.net/` に build 済み `dist` を一時注入し、warm cache indicator が `データ取得: 取得中 0 / 94日・進行 8日（5/27〜8/28）`、詳細が `対象 2026-05-27〜2026-08-28 / 完了 なし / 保存 12 / skip 45` になることを確認した。calendar marker は 92 件で、保存済み current source の `stored-current` marker が表示されていた。page error と console error は 0 件だった。
 - 未確認:
   - 修正後 dist を Tampermonkey へ再読込した後の GUI 目視確認
-  - 実ブラウザ上でトップカレンダー表示中に indicator が `取得中` へ復帰し、日付単位完了範囲が進むこと
   - クールダウン後自動再開の確認
 
 ### RAU-WC-01 booking_curve warm cache queue と indicator を実装する
@@ -911,6 +913,8 @@
   - `npm run typecheck`: passed
   - `npm run lint`: passed
   - `npm run build`: passed
+  - 2026-05-28 の Chrome拡張 backend capability 確認では、通常 Chrome の extension browser を取得でき、open tab 3 件の中に Revenue Assistant tab があることを確認した。`npm run chrome:pages` では、通常 Chrome の `https://ra.jalan.net/analyze/2026-06-17` tab を確認した。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Revenue Assistant tab へ build 済み `dist` を一時注入し、Analyze 日付ページで warm cache indicator が表示され、page error と console error は 0 件だった。
 - 未確認:
   - Tampermonkey 再読込後の GUI 目視確認
   - 実ブラウザ上で request 間隔、skip、hidden pause の挙動確認
