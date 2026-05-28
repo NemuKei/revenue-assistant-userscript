@@ -313,7 +313,8 @@ priorityScore =
 + LT urgency
 + transient contribution
 + ADR / sales health
-+ competitor price movement
++ weekday context support
++ own price position in competitor snapshot
 + historical rank response
 - group-driven penalty
 - small-capacity uncertainty
@@ -327,7 +328,7 @@ scoring では次を守る。
 - `all` が基準より多くても、`group` が主因なら、個人価格 rank の上げ検討は抑制する。
 - `transient` または個人需要推定が基準より多いかを重視する。UI 表示では `transient` を「個人」と呼ぶが、core / storage / spec の segment 名は `transient` を正とする。
 - 小キャパの roomGroup は、`not_eligible` または低 confidence へ落とす。
-- reference curve、forecast、capacity、current rank、rank ladder、競合価格 snapshot が欠損している場合は、推測で埋めず diagnostics に不足理由を出す。
+- reference curve、forecast、capacity、current rank、rank ladder、weekday context、競合価格 snapshot が欠損している場合は、推測で埋めず diagnostics に不足理由を出す。
 - 直近に rank 変更がある場合は、同じ方向の recommendation を出し続けないよう cooldown を使う。
 - 過去に反応が悪かった rank transition は、priority または confidence を下げる。
 
@@ -356,6 +357,22 @@ sales / ADR health の扱い:
 - `neutral` は内部 diagnostics として残してよいが、候補行の主要根拠を増やす目的では表示しない。実データでの発火率と false positive は後続 task で確認する。
 - sales / ADR health の `asOfDate` 比較では、`YYYYMMDD` と `YYYY-MM-DD` を混在させない。`booking_curve_raw_source:v2` の point date、`SalesAdrObservation.observedDate`、rank recommendation の `asOfDate` は比較前に同じ日付形式へ正規化し、asOfDate より後の将来 observation を current として使わない。
 - top list 候補の `booking_curve_raw_source:v2` coverage を増やす場合は、既存 warm cache の queue 内にある `currentRaw x roomGroup` task を、表示中の top candidates と一致する `stayDate x roomGroupId` から先に処理してよい。この優先化は既存 task の並び替えであり、対象日付範囲、request 件数、request 間隔、hidden tab pause、run limit、cooldown、重複排除、既存 raw source skip を変更しない。優先 task を新規取得した場合は、top list が保存済み raw source を読めるよう、calendar sync を強制再実行してよい。
+
+weekday context と競合価格内自社料金位置の扱い:
+
+- rank order は、manual override、Revenue Assistant 設定画面の保存済み順序、数値 rank 名 fallback、unresolved の順で解決する。曜日別関係と競合価格内の自社料金位置は、rank order source にはしない。
+- 理由は、rank rule が企業またはホテルごとに異なるためである。rank 名は数字、ローマ字、記号混在のいずれもあり得る。数字が大きいほど高ランクの施設も、小さいほど高ランクの施設もあり得る。曜日別の rank 使い分けや競合価格との関係も、施設固有の運用であり、上下関係を安全に断定する source にはならない。
+- 大国町では、Revenue Assistant 設定画面の `料金ランクの並び順` が高ランクから低ランクへ `1` から `20` の順に並んでいる。この施設では `1` が最高ランク、`20` が最低ランクである。RAU はこの順序を `settings_screen` source として使い、必要なら利用者が manual override で変更できる。
+- 曜日別関係は、rank order の推定ではなく、同じ曜日または近い営業文脈の需要差を見て、既存 action の priority / confidence を小さく補正する入力にする。初期実装の比較単位は `facilityId x stayDate x asOfDate x roomGroupId x weekday` とし、既存 `booking_curve_raw_source:v2`、reference curve、同曜日 raw source から取れる範囲に限定する。追加 API request、祝日 API、未確認 calendar API は first implementation では使わない。
+- weekday context の初期 signal は、`weekday_reference_supports_raise`、`weekday_reference_supports_lower`、`weekday_reference_neutral` の内部分類候補とする。top list へ表示する場合は、数値を出さず `同曜日強め`、`同曜日弱め` のような非数値 reason に留める。
+- weekday context が欠損している場合、source count が少ない場合、祝前日または連休の扱いを確認できない場合は、signal を推測で補完しない。diagnostics は `weekday_context_missing`、`weekday_reference_source_count_low`、`holiday_context_unconfirmed` を候補にする。
+- 競合価格内の自社料金位置は、保存済み `competitor-price-snapshots` の最新 snapshot を使う。初期比較単位は `facilityId x stayDate x conditionSignature x fetchedAt x guestCount x jalanFacilityRoomType? x mealType?` とし、同じ snapshot 内の自社最安値と競合施設ごとの最安値を比較する。検索条件 signature、取得時点、競合施設集合が違う snapshot を同じ比較単位に混ぜない。
+- `conditionSignature` には、宿泊日、人数範囲、競合施設 `yad_no` 集合、食事条件、プラン名条件、部屋タイプ条件が入る。したがって、競合施設の入れ替え、部屋タイプ別 snapshot、食事条件違いは、同一比較として扱わない。
+- 競合価格内自社料金位置の初期 signal は、`own_price_low_against_competitors`、`own_price_near_competitors`、`own_price_high_against_competitors` の内部分類候補とする。top list へ表示する場合は、金額、差額、比率を出さず、`自社安め`、`自社高め`、`競合比較中立` のような非数値 reason に留める。
+- `own_price_high_against_competitors` は、低稼働、reference 下振れ、sales / ADR 弱含みと同方向の場合だけ `lower_watch` の confidence を小さく上げる。`own_price_low_against_competitors` は、需要上振れ、残室少、forecast 高着地と同方向の場合だけ `raise_watch` の confidence を小さく上げる。ただし、自社が安いことだけで `raise_watch` に変更しない。自社が高いことだけで `lower_watch` に変更しない。
+- 競合価格内自社料金位置は、`raise_watch`、`lower_watch`、`watch` の action を単独では変更しない。補正範囲は first implementation では confidence の増減 0.03 から 0.06 程度、または `high` と `medium` の間の priority cap / lift に限定する。実データ評価前に補正幅を大きくしない。
+- 競合価格 snapshot がない場合、自社 plan がない場合、比較対象の競合 plan がない場合、同じ条件 signature の snapshot がない場合、部屋タイプまたは食事条件が一致しない場合は、signal を推測で補完しない。diagnostics は `competitor_price_snapshot_missing`、`competitor_price_own_missing`、`competitor_price_comparable_plan_missing`、`competitor_price_condition_mismatch`、`competitor_price_competitor_set_missing` を候補にする。
+- 競合価格 snapshot は、取得済みデータを使う。rank recommendation scoring のために、未確認 request 範囲、取得頻度、対象日付範囲、background queue の上限を増やさない。
 
 ## Rank Response / Elasticity
 
@@ -528,6 +545,9 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 9. `RAU-RR-09` で、rank response dataset と metrics を設計する。
 10. `RAU-RR-10` で、推奨 rank 算出を設計する。
 11. `RAU-RR-11` で、bulk apply feasibility を調査する。
+12. `RAU-RR-12` から `RAU-RR-16` で、rank order source、rank ladder 端表示、数値 rank 名 fallback、manual override、settings screen source を実装する。
+13. `RAU-RR-17` で、曜日別関係と競合価格内自社料金位置を rank order source ではなく scoring 補助 input として扱う設計を確定する。
+14. `RAU-RR-18` で、曜日別関係と競合価格内自社料金位置の初期 signal を実装し、既存候補生成へ小さく接続する。
 
 ## Open Questions
 
@@ -539,8 +559,8 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 6. 小キャパの eligibility threshold は何室以下、または残室率何%以下を初期値にするか。
 7. 様子見 cooldown の LT 帯別 default duration をどう設定するか。
 8. reasonFingerprint に含める reasonCodes、threshold、data version、scoring version の境界をどう切るか。
-9. 競合価格 snapshot のどの変化量を `competitor price movement` として扱うか。
-10. sales / ADR diagnostics を priority / confidence または reasonCodes に接続する場合、どの変化量と閾値を初期値にするか。
+9. weekday context で祝前日、連休、イベント日を扱う場合、どの確認済み source を使うか。
+10. 競合価格内自社料金位置の初期閾値を、順位、平均との差、中央値との差、最安値との差のどれで評価するか。
 11. `RAU-FC-03` の実データ評価で、forecast diagnostics を priority / confidence に接続できるだけの安定性があるか。
 
 ## References
