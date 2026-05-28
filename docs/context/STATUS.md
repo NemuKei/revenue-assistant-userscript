@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` から `RAU-FC-04` まで完了済み。次は、rank recommendation scoring へ forecast diagnostics を接続する。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。次の Now は `RAU-SALES-02` で、booking_curve 売上・ADR adapter と単価・売上予測 model の設計を行う。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -21,6 +21,7 @@
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
   - `RAU-FC-03` forecast evaluation dataset を実装する
   - `RAU-FC-04` first forecast model を pure function として実装する
+  - `RAU-FC-05` rank recommendation scoring へ forecast diagnostics を接続する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -32,10 +33,11 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の `Now` は `RAU-FC-05` とする。次は、forecast 欠損時の fallback を維持したまま、rank recommendation scoring へ forecast diagnostics を接続する。
+  - `docs/tasks_backlog.md` の `Now` は `RAU-SALES-02` とする。次は、既存 `/api/v4/booking_curve` raw source に含まれる sales / ADR を、将来の単価予測と売上予測へ接続できる adapter / model contract として設計する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
+  - `RAU-FC-05` では、`booking_curve_raw_source:v2` の roomGroup response から `scope="roomGroup"`、`segment="transient"` の `ForecastResult v1 candidate` を生成し、forecast signal を rank recommendation の priority / confidence 補助へ接続済みである。top list には forecast 数値を表示しない。
   - `RAU-RR-09` では rank response dataset の grain、入力、baseline、result window、欠損 diagnostics を `docs/spec_003_rank_recommendation_signal.md` に定義済みである。
   - `RAU-RR-10` では current rank と rank ladder 候補を使う recommendedRank の条件を定義した。ただし `rank_sequences[].default_sequence` の方向が未確認のため、方向確認までは `recommendedRankDirection` のみを表示する。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
@@ -47,8 +49,9 @@
   - 月次 `/api/v1/booking_curve/monthly` の snapshot read path を、過去 batch の履歴比較や日次差分表示へ広げない。
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
 - 終了条件:
-  - `RAU-FC-05` で、forecast diagnostics を rank recommendation の priority / confidence 補助へ接続する。
-  - `RAU-FC-02` で確定した未来情報混入防止、除外理由、metric、diagnostics の契約を壊さない。
+  - `RAU-SALES-02` で、booking_curve raw source 内の sales / ADR を扱う adapter 追加時の入力、出力、null handling、segment 対応を明文化する。
+  - 室数予測、単価予測、売上予測の接続順序を明文化する。
+  - `RAU-RR-02` の raw source 保存契約更新後、既存 booking curve raw source の保存単位をさらに変更する必要があるかどうかを判断できる状態にする。
   - 未確認 API を確認済み仕様として扱わない。
 - subagent 利用方針:
   - 既定では使わない。
@@ -75,6 +78,9 @@
   - `RAU-FC-02` は docs 設計済み。`docs/spec_002_curve_core.md` に、evaluation dataset の grain を `facilityId x targetStayDate x asOfDate x scope x roomGroupId? x segment` とすること、`ForecastResult v1 candidate` の field と diagnostics、`maeRooms` / `smape` / `biasRooms`、rank recommendation impact proxy、`snoozed_by_user` を false positive と誤読しない注意を反映した。
   - `RAU-FC-03` は実装済み。`src/curveCore.ts` に `ForecastResultV1Candidate`、`ForecastEvaluationCase`、`ForecastEvaluationResult`、`buildForecastEvaluationCase()`、`summarizeForecastEvaluationResults()` を追加した。`actualFinalRooms` と `observedPrefix` を分け、未来情報混入防止、`0日前` / `ACT` 分離制約、小キャパ、group-driven diagnostics、`maeRooms` / `smape` / `biasRooms` 集計、rank recommendation impact proxy を扱えるようにした。
   - `RAU-FC-04` は実装済み。`src/curveCore.ts` に `buildRoomsOnlyForecastResult()` を追加し、`recent_deviation_adjusted_seasonal:v1` と `seasonal_ratio_baseline:v1` を `ForecastResultV1Candidate` として返せるようにした。UI、API、storage、rank recommendation scoring へはまだ接続していない。
+  - `RAU-FC-05` は完了した。`src/main.ts` で `booking_curve_raw_source:v2` の roomGroup response から forecast signal を作り、`src/rankRecommendation.ts` で priority / confidence 補助へ接続した。`src/curveCore.ts` では live forecast 生成時に `actual_final_missing` だけを blocking missing reason として扱わないようにした。`docs/spec_003_rank_recommendation_signal.md` と `docs/context/DECISIONS.md` に接続契約を同期済みである。
+  - `RAU-FC-05` の通常 Chrome 実画面確認では、Chrome DevTools Protocol で Revenue Assistant root `https://ra.jalan.net/` へ build 済み `dist/revenue-assistant-userscript.user.js` を一時注入し、`料金調整候補` heading 1 件、候補 list root 1 件、候補 row 10 件、priority `high` 10 件、action `raise_watch` 10 件、重大な console / page error 0 件を確認した。候補 list 内に forecast 数値 label は表示されていない。現在の実データでは `着地見込み高` / `着地見込み低` の forecast reason は 0 件だったため、forecast reason の実データ表示発火は未確認として別 task 候補に残す。
+  - Chrome拡張 backend の capability-only 確認では、この project thread から `browser-client.mjs` が見つからず、Chrome拡張 backend を直接使える状態とは確認できなかった。通常 Chrome の実画面確認は Chrome DevTools Protocol で実施した。
   - 2026-05-28 に Tampermonkey dashboard から Revenue Assistant Userscript を `0.1.0.236` から公開最新 `0.1.0.243` へ更新した。Revenue Assistant top を再読み込みし、実 Tampermonkey 経由で `料金調整候補` heading 1 件、候補 list root 1 件、候補 row 10 件、console error 0 件を Chrome DevTools Protocol で確認した。
   - `RAU-CP-04` は完了。Revenue Assistant 側の競合価格絞り込み後も RAU グラフが標準表より下へ戻るようにした。
   - `RAU-CP-05` は完了。`指定なし` snapshot を継続しつつ、競合価格 tab 起点で `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS` の部屋タイプ別 snapshot を追加取得するようにした。
@@ -105,7 +111,7 @@
 - トップ画面には、カレンダー badge だけではなく、`stayDate x roomGroup` 単位の料金調整候補リストを追加する方針とした。Analyze 画面は、候補の詳細根拠を確認する場所として扱う。
 - user decision は `Analyzeで確認`、`様子見`、`対応不要` を最低限持つ。`様子見` は一時抑制、`対応不要` は同じ reasonFingerprint の再表示抑制と false positive 候補として分ける。
 - bulk apply は将来候補だが first phase では非目標である。current rank、rank ladder、rank 反映 endpoint、user decision、cooldown、resolved、dismissed、guardrail が揃うまで実装対象にしない。
-- rooms-only forecast は first wave の必須入力にしない。`RAU-FC-01` では、今すぐ forecast model を実装せず、`RAU-FC-02` で evaluation dataset / metrics と `ForecastResult v1 candidate` を先に設計すると判断した。`RAU-FC-02` から `RAU-FC-04` は完了済みであり、次は rank recommendation scoring への diagnostics 接続である。
+- rooms-only forecast は first wave の必須入力にしない。`RAU-FC-01` では、今すぐ forecast model を実装せず、`RAU-FC-02` で evaluation dataset / metrics と `ForecastResult v1 candidate` を先に設計すると判断した。`RAU-FC-02` から `RAU-FC-05` は完了済みである。
 - forecast は評価済みで diagnostics が許容できる場合だけ、rank recommendation の priority / confidence 補助として扱う。top list へ forecast 数値を直接表示せず、実装前は Analyze detail にも表示しない。
 - core / storage 上の segment 名は `all` / `transient` / `group` を正とする。UI 表示では `transient` を「個人」と呼ぶ場合があるが、spec と保存契約では `transient` を使う。
 - Browser API Discovery ルールは `AGENTS.md` と `D-20260514-001` に反映済み。新しい画面、新しいタブ、未調査 API、response shape が不明な API を扱う場合は、実装前に `browser-trace` / `browser-to-api` の利用可否、生成物の保存範囲、Green / Yellow / Red 分類、commit 禁止データを確認する。
@@ -198,10 +204,10 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-FC-05` を確認し、forecast 欠損時は既存 reference deviation scoring を継続する前提で接続範囲を決める。
-2. `scope="roomGroup"`、`segment="transient"` を個人向け rank 判断の主入力候補にし、`segment="group"` は団体起因の抑制条件と diagnostics に使う。
-3. forecast 数値を top list へ直接表示しない。priority、confidence、reasonCodes、diagnostics への補助接続に留める。
-4. Rank Recommendation Bundle に戻る場合は、`docs/spec_003_rank_recommendation_signal.md` の Open Questions を確認し、`rank_sequences[].default_sequence` の方向、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-SALES-02` を確認し、`/api/v4/booking_curve` raw source 内の sales / ADR field を使う adapter / model contract を設計する。
+2. `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` の型、null handling、segment 対応を明文化する。
+3. API の ADR をそのまま使う場合と、`sales_sum / room_sum` で再計算する場合の優先順位と検算方法を決める。
+4. Rank Recommendation Bundle に戻る場合は、forecast 数値を top list へ直接表示しない契約と、`rank_sequences[].default_sequence` の方向、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
 
 変更しない契約:
 

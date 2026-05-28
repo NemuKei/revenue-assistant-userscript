@@ -326,7 +326,11 @@ forecast の扱い:
 - `RAU-FC-02` で、`docs/spec_002_curve_core.md` の evaluation dataset と `ForecastResult v1 candidate` を proposed contract として確定した。forecast を scoring へ接続する場合は、この contract に従い、実データ評価後に priority / confidence の補助として使う。
 - forecast を接続する場合は、`scope="roomGroup"`、`segment="transient"` を個人向け rank 判断の主入力候補にする。`segment="all"` は全体着地見込み、`segment="group"` は団体起因の抑制条件と diagnostics に使う。
 - forecast 欠損時、reference curve 欠損時、sourceCount 不足時、capacity 不足時、`0日前` / `ACT` 分離制約がある場合は、推測で補完せず diagnostics に残す。
-- forecast による priority / confidence 補正は、過去 stayDate 評価で `maeRooms`、`smape`、`biasRooms`、小キャパ、group-driven case、rank recommendation impact proxy を確認してから実装する。
+- `RAU-FC-05` では、`booking_curve_raw_source:v2` の roomGroup response に含まれる rooms 系列から `ForecastResult v1 candidate` を生成し、forecast signal を rank recommendation の priority / confidence 補助へ接続する。
+- `RAU-FC-05` の forecast 接続は、追加 API 取得を行わない。候補生成時に保存済み raw source の `transient` 系列を主入力にし、同じ response 内の `last_year_room_sum`、`two_years_ago_room_sum`、`three_years_ago_room_sum` から raw history reference を作る。raw history reference は、公式な BCL-tuned reference curve ではなく、top list scoring の補助 signal を作るための内部入力である。raw history reference の `ACT` は、同じ raw source 内で `0日前` の過去年平均が取れる場合だけ作る。`0日前` が取れない場合は final rooms を推測補完せず、forecast 欠損として diagnostics に残す。
+- live の将来 stayDate では `actualFinalRooms` が未確定であるため、`actual_final_missing` は evaluation dataset 上の除外理由として残す。一方で、live scoring の forecast 生成では、`actual_final_missing` だけを blocking missing reason として扱わない。`observed_prefix_missing`、`future_info_required`、`room_group_id_missing`、`segment_unknown` など、入力として必要な条件を満たさない場合は引き続き forecast 欠損として diagnostics に残す。`act_not_separated` は live scoring では警告として diagnostics に残し、後続の評価や閾値調整で確認する。
+- forecast signal は `high_occupancy`、`low_occupancy`、`neutral` の内部分類として扱う。top list には `predictedFinalRooms`、`expectedOccupancyRatio`、予測曲線などの数値を表示しない。主要根拠に出す場合も、`着地見込み高`、`着地見込み低` のような非数値の要約に留める。
+- forecast signal は候補 action を単独で決めない。既存の reference deviation、capacity、remaining rooms、LT、`transient` / `group` 分解で決まった action に対して、priority と confidence を小さく補正する。forecast が欠損している場合は、既存の reference deviation scoring を継続する。
 - `snoozed_by_user`、`dismissed_by_user`、`resolved_by_rank_change` は、初期評価では真の正解ラベルではなく evaluation proxy として扱う。`snoozed_by_user` は false positive ではなく一時判断ログである。
 
 ## Rank Response / Elasticity

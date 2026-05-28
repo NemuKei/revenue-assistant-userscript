@@ -11,8 +11,10 @@ import {
 import {
     RECENT_WEIGHTED_90_ALGORITHM_VERSION,
     SEASONAL_COMPONENT_ALGORITHM_VERSION,
+    buildForecastEvaluationCase,
     buildCurveInputFromBookingCurveResponses,
     buildRecentWeighted90ReferenceCurve,
+    buildRoomsOnlyForecastResult,
     buildSeasonalComponentReferenceCurve,
     getRecentWeighted90CandidateStayDates,
     getSeasonalComponentCandidateStayDates,
@@ -23,8 +25,10 @@ import {
     type BookingCurveApiResponse,
     type BookingCurveApiScopeCounts,
     type BookingCurveResponseSource,
+    type CurvePoint,
     type CurveSegment,
     type CurveScope,
+    type ForecastResultV1Candidate,
     type ReferenceCurveKind,
     type ReferenceCurveResult
 } from "./curveCore";
@@ -53,6 +57,7 @@ import {
     type RankRecommendationCandidate,
     type RankRecommendationCurveEvidence,
     type RankRecommendationCurrentSettingsResponse,
+    type RankRecommendationForecastSignal,
     type RankRecommendationPriority,
     type RankRecommendationStatus
 } from "./rankRecommendation";
@@ -4468,6 +4473,7 @@ async function readRankRecommendationCurveEvidence(options: {
             referenceTransientRooms: null,
             currentGroupRooms: null,
             referenceGroupRooms: null,
+            forecastSignal: null,
             diagnostics: ["booking_curve_source_missing"]
         }];
     }
@@ -4481,31 +4487,210 @@ async function readRankRecommendationCurveEvidence(options: {
             referenceTransientRooms: null,
             currentGroupRooms: null,
             referenceGroupRooms: null,
+            forecastSignal: null,
             diagnostics: ["booking_curve_point_missing"]
         }];
     }
 
+    const currentAllRooms = normalizeBookingCurveRoomCount(point.all?.this_year_room_sum);
+    const referenceAllRooms = averageBookingCurveRoomCounts([
+        point.all?.last_year_room_sum,
+        point.all?.two_years_ago_room_sum,
+        point.all?.three_years_ago_room_sum
+    ]);
+    const currentTransientRooms = normalizeBookingCurveRoomCount(point.transient?.this_year_room_sum);
+    const referenceTransientRooms = averageBookingCurveRoomCounts([
+        point.transient?.last_year_room_sum,
+        point.transient?.two_years_ago_room_sum,
+        point.transient?.three_years_ago_room_sum
+    ]);
+    const currentGroupRooms = normalizeBookingCurveRoomCount(point.group?.this_year_room_sum);
+    const referenceGroupRooms = averageBookingCurveRoomCounts([
+        point.group?.last_year_room_sum,
+        point.group?.two_years_ago_room_sum,
+        point.group?.three_years_ago_room_sum
+    ]);
+    const forecastEvidence = buildRankRecommendationForecastEvidence({
+        facilityId: options.facilityId,
+        stayDate: options.stayDate,
+        asOfDate: options.asOfDate,
+        roomGroupId: options.roomGroupId,
+        response: record.response as BookingCurveResponse,
+        groupDriven: isRankRecommendationGroupDriven({
+            transientDeviation: getNullableDifference(currentTransientRooms, referenceTransientRooms),
+            groupDeviation: getNullableDifference(currentGroupRooms, referenceGroupRooms)
+        })
+    });
+
     return [evidenceKey, {
-        currentAllRooms: normalizeBookingCurveRoomCount(point.all?.this_year_room_sum),
-        referenceAllRooms: averageBookingCurveRoomCounts([
-            point.all?.last_year_room_sum,
-            point.all?.two_years_ago_room_sum,
-            point.all?.three_years_ago_room_sum
-        ]),
-        currentTransientRooms: normalizeBookingCurveRoomCount(point.transient?.this_year_room_sum),
-        referenceTransientRooms: averageBookingCurveRoomCounts([
-            point.transient?.last_year_room_sum,
-            point.transient?.two_years_ago_room_sum,
-            point.transient?.three_years_ago_room_sum
-        ]),
-        currentGroupRooms: normalizeBookingCurveRoomCount(point.group?.this_year_room_sum),
-        referenceGroupRooms: averageBookingCurveRoomCounts([
-            point.group?.last_year_room_sum,
-            point.group?.two_years_ago_room_sum,
-            point.group?.three_years_ago_room_sum
-        ]),
-        diagnostics: []
+        currentAllRooms,
+        referenceAllRooms,
+        currentTransientRooms,
+        referenceTransientRooms,
+        currentGroupRooms,
+        referenceGroupRooms,
+        forecastSignal: forecastEvidence.signal,
+        diagnostics: forecastEvidence.diagnostics
     }];
+}
+
+function buildRankRecommendationForecastEvidence(options: {
+    facilityId: string;
+    stayDate: string;
+    asOfDate: string;
+    roomGroupId: string;
+    response: BookingCurveResponse;
+    groupDriven: boolean;
+}): { signal: RankRecommendationForecastSignal | null; diagnostics: string[] } {
+    const input = buildCurveInputFromBookingCurveResponses({
+        facilityId: options.facilityId,
+        asOfDate: options.asOfDate,
+        sources: [{
+            response: options.response,
+            scope: "roomGroup",
+            roomGroupId: options.roomGroupId
+        }],
+        segments: ["transient"]
+    });
+    const recentWeighted90 = buildRankRecommendationHistoricalReferenceCurveResult({
+        facilityId: options.facilityId,
+        stayDate: options.stayDate,
+        asOfDate: options.asOfDate,
+        roomGroupId: options.roomGroupId,
+        response: options.response,
+        segment: "transient",
+        curveKind: "recent_weighted_90"
+    });
+    const seasonalComponent = buildRankRecommendationHistoricalReferenceCurveResult({
+        facilityId: options.facilityId,
+        stayDate: options.stayDate,
+        asOfDate: options.asOfDate,
+        roomGroupId: options.roomGroupId,
+        response: options.response,
+        segment: "transient",
+        curveKind: "seasonal_component"
+    });
+    const evaluationCase = buildForecastEvaluationCase(input, {
+        targetStayDate: options.stayDate,
+        asOfDate: options.asOfDate,
+        scope: "roomGroup",
+        roomGroupId: options.roomGroupId,
+        segment: "transient",
+        referenceCurves: {
+            recentWeighted90,
+            seasonalComponent
+        },
+        ...(typeof options.response.max_room_count === "number" ? { capacityRooms: options.response.max_room_count } : {}),
+        groupDriven: options.groupDriven
+    });
+    const forecastResult = buildRoomsOnlyForecastResult({ evaluationCase });
+    const signal = getRankRecommendationForecastSignal(forecastResult);
+    return {
+        signal,
+        diagnostics: buildRankRecommendationForecastDiagnostics(forecastResult)
+    };
+}
+
+function buildRankRecommendationHistoricalReferenceCurveResult(options: {
+    facilityId: string;
+    stayDate: string;
+    asOfDate: string;
+    roomGroupId: string;
+    response: BookingCurveResponse;
+    segment: CurveSegment;
+    curveKind: ReferenceCurveKind;
+}): ReferenceCurveResult {
+    const points: CurvePoint[] = (options.response.booking_curve ?? [])
+        .map((point): CurvePoint | null => {
+            const observedDate = toCompactDateKey(point.date);
+            const lt = observedDate === null ? null : getDaysBetweenDateKeys(options.stayDate, observedDate);
+            if (lt === null) {
+                return null;
+            }
+            const values = [
+                point[options.segment]?.last_year_room_sum,
+                point[options.segment]?.two_years_ago_room_sum,
+                point[options.segment]?.three_years_ago_room_sum
+            ];
+            return {
+                lt,
+                rooms: averageBookingCurveRoomCounts(values),
+                sourceCount: countBookingCurveRoomCounts(values)
+            };
+        })
+        .filter((point): point is CurvePoint => point !== null);
+    const actPoint = buildRankRecommendationHistoricalReferenceActPoint(points);
+    const referencePoints = actPoint === null ? points : [...points, actPoint];
+    const sourceStayDateCount = Math.max(0, ...points.map((point) => point.sourceCount));
+
+    return {
+        curveKind: options.curveKind,
+        algorithmVersion: `${options.curveKind}:rank_recommendation_raw_history:v1`,
+        facilityId: options.facilityId,
+        scope: "roomGroup",
+        roomGroupId: options.roomGroupId,
+        segment: options.segment,
+        targetStayDate: options.stayDate,
+        asOfDate: options.asOfDate,
+        points: referencePoints,
+        diagnostics: {
+            sourceStayDateCount,
+            ...(points.length === 0 || points.every((point) => point.rooms === null) ? { missingReason: "raw_history_reference_missing" } : {}),
+            warnings: ["raw_history_reference"]
+        }
+    };
+}
+
+function buildRankRecommendationHistoricalReferenceActPoint(points: CurvePoint[]): CurvePoint | null {
+    const zeroLeadPoint = points.find((point) => point.lt === 0);
+    if (zeroLeadPoint === undefined || zeroLeadPoint.rooms === null) {
+        return null;
+    }
+    return {
+        lt: "ACT",
+        rooms: zeroLeadPoint.rooms,
+        sourceCount: zeroLeadPoint.sourceCount
+    };
+}
+
+function getRankRecommendationForecastSignal(result: ForecastResultV1Candidate): RankRecommendationForecastSignal | null {
+    if (result.diagnostics.missingReason !== undefined || result.expectedOccupancyRatio == null) {
+        return null;
+    }
+    if (result.expectedOccupancyRatio >= 0.9) {
+        return "high_occupancy";
+    }
+    if (result.expectedOccupancyRatio <= 0.45) {
+        return "low_occupancy";
+    }
+    return "neutral";
+}
+
+function buildRankRecommendationForecastDiagnostics(result: ForecastResultV1Candidate): string[] {
+    const diagnostics = [
+        `forecast_model:${result.modelId}`,
+        ...result.diagnostics.warnings.map((warning) => `forecast_warning:${warning}`)
+    ];
+    if (result.diagnostics.missingReason !== undefined) {
+        diagnostics.push(`forecast_missing:${result.diagnostics.missingReason}`);
+    }
+    if (result.expectedOccupancyRatio == null) {
+        diagnostics.push("forecast_expected_occupancy_missing");
+    }
+    return Array.from(new Set(diagnostics));
+}
+
+function getNullableDifference(current: number | null, reference: number | null): number | null {
+    return current === null || reference === null ? null : current - reference;
+}
+
+function isRankRecommendationGroupDriven(options: {
+    transientDeviation: number | null;
+    groupDeviation: number | null;
+}): boolean {
+    return options.groupDeviation !== null
+        && options.groupDeviation > 0
+        && (options.transientDeviation === null || options.transientDeviation <= 0);
 }
 
 function findLatestBookingCurvePoint(response: BookingCurveResponse, asOfDate: string): BookingCurvePoint | null {
@@ -4534,6 +4719,10 @@ function averageBookingCurveRoomCounts(values: Array<number | null | undefined>)
     }
 
     return normalizedValues.reduce((sum, value) => sum + value, 0) / normalizedValues.length;
+}
+
+function countBookingCurveRoomCounts(values: Array<number | null | undefined>): number {
+    return values.filter((value): value is number => typeof value === "number" && Number.isFinite(value)).length;
 }
 
 function filterRankRecommendationCandidatesByDecision(

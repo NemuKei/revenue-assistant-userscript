@@ -938,7 +938,10 @@ function getRoomsOnlyForecastMissingReason(options: {
     seasonalRoomsAtObservedLt: number | null;
     recentRoomsAtObservedLt: number | null;
 }): string | undefined {
-    if (options.evaluationCase.diagnostics.missingReason !== undefined) {
+    if (
+        options.evaluationCase.diagnostics.missingReason !== undefined
+        && options.evaluationCase.diagnostics.missingReason !== "actual_final_missing"
+    ) {
         return options.evaluationCase.diagnostics.missingReason;
     }
     if (options.evaluationCase.observedLt === null) {

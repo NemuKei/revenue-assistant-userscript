@@ -1,6 +1,7 @@
 export type RankRecommendationAction = "raise_watch" | "lower_watch" | "watch" | "not_eligible";
 export type RankRecommendationPriority = "high" | "medium" | "low";
 export type RankRecommendationStatus = "active" | "not_eligible";
+export type RankRecommendationForecastSignal = "high_occupancy" | "low_occupancy" | "neutral";
 
 export interface RankRecommendationCurrentSettingRoomGroup {
     rm_room_group_id?: string;
@@ -47,6 +48,7 @@ export interface RankRecommendationCurveEvidence {
     referenceTransientRooms: number | null;
     currentGroupRooms: number | null;
     referenceGroupRooms: number | null;
+    forecastSignal: RankRecommendationForecastSignal | null;
     diagnostics: string[];
 }
 
@@ -111,6 +113,7 @@ function buildRankRecommendationCandidate(options: {
     const transientDeviation = getDeviation(curveEvidence?.currentTransientRooms ?? null, curveEvidence?.referenceTransientRooms ?? null);
     const groupDeviation = getDeviation(curveEvidence?.currentGroupRooms ?? null, curveEvidence?.referenceGroupRooms ?? null);
     const isGroupDriven = isPositive(groupDeviation) && !isPositive(transientDeviation);
+    const forecastSignal = curveEvidence?.forecastSignal ?? null;
 
     let action: RankRecommendationAction;
     let priority: RankRecommendationPriority;
@@ -160,6 +163,26 @@ function buildRankRecommendationCandidate(options: {
             priority = occupancyRatio >= 0.65 || isPositive(allDeviation) ? "medium" : "low";
             confidence = curveEvidence === null ? 0.25 : 0.38;
             reasonCodes.push(allDeviation === null ? "監視" : "reference差分小");
+        }
+    }
+
+    if (action !== "not_eligible" && forecastSignal !== null) {
+        if (forecastSignal === "high_occupancy") {
+            reasonCodes.push("着地見込み高");
+            if (action === "raise_watch") {
+                confidence = increaseConfidence(confidence, 0.08);
+            } else if (action === "watch" && !isGroupDriven) {
+                priority = maxPriority(priority, "medium");
+                confidence = increaseConfidence(confidence, 0.05);
+            }
+        } else if (forecastSignal === "low_occupancy") {
+            reasonCodes.push("着地見込み低");
+            if (action === "lower_watch") {
+                confidence = increaseConfidence(confidence, 0.08);
+            } else if (action === "watch" && (daysToStay === null || daysToStay <= 30)) {
+                priority = maxPriority(priority, "medium");
+                confidence = increaseConfidence(confidence, 0.05);
+            }
         }
     }
 
@@ -234,6 +257,16 @@ function getDeviation(current: number | null, reference: number | null): number 
 
 function isPositive(value: number | null): boolean {
     return value !== null && value > 0;
+}
+
+function increaseConfidence(current: number, delta: number): number {
+    return Math.min(0.95, Math.round((current + delta) * 100) / 100);
+}
+
+function maxPriority(current: RankRecommendationPriority, candidate: RankRecommendationPriority): RankRecommendationPriority {
+    return getRankRecommendationPriorityWeight(candidate) > getRankRecommendationPriorityWeight(current)
+        ? candidate
+        : current;
 }
 
 function normalizeCurrentSettingStayDate(value: string | undefined): string | null {

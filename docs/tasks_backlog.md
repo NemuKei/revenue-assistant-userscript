@@ -1476,6 +1476,24 @@
   - forecast 数値の UI 直接表示。
   - recommendedRank 名の表示。
   - Revenue Assistant への write / bulk apply。
+- 実装内容:
+  - `src/main.ts` の rank recommendation curve evidence 生成時に、`booking_curve_raw_source:v2` の roomGroup response から `ForecastResult v1 candidate` を生成するようにした。
+  - forecast 入力は `scope="roomGroup"`、`segment="transient"` とし、同じ raw source 内の過去年 rooms 系列から raw history reference を作る。追加 API 取得は行わない。
+  - raw history reference の `ACT` は、同じ raw source 内の `0日前` 過去年平均が取れる場合だけ作る。取れない場合は final rooms を推測せず、forecast 欠損 diagnostics に落とす。
+  - live の将来 stayDate では `actual_final_missing` を評価 dataset の diagnostics として残しつつ、予測生成の blocking missing reason にはしないようにした。
+  - forecast signal は `high_occupancy`、`low_occupancy`、`neutral` の内部分類に留め、`src/rankRecommendation.ts` では既存 action を単独で変えず priority / confidence だけを小さく補正する。
+  - top list には forecast 数値を追加していない。表示されうる根拠は `着地見込み高`、`着地見込み低` の非数値要約だけである。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内では esbuild spawn が `EPERM` になったため、権限許可後に再実行して通過
+  - `npm run check`: passed。sandbox 内では build 部分が同じ `EPERM` になったため、権限許可後に再実行して通過
+  - `git diff --check`: passed
+- GUI / Chrome 確認:
+  - 2026-05-28 に `npm run chrome:pages` を承認付きで実行し、通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
+  - 2026-05-28 に Chrome DevTools Protocol で通常 Chrome の Revenue Assistant root へ接続し、build 済み `dist/revenue-assistant-userscript.user.js` を一時注入して確認した。`料金調整候補` heading 1 件、候補 list root 1 件、候補 row 10 件、priority `high` 10 件、action `raise_watch` 10 件、重大な console / page error 0 件を確認した。
+  - 同じ確認で、候補 list 内に forecast 数値 label は表示されていないことを確認した。現在の実データでは `着地見込み高` / `着地見込み低` の forecast reason は 0 件だったため、forecast reason の実データ表示発火は未確認である。
+  - Chrome拡張 backend の capability-only 確認では、この project thread から `browser-client.mjs` が見つからず、Chrome拡張 backend を直接使える状態とは確認できなかった。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -1587,11 +1605,11 @@
 
 Now:
 
-- `RAU-FC-05` rank recommendation scoring へ forecast diagnostics を接続する
+- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
 
 Next:
 
-- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+- なし
 
 After Next:
 
@@ -1622,7 +1640,7 @@ Later:
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
 - `RAU-FC-03` は 2026-05-28 に実装済みである。`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加し、raw source adapter が作る `CurveInput` から forecast 評価用 case を作れるようにした。
 - `RAU-FC-04` は 2026-05-28 に実装済みである。`recent_deviation_adjusted_seasonal:v1` を first forecast model として追加し、seasonal LT 比率換算の `seasonal_ratio_baseline:v1` も evaluation baseline として返せるようにした。
-- `RAU-FC-05` は、forecast が評価済みになった後で rank recommendation scoring へ diagnostics を接続する task とする。forecast 欠損時は既存 reference deviation scoring を継続し、top list へ forecast 数値を直接表示しないため、Now に置く。
+- `RAU-FC-05` は 2026-05-28 に完了した。forecast 欠損時は既存 reference deviation scoring を継続し、top list へ forecast 数値を直接表示しない。Chrome DevTools Protocol の実画面確認では、候補 list root と候補 row 10 件が表示され、重大な console / page error は 0 件だった。現在の実データでは forecast reason の表示発火は 0 件だったため、後続で forecast 閾値や実データ確認を行う場合は別 task として扱う。
 - `RAU-SALES-02` は、rooms-only forecast の evaluation dataset と初期 model の後に置く。室数予測、単価予測、売上予測の接続順序を保つため、rank recommendation への forecast diagnostics 接続後に扱う。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
