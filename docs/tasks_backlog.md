@@ -2238,6 +2238,53 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-35 Analyze focus summary に不足または注意を表示する
+
+- 状態:
+  - 2026-05-28 実装済み。
+- 目的:
+  - top list の `Analyzeで確認` から Analyze 日付ページへ遷移した後、対象 roomGroup card 上で、主要根拠だけでなく不足または注意も再確認できるようにする。
+  - booking_curve、forecast、sales / ADR、同曜日比較、競合価格の部屋タイプ対応、団体主因、小キャパ、隣接ランク制約などの注意を、トップ画面へ戻らずに確認できるようにする。
+- 背景:
+  - `RAU-RR-33` で、top list の `主要根拠` cell tooltip から不足または注意を確認できるようにした。
+  - `RAU-RR-34` で、Analyze focus 先 roomGroup card に推奨方向と主要根拠の summary を表示するようにした。
+  - ただし Analyze 画面上の summary には不足または注意が残らないため、利用者が詳細確認中に、候補の信頼性や確認制約を再確認しにくい状態が残っていた。
+- スコープ:
+  - `Analyzeで確認` link に、不足または注意の表示用 text を data attribute として持たせる。
+  - pending focus に不足または注意の表示用 text を保存する。
+  - Analyze focus summary に、不足または注意がある場合だけ `注意: ...` を追加する。
+  - 既存の card open、scroll、highlight、推奨方向、主要根拠 summary、focus 失敗時の通常表示維持は保つ。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - Analyze detail に新しい chart、table、forecast 数値、sales / ADR 数値、競合価格の金額、差額、比率を追加しない。
+  - candidate scoring、reasonCodes、diagnostics、reasonFingerprint、priority、confidence を変更しない。
+  - API request 範囲、request 件数、request 間隔を変更しない。
+  - 推奨レート金額、Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - `Analyzeで確認` link が、不足または注意の表示用 text を持つ。
+  - focus summary は、不足または注意がある場合だけ `注意: ...` を非数値で表示する。
+  - focus summary に forecast 数値、sales / ADR 数値、競合価格の金額、差額、比率、推奨レート金額が表示されない。
+  - focus 成功後、pending focus は従来どおり sessionStorage から削除される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome Extension backend の可用性を確認し、実 DOM 確認は Chrome DevTools Protocol で行う。
+- 実装内容:
+  - `PendingRankRecommendationFocus` に `cautionText` を追加した。
+  - `Analyzeで確認` link に、既存 diagnostics summary helper から作る不足または注意の表示用 text を data attribute として持たせた。
+  - Analyze 側で pending focus を適用したとき、focus summary に不足または注意がある場合だけ `注意: ...` を追加するようにした。
+- 確認結果:
+  - `npm run typecheck`: passed。
+  - `npm run lint`: passed。
+  - `npm run build`: passed。初回は sandbox 内の esbuild spawn が `EPERM` で失敗したため、同じ command を承認付きで再実行して通過した。
+  - `git diff --check`: passed。
+  - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
+  - Chrome Extension backend はこの thread では `agent.browsers` が露出していなかったため、実 DOM 確認は Chrome DevTools Protocol で行った。
+  - Chrome DevTools Protocol では、最新 `dist/revenue-assistant-userscript.user.js` を一時注入した top list に `Analyzeで確認` link が 10 件あり、対象 link が `data-ra-rank-recommendation-caution-text="forecast 比較不足 / 競合価格の部屋タイプ対応未確認"` を持つことを確認した。
+  - Chrome DevTools Protocol では、Analyze 画面の既存 roomGroup card へ pending focus を入れ、最新 `dist` を一時注入した結果、focus summary が `料金調整候補 / 1段上げ検討: 13 / 残室少 / 個人pace上振れ / reference上振れ / LT近い / 注意: forecast 比較不足 / 競合価格の部屋タイプ対応未確認` になり、summary 1 件、highlight 1 件、pending focus `null`、summary 内の金額または percent 表示 0 件を確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。

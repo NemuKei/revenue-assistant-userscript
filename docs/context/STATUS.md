@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-34` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `なし`。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-35` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `なし`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -40,6 +40,7 @@
   - `RAU-RR-32` 保存済み manual override が未使用になった理由を表示する
   - `RAU-RR-33` 主要根拠 cell で不足理由と注意を確認できるようにする
   - `RAU-RR-34` Analyze focus 先の roomGroup card に候補 summary を表示する
+  - `RAU-RR-35` Analyze focus summary に不足または注意を表示する
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
   - `RAU-FC-03` forecast evaluation dataset を実装する
@@ -63,7 +64,7 @@
   - `docs/spec_002_curve_core.md`
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
-  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定まで完了済みとして扱う。
+  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定まで完了済みとして扱う。
   - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: なし` とする。次に進める場合は、Rank Recommendation Bundle の残りではなく、`docs/tasks_backlog.md` の既存 later task 群から次の実作業を選び、目的、非目標、受け入れ条件、確認方法を明確にしてから着手する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
@@ -94,6 +95,7 @@
   - `RAU-RR-32` では、保存済み manual override が現在の rank ladder と一致せず未使用になった場合、rank 順序調整 status に理由を表示するようにした。件数不一致、未知 rank、重複 rank、不足 rank を diagnostics として扱う。保存済み override は自動削除しない。rank order source 優先順位、candidate scoring、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。Chrome Extension runtime はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。CDP 確認では、最新 dist 一時注入後に、件数不一致と未知 rank の保存済み manual override が `settings_screen` へ fallback し、rank 順序調整 status に未使用理由が表示されること、検証後の override key が 0 件であることを確認した。
   - `RAU-RR-33` では、top list の `主要根拠` cell に hover tooltip を追加した。tooltip には cell 本体と同じ主要根拠と、既存 diagnostics summary helper から作る不足または注意の種類を非数値で表示する。reasonCodes、diagnostics、reasonFingerprint、candidate scoring、priority、confidence、API request 範囲、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は変更していない。Chrome Extension runtime はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。CDP 確認では、最新 dist 一時注入後に top list 10 行、`主要根拠:` を含む tooltip 10 件、`注意:` を含む tooltip 10 件、空 tooltip 0 件を確認した。検証用に差し替えた `requestAnimationFrame` は確認後に元へ戻した。
   - `RAU-RR-34` では、top list の `Analyzeで確認` link から pending focus へ推奨方向と主要根拠の表示用 text を保存し、Analyze 日付ページで対象 roomGroup card を開く、scroll する、highlight する処理に加えて、card 上部へ focus summary を表示するようにした。summary は非数値の表示補助であり、candidate scoring、reasonFingerprint、API request 範囲、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は変更していない。Chrome Extension backend はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。CDP 確認では、最新 `dist` 一時注入後の `Analyzeで確認` link が推奨方向と主要根拠の data attribute を持つこと、Analyze 画面の既存 roomGroup card に focus summary が 1 件表示され、highlight が 1 件付き、確認後に pending focus が削除されることを確認した。Revenue Assistant の SPA は click 後に URL だけ `/analyze/...` へ変わり、本文 DOM の描画が遅れる、または月次カレンダー本文が先に残る場合があったため、click payload 確認と Analyze card への pending focus 適用確認を分けて検証した。
+  - `RAU-RR-35` では、top list の `Analyzeで確認` link から pending focus へ不足または注意の表示用 text を保存し、Analyze focus 先 roomGroup card の summary に、不足または注意がある場合だけ `注意: ...` を追加するようにした。summary は非数値の表示補助であり、candidate scoring、reasonFingerprint、API request 範囲、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は変更していない。Chrome Extension backend はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。CDP 確認では、最新 `dist` 一時注入後の `Analyzeで確認` link が不足または注意の data attribute を持つこと、Analyze 画面の既存 roomGroup card に `注意: forecast 比較不足 / 競合価格の部屋タイプ対応未確認` を含む focus summary が 1 件表示され、highlight が 1 件付き、確認後に pending focus が削除されること、summary 内に金額または percent が出ないことを確認した。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
 - 次スレッドでやらないこと:
   - 推奨レート金額を出さない。

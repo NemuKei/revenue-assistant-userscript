@@ -149,6 +149,7 @@ const RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE = "data-ra-rank-re
 const RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE = "data-ra-rank-recommendation-confidence-level";
 const RANK_RECOMMENDATION_BUTTON_ACTION_LABEL_ATTRIBUTE = "data-ra-rank-recommendation-action-label";
 const RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE = "data-ra-rank-recommendation-reason-text";
+const RANK_RECOMMENDATION_BUTTON_CAUTION_TEXT_ATTRIBUTE = "data-ra-rank-recommendation-caution-text";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
@@ -683,6 +684,7 @@ interface PendingRankRecommendationFocus {
     roomGroupName: string;
     actionLabel: string | null;
     reasonText: string | null;
+    cautionText: string | null;
     createdAt: string;
 }
 
@@ -1102,6 +1104,7 @@ function persistPendingRankRecommendationFocusFromElement(element: HTMLElement):
     const roomGroupName = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE);
     const actionLabel = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_LABEL_ATTRIBUTE);
     const reasonText = element.getAttribute(RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE);
+    const cautionText = element.getAttribute(RANK_RECOMMENDATION_BUTTON_CAUTION_TEXT_ATTRIBUTE);
     if (stayDate === null || roomGroupId === null || roomGroupName === null) {
         return;
     }
@@ -1112,6 +1115,7 @@ function persistPendingRankRecommendationFocusFromElement(element: HTMLElement):
         roomGroupName,
         actionLabel,
         reasonText,
+        cautionText,
         createdAt: new Date().toISOString()
     };
     try {
@@ -1456,6 +1460,7 @@ function readPendingRankRecommendationFocus(): PendingRankRecommendationFocus | 
             roomGroupName: parsed.roomGroupName,
             actionLabel: typeof parsed.actionLabel === "string" ? parsed.actionLabel : null,
             reasonText: typeof parsed.reasonText === "string" ? parsed.reasonText : null,
+            cautionText: typeof parsed.cautionText === "string" ? parsed.cautionText : null,
             createdAt: parsed.createdAt
         };
     } catch {
@@ -1521,7 +1526,8 @@ function renderPendingRankRecommendationFocusSummary(card: SalesSettingCard, foc
     const parts = [
         "料金調整候補",
         normalizeRankRecommendationFocusText(focus.actionLabel),
-        normalizeRankRecommendationFocusText(focus.reasonText)
+        normalizeRankRecommendationFocusText(focus.reasonText),
+        formatRankRecommendationFocusCautionText(focus.cautionText)
     ].filter((part): part is string => part !== null);
     const summaryElement = document.createElement("div");
     summaryElement.setAttribute(RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE, "");
@@ -1538,6 +1544,11 @@ function renderPendingRankRecommendationFocusSummary(card: SalesSettingCard, foc
 function normalizeRankRecommendationFocusText(value: string | null): string | null {
     const trimmed = value?.trim() ?? "";
     return trimmed === "" ? null : trimmed;
+}
+
+function formatRankRecommendationFocusCautionText(value: string | null): string | null {
+    const normalized = normalizeRankRecommendationFocusText(value);
+    return normalized === null ? null : `注意: ${normalized}`;
 }
 
 function scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey: string, analysisDate: string): void {
@@ -5984,6 +5995,7 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     rowElement.setAttribute(RANK_RECOMMENDATION_STATUS_ATTRIBUTE, candidate.status);
     const actionLabel = formatRankRecommendationAction(candidate);
     const reasonText = candidate.reasonCodes.join(" / ");
+    const cautionText = summarizeRankRecommendationConfidenceCautions(candidate.diagnostics).join(" / ");
 
     const cells = [
         { value: formatRankRecommendationPriority(candidate.priority) },
@@ -6023,6 +6035,7 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, candidate.reasonFingerprint);
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_LABEL_ATTRIBUTE, actionLabel);
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE, reasonText);
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_CAUTION_TEXT_ATTRIBUTE, cautionText);
     analyzeLinkElement.href = `/analyze/${formatCompactDateForDisplay(candidate.stayDate)}`;
     analyzeLinkElement.textContent = "Analyzeで確認";
 
