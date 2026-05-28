@@ -199,8 +199,8 @@
 - 直近型は BCL の `recent90w` 相当で進める。LT ごとに `asOfDate - (90 - LT)` から `asOfDate + LT` までの stay_date window を取り、その window 内の観測値を直近ほど重くして平均する。
 - 直近型が 165日前付近など途中の LT から始まる場合があるのは、API取得失敗ではなく、その LT の recent90w window 内に非 null 観測値が不足するためと整理した。
 - `RAU-UX-01` は判断済み。`団体` は常時3枚目の panel ではなく、`個人 / 団体` toggle として追加する。競合価格は現在値表を複製せず、価格推移 snapshot として後続候補にする。`直近同曜日カーブ` は既定 OFF の補助線として追加候補にする。
-- `RAU-AF-08` はコード実装済み。booking curve の second panel は既定 `個人`、必要時 `団体` に切り替えられる。`団体` 選択時は current、直近型、季節型、rank marker tooltip の対象 segment が `group` になる。toggle 状態は画面内 memory で保持し、Revenue Assistant 側の再描画や本 userscript の再同期では維持する。
-- `RAU-AF-09` はコード実装済み。booking curve header に `同曜日` toggle を追加し、既定 OFF にした。ON のときだけ target stay_date の `-14日`、`-7日`、`+7日`、`+14日` の booking curve を取得し、薄いグレーの細い破線で補助線として表示する。ホテル全体 block は ON 時に取得し、室タイプ別 card は開いている card だけ取得する。
+- `RAU-AF-08` はコード実装済みで、2026-05-28 に Chrome拡張 backend と Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ GUI を確認済みである。booking curve の second panel は既定 `個人`、必要時 `団体` に切り替えられる。`団体` 選択時は current、直近型、季節型、rank marker tooltip の対象 segment が `group` になる。`団体` を選んでも panel は `全体` と `団体` の 2 件であり、常時 3 枚目 panel として増えない。
+- `RAU-AF-09` はコード実装済みで、2026-05-28 に Chrome拡張 backend と Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ GUI を確認済みである。booking curve header に `同曜日` toggle を追加し、既定 OFF にした。ON のときだけ target stay_date の `-14日`、`-7日`、`+7日`、`+14日` の booking curve を取得し、薄いグレーの細い破線で補助線として表示する。ホテル全体 block は ON 時に取得し、室タイプ別 card は開いている card だけ取得する。
 - booking_curve warm cache の取得順は部屋タイプ別優先ではなく、近い stay_date からホテル全体と全室タイプを揃える。差分更新は、現在の `as_of_date` で未保存の raw source key だけを取得することとし、同じ key は再取得しない。
 - `RAU-WC-01` はコード実装済み。Analyze 日付ページ同期後に warm cache queue を作成し、`today + 0日` から `today + 30日` まで、各 stay_date でホテル全体、全室タイプの順に raw source を保存する。IndexedDB に同じ key がある場合は skip する。初期制限は同時取得 1、request 間隔 2.5 秒以上、1 回最大 5 分とし、右下に取得状況 indicator を表示する。日次合計稼働時間の上限は `RAU-WC-02` で撤廃済み。
 - `RAU-WC-02` はコード実装済み。warm cache の起動対象をトップカレンダーにも広げ、indicator で stay_date 単位の完了範囲とクールダウン後の自動再開目安を表示する。日次合計稼働時間の上限は撤廃し、document hidden、連続エラー停止の制限は維持する。
@@ -330,12 +330,12 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `npm run chrome:pages`: CDP 接続は成功。open pages は Tampermonkey dashboard と Analyze 日付ページ
-  - Tampermonkey 再読込 GUI 確認: 未実施
+  - GUI 確認: 2026-05-28 に Chrome拡張 backend で通常 Chrome の extension instance と open tab 3 件を確認し、`npm run chrome:pages` で通常 Chrome の Revenue Assistant tab `https://ra.jalan.net/` を確認した。Chrome DevTools Protocol で `https://ra.jalan.net/analyze/2026-06-17` へ遷移し、build 済み `dist/revenue-assistant-userscript.user.js` を一時注入して確認した。初期表示は `個人=true`、`団体=false`、panel title は `全体` と `個人` だった。`団体` click 後は `個人=false`、`団体=true`、panel title は `全体` と `団体` になり、page error と console error は 0 件だった。
 - 2026-04-26 の `RAU-AF-09` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
   - `npm run build`: passed
-  - Tampermonkey 再読込 GUI 確認: 未実施
+  - GUI 確認: 2026-05-28 に Chrome拡張 backend で通常 Chrome の extension instance と open tab 3 件を確認し、`npm run chrome:pages` で通常 Chrome の Revenue Assistant tab `https://ra.jalan.net/` を確認した。Chrome DevTools Protocol で `https://ra.jalan.net/analyze/2026-06-17` へ遷移し、build 済み `dist/revenue-assistant-userscript.user.js` を一時注入して確認した。初期表示は `同曜日=false`、凡例 `同曜日` 0 件、同曜日補助線 path 0 件だった。`同曜日` toggle ON 後は `同曜日=true`、凡例 `同曜日` 1 件、薄いグレーの同曜日補助線 path 4 件になり、page error と console error は 0 件だった。
 - 2026-04-26 の `RAU-WC-01` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
@@ -439,9 +439,9 @@
 - derived reference curve の IndexedDB 保持は、初期実装では `algorithmVersion` と `asOfDate` を key に含めて分離する。TTL や古い key の削除はまだ実装しない。
 - reference curve を初期表示で見せるため、表示密度が上がる。`直近型カーブ` と `季節型カーブ` の個別表示切替で緩和する。
 - 予測モデルと予測評価は将来候補として視野に入れる。まず `RAU-AF-04` では、forecast / evaluation が後で使える input、output、diagnostics を壊さない形で core logic を作る。
-- `RAU-AF-08` では、`個人 / 団体` toggle を chart header に追加した。既存の `直近型 / 季節型` toggle と役割が混ざらないかは Tampermonkey 再読込後の GUI 目視で確認する必要がある。
+- `RAU-AF-08` の `個人 / 団体` toggle は、2026-05-28 に通常 Chrome の Analyze 日付ページで確認済みである。既存の `直近型 / 季節型` toggle とは別の segment toggle として動作し、`団体` 選択時も panel は 2 件のまま維持された。
 - 現行コードでは `recent_weighted_90` の `ACT` は `as_of_date` より前に宿泊済みの履歴 stay_date から final rooms 相当を作り、`seasonal_component` の `ACT` は final rooms 推定値から作っている。`0日前` と `ACT` の段差が不自然に見える場合は、`actComparison`、source stay_date の混在、segment 解決、Revenue Assistant API の過去 point 上書き仕様を切り分ける必要がある。
-- `RAU-AF-09` の直近同曜日カーブは線の本数を増やすため、既定 OFF とし、薄いグレー破線で視覚優先度を下げる。Tampermonkey 再読込後、ON/OFF、hover 表示、室タイプ別 card を開いたときの追加取得を GUI 目視で確認する必要がある。
+- `RAU-AF-09` の直近同曜日カーブは、2026-05-28 に通常 Chrome の Analyze 日付ページで既定 OFF、toggle ON、凡例追加、薄いグレー補助線 4 件を確認済みである。室タイプ別 card を開いたときの追加取得は、今後その表示を重点改善する場合に個別確認する。
 - `RAU-WC-01` では、API 負荷と IndexedDB 保存量が増えるため、同時取得 1、request 間隔、1 回稼働時間、1 日稼働時間、hidden 時の一時停止、連続エラー停止を verify 対象にする。
 - 競合価格 snapshot は、競合施設一覧なしの全件取得を前提にしない。
 - 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。

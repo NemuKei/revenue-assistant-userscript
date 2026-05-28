@@ -949,8 +949,12 @@
   - `npm run typecheck`: passed
   - `npm run lint`: passed
   - `npm run build`: passed
-- 未確認:
-  - Tampermonkey 再読込後の GUI 目視確認
+- GUI 確認:
+  - 2026-05-28 に Chrome拡張 backend で通常 Chrome の extension instance と open tab 3 件を確認し、`npm run chrome:pages` で通常 Chrome の Revenue Assistant tab `https://ra.jalan.net/` を確認した。
+  - 同日に Chrome DevTools Protocol で通常 Chrome の Revenue Assistant tab を `https://ra.jalan.net/analyze/2026-06-17` へ遷移し、build 済み `dist/revenue-assistant-userscript.user.js` を一時注入して確認した。
+  - 初期表示では `同曜日` toggle の active 値が `false`、凡例の `同曜日` は 0 件、同曜日補助線 path は 0 件だった。
+  - `同曜日` toggle ON 後、active 値が `true`、凡例の `同曜日` は 1 件、薄いグレーの同曜日補助線 path は 4 件だった。
+  - 同じ確認で page error 0 件、console error 0 件だった。
 
 ### RAU-AF-08 booking curve の個人/団体 toggle を実装する
 
@@ -965,8 +969,12 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `npm run chrome:pages`: CDP 接続で Analyze 日付ページが開いていることを確認
-- 未確認:
-  - Tampermonkey 再読込後の GUI 目視確認
+- GUI 確認:
+  - 2026-05-28 に Chrome拡張 backend で通常 Chrome の extension instance と open tab 3 件を確認し、`npm run chrome:pages` で通常 Chrome の Revenue Assistant tab `https://ra.jalan.net/` を確認した。
+  - 同日に Chrome DevTools Protocol で通常 Chrome の Revenue Assistant tab を `https://ra.jalan.net/analyze/2026-06-17` へ遷移し、build 済み `dist/revenue-assistant-userscript.user.js` を一時注入して確認した。
+  - 初期表示では segment toggle が `個人=true`、`団体=false` で、panel title は `全体` と `個人` だった。
+  - `団体` click 後、segment toggle が `個人=false`、`団体=true` になり、panel title は `全体` と `団体` になった。panel 数は 2 件のままで、`団体` が常時 3 枚目 panel として増えないことを確認した。
+  - 同じ確認で page error 0 件、console error 0 件だった。
 
 ## Rank Recommendation Bundle
 
