@@ -6019,7 +6019,7 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     const cells = [
         { value: formatRankRecommendationPriority(candidate.priority) },
         {
-            value: formatRankRecommendationConfidence(candidate.confidence),
+            value: formatRankRecommendationConfidenceCellText(candidate, cautionText),
             title: formatRankRecommendationConfidenceTitle(candidate)
         },
         { value: formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate) },
@@ -6150,6 +6150,14 @@ function formatRankRecommendationConfidence(confidence: number): string {
         default:
             return "低";
     }
+}
+
+function formatRankRecommendationConfidenceCellText(
+    candidate: RankRecommendationCandidate,
+    cautionText: string
+): string {
+    const confidenceText = formatRankRecommendationConfidence(candidate.confidence);
+    return cautionText === "" ? confidenceText : `${confidenceText}・注意あり`;
 }
 
 function formatRankRecommendationLeadDays(candidate: RankRecommendationCandidate): string {
