@@ -1201,12 +1201,13 @@ async function persistRankRecommendationRankOrderFromElement(element: HTMLElemen
         return;
     }
 
-    const parsedOrder = parseRankRecommendationRankOrderInput(inputElement.value, rankLadder);
-    if (parsedOrder === null) {
-        setRankRecommendationOrderControlStatus(statusElement, "全rankを1回ずつ入力してください");
+    const parsedOrderResult = parseRankRecommendationRankOrderInput(inputElement.value, rankLadder);
+    if (!parsedOrderResult.ok) {
+        setRankRecommendationOrderControlStatus(statusElement, parsedOrderResult.message);
         return;
     }
 
+    const parsedOrder = parsedOrderResult.ranks;
     const orderedRanks = action === "rank-order-reverse" ? parsedOrder.slice().reverse() : parsedOrder;
     inputElement.value = orderedRanks.map((entry) => entry.name).join(", ");
     const record: RankRecommendationRankOrderOverrideRecord = {
@@ -1250,10 +1251,14 @@ function parseRankRecommendationRankLadderFromElement(element: HTMLElement): Ran
     }
 }
 
+type RankRecommendationRankOrderInputParseResult =
+    | { ok: true; ranks: Array<{ code: string; name: string }> }
+    | { ok: false; message: string };
+
 function parseRankRecommendationRankOrderInput(
     value: string,
     rankLadder: readonly RankRecommendationRankLadderEntry[]
-): Array<{ code: string; name: string }> | null {
+): RankRecommendationRankOrderInputParseResult {
     const tokens = value
         .split(/[,\n>、]+/u)
         .map((token) => token.trim())
@@ -1263,28 +1268,95 @@ function parseRankRecommendationRankOrderInput(
         const name = entry.price_rank_name?.trim() ?? "";
         return code === "" || name === "" ? [] : [{ code, name }];
     });
-    if (tokens.length !== normalizedRanks.length || normalizedRanks.length === 0) {
-        return null;
+    if (normalizedRanks.length === 0) {
+        return {
+            ok: false,
+            message: "rank順序を保存できません: rank ladder 未取得"
+        };
     }
 
-    const rankByInput = new Map<string, { code: string; name: string }>();
+    const rankByInput = new Map<string, Array<{ code: string; name: string }>>();
     for (const rank of normalizedRanks) {
-        rankByInput.set(rank.code, rank);
-        rankByInput.set(rank.name, rank);
+        appendRankRecommendationRankOrderInputCandidate(rankByInput, rank.code, rank);
+        appendRankRecommendationRankOrderInputCandidate(rankByInput, rank.name, rank);
     }
 
     const usedCodes = new Set<string>();
     const parsedOrder: Array<{ code: string; name: string }> = [];
+    const unknownTokens: string[] = [];
+    const duplicateTokens: string[] = [];
+    const ambiguousTokens: string[] = [];
     for (const token of tokens) {
-        const rank = rankByInput.get(token);
-        if (rank === undefined || usedCodes.has(rank.code)) {
-            return null;
+        const ranks = rankByInput.get(token);
+        if (ranks === undefined) {
+            unknownTokens.push(token);
+            continue;
+        }
+        if (ranks.length !== 1) {
+            ambiguousTokens.push(token);
+            continue;
+        }
+        const rank = ranks[0];
+        if (rank === undefined) {
+            ambiguousTokens.push(token);
+            continue;
+        }
+        if (usedCodes.has(rank.code)) {
+            duplicateTokens.push(token);
+            continue;
         }
         usedCodes.add(rank.code);
         parsedOrder.push(rank);
     }
 
-    return usedCodes.size === normalizedRanks.length ? parsedOrder : null;
+    const missingRanks = normalizedRanks.filter((rank) => !usedCodes.has(rank.code));
+    if (
+        unknownTokens.length > 0
+        || duplicateTokens.length > 0
+        || ambiguousTokens.length > 0
+        || missingRanks.length > 0
+    ) {
+        const issues = [
+            tokens.length === normalizedRanks.length ? null : `件数 ${tokens.length}/${normalizedRanks.length}`,
+            unknownTokens.length === 0 ? null : `未確認 ${formatRankRecommendationRankOrderIssueValues(unknownTokens)}`,
+            duplicateTokens.length === 0 ? null : `重複 ${formatRankRecommendationRankOrderIssueValues(duplicateTokens)}`,
+            ambiguousTokens.length === 0 ? null : `判別不可 ${formatRankRecommendationRankOrderIssueValues(ambiguousTokens)}`,
+            missingRanks.length === 0
+                ? null
+                : `不足 ${formatRankRecommendationRankOrderIssueValues(missingRanks.map(formatRankRecommendationRankOrderLabel))}`
+        ].filter((issue): issue is string => issue !== null);
+        return {
+            ok: false,
+            message: `rank順序を保存できません: ${issues.join(" / ")}`
+        };
+    }
+
+    return { ok: true, ranks: parsedOrder };
+}
+
+function appendRankRecommendationRankOrderInputCandidate(
+    map: Map<string, Array<{ code: string; name: string }>>,
+    value: string,
+    rank: { code: string; name: string }
+): void {
+    const ranks = map.get(value);
+    if (ranks === undefined) {
+        map.set(value, [rank]);
+        return;
+    }
+    if (!ranks.some((candidate) => candidate.code === rank.code)) {
+        ranks.push(rank);
+    }
+}
+
+function formatRankRecommendationRankOrderLabel(rank: { code: string; name: string }): string {
+    return rank.code === rank.name ? rank.name : `${rank.name}(${rank.code})`;
+}
+
+function formatRankRecommendationRankOrderIssueValues(values: readonly string[]): string {
+    const uniqueValues = Array.from(new Set(values));
+    const shownValues = uniqueValues.slice(0, 5).join(", ");
+    return uniqueValues.length > 5 ? `${shownValues} ほか${uniqueValues.length - 5}件` : shownValues;
 }
 
 function getRankRecommendationRankOrderOverrideStorageKey(facilityCacheKey: string): string {

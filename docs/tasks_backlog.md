@@ -2052,6 +2052,53 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-31 rank 順序 manual override の保存失敗理由を具体化する
+
+- 状態:
+  - 2026-05-28 実装済み。
+- 目的:
+  - rank 順序を手動調整するとき、保存できない理由を利用者が画面上で特定できるようにする。
+  - 数字系、ローマ字または英字系、記号混在系の rank 名でも、未確認 token、重複、不足を見て入力を修正できるようにする。
+- 背景:
+  - `RAU-RR-15` では、manual override 入力が rank ladder の全 rank を 1 回ずつ含まない場合、`全rankを1回ずつ入力してください` だけを表示していた。
+  - `RAU-RR-30` で上下反転保存を追加したため、manual override 入力を触る機会が増える。保存失敗理由が抽象的なままだと、利用者がどの rank 名または code を直せばよいか分からない。
+- スコープ:
+  - manual override 入力 parser が、成功時は rank 順序、失敗時は status message を返す。
+  - 保存失敗時の status message に、件数、未確認 token、重複 token、不足 rank、判別不可 token のうち判定できた理由を表示する。
+  - 表示する token は長くなりすぎないよう、先頭数件と残件数に丸める。
+  - `保存` と `上下を反転` の両方で同じ validation を使う。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - Revenue Assistant の設定画面の rank 並び順を書き換えない。
+  - rank 名のローマ字順、英字順、記号有無、曜日別販売傾向、競合価格内の自社料金位置から rank order を自動確定しない。
+  - rank order source 優先順位を変更しない。
+  - 候補 scoring、priority、confidence、reasonCodes、diagnostics、API request 範囲、request 件数、request 間隔を変更しない。
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - 未知の rank token を含む入力では、status に `未確認` と該当 token が表示され、manual override は保存されない。
+  - 同じ rank を複数回含む入力では、status に `重複` と該当 token が表示され、manual override は保存されない。
+  - rank が不足する入力では、status に `件数` と `不足` が表示され、manual override は保存されない。
+  - valid な入力では、従来どおり manual override を保存できる。
+  - `上下を反転` も同じ validation を使い、invalid な入力では反転保存しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome Extension backend の可用性を確認し、実 DOM 確認は Chrome DevTools Protocol で行う。
+- 実装内容:
+  - `parseRankRecommendationRankOrderInput()` を、成功時の rank list または失敗時の status message を返す contract に変更した。
+  - parser が unknown、duplicate、missing、ambiguous、count mismatch を分類して status message を作るようにした。
+  - `保存` と `上下を反転` の両方で、失敗時は parser の status message をそのまま表示するようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に同じ command を再実行して通過した。
+  - `git diff --check`: passed
+  - Chrome Extension runtime surface: `agent.browsers` はこの thread では未露出。
+  - Chrome DevTools Protocol: `npm run chrome:pages` で通常 Chrome の Revenue Assistant tab を確認した。
+  - Chrome DevTools Protocol 実 DOM 確認: 最新 dist 一時注入後、未知 token では `未確認 __UNKNOWN_RANK__`、重複入力では `重複 1`、1 件不足では `件数 19/20` と `不足 20(T)` が status に表示され、いずれも override は保存されないことを確認した。valid 入力では `手動順序を保存しました` が表示され override が保存されることを確認した。検証で作成した browser-local override は確認後に削除し、localStorage の override key が 0 件であることを確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
