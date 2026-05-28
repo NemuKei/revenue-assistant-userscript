@@ -2007,6 +2007,51 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-30 rank 順序の手動調整に上下反転保存を追加する
+
+- 状態:
+  - 2026-05-28 実装済み。
+- 目的:
+  - 数字系、ローマ字または英字系、記号混在系の rank 名で、施設により上下関係が逆になる場合でも、利用者が 20 件前後の rank をすべて打ち直さずに手動順序を確定できるようにする。
+  - 現在の推定順序または設定画面順序が対象施設の運用と逆だった場合に、top list 上で上下を反転して browser-local の manual override として保存できるようにする。
+- 背景:
+  - rank rule は企業またはホテルごとに異なり、同じ表記系でも高ランクから低ランクへ進む順序と、低ランクから高ランクへ進む順序の両方があり得る。
+  - `RAU-RR-15` で手動入力保存、`RAU-RR-16` で設定画面順序 source は実装済みだが、上下だけを反転したい場合でも利用者が全 rank を並べ替えて入力する必要があった。
+- スコープ:
+  - rank 順序調整 details 内に、現在 textarea に入っている順序を逆順にして保存する `上下を反転` button を追加する。
+  - 反転結果は browser-local の manual override として保存し、保存後に候補 list を再同期する。
+  - 反転 button は、現在の入力が rank ladder の全 rank を 1 回ずつ含む場合だけ保存する。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - Revenue Assistant の設定画面の rank 並び順を書き換えない。
+  - rank 名のローマ字順、英字順、記号有無、曜日別販売傾向、競合価格内の自社料金位置から rank order を自動確定しない。
+  - 候補 scoring、priority、confidence、reasonCodes、diagnostics、API request 範囲、request 件数、request 間隔を変更しない。
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - rank 順序調整 details に `上下を反転` button が表示される。
+  - `上下を反転` を押すと、現在の入力順が逆順になり、manual override として browser-local に保存される。
+  - 保存後の status に、反転した手動順序を保存したことが表示される。
+  - 入力が rank ladder の全 rank を 1 回ずつ含まない場合は保存せず、既存と同じ validation message を表示する。
+  - `保存`、`推定に戻す`、既存の recommended rank 算出、user decision、resolved 判定は従来どおりである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome Extension backend の可用性を確認し、実 DOM 確認は Chrome DevTools Protocol で行う。
+- 実装内容:
+  - rank order control の action に `rank-order-reverse` を追加した。
+  - `上下を反転` button を追加し、現在の入力を parse して逆順にした結果を textarea と browser-local override に保存するようにした。
+  - 保存後に `rank-recommendation-rank-order-reverse` 理由で calendar sync を再実行するようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に同じ command を再実行して通過した。
+  - `git diff --check`: passed
+  - Chrome Extension runtime surface: `agent.browsers` はこの thread では未露出。
+  - Chrome DevTools Protocol: `npm run chrome:pages` で通常 Chrome の Revenue Assistant tab を確認した。
+  - Chrome DevTools Protocol 実 DOM 確認: 最新 dist 一時注入後、rank 順序調整 details に `上下を反転` button が表示され、設定画面 source の入力 `1 ... 20` を `20 ... 1` へ反転し、status が `反転した手動順序を保存しました` になることを確認した。検証で作成した browser-local override は確認後に削除し、localStorage の override key が 0 件であることを確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。

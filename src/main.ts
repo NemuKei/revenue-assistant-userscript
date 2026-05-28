@@ -856,6 +856,7 @@ function installInteractionHooks(): void {
 
             const rankRecommendationOrderButton = target.closest<HTMLButtonElement>(
                 `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-order-save"],`
+                + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-order-reverse"],`
                 + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-order-reset"]`
             );
             if (rankRecommendationOrderButton !== null) {
@@ -1189,7 +1190,7 @@ async function persistRankRecommendationRankOrderFromElement(element: HTMLElemen
         return;
     }
 
-    if (action !== "rank-order-save") {
+    if (action !== "rank-order-save" && action !== "rank-order-reverse") {
         return;
     }
 
@@ -1206,15 +1207,21 @@ async function persistRankRecommendationRankOrderFromElement(element: HTMLElemen
         return;
     }
 
+    const orderedRanks = action === "rank-order-reverse" ? parsedOrder.slice().reverse() : parsedOrder;
+    inputElement.value = orderedRanks.map((entry) => entry.name).join(", ");
     const record: RankRecommendationRankOrderOverrideRecord = {
         facilityCacheKey,
-        rankCodesHighToLow: parsedOrder.map((entry) => entry.code),
-        rankNamesHighToLow: parsedOrder.map((entry) => entry.name),
+        rankCodesHighToLow: orderedRanks.map((entry) => entry.code),
+        rankNamesHighToLow: orderedRanks.map((entry) => entry.name),
         savedAt: new Date().toISOString()
     };
     window.localStorage.setItem(getRankRecommendationRankOrderOverrideStorageKey(facilityCacheKey), JSON.stringify(record));
-    setRankRecommendationOrderControlStatus(statusElement, "手動順序を保存しました");
-    queueCalendarSync({ force: true, reason: "rank-recommendation-rank-order-save" });
+    setRankRecommendationOrderControlStatus(statusElement, action === "rank-order-reverse"
+        ? "反転した手動順序を保存しました"
+        : "手動順序を保存しました");
+    queueCalendarSync({ force: true, reason: action === "rank-order-reverse"
+        ? "rank-recommendation-rank-order-reverse"
+        : "rank-recommendation-rank-order-save" });
 }
 
 function setRankRecommendationOrderControlStatus(element: HTMLElement | null, text: string): void {
@@ -5711,6 +5718,13 @@ function createRankRecommendationOrderControl(options: {
     saveButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-order-save");
     saveButtonElement.textContent = "保存";
 
+    const reverseButtonElement = document.createElement("button");
+    reverseButtonElement.type = "button";
+    reverseButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    reverseButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-order-reverse");
+    reverseButtonElement.textContent = "上下を反転";
+    reverseButtonElement.title = "現在の入力順を逆順にして手動順序として保存";
+
     const resetButtonElement = document.createElement("button");
     resetButtonElement.type = "button";
     resetButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
@@ -5720,7 +5734,7 @@ function createRankRecommendationOrderControl(options: {
     const statusElement = document.createElement("span");
     statusElement.setAttribute(RANK_RECOMMENDATION_ORDER_STATUS_ATTRIBUTE, "");
 
-    actionElement.append(saveButtonElement, resetButtonElement, statusElement);
+    actionElement.append(saveButtonElement, reverseButtonElement, resetButtonElement, statusElement);
     detailsElement.append(detailsSummaryElement, inputElement, actionElement);
     controlElement.append(summaryElement, detailsElement);
     return controlElement;

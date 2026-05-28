@@ -433,6 +433,7 @@ rank response dataset の first contract:
 - rank ladder は `/api/v1/rank_sequences` の `price_rank_code` と `price_rank_name` を使う。`default_sequence` は名前順初期化用の値であり、rank 上げ / 下げ方向には使わない。
 - rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` のいずれかとして record へ残す。
 - 利用者が manual override を保存した場合は、保存された高ランクから低ランクへの順序を source `manual_override` として最優先する。manual override は browser-local 保存に限定し、Revenue Assistant の rank 設定へ write しない。
+- rank の上下関係が現在の推定または設定画面順序と逆の施設では、利用者が現在の入力順を逆順にして manual override として保存できる入口を持つ。この入口は browser-local の RAU override だけを変更し、Revenue Assistant の設定画面の並び順は変更しない。
 - manual override がない場合は、`/api/v1/rank_sequences` の配列順を、Revenue Assistant 設定画面 `料金ランクの並び順` の保存済み順序として使い、source `settings_screen` とする。大国町ではこの設定画面が高ランクから低ランクの順に `1` から `20` へ並んでいる。
 - 設定画面の保存済み順序が取得できない場合だけ、rank 名がすべて整数として読めるなら、rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定し、source を `numeric_rank_name` とする。この fallback は、すべての施設で数字が小さいほど高ランクであると断定するものではない。
 - rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ表記系でも高低が逆になる運用があり得るため、名前パターンだけで `settings_screen` と同等の確定 source にはしない。ローマ字または英字順、記号の有無、曜日別販売傾向、競合価格内の自社料金位置は、rank order source としては使わない。
@@ -467,7 +468,7 @@ rank response dataset の first contract:
 - 現ランク。
 - 推奨方向または推奨ランク方向。
 - rank order の現在 source と、高ランクから低ランクへの順序。
-- 利用者が high-to-low の rank 順序を手動保存する入口と、推定順序へ戻す reset 入口。
+- 利用者が high-to-low の rank 順序を手動保存する入口、現在の入力順を逆順にして保存する入口、推定順序へ戻す reset 入口。
 - 主要根拠。
 - 状態。
 - `Analyzeで確認`。
