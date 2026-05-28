@@ -414,8 +414,8 @@
   - `git diff --check`: passed
   - 2026-05-28 の Chrome拡張 backend capability 確認では、通常 Chrome の extension browser を取得でき、open tab 3 件の中に Revenue Assistant tab があることを確認した。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Revenue Assistant tab に build 済み `dist/revenue-assistant-userscript.user.js` を一時注入した。トップカレンダーでは indicator が `データ取得: 取得中 0 / 94日・進行 8日（5/27〜8/28）`、詳細が `対象 2026-05-27〜2026-08-28 / 完了 なし / 保存 12 / skip 45` になった。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` では、indicator detail に `この日 2026-06-17 raw 100%（7/7） 参考線 ... 同曜日 100%（28/28）` が表示され、約 30 秒の sampling で参考線 progress が `16%（7/42）` から `50%（21/42）` まで進んだ。page error と console error は 0 件だった。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の top / Analyze 表示を確認した。トップカレンダーでは indicator が `データ取得: 取得中 0 / 94日・進行 8日（5/27〜8/28）`、詳細が `対象 2026-05-27〜2026-08-28 / 完了 なし / 保存 4 / skip 45` になった。Analyze 日付ページでは `この日 2026-06-17 raw 100%（7/7） 参考線 59%（25/42） 同曜日 100%（28/28）` が表示された。page error と console error は 0 件だった。
 - 未確認:
-  - Tampermonkey 再読込後の GUI 目視確認
   - retry 発生時に `再試行待ち n` が表示され、成功時に赤 line にならないこと
   - トップカレンダー cooldown 中に Analyze 日付ページを開いたとき、cooldown を上書きして priority queue が動き始めることの直接確認
 
@@ -453,8 +453,8 @@
   - `npm run build`: passed
   - `git diff --check`: passed
   - 2026-05-28 の Chrome DevTools Protocol 確認では、トップカレンダーで `stored-current` marker 92 件を確認した。Analyze 日付ページでは `calendar-date-2026-06-17` に `partial` marker が 1 件表示され、title は `booking_curve 一部取得済み 43 / 77`、progress は `56%` だった。page error と console error は 0 件だった。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の marker 表示を確認した。トップカレンダーでは marker 92 件、内訳は `stored-current` 84 件と `partial` 8 件だった。Analyze 日付ページでは `calendar-date-2026-06-17` が `partial`、title は `booking_curve 一部取得済み 60 / 77`、progress は `78%` だった。page error と console error は 0 件だった。
 - 未確認:
-  - Tampermonkey 再読込後の GUI 目視確認
   - 完了 line とエラー line が実データに応じて表示されること
 
 ### RAU-AF-10 reference curve の 0日前表示補間を実装する
@@ -535,8 +535,8 @@
   - `npm run build`: passed
   - `git diff --check`: passed
   - 2026-05-28 の Chrome DevTools Protocol 確認では、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` に build 済み `dist` を一時注入し、indicator detail に `この日 2026-06-17 raw 100%（7/7） 参考線 ... 同曜日 100%（28/28）` が表示されることを確認した。約 30 秒の sampling では、参考線 progress が `16%（7/42）` から `50%（21/42）` まで進んだ。page error と console error は 0 件だった。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の Analyze 表示を確認した。indicator detail は `この日 2026-06-17 raw 100%（7/7） 参考線 59%（25/42） 同曜日 100%（28/28）` を含み、page error と console error は 0 件だった。
 - 未確認:
-  - Tampermonkey 再読込後の GUI 目視確認
   - Analyze 日付ページで、その日、同週、同月の順に request が発行されることの直接確認
 
 ## Completed / Recent Implementation
@@ -867,8 +867,8 @@
   - `npm run build`: passed
   - `git diff --check`: passed
   - 2026-05-28 の Chrome DevTools Protocol 確認では、トップカレンダー `https://ra.jalan.net/` に build 済み `dist` を一時注入し、warm cache indicator が `データ取得: 取得中 0 / 94日・進行 8日（5/27〜8/28）`、詳細が `対象 2026-05-27〜2026-08-28 / 完了 なし / 保存 12 / skip 45` になることを確認した。calendar marker は 92 件で、保存済み current source の `stored-current` marker が表示されていた。page error と console error は 0 件だった。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由のトップカレンダー表示を確認した。indicator は `データ取得: 取得中 0 / 94日・進行 8日（5/27〜8/28）`、詳細は `対象 2026-05-27〜2026-08-28 / 完了 なし / 保存 4 / skip 45`、calendar marker は 92 件だった。page error と console error は 0 件だった。
 - 未確認:
-  - 修正後 dist を Tampermonkey へ再読込した後の GUI 目視確認
   - クールダウン後自動再開の確認
 
 ### RAU-WC-01 booking_curve warm cache queue と indicator を実装する
@@ -915,8 +915,8 @@
   - `npm run build`: passed
   - 2026-05-28 の Chrome拡張 backend capability 確認では、通常 Chrome の extension browser を取得でき、open tab 3 件の中に Revenue Assistant tab があることを確認した。`npm run chrome:pages` では、通常 Chrome の `https://ra.jalan.net/analyze/2026-06-17` tab を確認した。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Revenue Assistant tab へ build 済み `dist` を一時注入し、Analyze 日付ページで warm cache indicator が表示され、page error と console error は 0 件だった。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の userscript 初期化 log と warm cache indicator を確認した。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` の page error と console error は 0 件だった。
 - 未確認:
-  - Tampermonkey 再読込後の GUI 目視確認
   - 実ブラウザ上で request 間隔、skip、hidden pause の挙動確認
 
 ### RAU-AF-09 直近同曜日カーブを既定OFFの補助線として追加する
