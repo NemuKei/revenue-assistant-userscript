@@ -1566,6 +1566,14 @@
 
 ### RAU-RR-19 scoring support signal の実データ発火分布と閾値を確認する
 
+- 状態:
+  - 2026-05-28 に確認済み。
+  - Chrome拡張 backend で、通常 Chrome の Revenue Assistant tab が 1 件あることを確認した。
+  - Chrome DevTools Protocol で通常 Chrome の Revenue Assistant root へ最新 dist を一時注入し、top list 10 行、page error 0 件、console error 0 件を確認した。
+  - top list 10 行はすべて `raise_watch` / `high` / `active` だった。表示 reason は `残室少` 10 行、`自社安め` 7 行、`自社高め` 0 行、`同曜日強め` 0 行、`同曜日弱め` 0 行だった。金額、差額、比率の直接表示は 0 行だった。
+  - fingerprint 上の signal は、`competitor_price_signal_own_price_low_against_competitors` 7 件、`competitor_price_signal_own_price_high_against_competitors` 0 件、`competitor_price_snapshot_missing` 3 件、`weekday_signal_weekday_reference_neutral` 3 件、`weekday_reference_source_count_low` 1 件、`weekday_context_current_transient_missing` 6 件だった。
+  - この 1 画面の観測では、競合価格内自社料金位置の 95% / 105% 閾値や weekday context の 115% / 85% 閾値を変更する根拠として不十分であるため、閾値と補正幅は変更しない。
+  - `自社安め` が 7 行に出ている主因候補は、現時点で Revenue Assistant の roomGroup と競合価格 response の `jalanFacilityRoomType` または `jalan_room_types[]` の安全な対応づけを使っていないことである。次は閾値変更ではなく、対応 source の read-only 確認へ進める。
 - 目的:
   - `RAU-RR-18` で追加した weekday context signal と competitor own price position signal が、実データで候補順位や主要根拠を過度に偏らせていないか確認する。
 - 背景:
@@ -1587,6 +1595,72 @@
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-threshold-change
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-20 roomGroup と jalan 部屋タイプの対応 source を read-only で確認する
+
+- 状態:
+  - 2026-05-28 に確認済み。
+  - Chrome DevTools Protocol read-only で、`/api/v1/suggest/output/current_settings`、`/api/v1/booking_curve/rm_room_groups`、`/api/v2/competitors_filter_settings`、`/api/v2/competitors`、保存済み `competitor-price-snapshots` を確認した。
+  - `current_settings` は `rm_room_group_id`、`rm_room_group_name`、`remaining_num_room`、`max_num_room`、`latest_current.price_rank_code`、`latest_current.price_rank_name` を持つが、`jalan` field や room type code field は持たなかった。
+  - `rm_room_groups` は `id`、`name`、`sequence` を持つが、`jalan` 側部屋タイプ code は持たなかった。
+  - `competitors_filter_settings` は `jalan_room_types` を持つが、roomGroup との対応は持たなかった。
+  - 保存済み `competitor-price-snapshots` は検索条件に `jalanRoomTypes`、plan に `jalanFacilityRoomType` を持つが、plan 側に `rm_room_group_id` 相当の field はなかった。
+  - 現時点では、roomGroup 名と `jalan` 側部屋タイプ名の文字列類似だけで対応を確定しない。`own_price_low_against_competitors` / `own_price_high_against_competitors` は roomGroup 別に強めない。
+- 目的:
+  - 競合価格内自社料金位置を roomGroup 別に安全に絞り込めるか判断する。
+  - `RAU-RR-19` で `自社安め` が top list 10 行中 7 行に出たため、閾値変更より先に、比較単位が粗すぎるかを確認する。
+- 背景:
+  - `RAU-RR-18` の初期実装では、Revenue Assistant の roomGroup と競合価格 response の `jalanFacilityRoomType` または `jalan_room_types[]` の対応を安全に確定できなかったため、roomGroup 別の部屋タイプ filter はかけていない。
+  - その結果、ある roomGroup の候補に対して、別の部屋タイプの自社最安値または競合最安値が比較に混ざる可能性がある。
+- スコープ:
+  - Chrome拡張で通常 Chrome の Revenue Assistant 対象 tab を確認する。
+  - Chrome DevTools Protocol read-only で、既存画面、既存 response、保存済み `competitor-price-snapshots`、`current_settings`、roomGroup 一覧、競合価格 tab の表示要素を確認し、roomGroup と `jalan` 側部屋タイプを対応づけられる source があるかを分類する。
+  - 対応 source がある場合は、field 名、対応単位、null / optional、confidence、対応できない case を `docs/context/DECISIONS.md` または対象 spec に残す。
+  - 対応 source がない場合は、推測で対応づけず、競合価格内自社料金位置を roomGroup 別 signal に強めない理由を残す。
+- 非目標:
+  - Revenue Assistant の rank 設定、価格、在庫を変更しない。
+  - 競合価格の request 範囲、取得頻度、background queue 上限を増やさない。
+  - roomGroup 名と部屋タイプ名の文字列類似だけで対応を確定しない。
+  - 推奨レート金額、Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - Chrome拡張 backend で通常 Chrome の対象 tab が確認されている。
+  - Chrome DevTools Protocol read-only で、対応 source の有無、確認済み field、未確認 field、対応不能 case が記録されている。
+  - 対応 source が確認できない場合、`own_price_low_against_competitors` / `own_price_high_against_competitors` を roomGroup 別に強める実装へ進まない判断が docs に残っている。
+  - 対応 source が確認できる場合でも、実装は別 task とし、この task では write や bulk apply を行わない。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-21 roomGroup 対応 source 未確認の競合価格 signal を主要 reason から外す
+
+- 状態:
+  - 2026-05-28 に実装済み。
+  - `src/rankRecommendation.ts` では、`own_price_low_against_competitors` / `own_price_high_against_competitors` が存在しても、top list の主要 reason に `自社安め` / `自社高め` を追加せず、confidence や priority も補正しないようにした。
+  - signal は `curveEvidence.diagnostics` の `competitor_price_signal_*` と、追加 diagnostics の `competitor_price_room_group_scope_unconfirmed` に残す。
+- 目的:
+  - roomGroup と `jalan` 側部屋タイプの対応 source が未確認のまま、競合価格内自社料金位置が候補の主要根拠として強く見える状態を避ける。
+- 背景:
+  - `RAU-RR-19` では `自社安め` が top list 10 行中 7 行に出た。
+  - `RAU-RR-20` では、roomGroup と `jalan` 側部屋タイプを対応づける明示 field が確認できなかった。
+  - 競合価格内自社料金位置は有用な補助候補だが、比較単位が roomGroup より粗い状態では、主要 reason として表示すると利用者が「この部屋タイプの自社料金が安い」と誤読する可能性がある。
+- スコープ:
+  - `src/rankRecommendation.ts` の scoring で、roomGroup scope 未確認の競合価格 signal を主要 reason と confidence / priority 補正から外す。
+  - diagnostics には signal と scope 未確認理由を残す。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/DECISIONS.md`、`docs/context/STATUS.md` を同期する。
+- 非目標:
+  - 競合価格 snapshot の保存 schema を変更しない。
+  - 競合価格の request 範囲、取得頻度、background queue 上限を増やさない。
+  - roomGroup と `jalan` 側部屋タイプの推測対応を実装しない。
+  - 推奨レート金額、Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - `own_price_low_against_competitors` / `own_price_high_against_competitors` が出ても、top list の主要 reason に `自社安め` / `自社高め` が出ない。
+  - diagnostics に `competitor_price_signal_*` と `competitor_price_room_group_scope_unconfirmed` が残る。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: during-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
 ## Forecast Bundle
@@ -2127,7 +2201,7 @@
 
 Now:
 
-- `RAU-RR-19` scoring support signal の実データ発火分布と閾値を確認する
+- なし
 
 Next:
 
@@ -2165,7 +2239,9 @@ Later:
 - `RAU-RR-16` は 2026-05-28 に実装済みである。設定画面 `設定 > 表示 > 料金ランクの並び順` の route は `/settings/price-rank-sequence` であり、`GET /api/v1/rank_sequences` の配列順が設定画面のドラッグリスト順序として表示されることを確認した。RAU は、manual override がない場合、この配列順を source `settings_screen` として使う。名前パターンは企業や施設により数字系、ローマ字または英字系、記号混在系のいずれもあり得て、同じ表記系でも上下関係が逆になる運用があるため、数値 rank 名推定は設定画面順序が取れない場合の fallback とする。
 - `RAU-RR-17` は 2026-05-28 に docs 設計済みである。曜日別関係と競合価格内の自社料金位置は rank order source ではなく、rank recommendation scoring の priority / confidence / reasonCodes / diagnostics 補助として扱う。rank 名は企業や施設により数字系、ローマ字または英字系、記号混在系のいずれもあり得るため、名前パターン、曜日別販売傾向、競合価格内自社料金位置だけで上下関係を断定しない。
 - `RAU-RR-18` は 2026-05-28 に実装済みである。weekday context は保存済み `booking_curve_raw_source:v2` の同曜日候補、競合価格内自社料金位置は保存済み `competitor-price-snapshots` の最新 snapshot から作り、既存 action を単独で変えない小さな scoring support として接続した。Chrome DevTools Protocol の実画面確認では、候補 list 10 行、page error 0 件、console error 0 件、`自社安め` 7 行、weekday reason 0 行、金額・差額・比率の直接表示 0 行だった。
-- `RAU-RR-19` は次の Now である。1 snapshot だけでは補助 signal の発火偏りや閾値妥当性を判断できないため、通常 Chrome の実データで support reason と diagnostics の分布を確認する。
+- `RAU-RR-19` は 2026-05-28 に確認済みである。通常 Chrome の実データでは top list 10 行すべてが `raise_watch` / `high` / `active` で、`自社安め` は 7 行、`自社高め` は 0 行、weekday 強弱 reason は 0 行、金額・差額・比率の直接表示は 0 行だった。1 画面の観測では閾値変更の根拠として不十分なため、競合価格内自社料金位置の 95% / 105% 閾値と weekday context の 115% / 85% 閾値は変更しない。
+- `RAU-RR-20` は 2026-05-28 に確認済みである。`current_settings` と `rm_room_groups` は roomGroup field を持つが `jalan` 側部屋タイプ code を持たず、競合価格 snapshot は `jalanFacilityRoomType` と `jalanRoomTypes` を持つが `rm_room_group_id` 相当を持たないため、roomGroup 名と `jalan` 側部屋タイプ名の文字列類似だけで対応を確定しない。
+- `RAU-RR-21` は 2026-05-28 に実装済みである。roomGroup と `jalan` 側部屋タイプの対応 source が未確認であるため、競合価格内自社料金位置 signal は top list の主要 reason と confidence / priority 補正から外し、diagnostics にだけ残す。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

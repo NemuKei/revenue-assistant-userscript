@@ -290,24 +290,7 @@ function buildRankRecommendationCandidate(options: {
     }
 
     if (action !== "not_eligible" && ownPricePositionSignal !== null) {
-        if (ownPricePositionSignal === "own_price_low_against_competitors") {
-            if (action === "raise_watch") {
-                reasonCodes.push("自社安め");
-                confidence = increaseConfidence(confidence, 0.06);
-            } else if (action === "lower_watch") {
-                reasonCodes.push("自社安め");
-                confidence = decreaseConfidence(confidence, 0.04);
-            }
-        } else if (ownPricePositionSignal === "own_price_high_against_competitors") {
-            if (action === "lower_watch") {
-                reasonCodes.push("自社高め");
-                confidence = increaseConfidence(confidence, 0.06);
-            } else if (action === "raise_watch") {
-                reasonCodes.push("自社高め");
-                priority = minPriority(priority, "medium");
-                confidence = decreaseConfidence(confidence, 0.04);
-            }
-        }
+        diagnostics.push("competitor_price_room_group_scope_unconfirmed");
     }
 
     if (curveEvidence === null) {
