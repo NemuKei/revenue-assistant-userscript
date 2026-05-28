@@ -3,6 +3,10 @@ export type RankRecommendationPriority = "high" | "medium" | "low";
 export type RankRecommendationStatus = "active" | "not_eligible";
 export type RankRecommendationForecastSignal = "high_occupancy" | "low_occupancy" | "neutral";
 export type RankRecommendationSalesAdrHealthSignal = "adr_down" | "sales_down" | "adr_and_sales_down" | "neutral";
+export type RankRecommendationRecommendedRankUnavailableReason =
+    | "rank_ladder_missing"
+    | "current_rank_not_in_ladder"
+    | "rank_ladder_boundary";
 
 export interface RankRecommendationCurrentSettingRoomGroup {
     rm_room_group_id?: string;
@@ -34,6 +38,7 @@ export interface RankRecommendationCandidate {
     currentRankName: string | null;
     recommendedRankCode: string | null;
     recommendedRankName: string | null;
+    recommendedRankUnavailableReason: RankRecommendationRecommendedRankUnavailableReason | null;
     action: RankRecommendationAction;
     priority: RankRecommendationPriority;
     confidence: number;
@@ -263,11 +268,14 @@ function buildRankRecommendationCandidate(options: {
     if (currentRankName === null) {
         diagnostics.push("current_rank_missing");
     }
-    const recommendedRank = resolveRecommendedRank({
+    const recommendedRankResolution = resolveRecommendedRank({
         action,
         currentRankCode,
         rankLadder: options.rankLadder
     });
+    if (recommendedRankResolution.unavailableReason !== null) {
+        diagnostics.push(`recommended_rank_${recommendedRankResolution.unavailableReason}`);
+    }
 
     const status: RankRecommendationStatus = action === "not_eligible" ? "not_eligible" : "active";
     const reasonFingerprint = [
@@ -288,8 +296,9 @@ function buildRankRecommendationCandidate(options: {
         roomGroupName: options.roomGroupName,
         currentRankCode,
         currentRankName,
-        recommendedRankCode: recommendedRank?.code ?? null,
-        recommendedRankName: recommendedRank?.name ?? null,
+        recommendedRankCode: recommendedRankResolution.rank?.code ?? null,
+        recommendedRankName: recommendedRankResolution.rank?.name ?? null,
+        recommendedRankUnavailableReason: recommendedRankResolution.unavailableReason,
         action,
         priority,
         confidence,
@@ -359,14 +368,17 @@ function resolveRecommendedRank(options: {
     action: RankRecommendationAction;
     currentRankCode: string | null;
     rankLadder: readonly RankRecommendationRankLadderEntry[];
-}): { code: string; name: string } | null {
-    if (options.currentRankCode === null) {
-        return null;
-    }
-
+}): {
+    rank: { code: string; name: string } | null;
+    unavailableReason: RankRecommendationRecommendedRankUnavailableReason | null;
+} {
     const direction = getRecommendedRankStepDirection(options.action);
     if (direction === 0) {
-        return null;
+        return { rank: null, unavailableReason: null };
+    }
+
+    if (options.currentRankCode === null) {
+        return { rank: null, unavailableReason: null };
     }
 
     const ladder = options.rankLadder.flatMap((entry) => {
@@ -374,10 +386,20 @@ function resolveRecommendedRank(options: {
         const name = normalizeNullableText(entry.price_rank_name);
         return code === null || name === null ? [] : [{ code, name }];
     });
+    if (ladder.length === 0) {
+        return { rank: null, unavailableReason: "rank_ladder_missing" };
+    }
+
     const currentIndex = ladder.findIndex((entry) => entry.code === options.currentRankCode);
+    if (currentIndex < 0) {
+        return { rank: null, unavailableReason: "current_rank_not_in_ladder" };
+    }
+
     const targetIndex = currentIndex + direction;
     const targetRank = ladder[targetIndex];
-    return targetRank ?? null;
+    return targetRank === undefined
+        ? { rank: null, unavailableReason: "rank_ladder_boundary" }
+        : { rank: targetRank, unavailableReason: null };
 }
 
 function getRecommendedRankStepDirection(action: RankRecommendationAction): -1 | 0 | 1 {

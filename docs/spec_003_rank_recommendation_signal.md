@@ -157,7 +157,8 @@ first phase では次を行わない。
 - 2026-05-28 の追加確認では、Revenue Assistant の配信 JavaScript が `defaultSequence` を「名前順に並べ替える」初期順として扱い、設定保存時は並び替え済みの `priceRankCode` 配列を送信していた。そのため、RAU は `default_sequence` を rank 上げ / 下げの方向として使わない。
 - rank ladder は `rank_sequences[]` の response 配列順を使う。観測した response 配列順は rank 名 `1` から `20` までの自然順で、`default_sequence` は `1,10,11,...,20,2,3,...,9` の名前順初期化用の値だった。
 - `raise_watch` の隣接 recommended rank は、response 配列上で current rank の次にある rank とする。`lower_watch` の隣接 recommended rank は、response 配列上で current rank の前にある rank とする。
-- current rank が response 配列に存在しない場合、または current rank が配列の端で隣接 rank が存在しない場合は、`recommendedRank` を null にし、`recommendedRankDirection` のみを表示する。
+- current rank が response 配列に存在しない場合、または current rank が配列の端で隣接 rank が存在しない場合は、`recommendedRank` を null にする。
+- current rank が response 配列の端にあり、`raise_watch` または `lower_watch` の隣接 rank が存在しない場合、top list の推奨方向には `上限ランク: 上げ余地なし` または `下限ランク: 下げ余地なし` を表示する。これは推奨レート金額や 2 段階以上の rank 移動を出すものではなく、隣接 rank がない理由を利用者に見せるための表示である。
 
 `/api/v1/rank_colors`
 
@@ -204,6 +205,7 @@ Recommendation の最小単位は `facilityId x stayDate x asOfDate x roomGroupI
 - `roomGroupName`
 - `currentRank`
 - `recommendedRank` or `recommendedRankDirection`
+- `recommendedRankUnavailableReason`
 - `action`
 - `priority`
 - `confidence`
@@ -402,7 +404,8 @@ rank response dataset の first contract:
 - rank ladder は `/api/v1/rank_sequences` の response 配列順を使う。`price_rank_code` と `price_rank_name` は recommended rank 名表示に使う。`default_sequence` は名前順初期化用の値であり、rank 上げ / 下げ方向には使わない。
 - `raise_watch` では current rank の次の response 配列要素を、`lower_watch` では current rank の前の response 配列要素を、first wave の隣接 `recommendedRank` として扱う。
 - 方向確認後も、first wave の recommendedRank は隣接 rank のみに限定する。2 段階以上の rank 移動、価格差最大化、売上最大化 rank の直接提示は行わない。
-- current rank が欠損する場合、rank ladder に current rank code が存在しない場合、または隣接 rank が存在しない場合は、`recommendedRank` を null にし、`recommendedRankDirection` のみを表示する。
+- current rank が欠損する場合、rank ladder に current rank code が存在しない場合、または隣接 rank が存在しない場合は、`recommendedRank` を null にする。
+- 隣接 rank が存在しない理由が rank ladder の端である場合、top list の推奨方向には `上限ランク: 上げ余地なし` または `下限ランク: 下げ余地なし` を表示する。rank ladder が取れない、または current rank code が ladder に存在しない場合は、原因を diagnostics に残し、従来どおり `上げ検討` / `下げ注意` の direction 表示に戻す。
 - rank price table または実販売価格が取れるまで、recommendedRank から推奨レート金額を導出しない。
 
 ## UI Contract

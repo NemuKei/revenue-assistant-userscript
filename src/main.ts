@@ -4484,7 +4484,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             visibleCandidates.map((candidate) => [
                 candidate.reasonFingerprint,
                 candidate.currentRankName ?? "",
-                candidate.recommendedRankName ?? ""
+                candidate.recommendedRankName ?? "",
+                candidate.recommendedRankUnavailableReason ?? ""
             ].join(",")).join("|")
         ].join(":"),
         statusText: null
@@ -5222,10 +5223,16 @@ function formatRankRecommendationAction(candidate: RankRecommendationCandidate):
             if (candidate.recommendedRankName !== null) {
                 return `1段上げ検討: ${candidate.recommendedRankName}`;
             }
+            if (candidate.recommendedRankUnavailableReason === "rank_ladder_boundary") {
+                return "上限ランク: 上げ余地なし";
+            }
             return "上げ検討";
         case "lower_watch":
             if (candidate.recommendedRankName !== null) {
                 return `1段下げ注意: ${candidate.recommendedRankName}`;
+            }
+            if (candidate.recommendedRankUnavailableReason === "rank_ladder_boundary") {
+                return "下限ランク: 下げ余地なし";
             }
             return "下げ注意";
         case "not_eligible":

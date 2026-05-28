@@ -1364,6 +1364,38 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-13 rank ladder 端の推奨方向表示を明確化する
+
+- 状態:
+  - 2026-05-28 に実装済み。
+  - 候補 record に `recommendedRankUnavailableReason` を追加した。
+  - rank ladder の端で隣接 recommended rank が存在しない場合は、`recommended_rank_rank_ladder_boundary` を diagnostics に残す。
+  - 通常 Chrome の最新 dist 一時注入後、current rank `20` の `raise_watch` 行が `上限ランク: 上げ余地なし` と表示され、隣接 rank がある 9 行は `1段上げ検討: {rankName}` のままだった。
+  - 合成入力では、ladder 先頭の `lower_watch` と ladder 末尾の `raise_watch` の両方で `recommendedRankUnavailableReason: rank_ladder_boundary` になることを確認した。
+  - 推奨レート金額、sales / ADR 数値、金額、比率は表示されず、page error / console error は 0 件だった。
+- 目的:
+  - current rank が rank ladder の端にある候補で、隣接 recommended rank が存在しない理由を top list 上で読めるようにする。
+- 背景:
+  - `RAU-RR-12` の通常 Chrome 確認では、current rank が `20` で `raise_watch` の候補が 1 行あり、隣接 rank がないため推奨方向は従来どおり `上げ検討` と表示された。
+  - この表示だけでは、利用者が「上げ方向の候補だが、rank ladder 上は上限で 1 段上げできない状態」と判断するために current rank と rank ladder 端を自分で読み解く必要がある。
+- スコープ:
+  - 候補 record に、隣接 recommended rank を出せない理由を持たせる。
+  - rank ladder の端で隣接 rank が存在しない場合だけ、top list の推奨方向を `上限ランク: 上げ余地なし` または `下限ランク: 下げ余地なし` と表示する。
+  - rank ladder が取得できない場合や current rank code が ladder に存在しない場合は、原因を diagnostics に残し、従来の direction 表示に戻す。
+- 非目標:
+  - 推奨レート金額を出さない。
+  - 2 段階以上の rank 移動を出さない。
+  - Revenue Assistant への write / bulk apply を行わない。
+- 受け入れ条件:
+  - current rank が ladder 末尾で `raise_watch` の場合、top list の推奨方向に `上限ランク: 上げ余地なし` が表示される。
+  - current rank が ladder 先頭で `lower_watch` の場合、top list の推奨方向に `下限ランク: 下げ余地なし` が表示される。
+  - 隣接 rank が存在する場合は、従来どおり `1段上げ検討: {rankName}` または `1段下げ注意: {rankName}` が表示される。
+  - top list に推奨レート金額、sales / ADR 数値、金額、比率が表示されない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -1934,6 +1966,7 @@ Later:
 - `RAU-RR-10` は 2026-05-28 の docs 設計で完了した。current rank と rank ladder 候補は使えるが、`RAU-RR-12` までは `rank_sequences[].default_sequence` の扱いが未確定だったため、recommendedRank 名は出さない契約にしていた。
 - `RAU-RR-11` は 2026-05-28 の feasibility 判断で完了した。bulk apply は将来候補だが first phase の非目標である。API、current rank 再取得、別 rank change 確認、user decision、cooldown、low confidence、small capacity、group-driven 除外、preview、部分失敗記録が揃うまで実装しない。
 - `RAU-RR-12` は 2026-05-28 に実装済みである。`default_sequence` は名前順初期化用であり、rank 上げ / 下げ方向には使わない。rank ladder は `/api/v1/rank_sequences` の response 配列順を使う。top list では、`raise_watch` に次 rank、`lower_watch` に前 rank を隣接 recommended rank として表示する。
+- `RAU-RR-13` は 2026-05-28 に実装済みである。rank ladder 端で隣接 recommended rank が存在しない場合は、`上限ランク: 上げ余地なし` または `下限ランク: 下げ余地なし` と表示する。推奨レート金額、2段階以上の rank 移動、Revenue Assistant write / bulk apply は追加していない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
