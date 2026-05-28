@@ -2328,6 +2328,46 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-37 top list meta に不足または注意の内訳を表示する
+
+- 状態:
+  - 2026-05-28 完了。
+- 目的:
+  - 料金調整候補を 1 行ずつ読む前に、表示中候補全体で判断材料の不足または注意がどこに偏っているかを確認できるようにする。
+- 背景:
+  - `RAU-RR-23` では `確度` tooltip、`RAU-RR-33` では `主要根拠` tooltip、`RAU-RR-35` では Analyze focus summary に、不足または注意の種類を表示できるようにした。
+  - ただし、候補一覧の summary では、表示中候補の件数、推奨方向、優先度、確度、非表示件数、overflow 件数しか分からず、`forecast 比較不足`、`sales / ADR 比較不足`、`競合価格の部屋タイプ対応未確認` などが何件残っているかを一覧前に読めなかった。
+- スコープ:
+  - `data-ra-rank-recommendation-meta` に、表示中候補の diagnostics から作る不足または注意の種類別件数を追加する。
+  - 既存の `summarizeRankRecommendationConfidenceCautions()` の分類を再利用する。
+  - 表示する分類は非数値の注意名と件数に限定する。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonCodes、reasonFingerprint を変更すること。
+  - API request 範囲、request 件数、request 間隔を変更すること。
+  - forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示すること。
+  - Revenue Assistant write / bulk apply。
+- 受け入れ条件:
+  - 表示中候補に不足または注意がある場合、top list meta に `注意 ... n件` が表示される。
+  - 表示中候補に不足または注意がない場合、top list meta に不要な `注意` summary は表示されない。
+  - top list meta は forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で最新 dist 一時注入後の top list meta に不足または注意の内訳が出ることを確認する。
+- 実装内容:
+  - `src/main.ts` の top list meta 生成に、既存 `summarizeRankRecommendationConfidenceCautions()` を使った不足または注意の種類別件数 summary を追加した。
+  - 既存 diagnostics の表示集計だけを追加し、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。初回は sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に再実行して通過した。
+  - `git diff --check`: passed
+  - Chrome拡張 backend: node_repl で bundled Chrome runtime を bootstrap し、extension browser、`openTabs()`、tab count 3 を確認した。
+  - `npm run chrome:pages`: passed。通常 Chrome に Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
+  - Chrome DevTools Protocol 実 DOM 確認: 通常 Chrome の Revenue Assistant root へ最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、top list 10 行、meta `注意 booking_curve または reference 不足 6件・forecast 比較不足 10件・sales / ADR 比較不足 6件・同曜日比較不足 7件・競合価格の部屋タイプ対応未確認 2件`、forecast 数値 label 0 件、金額または percent 表示 0 件を確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2916,6 +2956,7 @@ Later:
 - `RAU-RR-28` は 2026-05-28 に実装済みである。top list に `宿泊まで` 列を追加し、`stayDate - asOfDate` を `n日`、当日を `当日`、計算不能または過去日を `-` として表示する。priority、confidence、scoring、rank order、user decision、resolved 判定、API request 範囲は変更していない。
 - `RAU-RR-29` は 2026-05-28 に実装済みである。candidate generation 時点で top 10 に切らず、user decision filter と rank change resolved filter の後に表示 top 10 を選ぶ。filter 後に top 10 外の active candidate がある場合は、top list meta に `他 n件` を表示する。scoring、priority、confidence、rank order、user decision、resolved 判定、API request 範囲は変更していない。
 - `RAU-RR-36` は 2026-05-28 に確認済みである。`/api/v1/plan_master/plan_rank_price` は `from=YYYYMMDD` 系 query で 20 件の rank metadata を返すが、実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は確認できなかった。`current_settings` は current rank と capacity / remaining には使えるが、観測範囲では食事条件別価格候補 field が null だった。したがって、rank price table、現在販売中価格、プラン別・人数別・食事条件別価格は、引き続き推奨レート金額の根拠として使わない。
+- `RAU-RR-37` は 2026-05-28 に実装済みである。top list meta に表示中候補の不足または注意の種類別件数を追加し、候補一覧を読む前に判断材料の不足や注意の偏りを確認できるようにした。既存 diagnostics の表示集計だけを使い、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
