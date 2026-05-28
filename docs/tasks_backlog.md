@@ -843,8 +843,9 @@
   - 2026-05-28 の追加 scheduler post-push 確認では、Chrome拡張 backend で通常 Chrome の Revenue Assistant tab 1 件と Tampermonkey dashboard 1 件を確認した。通常 Chrome の Tampermonkey dashboard では Revenue Assistant Userscript `0.1.0.274` が入っていた。
   - 同確認で Chrome DevTools Protocol から通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を reload して 60 秒観測した。RAU 発行と判定できる `/api/v4/booking_curve` request は 8 件、開始間隔の最小値は 1002ms、1 秒未満の開始間隔は 0 件だった。Revenue Assistant 本体の標準画面 request は 2 件あり、開始間隔 10ms だったが、initiator が Revenue Assistant 配信 script であり RAU の制御対象外として扱う。
   - 同確認で warm cache indicator は表示され、status は `データ取得: 取得中 1 / 94日・進行 1日（5/27〜8/28） / 競合価格: 前回あり`、detail は `この日 2026-06-17 raw 100%（7/7） 参考線 100%（42/42） 同曜日 100%（28/28）` と `保存 54 / skip 70` を含んでいた。page error と console error は 0 件だった。
+  - 2026-05-28 の skip 即時進行確認では、Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページを reload し、250ms 間隔で 40 回 indicator を sampling した。reload 後 4.3 秒時点で `保存 0 / skip 16`、5.2 秒時点で `保存 0 / skip 34`、11.9 秒時点で `保存 7 / skip 35` だった。同じ観測区間の RAU 発行 `/api/v4/booking_curve` request は 1 件だけだったため、保存済み raw source により skip できる task は 1 秒 request interval を待たずに進んでいると判断する。page error と console error は 0 件だった。
 - 未確認:
-  - skip task が即時に進むことの実ブラウザ確認
+  - hidden pause の実ブラウザ確認
 
 ### RAU-WC-02 warm cache indicator をトップカレンダーと日付単位進捗に広げる
 
@@ -936,7 +937,7 @@
   - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Revenue Assistant tab へ build 済み `dist` を一時注入し、Analyze 日付ページで warm cache indicator が表示され、page error と console error は 0 件だった。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の userscript 初期化 log と warm cache indicator を確認した。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` の page error と console error は 0 件だった。
 - 未確認:
-  - 実ブラウザ上で request 間隔、skip、hidden pause の挙動確認
+  - 実ブラウザ上で hidden pause が発火することの直接確認
 
 ### RAU-AF-09 直近同曜日カーブを既定OFFの補助線として追加する
 
