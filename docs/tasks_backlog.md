@@ -840,9 +840,10 @@
   - 追加 scheduler 修正後の `npm run lint`: passed
   - 追加 scheduler 修正後の `npm run build`: passed
   - 追加 scheduler の source-level 検証では、`src/requestScheduler.ts` を TypeScript transpile して直接実行し、5 件の開始間隔が最小 109ms になり、100ms interval の検証で 90ms 未満の開始間隔が 0 件であること、同じ request key の重複 schedule が 1 回の実行を共有することを確認した。
+  - 2026-05-28 の追加 scheduler post-push 確認では、Chrome拡張 backend で通常 Chrome の Revenue Assistant tab 1 件と Tampermonkey dashboard 1 件を確認した。通常 Chrome の Tampermonkey dashboard では Revenue Assistant Userscript `0.1.0.274` が入っていた。
+  - 同確認で Chrome DevTools Protocol から通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を reload して 60 秒観測した。RAU 発行と判定できる `/api/v4/booking_curve` request は 8 件、開始間隔の最小値は 1002ms、1 秒未満の開始間隔は 0 件だった。Revenue Assistant 本体の標準画面 request は 2 件あり、開始間隔 10ms だったが、initiator が Revenue Assistant 配信 script であり RAU の制御対象外として扱う。
+  - 同確認で warm cache indicator は表示され、status は `データ取得: 取得中 1 / 94日・進行 1日（5/27〜8/28） / 競合価格: 前回あり`、detail は `この日 2026-06-17 raw 100%（7/7） 参考線 100%（42/42） 同曜日 100%（28/28）` と `保存 54 / skip 70` を含んでいた。page error と console error は 0 件だった。
 - 未確認:
-  - 追加 scheduler 修正後の Tampermonkey 再読込 GUI 目視確認
-  - 追加 scheduler 修正後に、通常 Chrome の Tampermonkey 経由だけで RAU 発行 `/api/v4/booking_curve` request が 1.0 秒以上の開始間隔を保つこと
   - skip task が即時に進むことの実ブラウザ確認
 
 ### RAU-WC-02 warm cache indicator をトップカレンダーと日付単位進捗に広げる
