@@ -812,6 +812,7 @@
 - 受け入れ条件:
   - skip task は 1 秒待たずに進む。
   - API request を伴う task は 1.0 秒以上の間隔を置く。
+  - reference curve task 内部で reference source raw source を取得する場合も、`/api/v4/booking_curve` request 開始間隔は 1.0 秒以上を保つ。
   - 10 分稼働後は 3 分以上クールダウンしてから再開する。
   - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
 - metadata:
@@ -823,9 +824,15 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
+  - 2026-05-28 に Chrome拡張 backend で通常 Chrome に Revenue Assistant tab があることを確認した。
+  - 2026-05-28 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページを 51 秒観測したところ、reference curve task 内部の reference source raw source 取得で `/api/v4/booking_curve` が 1〜数 ms 間隔で連続開始していた。これは warm cache task 自体が 1 件ずつ進むだけでは、API request 開始間隔 1.0 秒以上の受け入れ条件を満たせないことを示すため、`src/referenceCurveStore.ts` の reference curve request scheduler に request 開始間隔 1.0 秒以上の制御を追加した。
+  - scheduler 修正後の `npm run typecheck`: passed
+  - scheduler 修正後の `npm run lint`: passed
+  - scheduler 修正後の `npm run build`: passed
+  - scheduler 修正後の `git diff --check`: passed
 - 未確認:
-  - Tampermonkey 再読込後の GUI 目視確認
-  - skip task が即時に進み、API request を伴う task が 1.0 秒以上の間隔を保つこと
+  - 修正後の Tampermonkey 再読込 GUI 目視確認
+  - 修正後に、skip task が即時に進み、API request を伴う task が 1.0 秒以上の間隔を保つこと
 
 ### RAU-WC-02 warm cache indicator をトップカレンダーと日付単位進捗に広げる
 

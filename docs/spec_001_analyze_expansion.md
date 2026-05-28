@@ -275,6 +275,7 @@ BCL-tuned first wave の定義:
 
 - 初期実装の同時取得数は 1 とする。
 - request 間隔は 1.0 秒以上とする。
+- `reference source raw source` を取得するために reference curve request scheduler へ投入した `/api/v4/booking_curve` request も、request 開始間隔を 1.0 秒以上にする。warm cache task 自体が 1 件ずつ進んでいても、1 task 内部で複数の reference source request を短時間に連続開始しない。
 - IndexedDB または derived cache の既存 record により skip できる task は、API request を発行しないため、次 task へ即時に進めてよい。
 - 1 回の自動 warm cache 稼働時間は最大 10 分とする。
 - 1 回の自動 warm cache 稼働時間に達した場合は、3 分以上のクールダウン時間を置いた後に自動再開する。

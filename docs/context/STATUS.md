@@ -343,7 +343,7 @@
   - 2026-05-28 の Chrome拡張 backend capability 確認では、通常 Chrome の extension browser を取得でき、open tab 3 件の中に Revenue Assistant tab があることを確認した。`npm run chrome:pages` では、通常 Chrome の `https://ra.jalan.net/analyze/2026-06-17` tab を確認した。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Revenue Assistant tab へ build 済み `dist/revenue-assistant-userscript.user.js` を一時注入した。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` で warm cache indicator が表示され、page error と console error は 0 件だった。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の userscript 初期化 log と warm cache indicator を確認した。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` の page error と console error は 0 件だった。
-  - 実ブラウザ上で request 間隔、skip、hidden pause の挙動確認: 未実施
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Analyze 日付ページで 51 秒観測し、reference curve task 内部の reference source raw source 取得が `/api/v4/booking_curve` request を 1〜数 ms 間隔で連続開始することを確認した。`src/referenceCurveStore.ts` の reference curve request scheduler に request 開始間隔 1.0 秒以上の制御を追加した。修正後の `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` は通過済み。修正後の Tampermonkey 再読込 GUI 確認、skip 即時進行、hidden pause の実ブラウザ確認は未実施。
 - 2026-04-29 の `RAU-WC-02` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed

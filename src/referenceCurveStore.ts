@@ -4,6 +4,7 @@ const REFERENCE_CURVE_DB_NAME = "revenue-assistant-reference-curves";
 const REFERENCE_CURVE_DB_VERSION = 1;
 const REFERENCE_CURVE_STORE_NAME = "reference-curve-results";
 const DEFAULT_REFERENCE_CURVE_REQUEST_CONCURRENCY = 3;
+const DEFAULT_REFERENCE_CURVE_REQUEST_INTERVAL_MS = 1000;
 
 export interface ReferenceCurveCacheKeyParts {
     facilityId: string;
@@ -51,6 +52,8 @@ const pendingReferenceCurveRequests = new Map<string, Promise<unknown>>();
 const referenceCurveRequestQueue: Array<QueuedReferenceCurveRequest<unknown>> = [];
 let activeReferenceCurveRequestCount = 0;
 let referenceCurveRequestConcurrency = DEFAULT_REFERENCE_CURVE_REQUEST_CONCURRENCY;
+let lastReferenceCurveRequestStartedAt = 0;
+let referenceCurveRequestDrainTimeoutId: number | null = null;
 
 export function setReferenceCurveRequestConcurrency(concurrency: number): void {
     referenceCurveRequestConcurrency = Math.max(1, Math.floor(concurrency));
@@ -168,16 +171,31 @@ async function getOrComputeReferenceCurveInternal(options: GetOrComputeReference
 }
 
 function drainReferenceCurveRequestQueue(): void {
+    if (referenceCurveRequestDrainTimeoutId !== null) {
+        return;
+    }
+
     while (
         activeReferenceCurveRequestCount < referenceCurveRequestConcurrency
         && referenceCurveRequestQueue.length > 0
     ) {
+        const now = Date.now();
+        const elapsedMs = now - lastReferenceCurveRequestStartedAt;
+        if (lastReferenceCurveRequestStartedAt > 0 && elapsedMs < DEFAULT_REFERENCE_CURVE_REQUEST_INTERVAL_MS) {
+            referenceCurveRequestDrainTimeoutId = window.setTimeout(() => {
+                referenceCurveRequestDrainTimeoutId = null;
+                drainReferenceCurveRequestQueue();
+            }, DEFAULT_REFERENCE_CURVE_REQUEST_INTERVAL_MS - elapsedMs);
+            return;
+        }
+
         const queued = referenceCurveRequestQueue.shift();
         if (queued === undefined) {
             continue;
         }
 
         activeReferenceCurveRequestCount += 1;
+        lastReferenceCurveRequestStartedAt = now;
         queued.run()
             .then(queued.resolve)
             .catch(queued.reject)
