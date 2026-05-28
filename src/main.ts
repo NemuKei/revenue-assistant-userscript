@@ -147,7 +147,10 @@ const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE = "data-ra-rank-recomme
 const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE = "data-ra-rank-recommendation-room-group-name";
 const RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE = "data-ra-rank-recommendation-reason-fingerprint";
 const RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE = "data-ra-rank-recommendation-confidence-level";
+const RANK_RECOMMENDATION_BUTTON_ACTION_LABEL_ATTRIBUTE = "data-ra-rank-recommendation-action-label";
+const RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE = "data-ra-rank-recommendation-reason-text";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
+const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
 const RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX = "revenue-assistant:rank-recommendation:rank-order-override:";
 const RANK_RECOMMENDATION_DISPLAY_LIMIT = 10;
@@ -678,6 +681,8 @@ interface PendingRankRecommendationFocus {
     stayDate: string;
     roomGroupId: string;
     roomGroupName: string;
+    actionLabel: string | null;
+    reasonText: string | null;
     createdAt: string;
 }
 
@@ -1095,6 +1100,8 @@ function persistPendingRankRecommendationFocusFromElement(element: HTMLElement):
     const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
     const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
     const roomGroupName = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE);
+    const actionLabel = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_LABEL_ATTRIBUTE);
+    const reasonText = element.getAttribute(RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE);
     if (stayDate === null || roomGroupId === null || roomGroupName === null) {
         return;
     }
@@ -1103,6 +1110,8 @@ function persistPendingRankRecommendationFocusFromElement(element: HTMLElement):
         stayDate,
         roomGroupId,
         roomGroupName,
+        actionLabel,
+        reasonText,
         createdAt: new Date().toISOString()
     };
     try {
@@ -1445,6 +1454,8 @@ function readPendingRankRecommendationFocus(): PendingRankRecommendationFocus | 
             stayDate: parsed.stayDate,
             roomGroupId: parsed.roomGroupId,
             roomGroupName: parsed.roomGroupName,
+            actionLabel: typeof parsed.actionLabel === "string" ? parsed.actionLabel : null,
+            reasonText: typeof parsed.reasonText === "string" ? parsed.reasonText : null,
             createdAt: parsed.createdAt
         };
     } catch {
@@ -1490,6 +1501,7 @@ async function applyPendingRankRecommendationFocus(
     }
 
     setSalesSettingBookingCurveOpen(getSalesSettingBookingCurveToggleKey(card.roomGroupName), true);
+    renderPendingRankRecommendationFocusSummary(card, focus);
     card.cardElement.setAttribute(RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE, "");
     card.cardElement.scrollIntoView({
         behavior: "smooth",
@@ -1499,6 +1511,33 @@ async function applyPendingRankRecommendationFocus(
         card.cardElement.removeAttribute(RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE);
     }, 4500);
     clearPendingRankRecommendationFocus();
+}
+
+function renderPendingRankRecommendationFocusSummary(card: SalesSettingCard, focus: PendingRankRecommendationFocus): void {
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE}]`))) {
+        element.remove();
+    }
+
+    const parts = [
+        "料金調整候補",
+        normalizeRankRecommendationFocusText(focus.actionLabel),
+        normalizeRankRecommendationFocusText(focus.reasonText)
+    ].filter((part): part is string => part !== null);
+    const summaryElement = document.createElement("div");
+    summaryElement.setAttribute(RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE, "");
+    summaryElement.textContent = parts.join(" / ");
+
+    if (card.headingElement.parentElement === card.cardElement) {
+        card.cardElement.insertBefore(summaryElement, card.headingElement.nextSibling);
+        return;
+    }
+
+    card.cardElement.prepend(summaryElement);
+}
+
+function normalizeRankRecommendationFocusText(value: string | null): string | null {
+    const trimmed = value?.trim() ?? "";
+    return trimmed === "" ? null : trimmed;
 }
 
 function scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey: string, analysisDate: string): void {
@@ -5943,6 +5982,8 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     rowElement.setAttribute(RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE, candidate.priority);
     rowElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
     rowElement.setAttribute(RANK_RECOMMENDATION_STATUS_ATTRIBUTE, candidate.status);
+    const actionLabel = formatRankRecommendationAction(candidate);
+    const reasonText = candidate.reasonCodes.join(" / ");
 
     const cells = [
         { value: formatRankRecommendationPriority(candidate.priority) },
@@ -5954,9 +5995,9 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
         { value: formatRankRecommendationLeadDays(candidate) },
         { value: candidate.roomGroupName },
         { value: candidate.currentRankName ?? "-" },
-        { value: formatRankRecommendationAction(candidate) },
+        { value: actionLabel },
         {
-            value: candidate.reasonCodes.join(" / "),
+            value: reasonText,
             title: formatRankRecommendationReasonTitle(candidate)
         },
         { value: formatRankRecommendationStatus(candidate.status) }
@@ -5980,6 +6021,8 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, candidate.roomGroupName);
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
     analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, candidate.reasonFingerprint);
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_LABEL_ATTRIBUTE, actionLabel);
+    analyzeLinkElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE, reasonText);
     analyzeLinkElement.href = `/analyze/${formatCompactDateForDisplay(candidate.stayDate)}`;
     analyzeLinkElement.textContent = "Analyzeで確認";
 
@@ -12143,6 +12186,17 @@ function ensureGroupRoomStyles(): void {
             outline: 3px solid #2f6fbb;
             outline-offset: 4px;
             transition: outline-color 0.2s ease;
+        }
+
+        [${RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE}] {
+            margin: 8px 0 10px;
+            padding: 8px 10px;
+            border-left: 4px solid #2f6fbb;
+            background: #eef5ff;
+            color: #1f3550;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.5;
         }
 
         @media (max-width: 900px) {

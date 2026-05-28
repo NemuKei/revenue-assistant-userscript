@@ -488,7 +488,8 @@ Analyze 画面では、該当日付の候補一覧と部屋タイプ別 signal d
 - 該当 stayDate の候補一覧を表示する。
 - 部屋タイプ別 card に signal detail を出す。
 - トップのリストから遷移した場合、sessionStorage などで pending focus を保持する。
-- 後続 task で、対象 roomGroup card を開く、scroll する、highlight する。
+- トップのリストから遷移した場合、対象 roomGroup card を開く、scroll する、highlight する。
+- トップのリストから遷移した場合、highlight した roomGroup card に、どの料金調整候補から来たのかを示す短い summary を表示する。summary は推奨方向と主要根拠の非数値要約に限定し、forecast 数値、sales / ADR 数値、競合価格の金額、差額、比率、推奨レート金額は表示しない。
 - rank change が発生したら `resolved_by_rank_change` として active list から外す。ただし履歴は削除しない。
 
 forecast 実装前は、Analyze detail に forecast 数値を表示しない。評価後に表示する場合も、最初は Analyze detail の diagnostics として扱い、top list への簡易表示とは別 task で判断する。表示する場合は、current、reference curve、forecast の入力、処理、出力を区別できる label と missing diagnostics を持たせる。
