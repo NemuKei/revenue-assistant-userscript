@@ -32,6 +32,8 @@ export interface RankRecommendationCandidate {
     roomGroupName: string;
     currentRankCode: string | null;
     currentRankName: string | null;
+    recommendedRankCode: string | null;
+    recommendedRankName: string | null;
     action: RankRecommendationAction;
     priority: RankRecommendationPriority;
     confidence: number;
@@ -54,6 +56,11 @@ export interface RankRecommendationCurveEvidence {
     diagnostics: string[];
 }
 
+export interface RankRecommendationRankLadderEntry {
+    price_rank_code?: string | null;
+    price_rank_name?: string | null;
+}
+
 export function buildRankRecommendationCandidates(options: {
     response: RankRecommendationCurrentSettingsResponse;
     facilityId: string;
@@ -61,6 +68,7 @@ export function buildRankRecommendationCandidates(options: {
     visibleStayDates: Set<string>;
     generatedAt: string;
     curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>;
+    rankLadder?: readonly RankRecommendationRankLadderEntry[];
 }): RankRecommendationCandidate[] {
     const candidates: RankRecommendationCandidate[] = [];
 
@@ -85,6 +93,7 @@ export function buildRankRecommendationCandidates(options: {
                 roomGroupName,
                 roomGroup,
                 curveEvidence: options.curveEvidenceByKey?.get(buildRankRecommendationEvidenceKey(stayDate, roomGroupId)) ?? null,
+                rankLadder: options.rankLadder ?? [],
                 generatedAt: options.generatedAt
             }));
         }
@@ -103,6 +112,7 @@ function buildRankRecommendationCandidate(options: {
     roomGroupName: string;
     roomGroup: RankRecommendationCurrentSettingRoomGroup;
     curveEvidence: RankRecommendationCurveEvidence | null;
+    rankLadder: readonly RankRecommendationRankLadderEntry[];
     generatedAt: string;
 }): RankRecommendationCandidate {
     const maxRooms = normalizeFiniteNumber(options.roomGroup.max_num_room);
@@ -253,6 +263,11 @@ function buildRankRecommendationCandidate(options: {
     if (currentRankName === null) {
         diagnostics.push("current_rank_missing");
     }
+    const recommendedRank = resolveRecommendedRank({
+        action,
+        currentRankCode,
+        rankLadder: options.rankLadder
+    });
 
     const status: RankRecommendationStatus = action === "not_eligible" ? "not_eligible" : "active";
     const reasonFingerprint = [
@@ -273,6 +288,8 @@ function buildRankRecommendationCandidate(options: {
         roomGroupName: options.roomGroupName,
         currentRankCode,
         currentRankName,
+        recommendedRankCode: recommendedRank?.code ?? null,
+        recommendedRankName: recommendedRank?.name ?? null,
         action,
         priority,
         confidence,
@@ -336,6 +353,41 @@ function normalizeFiniteNumber(value: number | undefined): number | null {
 function normalizeNullableText(value: string | null | undefined): string | null {
     const trimmed = value?.trim() ?? "";
     return trimmed === "" ? null : trimmed;
+}
+
+function resolveRecommendedRank(options: {
+    action: RankRecommendationAction;
+    currentRankCode: string | null;
+    rankLadder: readonly RankRecommendationRankLadderEntry[];
+}): { code: string; name: string } | null {
+    if (options.currentRankCode === null) {
+        return null;
+    }
+
+    const direction = getRecommendedRankStepDirection(options.action);
+    if (direction === 0) {
+        return null;
+    }
+
+    const ladder = options.rankLadder.flatMap((entry) => {
+        const code = normalizeNullableText(entry.price_rank_code);
+        const name = normalizeNullableText(entry.price_rank_name);
+        return code === null || name === null ? [] : [{ code, name }];
+    });
+    const currentIndex = ladder.findIndex((entry) => entry.code === options.currentRankCode);
+    const targetIndex = currentIndex + direction;
+    const targetRank = ladder[targetIndex];
+    return targetRank ?? null;
+}
+
+function getRecommendedRankStepDirection(action: RankRecommendationAction): -1 | 0 | 1 {
+    if (action === "raise_watch") {
+        return 1;
+    }
+    if (action === "lower_watch") {
+        return -1;
+    }
+    return 0;
 }
 
 function compareRankRecommendationCandidates(left: RankRecommendationCandidate, right: RankRecommendationCandidate): number {

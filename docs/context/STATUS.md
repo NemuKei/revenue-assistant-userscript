@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-08` まで完了済み。次の Now は `RAU-RR-12` で、`rank_sequences[].default_sequence` の方向を確認する。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-12` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-08` まで完了済み。次の Now は `RAU-SALES-09` で、sales / ADR 弱含み行の priority downgrade を実データで再確認する。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -17,6 +17,7 @@
   - `RAU-RR-09` rank response dataset / metrics を設計する
   - `RAU-RR-10` 推奨ランク算出を設計する
   - `RAU-RR-11` bulk apply feasibility を調査する
+  - `RAU-RR-12` `rank_sequences[].default_sequence` の方向を確認する
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
   - `RAU-FC-03` forecast evaluation dataset を実装する
@@ -40,13 +41,14 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の `Now` は `RAU-RR-12` とする。次は、`rank_sequences[].default_sequence` の方向を通常 Chrome と CDP の read-only 観測で確認し、recommended rank 名を安全に出せるか判断する。
+  - `docs/tasks_backlog.md` の `Now` は `RAU-SALES-09` とする。次は、sales / ADR 弱含み行が実データで再発火した場合に、priority が `medium` 以下へ下がることを通常 Chrome と CDP で確認する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
   - `RAU-FC-05` では、`booking_curve_raw_source:v2` の roomGroup response から `scope="roomGroup"`、`segment="transient"` の `ForecastResult v1 candidate` を生成し、forecast signal を rank recommendation の priority / confidence 補助へ接続済みである。top list には forecast 数値を表示しない。
   - `RAU-RR-09` では rank response dataset の grain、入力、baseline、result window、欠損 diagnostics を `docs/spec_003_rank_recommendation_signal.md` に定義済みである。
-  - `RAU-RR-10` では current rank と rank ladder 候補を使う recommendedRank の条件を定義した。ただし `rank_sequences[].default_sequence` の方向が未確認のため、方向確認までは `recommendedRankDirection` のみを表示する。
+  - `RAU-RR-10` では current rank と rank ladder 候補を使う recommendedRank の条件を定義した。
+  - `RAU-RR-12` では、`rank_sequences[].default_sequence` は名前順初期化用であり、rank 上げ / 下げ方向には使わないと判断した。rank ladder は `/api/v1/rank_sequences` の response 配列順を使う。`raise_watch` は配列上の次、`lower_watch` は前の隣接 rank だけを recommended rank として表示する。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
 - 次スレッドでやらないこと:
   - 推奨レート金額を出さない。
@@ -56,8 +58,8 @@
   - 月次 `/api/v1/booking_curve/monthly` の snapshot read path を、過去 batch の履歴比較や日次差分表示へ広げない。
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
 - 終了条件:
-  - `RAU-RR-12` で、`rank_sequences[].default_sequence` の昇順または降順が Revenue Assistant UI の rank 上げ / 下げのどちらに対応するか確認する。
-  - 確認できる場合は recommended rank 名を表示してよい条件を `docs/spec_003_rank_recommendation_signal.md` に反映し、確認できない場合は `recommendedRankDirection` のみを継続する理由を `docs/context/DECISIONS.md` に残す。
+  - `RAU-SALES-09` で、weak signal 行が発火した場合、その行の priority が `medium` 以下であることを確認する。
+  - weak signal 行が発火しない場合、その snapshot では確認不能であることを `docs/context/STATUS.md` または `docs/context/DECISIONS.md` に残す。
   - sales / ADR reason は引き続き数値を直接出さず、非数値要約に留める。
   - 未確認 API を確認済み仕様として扱わない。
 - subagent 利用方針:
@@ -72,15 +74,16 @@
   - `RAU-RR-02` は実装済み。`compactBookingCurveResponse()` の保持対象を rooms / sales / ADR fields へ拡張し、保存 schema version を `booking_curve_raw_source:v2` へ上げた。IndexedDB database version は object store と index 構造を変えないため 1 のまま据え置いた。既存 v1 record は同じ DB に残るが、v2 の cache key では読まれず、保存済み raw source signal も v2 record だけを有効扱いにする。
   - 2026-05-28 に、Tampermonkey 側で userscript `0.1.0.235` へ更新済みの通常 Chrome 上で `https://ra.jalan.net/analyze/2026-06-17` を確認した。overall summary 1 件、rank overview 1 件、ホテル全体 booking curve section 1 件、SVG 2 件、室タイプ別 toggle button 6 件を確認した。シングルの room card を開くと、card booking curve section 1 件が追加され、booking curve SVG は合計 4 件になった。console error は 0 件だった。
   - 2026-05-28 に、既存 Chrome profile を `remote-debugging-port=9222` 付きで再起動し、CDP 経由で Revenue Assistant origin の IndexedDB を確認した。`booking_curve_raw_source:v2` record は 192 件あり、全 192 件で `booking_curve[]` 配下の `all`、`transient`、`group` に `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` が保持されていた。値は出力していない。`two_years_ago_adr`、`three_years_ago_adr` は観測 record では存在しなかった。
-  - 2026-05-28 に、`RAU-RR-03` の Chrome DevTools Protocol read-only 調査を実施した。`/api/v1/suggest/output/current_settings` から `latest_current.price_rank_code` と `latest_current.price_rank_name` を取得できるため、`stayDate x roomGroup` 単位の current rank は確認済みである。`/api/v1/rank_sequences` から `price_rank_code`、`price_rank_name`、`default_sequence` を取得できるため、rank ladder 候補は確認済みである。ただし `default_sequence` の大小が rank 上げ / 下げのどちらに対応するかは未確認である。`/api/v1/plan_master/plan_rank_price` では観測範囲に実価格 field がなかったため、rank price table と現在販売中価格は未確認のまま扱う。write endpoint 候補は bundle 内で見つかったが実行していない。
+  - 2026-05-28 に、`RAU-RR-03` の Chrome DevTools Protocol read-only 調査を実施した。`/api/v1/suggest/output/current_settings` から `latest_current.price_rank_code` と `latest_current.price_rank_name` を取得できるため、`stayDate x roomGroup` 単位の current rank は確認済みである。`/api/v1/rank_sequences` から `price_rank_code`、`price_rank_name`、`default_sequence` を取得できるため、rank ladder 候補は確認済みである。この時点では `default_sequence` の扱いを未確認としていたが、`RAU-RR-12` で名前順初期化用であり rank 上げ / 下げ方向には使わないと判断済みである。`/api/v1/plan_master/plan_rank_price` では観測範囲に実価格 field がなかったため、rank price table と現在販売中価格は未確認のまま扱う。write endpoint 候補は bundle 内で見つかったが実行していない。
   - `RAU-RR-04` は実装済み。トップ画面に `stayDate x roomGroup` 単位の料金調整候補リスト shell を追加した。行項目は、優先度、宿泊日、部屋タイプ、現ランク、推奨方向、主要根拠、状態、操作である。`Analyzeで確認` は Analyze URL への導線として表示し、`様子見` と `対応不要` は `RAU-RR-07` で永続保存を実装するまで disabled button として出す。候補生成の初期実装は `src/rankRecommendation.ts` に分離し、current settings の current rank、remaining、max を使う仮 shell 用判定である。reference deviation scoring は `RAU-RR-05` で実装する。
   - `RAU-RR-05` は実装済み。`src/rankRecommendation.ts` の候補生成に、IndexedDB の `booking_curve_raw_source:v2` から読む roomGroup booking curve evidence を接続した。asOfDate 時点の `this_year_room_sum` と、`last_year_room_sum` / `two_years_ago_room_sum` / `three_years_ago_room_sum` の平均を、`all`、`transient`、`group` ごとに比較し、reference 上振れ / 下振れ / 不足を reasonCodes と diagnostics に残す。group が上振れ主因で transient が上振れていない場合は、個人価格 rank の上げ検討を `watch` へ抑制する。reference 欠損は推測で埋めず `reference不足` として表示する。
   - `RAU-RR-06` は実装済み。トップ候補リストの `Analyzeで確認` click 時に `sessionStorage` へ pending focus を保存し、Analyze 表示時に対象 roomGroup の booking curve card を開く状態にして scroll / highlight する。対象が見つからない場合は通常 Analyze 表示を維持し、console warning に診断を出す。Chrome CDP 一時注入確認では、トップ候補から `/analyze/2026-05-28` へ遷移し、pending focus が消え、highlight 1 件が付くことを確認した。
   - `RAU-RR-07` は実装済み。`src/rankRecommendationDecisionStore.ts` に IndexedDB store `revenue-assistant-rank-recommendations` / `rank-recommendation-decisions` を追加し、`stayDate x roomGroup x action x reasonFingerprint` 単位で `snooze` と `dismiss` を保存する。`様子見` は LT 帯に応じた asOfDate 基準 cooldown を持ち、cooldown 中は同じ candidate を list から抑制する。`対応不要` は同じ reasonFingerprint を抑制する。Chrome CDP 一時注入確認では、`様子見` click 後に候補行が 10 件から 9 件になり、検証用 decision record 1 件を作成後に削除した。
   - `RAU-RR-08` は実装済み。トップ候補 list の同期時に表示範囲の `/api/v3/lincoln/suggest/status` を読み、同じ `stayDate x roomGroupId` で asOfDate 以降の rank change がある candidate を active list から外す。Chrome CDP 一時注入確認では、候補リスト表示、`/api/v3/lincoln/suggest/status` request、console error 0 を確認した。
   - `RAU-RR-09` は docs 設計済み。rank response dataset は `facilityId x stayDate x roomGroupId x rankChangeEvent` を grain とし、rank change event、booking_curve raw source v2、reference curve、競合価格 snapshot を接続候補にする。実価格または rank price table が取れるまでは、価格変化率や価格弾力性を出さず、`ランク反応度` として扱う。
-  - `RAU-RR-10` は docs 設計済み。current rank は `/api/v1/suggest/output/current_settings`、rank ladder 候補は `/api/v1/rank_sequences` を第一候補にする。ただし `default_sequence` の方向確認までは `recommendedRank` を出さず、`recommendedRankDirection` と日本語表示名を使う。
+  - `RAU-RR-10` は docs 設計済み。current rank は `/api/v1/suggest/output/current_settings`、rank ladder 候補は `/api/v1/rank_sequences` を第一候補にする。当時は `default_sequence` の扱いが未確認だったため `recommendedRank` を出さず、`recommendedRankDirection` と日本語表示名を使う契約にしていた。`RAU-RR-12` で、rank ladder は `/api/v1/rank_sequences` の response 配列順を使い、隣接 rank だけを recommended rank として表示する契約へ更新済みである。
   - `RAU-RR-11` は feasibility 判断済み。bulk apply は `not-now` とし、first phase では一括反映 button も Revenue Assistant への write API 実行も追加しない。将来検討には、反映直前 current rank 再取得、別 rank change 確認、snoozed / dismissed / cooldown / low confidence / small capacity / group-driven 除外、全件 preview、明示選択、partial failure 保存が必要である。
+  - `RAU-RR-12` は完了した。Chrome拡張で通常 Chrome の Revenue Assistant root tab が 1 件あることを確認し、Chrome DevTools Protocol read-only で `/api/v1/rank_sequences`、`/api/v3/lincoln/suggest/status?filter_type=stay_date&from=20260501&to=20260531`、Revenue Assistant 配信 JavaScript を確認した。`default_sequence` は「名前順に並べ替える」初期順へ戻すための値であり、rank 上げ / 下げ方向には使わない。rank ladder は `/api/v1/rank_sequences` の response 配列順を使う。実装では `raise_watch` に response 配列上の次 rank、`lower_watch` に前 rank を表示し、top list の推奨方向を `1段上げ検討: {rankName}` または `1段下げ注意: {rankName}` にした。通常 Chrome への最新 dist 一時注入後、top list 10 行、`raise_watch` 10 行、隣接 rank 表示 9 行、推奨レート金額表示 0 行、page error / console error 0 件を確認した。current rank が ladder 末尾で次 rank が存在しない 1 行は従来どおり `上げ検討` と表示した。推奨レート金額、2段階以上の移動、Revenue Assistant write / bulk apply は追加していない。
   - `RAU-FC-01` は docs 判断済み。rooms-only forecast は priority / confidence 改善や rank response baseline として有望だが、未評価のまま forecast model を実装したり UI へ数値表示したりしない。先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を確定する。
   - `RAU-FC-02` は docs 設計済み。`docs/spec_002_curve_core.md` に、evaluation dataset の grain を `facilityId x targetStayDate x asOfDate x scope x roomGroupId? x segment` とすること、`ForecastResult v1 candidate` の field と diagnostics、`maeRooms` / `smape` / `biasRooms`、rank recommendation impact proxy、`snoozed_by_user` を false positive と誤読しない注意を反映した。
   - `RAU-FC-03` は実装済み。`src/curveCore.ts` に `ForecastResultV1Candidate`、`ForecastEvaluationCase`、`ForecastEvaluationResult`、`buildForecastEvaluationCase()`、`summarizeForecastEvaluationResults()` を追加した。`actualFinalRooms` と `observedPrefix` を分け、未来情報混入防止、`0日前` / `ACT` 分離制約、小キャパ、group-driven diagnostics、`maeRooms` / `smape` / `biasRooms` 集計、rank recommendation impact proxy を扱えるようにした。
@@ -218,10 +221,10 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-RR-12` を確認する。
-2. 通常 Chrome の Revenue Assistant 画面と CDP の read-only API 観測で、current rank と `rank_sequences[].default_sequence` の並びを比較する。
-3. `default_sequence` の方向を確認できる場合は、recommended rank 名を表示してよい条件を `docs/spec_003_rank_recommendation_signal.md` に反映する。
-4. 確認できない場合は、`recommendedRankDirection` のみを継続する理由を `docs/context/DECISIONS.md` に残す。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-SALES-09` を確認する。
+2. Chrome拡張で通常 Chrome の Revenue Assistant 対象タブを確認する。
+3. CDP で最新 dist を一時注入し、top list の action、priority、weak signal reason、sales / ADR 数値非表示を確認する。
+4. weak signal 行が発火した場合、その行の priority が `medium` 以下であることを確認する。発火しない場合は、その snapshot では確認不能であることを正本に残す。
 5. Rank Recommendation Bundle に戻る場合は、forecast 数値を top list へ直接表示しない契約と、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
 
 変更しない契約:
@@ -394,7 +397,8 @@
 
 ## Open Questions / Risks
 
-- current rank と rank ladder 候補は `RAU-RR-03` で確認済みである。ただし `rank_sequences[].default_sequence` の大小が rank 上げ / 下げのどちらに対応するか、rank 別価格表、現在販売中価格、rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動は未確認である。
+- current rank と rank ladder 候補は `RAU-RR-03` で確認済みである。`rank_sequences[].default_sequence` は `RAU-RR-12` で名前順初期化用と確認済みであり、rank 上げ / 下げ方向には使わない。
+- rank 別価格表、現在販売中価格、rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動は未確認である。
 - rank recommendation first phase では推奨レート金額を出さない。金額推奨を行うには、プラン別、人数別、食事条件別、販売中価格、rank ladder、競合価格、施設方針の確認が必要であり、現時点では未確認項目が多い。
 - top 料金調整候補リストは実装済みで、warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示とは別の list layer として表示する。今後追加 UI を行う場合も、これらの意味を混同しない。
 - user snooze / 対応不要の browser-local 保存は実装済みである。今後の改善では、priority / confidence / reasonFingerprint 変化時の再表示条件を、実データで false positive と見直し候補を分けながら調整する必要がある。

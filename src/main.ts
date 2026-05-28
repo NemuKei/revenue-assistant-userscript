@@ -61,6 +61,7 @@ import {
     type RankRecommendationCurrentSettingsResponse,
     type RankRecommendationForecastSignal,
     type RankRecommendationPriority,
+    type RankRecommendationRankLadderEntry,
     type RankRecommendationSalesAdrHealthSignal,
     type RankRecommendationStatus
 } from "./rankRecommendation";
@@ -80,6 +81,7 @@ const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
 const CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
+const RANK_SEQUENCES_ENDPOINT = "/api/v1/rank_sequences";
 const LINCOLN_SUGGEST_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
 const SALES_SETTING_WARM_CACHE_LOOKBACK_DAYS = 1;
@@ -474,6 +476,10 @@ interface LincolnSuggestStatusResponse {
     suggest_statuses?: LincolnSuggestStatus[];
 }
 
+interface RankRecommendationRankSequencesResponse {
+    rank_sequences?: RankRecommendationRankLadderEntry[];
+}
+
 interface SalesSettingRankSummary {
     roomGroupName: string;
     displayOrder: number;
@@ -654,6 +660,7 @@ interface RankRecommendationWarmCachePriorityCandidate {
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const rankRecommendationCurrentSettingsCache = new Map<string, Promise<RankRecommendationCurrentSettingsResponse>>();
+const rankRecommendationRankLadderCache = new Map<string, Promise<RankRecommendationRankLadderEntry[]>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const lincolnSuggestStatusRangeCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const interactionSyncTimeoutIds: number[] = [];
@@ -4402,15 +4409,22 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     ensureGroupRoomStyles();
 
     const generatedAt = new Date().toISOString();
-    const response = await getRankRecommendationCurrentSettingsForRange(dateRange.fromDateKey, dateRange.toDateKey)
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to load rank recommendation current settings`, {
-                fromDateKey: dateRange.fromDateKey,
-                toDateKey: dateRange.toDateKey,
-                error
-            });
-            return null;
-        });
+    const [response, rankLadder] = await Promise.all([
+        getRankRecommendationCurrentSettingsForRange(dateRange.fromDateKey, dateRange.toDateKey)
+            .catch((error: unknown) => {
+                console.warn(`[${SCRIPT_NAME}] failed to load rank recommendation current settings`, {
+                    fromDateKey: dateRange.fromDateKey,
+                    toDateKey: dateRange.toDateKey,
+                    error
+                });
+                return null;
+            }),
+        getRankRecommendationRankLadder()
+            .catch((error: unknown) => {
+                console.warn(`[${SCRIPT_NAME}] failed to load rank recommendation rank ladder`, { error });
+                return [] as RankRecommendationRankLadderEntry[];
+            })
+    ]);
 
     if (activeAnalyzeDate !== null || activeBatchDateKey !== batchDateKey || activeFacilityCacheKey !== facilityCacheKey) {
         return;
@@ -4437,7 +4451,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         asOfDate: batchDateKey,
         visibleStayDates: new Set(cells.map((cell) => cell.stayDate)),
         generatedAt,
-        curveEvidenceByKey
+        curveEvidenceByKey,
+        rankLadder
     });
     const decisionRecords = await readRankRecommendationDecisionRecords()
         .catch((error: unknown) => {
@@ -4466,7 +4481,11 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             batchDateKey,
             dateRange.fromDateKey,
             dateRange.toDateKey,
-            visibleCandidates.map((candidate) => candidate.reasonFingerprint).join("|")
+            visibleCandidates.map((candidate) => [
+                candidate.reasonFingerprint,
+                candidate.currentRankName ?? "",
+                candidate.recommendedRankName ?? ""
+            ].join(",")).join("|")
         ].join(":"),
         statusText: null
     });
@@ -4489,6 +4508,38 @@ function getRankRecommendationCurrentSettingsForRange(
         });
     rankRecommendationCurrentSettingsCache.set(cacheKey, request);
     return request;
+}
+
+function getRankRecommendationRankLadder(): Promise<RankRecommendationRankLadderEntry[]> {
+    const cacheKey = "default";
+    const cached = rankRecommendationRankLadderCache.get(cacheKey);
+    if (cached !== undefined) {
+        return cached;
+    }
+
+    const request = loadRankRecommendationRankLadder()
+        .catch((error: unknown) => {
+            rankRecommendationRankLadderCache.delete(cacheKey);
+            throw error;
+        });
+    rankRecommendationRankLadderCache.set(cacheKey, request);
+    return request;
+}
+
+async function loadRankRecommendationRankLadder(): Promise<RankRecommendationRankLadderEntry[]> {
+    const response = await fetch(new URL(RANK_SEQUENCES_ENDPOINT, window.location.origin).toString(), {
+        credentials: "include",
+        headers: {
+            "X-Requested-With": "XMLHttpRequest"
+        }
+    });
+
+    if (!response.ok) {
+        throw new Error(`rank sequences request failed: ${response.status}`);
+    }
+
+    const payload = (await response.json()) as RankRecommendationRankSequencesResponse;
+    return payload.rank_sequences ?? [];
 }
 
 async function buildRankRecommendationCurveEvidenceByKey(
@@ -5075,7 +5126,7 @@ function createRankRecommendationRow(candidate: RankRecommendationCandidate): HT
         formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate),
         candidate.roomGroupName,
         candidate.currentRankName ?? "-",
-        formatRankRecommendationAction(candidate.action),
+        formatRankRecommendationAction(candidate),
         candidate.reasonCodes.join(" / "),
         formatRankRecommendationStatus(candidate.status)
     ];
@@ -5165,11 +5216,17 @@ function formatRankRecommendationPriority(priority: RankRecommendationPriority):
     }
 }
 
-function formatRankRecommendationAction(action: RankRecommendationAction): string {
-    switch (action) {
+function formatRankRecommendationAction(candidate: RankRecommendationCandidate): string {
+    switch (candidate.action) {
         case "raise_watch":
+            if (candidate.recommendedRankName !== null) {
+                return `1段上げ検討: ${candidate.recommendedRankName}`;
+            }
             return "上げ検討";
         case "lower_watch":
+            if (candidate.recommendedRankName !== null) {
+                return `1段下げ注意: ${candidate.recommendedRankName}`;
+            }
             return "下げ注意";
         case "not_eligible":
             return "判定対象外";

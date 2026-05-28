@@ -154,7 +154,10 @@ first phase では次を行わない。
 
 - 2026-05-28 の Chrome DevTools Protocol read-only 調査で取得できることを確認した。
 - response は `rank_sequences[]` を持ち、各要素に `price_rank_code`、`price_rank_name`、`default_sequence` が含まれる。
-- rank ladder の候補として使える。ただし、`default_sequence` の大小が Revenue Assistant UI 上の rank 上げ / 下げとどの方向に対応するかは、画面操作または既存履歴との照合で別途確認する。方向が未確認の間は、UI は `recommendedRank` 名を断定せず、`recommendedRankDirection` を第一表示にする。
+- 2026-05-28 の追加確認では、Revenue Assistant の配信 JavaScript が `defaultSequence` を「名前順に並べ替える」初期順として扱い、設定保存時は並び替え済みの `priceRankCode` 配列を送信していた。そのため、RAU は `default_sequence` を rank 上げ / 下げの方向として使わない。
+- rank ladder は `rank_sequences[]` の response 配列順を使う。観測した response 配列順は rank 名 `1` から `20` までの自然順で、`default_sequence` は `1,10,11,...,20,2,3,...,9` の名前順初期化用の値だった。
+- `raise_watch` の隣接 recommended rank は、response 配列上で current rank の次にある rank とする。`lower_watch` の隣接 recommended rank は、response 配列上で current rank の前にある rank とする。
+- current rank が response 配列に存在しない場合、または current rank が配列の端で隣接 rank が存在しない場合は、`recommendedRank` を null にし、`recommendedRankDirection` のみを表示する。
 
 `/api/v1/rank_colors`
 
@@ -183,7 +186,6 @@ JavaScript bundle から見つかった write endpoint 候補
 
 次は確認済み仕様として扱わず、browser-trace / browser-to-api 調査 task にする。
 
-- `rank_sequences[].default_sequence` の大小が rank 上げ / 下げのどちらに対応するか。
 - rank 別、日付別、部屋タイプ別価格表の取得可否。
 - Revenue Assistant への rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動。
 - 現在販売中価格の全体像が取れるか。
@@ -397,10 +399,10 @@ rank response dataset の first contract:
 推奨 rank 算出の first contract:
 
 - current rank は `/api/v1/suggest/output/current_settings` の `latest_current.price_rank_code` / `price_rank_name` を第一候補にする。
-- rank ladder は `/api/v1/rank_sequences` の `price_rank_code`、`price_rank_name`、`default_sequence` を候補にする。
-- `default_sequence` の大小が Revenue Assistant UI の rank 上げ / 下げと対応する方向は未確認である。方向が確認されるまでは `recommendedRank` を出さず、`recommendedRankDirection` と UI 表示名 `上げ検討` / `下げ注意` / `監視` / `判定対象外` を出す。
+- rank ladder は `/api/v1/rank_sequences` の response 配列順を使う。`price_rank_code` と `price_rank_name` は recommended rank 名表示に使う。`default_sequence` は名前順初期化用の値であり、rank 上げ / 下げ方向には使わない。
+- `raise_watch` では current rank の次の response 配列要素を、`lower_watch` では current rank の前の response 配列要素を、first wave の隣接 `recommendedRank` として扱う。
 - 方向確認後も、first wave の recommendedRank は隣接 rank のみに限定する。2 段階以上の rank 移動、価格差最大化、売上最大化 rank の直接提示は行わない。
-- current rank が欠損する場合、rank ladder に current rank code が存在しない場合、または ladder の方向が未確認の場合は、`recommendedRank` を null にし、`recommendedRankDirection` のみを表示する。
+- current rank が欠損する場合、rank ladder に current rank code が存在しない場合、または隣接 rank が存在しない場合は、`recommendedRank` を null にし、`recommendedRankDirection` のみを表示する。
 - rank price table または実販売価格が取れるまで、recommendedRank から推奨レート金額を導出しない。
 
 ## UI Contract
@@ -512,18 +514,17 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 
 ## Open Questions
 
-1. `rank_sequences[].default_sequence` の大小は、Revenue Assistant UI 上の rank 上げ / 下げのどちらに対応するか。
-2. rank 別、日付別、roomGroup 別の price table は取得できるか。
-3. Revenue Assistant への rank 反映 API 候補は存在するが、request shape、権限、CSRF、同時編集時の挙動、安全制約、partial failure は何か。
-4. `reflection_allow.is_allowed` が false のとき、標準 UI と API はどのように反映を止めるか。
-5. 現在販売中価格の全体像は取得できるか。
-6. プラン別、人数別、食事条件別の価格と rank の関係は取得できるか。
-7. 小キャパの eligibility threshold は何室以下、または残室率何%以下を初期値にするか。
-8. 様子見 cooldown の LT 帯別 default duration をどう設定するか。
-9. reasonFingerprint に含める reasonCodes、threshold、data version、scoring version の境界をどう切るか。
-10. 競合価格 snapshot のどの変化量を `competitor price movement` として扱うか。
-11. sales / ADR diagnostics を priority / confidence または reasonCodes に接続する場合、どの変化量と閾値を初期値にするか。
-12. `RAU-FC-03` の実データ評価で、forecast diagnostics を priority / confidence に接続できるだけの安定性があるか。
+1. rank 別、日付別、roomGroup 別の price table は取得できるか。
+2. Revenue Assistant への rank 反映 API 候補は存在するが、request shape、権限、CSRF、同時編集時の挙動、安全制約、partial failure は何か。
+3. `reflection_allow.is_allowed` が false のとき、標準 UI と API はどのように反映を止めるか。
+4. 現在販売中価格の全体像は取得できるか。
+5. プラン別、人数別、食事条件別の価格と rank の関係は取得できるか。
+6. 小キャパの eligibility threshold は何室以下、または残室率何%以下を初期値にするか。
+7. 様子見 cooldown の LT 帯別 default duration をどう設定するか。
+8. reasonFingerprint に含める reasonCodes、threshold、data version、scoring version の境界をどう切るか。
+9. 競合価格 snapshot のどの変化量を `competitor price movement` として扱うか。
+10. sales / ADR diagnostics を priority / confidence または reasonCodes に接続する場合、どの変化量と閾値を初期値にするか。
+11. `RAU-FC-03` の実データ評価で、forecast diagnostics を priority / confidence に接続できるだけの安定性があるか。
 
 ## References
 
