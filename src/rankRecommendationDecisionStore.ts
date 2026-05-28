@@ -5,6 +5,7 @@ const RANK_RECOMMENDATION_DECISION_DB_VERSION = 1;
 const RANK_RECOMMENDATION_DECISION_STORE_NAME = "rank-recommendation-decisions";
 
 export type RankRecommendationDecisionType = "snooze" | "dismiss";
+export type RankRecommendationDecisionConfidenceLevel = "high" | "medium" | "low";
 
 export interface RankRecommendationDecisionKeyParts {
     facilityId: string;
@@ -21,6 +22,7 @@ export interface RankRecommendationDecisionRecord extends RankRecommendationDeci
     decidedAt: string;
     asOfDate: string;
     cooldownUntilAsOfDate: string | null;
+    confidenceLevel?: RankRecommendationDecisionConfidenceLevel;
 }
 
 export function buildRankRecommendationDecisionCacheKey(parts: RankRecommendationDecisionKeyParts): string {
@@ -39,6 +41,7 @@ export function buildRankRecommendationDecisionRecord(options: {
     decisionType: RankRecommendationDecisionType;
     asOfDate: string;
     cooldownUntilAsOfDate: string | null;
+    confidenceLevel?: RankRecommendationDecisionConfidenceLevel;
 }): RankRecommendationDecisionRecord {
     return {
         ...options.keyParts,
@@ -47,7 +50,8 @@ export function buildRankRecommendationDecisionRecord(options: {
         decisionType: options.decisionType,
         decidedAt: new Date().toISOString(),
         asOfDate: options.asOfDate,
-        cooldownUntilAsOfDate: options.cooldownUntilAsOfDate
+        cooldownUntilAsOfDate: options.cooldownUntilAsOfDate,
+        ...(options.confidenceLevel === undefined ? {} : { confidenceLevel: options.confidenceLevel })
     };
 }
 

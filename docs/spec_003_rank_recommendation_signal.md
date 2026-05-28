@@ -158,6 +158,7 @@ first phase では次を行わない。
 - 2026-05-28 の `RAU-RR-16` 追加確認では、設定画面 `設定 > 表示 > 料金ランクの並び順` の route が `/settings/price-rank-sequence` であり、この画面が `GET /api/v1/rank_sequences` の配列順をそのままドラッグリストへ表示することを確認した。保存時は `POST /api/v1/rank_sequences` へ並び替え後の `priceRankCode` 配列を送る。したがって RAU は、manual override がない場合、`rank_sequences[]` の配列順を Revenue Assistant 設定画面の保存済み rank 並び順として扱う。
 - 大国町では、設定画面 `料金ランクの並び順` が高ランクから低ランクの順に `1` から `20` へ並んでいる。RAU はこの保存済み順序を source `settings_screen` として優先し、`1` を最高ランク、`20` を最低ランクとして扱う。
 - rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ数字系や文字系でも、`1` や `A` が最高ランクになる運用と、最低ランクになる運用の両方があり得る。名前パターンだけでは上下関係を安全に断定できないため、数字、ローマ字、英字、記号の推定ロジックを積み増して確認済み source と同等に扱わない。
+- カレンダーベースの曜日別関係や、競合価格内での自社料金位置は、rank order source として上下関係を確定する入力にはしない。これらは、rank order が `settings_screen` または `manual_override` で確定している前提で、候補の priority、confidence、reasonCodes、diagnostics を補助する入力候補として扱う。
 - 設定画面の保存済み順序が取得できない場合に限り、rank 名がすべて整数として読めるなら、RAU は rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定する。この fallback は、設定画面順序や manual override と同じ確定 source ではなく、source `numeric_rank_name` として UI と diagnostics に明示する。
 - `raise_watch` の隣接 recommended rank は、高ランクから低ランクへの順序上で current rank の 1 つ高い rank とする。`lower_watch` の隣接 recommended rank は、同じ順序上で current rank の 1 つ低い rank とする。
 - rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` のいずれかとして扱う。source 優先順位は、利用者が browser-local に保存した `manual_override`、Revenue Assistant 設定画面の保存済み順序である `settings_screen`、設定順序が使えない場合の fallback である `numeric_rank_name`、解決不能の `unresolved` とする。
@@ -292,6 +293,7 @@ first phase の UI は、最低限次の user decision を持つ。
 - 競合価格が大きく変化した。
 - 候補の主因が団体起因から個人起因へ変わった。
 - reasonFingerprint が変わった。
+- `様子見` または `対応不要` の判断時より、confidence の表示段階が上がった。
 
 ### Dismiss / 対応不要
 
@@ -299,6 +301,7 @@ first phase の UI は、最低限次の user decision を持つ。
 
 - 同じ `stayDate x roomGroup x action x reasonFingerprint` は抑制する。
 - 方向、主要根拠、または reasonFingerprint が大きく変わった場合は、再表示候補にできる。
+- `対応不要` の判断時より confidence の表示段階が上がった場合は、同じ reasonFingerprint でも再表示候補にできる。ここでいう confidence の表示段階は、top list に出す `高`、`中`、`低` の段階であり、小数値の細かな増減は直接表示しない。
 - 対応不要の履歴は、future scoring で false positive として使えるように残す。
 
 ## Priority / Scoring

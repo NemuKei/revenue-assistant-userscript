@@ -76,6 +76,7 @@ import {
     buildRankRecommendationDecisionRecord,
     readRankRecommendationDecisionRecords,
     writeRankRecommendationDecisionRecord,
+    type RankRecommendationDecisionConfidenceLevel,
     type RankRecommendationDecisionRecord,
     type RankRecommendationDecisionType
 } from "./rankRecommendationDecisionStore";
@@ -145,6 +146,7 @@ const RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE = "data-ra-rank-recommenda
 const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE = "data-ra-rank-recommendation-room-group-id";
 const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE = "data-ra-rank-recommendation-room-group-name";
 const RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE = "data-ra-rank-recommendation-reason-fingerprint";
+const RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE = "data-ra-rank-recommendation-confidence-level";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
 const RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX = "revenue-assistant:rank-recommendation:rank-order-override:";
@@ -1120,6 +1122,9 @@ async function persistRankRecommendationDecisionFromElement(element: HTMLElement
     const roomGroupName = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE);
     const action = parseRankRecommendationAction(element.getAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE));
     const reasonFingerprint = element.getAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE);
+    const confidenceLevel = parseRankRecommendationDecisionConfidenceLevel(
+        element.getAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE)
+    );
     const facilityId = activeFacilityCacheKey;
 
     if (
@@ -1130,6 +1135,7 @@ async function persistRankRecommendationDecisionFromElement(element: HTMLElement
         || roomGroupName === null
         || action === null
         || reasonFingerprint === null
+        || confidenceLevel === null
         || facilityId === null
     ) {
         return;
@@ -1150,7 +1156,8 @@ async function persistRankRecommendationDecisionFromElement(element: HTMLElement
         roomGroupName,
         decisionType,
         asOfDate,
-        cooldownUntilAsOfDate
+        cooldownUntilAsOfDate,
+        confidenceLevel
     })).catch((error: unknown) => {
         console.warn(`[${SCRIPT_NAME}] failed to write rank recommendation decision`, {
             decisionType,
@@ -1295,6 +1302,14 @@ function readRankRecommendationRankOrderOverride(facilityCacheKey: string): Rank
 
 function parseRankRecommendationDecisionType(value: string | null): RankRecommendationDecisionType | null {
     if (value === "snooze" || value === "dismiss") {
+        return value;
+    }
+
+    return null;
+}
+
+function parseRankRecommendationDecisionConfidenceLevel(value: string | null): RankRecommendationDecisionConfidenceLevel | null {
+    if (value === "high" || value === "medium" || value === "low") {
         return value;
     }
 
@@ -5500,6 +5515,10 @@ function applyRankRecommendationDecisionFilter(
             return true;
         }
 
+        if (isRankRecommendationConfidenceEscalated(candidate, decision)) {
+            return true;
+        }
+
         if (decision.decisionType === "dismiss") {
             hiddenCount += 1;
             return false;
@@ -5516,6 +5535,18 @@ function applyRankRecommendationDecisionFilter(
         candidates: visibleCandidates,
         hiddenCount
     };
+}
+
+function isRankRecommendationConfidenceEscalated(
+    candidate: RankRecommendationCandidate,
+    decision: RankRecommendationDecisionRecord
+): boolean {
+    if (decision.confidenceLevel === undefined) {
+        return false;
+    }
+
+    return getRankRecommendationConfidenceLevelWeight(getRankRecommendationConfidenceLevel(candidate.confidence))
+        > getRankRecommendationConfidenceLevelWeight(decision.confidenceLevel);
 }
 
 function applyResolvedRankRecommendationFilter(
@@ -5863,6 +5894,7 @@ function setRankRecommendationDecisionButtonAttributes(
     buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, candidate.roomGroupName);
     buttonElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
     buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, candidate.reasonFingerprint);
+    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE, getRankRecommendationConfidenceLevel(candidate.confidence));
 }
 
 function resolveRankRecommendationListHost(): { parentElement: HTMLElement; insertAfterElement: HTMLElement } | null {
@@ -5914,13 +5946,37 @@ function formatRankRecommendationActionLabel(action: RankRecommendationAction): 
 }
 
 function formatRankRecommendationConfidence(confidence: number): string {
+    switch (getRankRecommendationConfidenceLevel(confidence)) {
+        case "high":
+            return "高";
+        case "medium":
+            return "中";
+        case "low":
+        default:
+            return "低";
+    }
+}
+
+function getRankRecommendationConfidenceLevel(confidence: number): RankRecommendationDecisionConfidenceLevel {
     if (confidence >= 0.6) {
-        return "高";
+        return "high";
     }
     if (confidence >= 0.4) {
-        return "中";
+        return "medium";
     }
-    return "低";
+    return "low";
+}
+
+function getRankRecommendationConfidenceLevelWeight(confidenceLevel: RankRecommendationDecisionConfidenceLevel): number {
+    switch (confidenceLevel) {
+        case "high":
+            return 3;
+        case "medium":
+            return 2;
+        case "low":
+        default:
+            return 1;
+    }
 }
 
 function formatRankRecommendationConfidenceTitle(candidate: RankRecommendationCandidate): string {

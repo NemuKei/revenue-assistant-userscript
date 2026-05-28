@@ -1872,6 +1872,37 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-27 confidence 上昇時に user decision 抑制を解除する
+
+- 状態:
+  - 2026-05-28 実装済み。
+- 目的:
+  - `様子見` または `対応不要` にした候補でも、同じ `stayDate x roomGroup x action x reasonFingerprint` のまま confidence 表示段階が上がった場合は、再確認が必要な候補として active list に戻せるようにする。
+  - 利用者判断を尊重しつつ、候補の確度が `低` から `中`、または `中` から `高` へ上がった場合の見落としを減らす。
+- 背景:
+  - 既存の `reasonFingerprint` は facility、stayDate、roomGroup、action、priority、reasonCodes、diagnostics を含む。そのため priority、主要根拠、diagnostics が変わった場合は従来でも別 fingerprint として再表示される。
+  - 一方、confidence の小数値や表示段階だけが変わる場合は同じ fingerprint のままになり、`対応不要` または cooldown 中の `様子見` で隠れ続ける可能性があった。
+- スコープ:
+  - user decision record に、判断時点の confidence 表示段階 `high | medium | low` を保存する。
+  - decision filter では、現在候補の confidence 表示段階が保存時より上がった場合だけ、同じ fingerprint でも active list に表示する。
+  - 既存 decision record は confidence 表示段階を持たないため、従来どおり exact fingerprint match で抑制する。
+  - confidence の表示段階は top list と同じ `高`、`中`、`低` の threshold に対応させる。
+- 非目標:
+  - reasonFingerprint の構成を変更しない。
+  - 既存 decision record を migration しない。
+  - top list に confidence の小数値、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を表示しない。
+  - Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - 新しく保存する user decision record に confidence 表示段階が保存される。
+  - 同じ fingerprint の候補でも、保存時より confidence 表示段階が上がった場合は active list に残る。
+  - confidence 表示段階が同じ、または下がった場合は、従来どおり `対応不要` または cooldown 中の `様子見` により非表示になる。
+  - confidence 表示段階を持たない既存 decision record は従来どおり扱われる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2456,6 +2487,7 @@ Later:
 - `RAU-RR-24` は 2026-05-28 に実装済みである。top list の meta に、表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示する。これは表示中候補の内訳であり、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。
 - `RAU-RR-25` は 2026-05-28 に実装済みである。`current_settings` 取得失敗時の top list status を HTTP 401、HTTP 403、その他 HTTP status、status 不明に分け、ログイン切れまたは権限不足を利用者が区別できるようにした。候補生成、rank order、scoring、API request 範囲は変更していない。
 - `RAU-RR-26` は 2026-05-28 に実装済みである。user decision と rank change resolved による非表示件数を top list meta に表示し、候補 list が短い、または空に見える理由を説明する。候補生成、scoring、rank order、manual override、user decision 保存条件、resolved 判定条件、API request 範囲は変更していない。
+- `RAU-RR-27` は 2026-05-28 に実装済みである。user decision record に判断時点の confidence 表示段階を保存し、同じ `stayDate x roomGroup x action x reasonFingerprint` でも現在候補の confidence 表示段階が保存時より上がった場合は active list に再表示する。既存 decision record は confidence 表示段階を持たないため、従来どおり exact fingerprint match で抑制する。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

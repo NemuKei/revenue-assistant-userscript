@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-26` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `なし`。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-27` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `なし`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -32,6 +32,7 @@
   - `RAU-RR-24` top list meta に候補内訳を表示する
   - `RAU-RR-25` current settings 取得失敗時の status 表示を具体化する
   - `RAU-RR-26` user decision / resolved 非表示件数を top list meta に表示する
+  - `RAU-RR-27` confidence 上昇時に user decision 抑制を解除する
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
   - `RAU-FC-03` forecast evaluation dataset を実装する
@@ -55,7 +56,7 @@
   - `docs/spec_002_curve_core.md`
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
-  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、非数値の確度表示、確度 tooltip の非数値根拠補足、top list meta の候補内訳表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示まで完了済みとして扱う。
+  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、非数値の確度表示、確度 tooltip の非数値根拠補足、top list meta の候補内訳表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除まで完了済みとして扱う。
   - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: なし` とする。次に進める場合は、Rank Recommendation Bundle の残りではなく、`docs/tasks_backlog.md` の既存 later task 群から次の実作業を選び、目的、非目標、受け入れ条件、確認方法を明確にしてから着手する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
@@ -78,6 +79,7 @@
   - `RAU-RR-24` では、top list 上部の meta に表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示する。summary は表示中候補の内訳だけを示し、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。Chrome拡張 backend は Browser Use runtime から extension instance 2 件を検出したが、公開 capability は `pageAssets` のみだったため、実画面 DOM 確認は Chrome DevTools Protocol で行った。通常 Chrome の実 Revenue Assistant tab は login / current settings 401 状態だったため、同じ RA origin 上の iframe に検証用 calendar DOM と合成 API response を置き、最新 dist だけを一時実行した。合成確認では top list 3 行、meta `優先度順 3件 / 推奨方向 上げ検討 1件・下げ注意 1件・判定対象外 1件 / 優先度 高 1件・中 1件・低 1件 / 確度 中 1件・低 2件`、金額または percent 0 件、verify error 0 件だった。
   - `RAU-RR-25` では、`current_settings` 取得失敗時の top list status を HTTP 401、HTTP 403、その他 HTTP status、status 不明に分けた。HTTP 401 では Revenue Assistant へログインし直すと再取得することを表示し、HTTP 403 では `current settings` の閲覧権限確認が必要であることを表示する。候補生成、rank order、scoring、candidate lifecycle、API request 範囲は変更していない。Chrome拡張 runtime は今回の node_repl 確認では `browsers.list()` を公開しなかったため、実 DOM 確認は Chrome DevTools Protocol で行った。CDP 合成確認では、HTTP 401 の meta が `料金調整候補: Revenue Assistant にログインし直すと再取得します`、HTTP 403 の meta が `料金調整候補: current settings の閲覧権限を確認してください`、HTTP 500 の meta が `料金調整候補: current settings を取得できませんでした (HTTP 500)` になり、いずれも候補 row は 0 件だった。
   - `RAU-RR-26` では、top list meta に user decision と rank change resolved による非表示件数を表示するようにした。候補生成、scoring、rank order source、manual override、user decision 保存条件、resolved 判定条件、API request 範囲は変更していない。Chrome拡張 runtime は今回の確認では usable browser instance を返さなかったため、通常 Chrome の tab 候補は `npm run chrome:pages` で確認し、実 DOM は Chrome DevTools Protocol で確認した。CDP 合成確認では、初期 meta が `優先度順 2件 / 推奨方向 上げ検討 2件 / 優先度 高 2件 / 確度 中 2件 / 非表示 反映済み 1件`、利用者判断 1 件保存後の meta が `優先度順 1件 / 推奨方向 上げ検討 1件 / 優先度 高 1件 / 確度 中 1件 / 非表示 利用者判断 1件・反映済み 1件` になった。合成 decision record は synthetic facility と synthetic roomGroup に限定して作成し、確認後に削除した。page error と console error は 0 件だった。
+  - `RAU-RR-27` では、user decision record に判断時点の confidence 表示段階を保存し、同じ `stayDate x roomGroup x action x reasonFingerprint` でも現在候補の confidence 表示段階が保存時より上がった場合は active list に再表示するようにした。既存 decision record は confidence 表示段階を持たないため従来どおり exact fingerprint match で扱い、過去の利用者判断を一括で無効化しない。推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は追加していない。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
 - 次スレッドでやらないこと:
   - 推奨レート金額を出さない。
@@ -441,10 +443,12 @@
 ## Open Questions / Risks
 
 - current rank と rank ladder 候補は `RAU-RR-03` で確認済みである。`rank_sequences[].default_sequence` は `RAU-RR-12` で名前順初期化用と確認済みであり、rank 上げ / 下げ方向には使わない。
+- rank order は、manual override、Revenue Assistant 設定画面の保存済み順序、数値 rank 名 fallback、unresolved の順に解決する。大国町では設定画面の `1` から `20` が高ランクから低ランクへの順序であり、`1` を最高ランク、`20` を最低ランクとして扱う。
+- rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系があり、同じ表記系でも上下関係が逆になる場合がある。曜日別傾向や競合価格内での自社料金位置は rank order source ではなく、priority、confidence、reasonCodes、diagnostics の補助入力候補として扱う。
 - rank 別価格表、現在販売中価格、rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動は未確認である。
 - rank recommendation first phase では推奨レート金額を出さない。金額推奨を行うには、プラン別、人数別、食事条件別、販売中価格、rank ladder、競合価格、施設方針の確認が必要であり、現時点では未確認項目が多い。
 - top 料金調整候補リストは実装済みで、warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示とは別の list layer として表示する。今後追加 UI を行う場合も、これらの意味を混同しない。
-- user snooze / 対応不要の browser-local 保存は実装済みである。今後の改善では、priority / confidence / reasonFingerprint 変化時の再表示条件を、実データで false positive と見直し候補を分けながら調整する必要がある。
+- user snooze / 対応不要の browser-local 保存は実装済みである。priority または reasonFingerprint が変わった候補は従来から別候補として再表示され、`RAU-RR-27` で confidence 表示段階が保存時より上がった場合も再表示されるようにした。今後さらに調整する場合は、実データで false positive と見直し候補を分けながら、再表示条件を広げすぎないか確認する必要がある。
 - `booking_curve_raw_source:v2` は、次回 API 取得時に作成される。既存 `booking_curve_raw_source:v1` record は同じ IndexedDB に残るが、v2 の cache key と保存済み raw source signal では有効扱いにしないため、過去に保存済みだった日付でも v2 record が作られるまでは保存済み signal が出ない場合がある。
 - BCL-tuned `直近型カーブ` は、同じ曜日の履歴 stay_date を LT ごとに集計するため、仮実装より request 数が増える。
 - BCL-tuned `季節型カーブ` は、前年同月と 2 年前同月の同じ曜日の履歴 stay_date から final rooms と LT 比率を解決する必要がある。Revenue Assistant response だけで final rooms を常に解決できるかは実装中に確認する。
