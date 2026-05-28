@@ -150,6 +150,7 @@ const RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE = "data-ra-rank-reco
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
 const RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX = "revenue-assistant:rank-recommendation:rank-order-override:";
+const RANK_RECOMMENDATION_DISPLAY_LIMIT = 10;
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
@@ -4682,10 +4683,11 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statuses,
         batchDateKey
     );
-    const visibleCandidates = resolvedFilterResult.candidates;
+    const visibleCandidates = resolvedFilterResult.candidates.slice(0, RANK_RECOMMENDATION_DISPLAY_LIMIT);
     const hiddenSummary = {
         userDecision: decisionFilterResult.hiddenCount,
-        resolvedRankChange: resolvedFilterResult.hiddenCount
+        resolvedRankChange: resolvedFilterResult.hiddenCount,
+        overflow: Math.max(0, resolvedFilterResult.candidates.length - visibleCandidates.length)
     };
 
     rememberRankRecommendationWarmCachePriorityCandidates(visibleCandidates);
@@ -4699,6 +4701,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             rankOrderResolution.ranksHighToLow.map((rank) => rank.code).join(">"),
             `hidden-user:${hiddenSummary.userDecision}`,
             `hidden-resolved:${hiddenSummary.resolvedRankChange}`,
+            `overflow:${hiddenSummary.overflow}`,
             visibleCandidates.map((candidate) => [
                 candidate.reasonFingerprint,
                 candidate.action,
@@ -5494,6 +5497,7 @@ interface RankRecommendationCandidateFilterResult {
 interface RankRecommendationHiddenSummary {
     userDecision: number;
     resolvedRankChange: number;
+    overflow: number;
 }
 
 function applyRankRecommendationDecisionFilter(
@@ -5752,9 +5756,18 @@ function formatRankRecommendationListMeta(
         formatRankRecommendationActionSummary(candidates),
         formatRankRecommendationPrioritySummary(candidates),
         formatRankRecommendationConfidenceSummary(candidates),
-        formatRankRecommendationHiddenSummary(hiddenSummary)
+        formatRankRecommendationHiddenSummary(hiddenSummary),
+        formatRankRecommendationOverflowSummary(hiddenSummary)
     ].filter((part): part is string => part !== null);
     return parts.join(" / ");
+}
+
+function formatRankRecommendationOverflowSummary(hiddenSummary?: RankRecommendationHiddenSummary): string | null {
+    if (hiddenSummary === undefined || hiddenSummary.overflow <= 0) {
+        return null;
+    }
+
+    return `他 ${hiddenSummary.overflow}件`;
 }
 
 function formatRankRecommendationHiddenSummary(hiddenSummary?: RankRecommendationHiddenSummary): string | null {

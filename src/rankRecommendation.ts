@@ -131,9 +131,7 @@ export function buildRankRecommendationCandidates(options: {
         }
     }
 
-    return candidates
-        .sort(compareRankRecommendationCandidates)
-        .slice(0, 10);
+    return candidates.sort(compareRankRecommendationCandidates);
 }
 
 function buildRankRecommendationCandidate(options: {

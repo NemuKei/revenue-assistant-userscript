@@ -450,8 +450,10 @@ rank response dataset の first contract:
 
 - 日付 x 部屋タイプ単位の候補を優先度順に表示する。
 - 最大件数は初期値を持つ。初期候補は top 10 とする。
+- 表示 top 10 は、user decision と rank change resolved による lifecycle filter を適用した後の active candidates から選ぶ。candidate pool を作る段階で先に top 10 へ切ると、上位候補が `様子見`、`対応不要`、または `反映済み` で非表示になった場合に、11 件目以降の有効候補で作業キューを埋め戻せないためである。
 - top 10 の外にも候補がある場合は、件数だけでも分かる表示を候補にする。
 - リスト上部の summary には、表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示する。これは top list に出ている候補の内訳であり、全候補母数、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額または percent を示すものではない。
+- lifecycle filter 後に表示上限を超える active candidates がある場合は、summary に `他 n件` を表示する。これは top 10 外にも確認候補が残っていることを示すための件数であり、展開 UI、filter UI、sort UI、推奨金額表示を追加するものではない。
 - user decision または rank change resolved により active list から外れた候補がある場合は、summary に非表示件数を表示する。分類は、利用者判断による非表示と、rank 変更反映済みによる非表示に分ける。これは候補 list が短い、または空に見える理由を説明するための表示であり、candidate lifecycle、scoring、rank order、API request 範囲、推奨金額は変更しない。
 - `current settings` が取得できない場合は、候補行を空にし、リスト上部の status に失敗理由を表示する。HTTP 401 の場合は Revenue Assistant への再ログインが必要であること、HTTP 403 の場合は閲覧権限確認が必要であることを表示する。その他の HTTP status は `current settings` 取得失敗として HTTP status を表示する。これは候補生成に使う入力が欠損した状態を利用者に示すための表示であり、rank order、scoring、candidate lifecycle、API request 範囲は変更しない。
 

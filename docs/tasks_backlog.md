@@ -1954,6 +1954,59 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-29 lifecycle filter 後に表示 top 10 を決める
+
+- 状態:
+  - 2026-05-28 実装済み。
+  - verify は `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check`、Chrome DevTools Protocol 実 DOM 確認で通過した。`npm run build` は sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過した。
+  - Chrome Extension backend はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。
+- 目的:
+  - `様子見`、`対応不要`、または rank change resolved により上位候補が非表示になっても、11 件目以降の active candidate で top list を埋め戻せるようにする。
+  - 候補 list が短く見える場合を減らし、RM が確認すべき作業キューの密度を維持する。
+- 背景:
+  - 現行実装では `buildRankRecommendationCandidates()` が候補生成時点で `.slice(0, 10)` を行い、その後に user decision filter と rank change resolved filter を適用している。
+  - この順序では、上位 10 件の中に非表示候補が含まれると、11 件目以降の候補が active でも表示されない。
+  - `RAU-RR-26` で非表示件数は表示できるようになったが、表示枠の埋め戻しはまだ行っていない。
+- スコープ:
+  - candidate pool は優先度順に広く生成する。
+  - user decision filter と rank change resolved filter を candidate pool に適用する。
+  - filter 後の active candidates から表示 top 10 を選ぶ。
+  - filter 後に top 10 外の active candidates が残る場合は、top list meta に `他 n件` と表示する。
+  - `rememberRankRecommendationWarmCachePriorityCandidates()` は、表示中 top 10 を対象にする。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - 候補生成の scoring、priority、confidence、reasonCodes、reasonFingerprint、diagnostics を変更しない。
+  - top list の表示上限 10 件を増やさない。
+  - top 10 外を展開する UI、filter UI、sort UI を追加しない。
+  - API request 範囲、request 件数、request 間隔を変更しない。
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を表示しない。
+  - Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - `buildRankRecommendationCandidates()` は candidate pool を優先度順に返し、候補生成時点で top 10 に切らない。
+  - user decision / rank change resolved filter 後の active candidates から表示 top 10 が選ばれる。
+  - filter 後に active candidates が 11 件以上ある場合、top list meta に `他 n件` が表示される。
+  - 表示 top 10 が 10 件未満の場合は、active candidates が 10 件未満であるか、current settings 取得失敗などの statusText がある場合に限られる。
+  - 候補生成、scoring、rank order 表示、manual override、user decision 保存、resolved 判定は従来どおりである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome Extension backend の可用性を確認し、実 DOM 確認は Chrome DevTools Protocol で行う。
+- 実装内容:
+  - `buildRankRecommendationCandidates()` が candidate generation 時点で `.slice(0, 10)` しないようにした。
+  - `syncRankRecommendationList()` で user decision filter と rank change resolved filter を適用した後、表示用 candidate を top 10 に切るようにした。
+  - 表示 top 10 外に active candidates が残る場合、top list meta に `他 n件` を表示するようにした。
+  - rank recommendation warm cache priority candidates は、表示中 top 10 を対象にした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+  - Chrome Extension runtime surface: `agent.browsers` はこの thread では未露出、Chrome browser client file は存在
+  - Chrome DevTools Protocol: `npm run chrome:pages` で通常 Chrome の Revenue Assistant tab を確認
+  - Chrome DevTools Protocol 実 DOM 確認: 最新 dist 一時注入後、header 10 列、row 10 件、row count display limit 内、`宿泊まで` header、meta `他 380件`、金額または percent 表示 0 件を確認
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2540,6 +2593,7 @@ Later:
 - `RAU-RR-26` は 2026-05-28 に実装済みである。user decision と rank change resolved による非表示件数を top list meta に表示し、候補 list が短い、または空に見える理由を説明する。候補生成、scoring、rank order、manual override、user decision 保存条件、resolved 判定条件、API request 範囲は変更していない。
 - `RAU-RR-27` は 2026-05-28 に実装済みである。user decision record に判断時点の confidence 表示段階を保存し、同じ `stayDate x roomGroup x action x reasonFingerprint` でも現在候補の confidence 表示段階が保存時より上がった場合は active list に再表示する。既存 decision record は confidence 表示段階を持たないため、従来どおり exact fingerprint match で抑制する。
 - `RAU-RR-28` は 2026-05-28 に実装済みである。top list に `宿泊まで` 列を追加し、`stayDate - asOfDate` を `n日`、当日を `当日`、計算不能または過去日を `-` として表示する。priority、confidence、scoring、rank order、user decision、resolved 判定、API request 範囲は変更していない。
+- `RAU-RR-29` は 2026-05-28 に実装済みである。candidate generation 時点で top 10 に切らず、user decision filter と rank change resolved filter の後に表示 top 10 を選ぶ。filter 後に top 10 外の active candidate がある場合は、top list meta に `他 n件` を表示する。scoring、priority、confidence、rank order、user decision、resolved 判定、API request 範囲は変更していない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
