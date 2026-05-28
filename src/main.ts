@@ -5906,6 +5906,7 @@ function formatRankRecommendationListMeta(
     }
     const parts = [
         `優先度順 ${candidates.length}件`,
+        formatRankRecommendationAsOfDateSummary(candidates),
         formatRankRecommendationActionSummary(candidates),
         formatRankRecommendationPrioritySummary(candidates),
         formatRankRecommendationConfidenceSummary(candidates),
@@ -5914,6 +5915,22 @@ function formatRankRecommendationListMeta(
         formatRankRecommendationOverflowSummary(hiddenSummary)
     ].filter((part): part is string => part !== null);
     return parts.join(" / ");
+}
+
+function formatRankRecommendationAsOfDateSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
+    const asOfDates = Array.from(new Set(candidates.map((candidate) => candidate.asOfDate)));
+    if (asOfDates.length === 0) {
+        return null;
+    }
+    if (asOfDates.length > 1) {
+        return "基準日 複数";
+    }
+
+    const asOfDate = asOfDates[0];
+    if (asOfDate === undefined) {
+        return null;
+    }
+    return `基準日 ${formatCompactMonthDayForDisplay(asOfDate) ?? formatCompactDateForDisplay(asOfDate)}`;
 }
 
 function formatRankRecommendationOverflowSummary(hiddenSummary?: RankRecommendationHiddenSummary): string | null {

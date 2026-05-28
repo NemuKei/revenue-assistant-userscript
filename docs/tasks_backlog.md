@@ -2411,6 +2411,48 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-39 top list meta に基準日を表示する
+
+- 状態:
+  - 2026-05-28 完了。
+- 目的:
+  - 料金調整候補 list 上部で、表示中候補がどの日付を基準に作られているかを確認できるようにする。
+- 背景:
+  - `RAU-RR-28` で、候補行には `stayDate - asOfDate` の `宿泊まで` を表示した。
+  - ただし、list 上部の meta には `asOfDate` が出ていなかったため、利用者は日数計算の基準日と候補の鮮度を一覧上部で確認できなかった。
+- スコープ:
+  - 表示中候補の `asOfDate` が 1 種類なら、top list meta に `基準日 5/28` のように表示する。
+  - 表示中候補の `asOfDate` が複数混在する場合は、top list meta に `基準日 複数` と表示する。
+  - 候補が空、または `current settings` 取得失敗などで status text を表示する場合は、基準日 summary を追加しない。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonCodes、reasonFingerprint を変更すること。
+  - rank order、manual override、user decision、resolved 判定を変更すること。
+  - API request 範囲、request 件数、request 間隔を変更すること。
+  - forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示すること。
+  - Revenue Assistant write / bulk apply。
+- 受け入れ条件:
+  - top list meta に `基準日` が表示される。
+  - 表示中候補の `asOfDate` が 1 種類の場合は、`基準日 M/D` 形式で表示される。
+  - top list に forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で最新 dist 一時注入後の meta 表示を確認する。
+- 実装内容:
+  - `src/main.ts` の top list meta に、表示中 candidates の `asOfDate` から作る `基準日` summary を追加した。
+  - `asOfDate` が 1 種類なら `formatCompactMonthDayForDisplay()` を使い、複数なら `基準日 複数` と表示する。
+  - candidate scoring、rank order、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。初回は sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に再実行して通過した。
+  - `git diff --check`: passed
+  - `npm run chrome:pages`: passed。通常 Chrome に Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
+  - Chrome拡張 backend: node_repl で bundled Chrome runtime を bootstrap し、extension browser、`openTabs()`、tab count 3 を確認した。
+  - Chrome DevTools Protocol 実 DOM 確認: 通常 Chrome の Revenue Assistant root へ最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、top list 10 行、meta `基準日 5/28`、`確度` cell の `注意あり` 10 件、forecast 数値 label 0 件、金額または percent 表示 0 件、page error 0 件、console error 0 件を確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
