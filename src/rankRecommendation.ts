@@ -3,6 +3,7 @@ export type RankRecommendationPriority = "high" | "medium" | "low";
 export type RankRecommendationStatus = "active" | "not_eligible";
 export type RankRecommendationForecastSignal = "high_occupancy" | "low_occupancy" | "neutral";
 export type RankRecommendationSalesAdrHealthSignal = "adr_down" | "sales_down" | "adr_and_sales_down" | "neutral";
+export type RankRecommendationRankOrderSource = "numeric_rank_name" | "settings_screen" | "manual_override" | "unresolved";
 export type RankRecommendationRecommendedRankUnavailableReason =
     | "rank_ladder_missing"
     | "current_rank_not_in_ladder"
@@ -40,6 +41,7 @@ export interface RankRecommendationCandidate {
     recommendedRankCode: string | null;
     recommendedRankName: string | null;
     recommendedRankUnavailableReason: RankRecommendationRecommendedRankUnavailableReason | null;
+    rankOrderSource: RankRecommendationRankOrderSource;
     action: RankRecommendationAction;
     priority: RankRecommendationPriority;
     confidence: number;
@@ -67,6 +69,21 @@ export interface RankRecommendationRankLadderEntry {
     price_rank_name?: string | null;
 }
 
+export interface RankRecommendationRankOrderOverride {
+    rankCodesHighToLow: readonly string[];
+}
+
+export interface RankRecommendationRankOrderEntry {
+    code: string;
+    name: string;
+}
+
+export interface RankRecommendationRankOrderResolution {
+    source: RankRecommendationRankOrderSource;
+    ranksHighToLow: RankRecommendationRankOrderEntry[];
+    diagnostics: string[];
+}
+
 export function buildRankRecommendationCandidates(options: {
     response: RankRecommendationCurrentSettingsResponse;
     facilityId: string;
@@ -75,8 +92,13 @@ export function buildRankRecommendationCandidates(options: {
     generatedAt: string;
     curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>;
     rankLadder?: readonly RankRecommendationRankLadderEntry[];
+    rankOrderOverride?: RankRecommendationRankOrderOverride | null;
 }): RankRecommendationCandidate[] {
     const candidates: RankRecommendationCandidate[] = [];
+    const rankOrder = resolveRankRecommendationRankOrder({
+        rankLadder: options.rankLadder ?? [],
+        override: options.rankOrderOverride ?? null
+    });
 
     for (const currentSetting of options.response.suggest_output_current_settings ?? []) {
         const stayDate = normalizeCurrentSettingStayDate(currentSetting.stay_date);
@@ -99,7 +121,7 @@ export function buildRankRecommendationCandidates(options: {
                 roomGroupName,
                 roomGroup,
                 curveEvidence: options.curveEvidenceByKey?.get(buildRankRecommendationEvidenceKey(stayDate, roomGroupId)) ?? null,
-                rankLadder: options.rankLadder ?? [],
+                rankOrder,
                 generatedAt: options.generatedAt
             }));
         }
@@ -118,7 +140,7 @@ function buildRankRecommendationCandidate(options: {
     roomGroupName: string;
     roomGroup: RankRecommendationCurrentSettingRoomGroup;
     curveEvidence: RankRecommendationCurveEvidence | null;
-    rankLadder: readonly RankRecommendationRankLadderEntry[];
+    rankOrder: RankRecommendationRankOrderResolution;
     generatedAt: string;
 }): RankRecommendationCandidate {
     const maxRooms = normalizeFiniteNumber(options.roomGroup.max_num_room);
@@ -272,8 +294,9 @@ function buildRankRecommendationCandidate(options: {
     const recommendedRankResolution = resolveRecommendedRank({
         action,
         currentRankCode,
-        rankLadder: options.rankLadder
+        rankOrder: options.rankOrder
     });
+    diagnostics.push(`rank_order_source_${options.rankOrder.source}`);
     if (recommendedRankResolution.unavailableReason !== null) {
         diagnostics.push(`recommended_rank_${recommendedRankResolution.unavailableReason}`);
     }
@@ -300,6 +323,7 @@ function buildRankRecommendationCandidate(options: {
         recommendedRankCode: recommendedRankResolution.rank?.code ?? null,
         recommendedRankName: recommendedRankResolution.rank?.name ?? null,
         recommendedRankUnavailableReason: recommendedRankResolution.unavailableReason,
+        rankOrderSource: options.rankOrder.source,
         action,
         priority,
         confidence,
@@ -368,7 +392,7 @@ function normalizeNullableText(value: string | null | undefined): string | null 
 function resolveRecommendedRank(options: {
     action: RankRecommendationAction;
     currentRankCode: string | null;
-    rankLadder: readonly RankRecommendationRankLadderEntry[];
+    rankOrder: RankRecommendationRankOrderResolution;
 }): {
     rank: { code: string; name: string } | null;
     unavailableReason: RankRecommendationRecommendedRankUnavailableReason | null;
@@ -382,11 +406,11 @@ function resolveRecommendedRank(options: {
         return { rank: null, unavailableReason: null };
     }
 
-    const ladder = resolveRankOrder(options.rankLadder);
+    const ladder = options.rankOrder.ranksHighToLow;
     if (ladder.length === 0) {
         return { rank: null, unavailableReason: "rank_ladder_missing" };
     }
-    if (!isRankOrderResolved(ladder)) {
+    if (options.rankOrder.source === "unresolved") {
         return { rank: null, unavailableReason: "rank_order_unresolved" };
     }
 
@@ -412,10 +436,11 @@ function getRecommendedRankStepDirection(action: RankRecommendationAction): -1 |
     return 0;
 }
 
-function resolveRankOrder(
-    rankLadder: readonly RankRecommendationRankLadderEntry[]
-): Array<{ code: string; name: string; orderValue: number | null }> {
-    const normalized = rankLadder.flatMap((entry) => {
+export function resolveRankRecommendationRankOrder(options: {
+    rankLadder: readonly RankRecommendationRankLadderEntry[];
+    override?: RankRecommendationRankOrderOverride | null;
+}): RankRecommendationRankOrderResolution {
+    const normalized = options.rankLadder.flatMap((entry) => {
         const code = normalizeNullableText(entry.price_rank_code);
         const name = normalizeNullableText(entry.price_rank_name);
         if (code === null || name === null) {
@@ -425,19 +450,59 @@ function resolveRankOrder(
         return [{ code, name, orderValue: parseRankNameNumber(name) }];
     });
     if (normalized.length === 0) {
-        return [];
+        return {
+            source: "unresolved",
+            ranksHighToLow: [],
+            diagnostics: ["rank_ladder_missing"]
+        };
+    }
+
+    const manualOrder = resolveManualRankOrder(normalized, options.override ?? null);
+    if (manualOrder !== null) {
+        return {
+            source: "manual_override",
+            ranksHighToLow: manualOrder,
+            diagnostics: []
+        };
     }
 
     const numericRanks = normalized.filter((entry) => entry.orderValue !== null);
     return numericRanks.length === normalized.length
-        ? [...normalized].sort((left, right) => (left.orderValue ?? 0) - (right.orderValue ?? 0))
-        : normalized;
+        ? {
+            source: "numeric_rank_name",
+            ranksHighToLow: [...normalized]
+                .sort((left, right) => (left.orderValue ?? 0) - (right.orderValue ?? 0))
+                .map(({ code, name }) => ({ code, name })),
+            diagnostics: []
+        }
+        : {
+            source: "unresolved",
+            ranksHighToLow: normalized.map(({ code, name }) => ({ code, name })),
+            diagnostics: ["rank_order_unresolved"]
+        };
 }
 
-function isRankOrderResolved(
-    ladder: Array<{ code: string; name: string; orderValue: number | null }>
-): boolean {
-    return ladder.every((entry) => entry.orderValue !== null);
+function resolveManualRankOrder(
+    rankLadder: Array<{ code: string; name: string; orderValue: number | null }>,
+    override: RankRecommendationRankOrderOverride | null
+): RankRecommendationRankOrderEntry[] | null {
+    if (override === null || override.rankCodesHighToLow.length !== rankLadder.length) {
+        return null;
+    }
+
+    const rankByCode = new Map(rankLadder.map((entry) => [entry.code, { code: entry.code, name: entry.name }]));
+    const usedCodes = new Set<string>();
+    const resolved: RankRecommendationRankOrderEntry[] = [];
+    for (const code of override.rankCodesHighToLow) {
+        const rank = rankByCode.get(code);
+        if (rank === undefined || usedCodes.has(code)) {
+            return null;
+        }
+        usedCodes.add(code);
+        resolved.push(rank);
+    }
+
+    return usedCodes.size === rankByCode.size ? resolved : null;
 }
 
 function parseRankNameNumber(value: string): number | null {

@@ -1429,6 +1429,13 @@
 
 ### RAU-RR-15 rank 上下関係の推定 source と任意調整入口を実装する
 
+- 状態:
+  - 2026-05-28 に実装済み。
+  - Chrome拡張では、通常 Chrome extension instance が利用可能であることを確認した。
+  - Chrome DevTools Protocol read-only では、root 画面から `/settings/site-controller` link を確認し、同 path の fetch が 200 を返すことを確認した。ただし response は SPA shell であり、rank の全貌や rank order payload は確認できなかった。
+  - top list に rank order source と高ランクから低ランクへの順序を表示する入口を追加した。
+  - manual override は browser-local 保存とし、保存後に recommended rank を override 後の順序で再計算する。reset で数値推定へ戻せる。
+  - CDP 一時注入確認では、初期状態 `numeric_rank_name` で `14 -> 13`、手動で逆順保存後 `manual_override` で `14 -> 15`、reset 後 `numeric_rank_name` で `14 -> 13` に戻ることを確認した。確認後、rank order override の localStorage key は 0 件だった。
 - 目的:
   - rank 上下関係の推定を、数値 rank 名だけに固定せず、設定画面、カレンダー上の曜日別関係、競合価格内の自社料金などから補強し、利用者が任意に方向や上下関係を調整できる入口を作る。
 - 背景:
@@ -1437,7 +1444,7 @@
   - rank の全貌は Revenue Assistant の設定画面内にある。
 - スコープ:
   - Chrome拡張で通常 Chrome の設定画面候補 tab を確認し、CDP read-only で rank 設定画面の DOM または API を観測する。
-  - rank order の推定 source を、少なくとも `numeric_rank_name`、`settings_screen`、`manual_override` のどれかとして record へ残す。
+  - rank order の推定 source を、少なくとも `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` のどれかとして record へ残す。
   - 利用者が rank 上下関係を確認、変更、リセットできる入口を top list 付近または設定画面連携として追加する。
   - manual override は browser-local 保存とし、Revenue Assistant へ write しない。
 - 非目標:
@@ -1449,6 +1456,32 @@
   - manual override を保存した場合、recommended rank が override 後の順序で再計算される。
   - reset で推定順序へ戻せる。
   - 設定画面から得た情報または取得不能理由が `docs/context/STATUS.md` または `docs/context/DECISIONS.md` に残っている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-16 settings screen 由来の rank order 抽出可否を追加調査する
+
+- 目的:
+  - `settings_screen` source を実際に使えるか確認し、使える場合は manual override より前、numeric rank name より後の自動推定 source として接続する。
+- 背景:
+  - `RAU-RR-15` の CDP read-only 確認では、root 画面から `/settings/site-controller` link と fetch 200 は確認できた。
+  - ただし response は SPA shell で、rank の全貌や rank order payload は確認できなかった。
+  - 利用者によると rank の全貌自体は設定画面内にある。
+- スコープ:
+  - Chrome拡張で通常 Chrome の設定画面候補を取り違えないよう確認する。
+  - CDP read-only で設定画面遷移後の DOM、XHR、fetch request を観測し、rank order を取得できる source があるか確認する。
+  - 取得できる場合は `settings_screen` source として `RankRecommendationRankOrderResolution` へ接続する。
+  - 取得できない場合は、取得不能理由と次の確認候補を `docs/context/STATUS.md` または `docs/context/DECISIONS.md` に残す。
+- 非目標:
+  - Revenue Assistant の rank 設定を変更しない。
+  - Revenue Assistant への write API を実行しない。
+  - hidden API を保存済み仕様として扱わない。
+- 受け入れ条件:
+  - settings screen 由来の rank order を取得できるか、取得不能理由が明記されている。
+  - 取得できる場合、UI の rank order source が `settings_screen` と表示される。
+  - 取得できない場合、既存の `numeric_rank_name` と `manual_override` の挙動は維持される。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -1992,7 +2025,7 @@
 
 Now:
 
-- `RAU-RR-15` rank 上下関係の推定 source と任意調整入口を実装する
+- `RAU-RR-16` settings screen 由来の rank order 抽出可否を追加調査する
 
 Next:
 
@@ -2026,7 +2059,8 @@ Later:
 - `RAU-RR-12` は 2026-05-28 に実装済みである。`default_sequence` は名前順初期化用であり、rank 上げ / 下げ方向には使わない。response 配列順を recommended rank の上下方向として使う判断は、利用者確認後の `RAU-RR-14` で置き換えた。
 - `RAU-RR-13` は 2026-05-28 に実装済みである。rank ladder 端で隣接 recommended rank が存在しない場合は、`上限ランク: 上げ余地なし` または `下限ランク: 下げ余地なし` と表示する。端判定は `RAU-RR-14` 後の推定 rank 順序に従う。推奨レート金額、2段階以上の rank 移動、Revenue Assistant write / bulk apply は追加していない。
 - `RAU-RR-14` は 2026-05-28 に実装済みである。大国町では rank 名 `1` が最高ランク、`20` が最低ランクであるため、rank 名がすべて整数として読める場合は数値昇順を高ランクから低ランクへの順序として推定する。top list では `raise_watch` に 1 つ高い rank、`lower_watch` に 1 つ低い rank を表示する。rank order を推定できない場合は recommended rank を出さず `rank_order_unresolved` を diagnostics に残す。
-- `RAU-RR-15` は次の Now である。rank の全貌が Revenue Assistant の設定画面内にあるため、設定画面、カレンダー上の曜日別関係、競合価格内の自社料金などを使った推定 source と、利用者が rank 方向や上下関係を任意調整できる browser-local の入口を実装する。
+- `RAU-RR-15` は 2026-05-28 に実装済みである。rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` として扱う。first implementation では `numeric_rank_name` と `manual_override` を実装し、top list 上で現在 source と高ランクから低ランクへの順序を確認できる。manual override は browser-local 保存で、reset で推定順序へ戻せる。CDP read-only では `/settings/site-controller` link と fetch 200 は確認したが、response は SPA shell で rank order payload は確認できなかった。
+- `RAU-RR-16` は次の Now である。settings screen 由来の rank order を実際に取れるかを、通常 Chrome の設定画面と CDP read-only の DOM / XHR 観測で追加調査する。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

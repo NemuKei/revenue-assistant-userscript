@@ -157,7 +157,10 @@ first phase では次を行わない。
 - 2026-05-28 の追加確認では、Revenue Assistant の配信 JavaScript が `defaultSequence` を「名前順に並べ替える」初期順として扱い、設定保存時は並び替え済みの `priceRankCode` 配列を送信していた。そのため、RAU は `default_sequence` を rank 上げ / 下げの方向として使わない。
 - 大国町では rank 名 `1` が最高ランク、`20` が最低ランクである。rank 名がすべて整数として読める場合、RAU は rank 名の数値昇順を高ランクから低ランクへの順序として推定する。
 - `raise_watch` の隣接 recommended rank は、推定順序上で current rank の 1 つ高い rank とする。`lower_watch` の隣接 recommended rank は、推定順序上で current rank の 1 つ低い rank とする。
-- rank 名が数値として読めない場合、または施設ごとの上下関係を推定できない場合は、recommended rank を出さず、原因を diagnostics に残す。後続 task で、設定画面内の rank 全貌、カレンダー上の曜日別関係、競合価格内の自社料金などを組み合わせた推定と、利用者が rank 方向や上下関係を任意調整できる入口を追加する。
+- rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` のいずれかとして扱う。first implementation では `numeric_rank_name` と `manual_override` を実装し、`settings_screen` は source taxonomy に予約する。
+- rank 名が数値として読めない場合、または施設ごとの上下関係を推定できない場合は、recommended rank を出さず、原因を diagnostics に残す。
+- 利用者が manual override を保存した場合は、browser-local の保存値を `manual_override` source として使い、recommended rank を保存後の順序で再計算する。manual override は Revenue Assistant の rank 設定を書き換えない。
+- 2026-05-28 の Chrome DevTools Protocol read-only 確認では、root 画面から `/settings/site-controller` link を確認し、同 path の fetch は 200 を返した。ただし response は SPA shell であり、rank の全貌や rank order payload は root DOM または fetch response からは確認できなかった。そのため、settings screen からの自動 rank order 抽出は確認済み仕様として扱わない。
 - current rank が rank ladder に存在しない場合、rank order を推定できない場合、または current rank が推定順序の端で隣接 rank が存在しない場合は、`recommendedRank` を null にする。
 - current rank が推定順序の端にあり、`raise_watch` または `lower_watch` の隣接 rank が存在しない場合、top list の推奨方向には `上限ランク: 上げ余地なし` または `下限ランク: 下げ余地なし` を表示する。これは推奨レート金額や 2 段階以上の rank 移動を出すものではなく、隣接 rank がない理由を利用者に見せるための表示である。
 
@@ -403,7 +406,10 @@ rank response dataset の first contract:
 
 - current rank は `/api/v1/suggest/output/current_settings` の `latest_current.price_rank_code` / `price_rank_name` を第一候補にする。
 - rank ladder は `/api/v1/rank_sequences` の `price_rank_code` と `price_rank_name` を使う。`default_sequence` は名前順初期化用の値であり、rank 上げ / 下げ方向には使わない。
-- rank 名がすべて整数として読める場合は、rank 名の数値昇順を高ランクから低ランクへの順序として推定する。大国町では `1` が最高ランク、`20` が最低ランクである。
+- rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` のいずれかとして record へ残す。
+- rank 名がすべて整数として読める場合は、rank 名の数値昇順を高ランクから低ランクへの順序として推定し、source を `numeric_rank_name` とする。大国町では `1` が最高ランク、`20` が最低ランクである。
+- 利用者が manual override を保存した場合は、保存された高ランクから低ランクへの順序を source `manual_override` として優先する。manual override は browser-local 保存に限定し、Revenue Assistant の rank 設定へ write しない。
+- `settings_screen` source は、設定画面から rank の全貌または上下関係を read-only で取得できることを確認してから使う。取得不能または未確認の場合は、`numeric_rank_name` または `manual_override` を使い、settings screen source を確認済み仕様として扱わない。
 - `raise_watch` では current rank の 1 つ高い rank を、`lower_watch` では current rank の 1 つ低い rank を、first wave の隣接 `recommendedRank` として扱う。
 - 方向確認後も、first wave の recommendedRank は隣接 rank のみに限定する。2 段階以上の rank 移動、価格差最大化、売上最大化 rank の直接提示は行わない。
 - current rank が欠損する場合、rank ladder に current rank code が存在しない場合、rank order を推定できない場合、または隣接 rank が存在しない場合は、`recommendedRank` を null にする。
@@ -427,6 +433,8 @@ rank response dataset の first contract:
 - 部屋タイプ。
 - 現ランク。
 - 推奨方向または推奨ランク方向。
+- rank order の現在 source と、高ランクから低ランクへの順序。
+- 利用者が high-to-low の rank 順序を手動保存する入口と、推定順序へ戻す reset 入口。
 - 主要根拠。
 - 状態。
 - `Analyzeで確認`。

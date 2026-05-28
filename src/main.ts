@@ -55,6 +55,7 @@ import {
 import {
     buildRankRecommendationEvidenceKey,
     buildRankRecommendationCandidates,
+    resolveRankRecommendationRankOrder,
     type RankRecommendationAction,
     type RankRecommendationCandidate,
     type RankRecommendationCurveEvidence,
@@ -62,6 +63,8 @@ import {
     type RankRecommendationForecastSignal,
     type RankRecommendationPriority,
     type RankRecommendationRankLadderEntry,
+    type RankRecommendationRankOrderOverride,
+    type RankRecommendationRankOrderResolution,
     type RankRecommendationSalesAdrHealthSignal,
     type RankRecommendationStatus
 } from "./rankRecommendation";
@@ -109,6 +112,11 @@ const GROUP_ROOM_TOGGLE_BUTTON_ATTRIBUTE = "data-ra-group-room-toggle-button";
 const GROUP_ROOM_TOGGLE_ACTIVE_ATTRIBUTE = "data-ra-group-room-toggle-active";
 const RANK_RECOMMENDATION_LIST_ATTRIBUTE = "data-ra-rank-recommendation-list";
 const RANK_RECOMMENDATION_LIST_SIGNATURE_ATTRIBUTE = "data-ra-rank-recommendation-list-signature";
+const RANK_RECOMMENDATION_RANK_LADDER_ATTRIBUTE = "data-ra-rank-recommendation-rank-ladder";
+const RANK_RECOMMENDATION_ORDER_CONTROL_ATTRIBUTE = "data-ra-rank-recommendation-order-control";
+const RANK_RECOMMENDATION_ORDER_SOURCE_ATTRIBUTE = "data-ra-rank-recommendation-order-source";
+const RANK_RECOMMENDATION_ORDER_INPUT_ATTRIBUTE = "data-ra-rank-recommendation-order-input";
+const RANK_RECOMMENDATION_ORDER_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-order-status";
 const RANK_RECOMMENDATION_ROW_ATTRIBUTE = "data-ra-rank-recommendation-row";
 const RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE = "data-ra-rank-recommendation-priority";
 const RANK_RECOMMENDATION_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-action";
@@ -122,6 +130,7 @@ const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE = "data-ra-rank-recom
 const RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE = "data-ra-rank-recommendation-reason-fingerprint";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
+const RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX = "revenue-assistant:rank-recommendation:rank-order-override:";
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
@@ -657,6 +666,13 @@ interface RankRecommendationWarmCachePriorityCandidate {
     roomGroupId: string;
 }
 
+interface RankRecommendationRankOrderOverrideRecord {
+    facilityCacheKey: string;
+    rankCodesHighToLow: string[];
+    rankNamesHighToLow: string[];
+    savedAt: string;
+}
+
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
 const rankRecommendationCurrentSettingsCache = new Map<string, Promise<RankRecommendationCurrentSettingsResponse>>();
@@ -806,6 +822,17 @@ function installInteractionHooks(): void {
                 event.preventDefault();
                 event.stopPropagation();
                 void persistRankRecommendationDecisionFromElement(rankRecommendationDecisionButton);
+                return;
+            }
+
+            const rankRecommendationOrderButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-order-save"],`
+                + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-order-reset"]`
+            );
+            if (rankRecommendationOrderButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                void persistRankRecommendationRankOrderFromElement(rankRecommendationOrderButton);
                 return;
             }
 
@@ -1109,6 +1136,135 @@ async function persistRankRecommendationDecisionFromElement(element: HTMLElement
     });
 
     queueCalendarSync({ force: true, reason: `rank-recommendation-${decisionType}` });
+}
+
+async function persistRankRecommendationRankOrderFromElement(element: HTMLElement): Promise<void> {
+    const action = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE);
+    const controlElement = element.closest<HTMLElement>(`[${RANK_RECOMMENDATION_ORDER_CONTROL_ATTRIBUTE}]`);
+    const facilityCacheKey = activeFacilityCacheKey;
+    if (controlElement === null || facilityCacheKey === null) {
+        return;
+    }
+
+    const statusElement = controlElement.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_ORDER_STATUS_ATTRIBUTE}]`);
+    if (action === "rank-order-reset") {
+        window.localStorage.removeItem(getRankRecommendationRankOrderOverrideStorageKey(facilityCacheKey));
+        rankRecommendationRankLadderCache.delete("default");
+        setRankRecommendationOrderControlStatus(statusElement, "推定順序へ戻しました");
+        queueCalendarSync({ force: true, reason: "rank-recommendation-rank-order-reset" });
+        return;
+    }
+
+    if (action !== "rank-order-save") {
+        return;
+    }
+
+    const inputElement = controlElement.querySelector<HTMLTextAreaElement>(`[${RANK_RECOMMENDATION_ORDER_INPUT_ATTRIBUTE}]`);
+    const rankLadder = parseRankRecommendationRankLadderFromElement(controlElement);
+    if (inputElement === null || rankLadder.length === 0) {
+        setRankRecommendationOrderControlStatus(statusElement, "rank ladder を取得できませんでした");
+        return;
+    }
+
+    const parsedOrder = parseRankRecommendationRankOrderInput(inputElement.value, rankLadder);
+    if (parsedOrder === null) {
+        setRankRecommendationOrderControlStatus(statusElement, "全rankを1回ずつ入力してください");
+        return;
+    }
+
+    const record: RankRecommendationRankOrderOverrideRecord = {
+        facilityCacheKey,
+        rankCodesHighToLow: parsedOrder.map((entry) => entry.code),
+        rankNamesHighToLow: parsedOrder.map((entry) => entry.name),
+        savedAt: new Date().toISOString()
+    };
+    window.localStorage.setItem(getRankRecommendationRankOrderOverrideStorageKey(facilityCacheKey), JSON.stringify(record));
+    setRankRecommendationOrderControlStatus(statusElement, "手動順序を保存しました");
+    queueCalendarSync({ force: true, reason: "rank-recommendation-rank-order-save" });
+}
+
+function setRankRecommendationOrderControlStatus(element: HTMLElement | null, text: string): void {
+    if (element !== null) {
+        element.textContent = text;
+    }
+}
+
+function parseRankRecommendationRankLadderFromElement(element: HTMLElement): RankRecommendationRankLadderEntry[] {
+    const rawValue = element.getAttribute(RANK_RECOMMENDATION_RANK_LADDER_ATTRIBUTE);
+    if (rawValue === null) {
+        return [];
+    }
+
+    try {
+        const parsed = JSON.parse(rawValue) as Array<Partial<RankRecommendationRankLadderEntry>>;
+        return Array.isArray(parsed)
+            ? parsed.flatMap((entry) => {
+                const code = entry.price_rank_code?.trim() ?? "";
+                const name = entry.price_rank_name?.trim() ?? "";
+                return code === "" || name === "" ? [] : [{ price_rank_code: code, price_rank_name: name }];
+            })
+            : [];
+    } catch {
+        return [];
+    }
+}
+
+function parseRankRecommendationRankOrderInput(
+    value: string,
+    rankLadder: readonly RankRecommendationRankLadderEntry[]
+): Array<{ code: string; name: string }> | null {
+    const tokens = value
+        .split(/[,\n>、]+/u)
+        .map((token) => token.trim())
+        .filter((token) => token !== "");
+    const normalizedRanks = rankLadder.flatMap((entry) => {
+        const code = entry.price_rank_code?.trim() ?? "";
+        const name = entry.price_rank_name?.trim() ?? "";
+        return code === "" || name === "" ? [] : [{ code, name }];
+    });
+    if (tokens.length !== normalizedRanks.length || normalizedRanks.length === 0) {
+        return null;
+    }
+
+    const rankByInput = new Map<string, { code: string; name: string }>();
+    for (const rank of normalizedRanks) {
+        rankByInput.set(rank.code, rank);
+        rankByInput.set(rank.name, rank);
+    }
+
+    const usedCodes = new Set<string>();
+    const parsedOrder: Array<{ code: string; name: string }> = [];
+    for (const token of tokens) {
+        const rank = rankByInput.get(token);
+        if (rank === undefined || usedCodes.has(rank.code)) {
+            return null;
+        }
+        usedCodes.add(rank.code);
+        parsedOrder.push(rank);
+    }
+
+    return usedCodes.size === normalizedRanks.length ? parsedOrder : null;
+}
+
+function getRankRecommendationRankOrderOverrideStorageKey(facilityCacheKey: string): string {
+    return `${RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX}${facilityCacheKey}`;
+}
+
+function readRankRecommendationRankOrderOverride(facilityCacheKey: string): RankRecommendationRankOrderOverride | null {
+    const rawValue = window.localStorage.getItem(getRankRecommendationRankOrderOverrideStorageKey(facilityCacheKey));
+    if (rawValue === null) {
+        return null;
+    }
+
+    try {
+        const parsed = JSON.parse(rawValue) as Partial<RankRecommendationRankOrderOverrideRecord>;
+        const codes = Array.isArray(parsed.rankCodesHighToLow)
+            ? parsed.rankCodesHighToLow.filter((code): code is string => typeof code === "string" && code.trim() !== "")
+            : [];
+        return codes.length > 0 ? { rankCodesHighToLow: codes } : null;
+    } catch {
+        return null;
+    }
 }
 
 function parseRankRecommendationDecisionType(value: string | null): RankRecommendationDecisionType | null {
@@ -4445,6 +4601,11 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         visibleStayDates: new Set(cells.map((cell) => cell.stayDate))
     });
 
+    const rankOrderOverride = readRankRecommendationRankOrderOverride(facilityCacheKey);
+    const rankOrderResolution = resolveRankRecommendationRankOrder({
+        rankLadder,
+        override: rankOrderOverride
+    });
     const candidates = buildRankRecommendationCandidates({
         response,
         facilityId: facilityCacheKey,
@@ -4452,7 +4613,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         visibleStayDates: new Set(cells.map((cell) => cell.stayDate)),
         generatedAt,
         curveEvidenceByKey,
-        rankLadder
+        rankLadder,
+        rankOrderOverride
     });
     const decisionRecords = await readRankRecommendationDecisionRecords()
         .catch((error: unknown) => {
@@ -4481,14 +4643,20 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             batchDateKey,
             dateRange.fromDateKey,
             dateRange.toDateKey,
+            rankOrderResolution.source,
+            rankOrderResolution.ranksHighToLow.map((rank) => rank.code).join(">"),
             visibleCandidates.map((candidate) => [
                 candidate.reasonFingerprint,
                 candidate.currentRankName ?? "",
                 candidate.recommendedRankName ?? "",
-                candidate.recommendedRankUnavailableReason ?? ""
+                candidate.recommendedRankUnavailableReason ?? "",
+                candidate.rankOrderSource
             ].join(",")).join("|")
         ].join(":"),
-        statusText: null
+        statusText: null,
+        facilityCacheKey,
+        rankLadder,
+        rankOrder: rankOrderResolution
     });
 }
 
@@ -5063,7 +5231,13 @@ function filterResolvedRankRecommendationCandidates(
 
 function renderRankRecommendationList(
     candidates: RankRecommendationCandidate[],
-    options: { signature: string; statusText: string | null }
+    options: {
+        signature: string;
+        statusText: string | null;
+        facilityCacheKey?: string;
+        rankLadder?: readonly RankRecommendationRankLadderEntry[];
+        rankOrder?: RankRecommendationRankOrderResolution;
+    }
 ): void {
     const host = resolveRankRecommendationListHost();
     if (host === null) {
@@ -5081,6 +5255,15 @@ function renderRankRecommendationList(
     const metaElement = document.createElement("div");
     metaElement.setAttribute("data-ra-rank-recommendation-meta", "");
     metaElement.textContent = options.statusText ?? `優先度順 ${candidates.length}件`;
+
+    const rankOrderControlElement = options.facilityCacheKey !== undefined
+        && options.rankLadder !== undefined
+        && options.rankOrder !== undefined
+        ? createRankRecommendationOrderControl({
+            rankLadder: options.rankLadder,
+            rankOrder: options.rankOrder
+        })
+        : null;
 
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
@@ -5107,11 +5290,80 @@ function renderRankRecommendationList(
         }
     }
     tableElement.append(headElement, bodyElement);
-    rootElement.replaceChildren(titleElement, metaElement, tableElement);
+    rootElement.replaceChildren(...[
+        titleElement,
+        metaElement,
+        ...(rankOrderControlElement === null ? [] : [rankOrderControlElement]),
+        tableElement
+    ]);
 
     if (rootElement.parentElement !== host.parentElement || rootElement.previousElementSibling !== host.insertAfterElement) {
         rootElement.remove();
         host.parentElement.insertBefore(rootElement, host.insertAfterElement.nextSibling);
+    }
+}
+
+function createRankRecommendationOrderControl(options: {
+    rankLadder: readonly RankRecommendationRankLadderEntry[];
+    rankOrder: RankRecommendationRankOrderResolution;
+}): HTMLElement {
+    const controlElement = document.createElement("div");
+    controlElement.setAttribute(RANK_RECOMMENDATION_ORDER_CONTROL_ATTRIBUTE, "");
+    controlElement.setAttribute(RANK_RECOMMENDATION_ORDER_SOURCE_ATTRIBUTE, options.rankOrder.source);
+    controlElement.setAttribute(RANK_RECOMMENDATION_RANK_LADDER_ATTRIBUTE, JSON.stringify(options.rankLadder));
+
+    const summaryElement = document.createElement("div");
+    summaryElement.setAttribute("data-ra-rank-recommendation-order-summary", "");
+    summaryElement.textContent = formatRankRecommendationOrderSummary(options.rankOrder);
+
+    const detailsElement = document.createElement("details");
+    const detailsSummaryElement = document.createElement("summary");
+    detailsSummaryElement.textContent = "ランク順序を調整";
+
+    const inputElement = document.createElement("textarea");
+    inputElement.setAttribute(RANK_RECOMMENDATION_ORDER_INPUT_ATTRIBUTE, "");
+    inputElement.rows = 2;
+    inputElement.value = options.rankOrder.ranksHighToLow.map((rank) => rank.name).join(", ");
+    inputElement.title = "高いrankから低いrankの順に、rank名またはrank codeを区切って入力";
+
+    const actionElement = document.createElement("div");
+    actionElement.setAttribute("data-ra-rank-recommendation-order-actions", "");
+
+    const saveButtonElement = document.createElement("button");
+    saveButtonElement.type = "button";
+    saveButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    saveButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-order-save");
+    saveButtonElement.textContent = "保存";
+
+    const resetButtonElement = document.createElement("button");
+    resetButtonElement.type = "button";
+    resetButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    resetButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-order-reset");
+    resetButtonElement.textContent = "推定に戻す";
+
+    const statusElement = document.createElement("span");
+    statusElement.setAttribute(RANK_RECOMMENDATION_ORDER_STATUS_ATTRIBUTE, "");
+
+    actionElement.append(saveButtonElement, resetButtonElement, statusElement);
+    detailsElement.append(detailsSummaryElement, inputElement, actionElement);
+    controlElement.append(summaryElement, detailsElement);
+    return controlElement;
+}
+
+function formatRankRecommendationOrderSummary(rankOrder: RankRecommendationRankOrderResolution): string {
+    const orderText = rankOrder.ranksHighToLow.length > 0
+        ? rankOrder.ranksHighToLow.map((rank) => rank.name).join(" > ")
+        : "未取得";
+    switch (rankOrder.source) {
+        case "manual_override":
+            return `ランク順序: 手動調整 / 高い順 ${orderText}`;
+        case "numeric_rank_name":
+            return `ランク順序: 数値推定 / 高い順 ${orderText}`;
+        case "settings_screen":
+            return `ランク順序: 設定画面 / 高い順 ${orderText}`;
+        case "unresolved":
+        default:
+            return `ランク順序: 未推定 / ${orderText}`;
     }
 }
 
@@ -11063,6 +11315,57 @@ function ensureGroupRoomStyles(): void {
             font-size: 12px;
             font-weight: 700;
             line-height: 1.4;
+        }
+
+        [${RANK_RECOMMENDATION_ORDER_CONTROL_ATTRIBUTE}] {
+            display: grid;
+            gap: 6px;
+            margin: 0 0 10px;
+            padding: 8px 10px;
+            border: 1px solid #d9e1ea;
+            border-radius: 5px;
+            background: #ffffff;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        [data-ra-rank-recommendation-order-summary] {
+            color: #33445a;
+            font-weight: 800;
+            white-space: normal;
+        }
+
+        [${RANK_RECOMMENDATION_ORDER_CONTROL_ATTRIBUTE}] summary {
+            width: fit-content;
+            color: #315b8d;
+            cursor: pointer;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_ORDER_INPUT_ATTRIBUTE}] {
+            display: block;
+            width: 100%;
+            min-height: 44px;
+            box-sizing: border-box;
+            margin: 6px 0;
+            padding: 6px 8px;
+            border: 1px solid #b7c4d3;
+            border-radius: 5px;
+            color: #243245;
+            font: inherit;
+            resize: vertical;
+        }
+
+        [data-ra-rank-recommendation-order-actions] {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+        }
+
+        [${RANK_RECOMMENDATION_ORDER_STATUS_ATTRIBUTE}] {
+            color: #5b6b7d;
+            font-weight: 700;
         }
 
         [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] table {
