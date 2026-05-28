@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-17` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `RAU-RR-18`。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-18` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `RAU-RR-19`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -23,6 +23,7 @@
   - `RAU-RR-15` rank 上下関係の推定 source と任意調整入口を実装する
   - `RAU-RR-16` settings screen 由来の rank order 抽出可否を追加調査する
   - `RAU-RR-17` カレンダー曜日別関係と競合価格内の自社料金を rank recommendation scoring の補助候補として設計する
+  - `RAU-RR-18` 曜日別関係と競合価格内自社料金位置の scoring support を実装する
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
   - `RAU-FC-03` forecast evaluation dataset を実装する
@@ -47,7 +48,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-18` とする。次は、曜日別関係と競合価格内自社料金位置の初期 signal を、追加 request なしで既存保存済み evidence から作り、rank recommendation scoring の小さな補助として実装する。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-19` とする。次は、通常 Chrome の実データで、曜日別関係と競合価格内自社料金位置の support reason / diagnostics 分布を確認し、閾値や補正幅を変更すべきか判断する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -60,6 +61,7 @@
   - `RAU-RR-15` では、rank order source を `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` として扱う。top list に現在 source と高ランクから低ランクへの順序を表示し、利用者が high-to-low の rank 順序を browser-local に保存できる manual override と reset を追加済みである。
   - `RAU-RR-16` では、設定画面 `設定 > 表示 > 料金ランクの並び順` の route が `/settings/price-rank-sequence` であり、`GET /api/v1/rank_sequences` の配列順が設定画面のドラッグリスト順序として表示されることを Chrome DevTools Protocol read-only で確認した。大国町では表示順が `1` から `20` であり、利用者確認どおり高ランクから低ランクの順である。RAU は manual override がない場合、この配列順を source `settings_screen` として使う。rank 名は企業や施設により数字、ローマ字、記号混在、逆順などがあり得るため、名前パターン推定を確認済み source と同等に扱わない。
   - `RAU-RR-17` では、曜日別関係と競合価格内の自社料金位置を rank order source ではなく、priority / confidence / reasonCodes / diagnostics の補助 input として採用すると判断した。rank rule は企業またはホテルごとに異なり、rank 名は数字、ローマ字、記号混在、逆順のいずれもあり得るため、名前パターン、曜日別販売傾向、競合価格内自社料金位置だけで上下関係を断定しない。大国町では Revenue Assistant 設定画面の `料金ランクの並び順` が高ランクから低ランクへ `1` から `20` の順に並んでいるため、`1` を最高ランク、`20` を最低ランクとして扱う。曜日別関係と競合価格内自社料金位置は追加 request なしで既存保存済み evidence から作り、既存 action を単独で変えない小さな補助として扱う。
+  - `RAU-RR-18` では、weekday context signal と competitor own price position signal を `src/rankRecommendation.ts` の pure scoring contract へ追加した。`src/main.ts` では、weekday context を保存済み `booking_curve_raw_source:v2` の同曜日候補から作り、競合価格内自社料金位置を保存済み `competitor-price-snapshots` の最新 snapshot から作る。追加 API request は行わない。Chrome拡張 backend では通常 Chrome の Revenue Assistant tab が 1 件あることを確認し、Chrome DevTools Protocol で最新 dist を一時注入した確認では、候補 list 10 行、page error 0 件、console error 0 件、`自社安め` 7 行、weekday reason 0 行、金額・差額・比率の直接表示 0 行だった。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
 - 次スレッドでやらないこと:
   - 推奨レート金額を出さない。
@@ -236,9 +238,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-18` であることを確認する。
-2. `RAU-RR-18` では、曜日別関係と競合価格内自社料金位置の初期 signal を、追加 request なしで既存保存済み evidence から作る。
-3. `src/rankRecommendation.ts` の pure scoring contract と `src/main.ts` の evidence assembly を分け、signal 欠損時は推測補完せず diagnostics に理由を残す。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-19` であることを確認する。
+2. `RAU-RR-19` では、Chrome拡張 backend で通常 Chrome の対象 tab を確認し、Chrome DevTools Protocol で top list の support reason / diagnostics 分布を確認する。
+3. 閾値や補正幅を変更する場合は、先に `docs/spec_003_rank_recommendation_signal.md` と `docs/context/DECISIONS.md` の更新要否を判定する。
 4. Rank Recommendation Bundle に戻る場合は、forecast 数値、sales / ADR 数値、競合価格の金額または差額を top list へ直接表示しない契約と、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
 
 変更しない契約:

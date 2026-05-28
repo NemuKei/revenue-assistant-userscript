@@ -65,8 +65,10 @@ import {
     type RankRecommendationRankLadderEntry,
     type RankRecommendationRankOrderOverride,
     type RankRecommendationRankOrderResolution,
+    type RankRecommendationOwnPricePositionSignal,
     type RankRecommendationSalesAdrHealthSignal,
-    type RankRecommendationStatus
+    type RankRecommendationStatus,
+    type RankRecommendationWeekdayContextSignal
 } from "./rankRecommendation";
 import {
     buildRankRecommendationDecisionCacheKey,
@@ -672,6 +674,11 @@ interface RankRecommendationRankOrderOverrideRecord {
     rankNamesHighToLow: string[];
     savedAt: string;
 }
+
+type RankRecommendationOwnPricePositionEvidence = {
+    signal: RankRecommendationOwnPricePositionSignal | null;
+    diagnostics: string[];
+};
 
 const groupRoomCache = new Map<string, Promise<number | null>>();
 const bookingCurveCache = new Map<string, Promise<BookingCurveResponse>>();
@@ -4719,6 +4726,21 @@ async function buildRankRecommendationCurveEvidenceByKey(
         visibleStayDates: Set<string>;
     }
 ): Promise<Map<string, RankRecommendationCurveEvidence>> {
+    const ownPricePositionEvidenceByStayDate = new Map<string, Promise<RankRecommendationOwnPricePositionEvidence>>();
+    const getOwnPricePositionEvidence = (stayDate: string): Promise<RankRecommendationOwnPricePositionEvidence> => {
+        const cached = ownPricePositionEvidenceByStayDate.get(stayDate);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const request = buildRankRecommendationOwnPricePositionEvidence({
+            facilityId: options.facilityId,
+            stayDate
+        });
+        ownPricePositionEvidenceByStayDate.set(stayDate, request);
+        return request;
+    };
+
     const entries = await Promise.all((response.suggest_output_current_settings ?? []).flatMap((currentSetting) => {
         const stayDate = toCompactDateKey(currentSetting.stay_date ?? "");
         if (stayDate === null || !options.visibleStayDates.has(stayDate)) {
@@ -4735,7 +4757,8 @@ async function buildRankRecommendationCurveEvidenceByKey(
                 facilityId: options.facilityId,
                 stayDate,
                 asOfDate: options.asOfDate,
-                roomGroupId
+                roomGroupId,
+                ownPricePositionEvidence: getOwnPricePositionEvidence(stayDate)
             })];
         });
     }));
@@ -4748,6 +4771,7 @@ async function readRankRecommendationCurveEvidence(options: {
     stayDate: string;
     asOfDate: string;
     roomGroupId: string;
+    ownPricePositionEvidence: Promise<RankRecommendationOwnPricePositionEvidence>;
 }): Promise<[string, RankRecommendationCurveEvidence] | null> {
     const query = buildBookingCurveQuerySignature(options.stayDate, options.roomGroupId);
     const rawSourceKey = buildBookingCurveRawSourceCacheKey({
@@ -4772,6 +4796,7 @@ async function readRankRecommendationCurveEvidence(options: {
         });
 
     if (record === undefined) {
+        const ownPricePositionEvidence = await options.ownPricePositionEvidence;
         return [evidenceKey, {
             currentAllRooms: null,
             referenceAllRooms: null,
@@ -4781,12 +4806,18 @@ async function readRankRecommendationCurveEvidence(options: {
             referenceGroupRooms: null,
             forecastSignal: null,
             salesAdrHealthSignal: null,
-            diagnostics: ["booking_curve_source_missing"]
+            weekdayContextSignal: null,
+            ownPricePositionSignal: ownPricePositionEvidence.signal,
+            diagnostics: [
+                "booking_curve_source_missing",
+                ...ownPricePositionEvidence.diagnostics
+            ]
         }];
     }
 
     const point = findLatestBookingCurvePoint(record.response, options.asOfDate);
     if (point === null) {
+        const ownPricePositionEvidence = await options.ownPricePositionEvidence;
         return [evidenceKey, {
             currentAllRooms: null,
             referenceAllRooms: null,
@@ -4796,7 +4827,12 @@ async function readRankRecommendationCurveEvidence(options: {
             referenceGroupRooms: null,
             forecastSignal: null,
             salesAdrHealthSignal: null,
-            diagnostics: ["booking_curve_point_missing"]
+            weekdayContextSignal: null,
+            ownPricePositionSignal: ownPricePositionEvidence.signal,
+            diagnostics: [
+                "booking_curve_point_missing",
+                ...ownPricePositionEvidence.diagnostics
+            ]
         }];
     }
 
@@ -4837,6 +4873,16 @@ async function readRankRecommendationCurveEvidence(options: {
         response: record.response as BookingCurveResponse,
         point
     });
+    const [weekdayContextEvidence, ownPricePositionEvidence] = await Promise.all([
+        buildRankRecommendationWeekdayContextEvidence({
+            facilityId: options.facilityId,
+            stayDate: options.stayDate,
+            asOfDate: options.asOfDate,
+            roomGroupId: options.roomGroupId,
+            currentTransientRooms
+        }),
+        options.ownPricePositionEvidence
+    ]);
 
     return [evidenceKey, {
         currentAllRooms,
@@ -4847,9 +4893,13 @@ async function readRankRecommendationCurveEvidence(options: {
         referenceGroupRooms,
         forecastSignal: forecastEvidence.signal,
         salesAdrHealthSignal: salesAdrHealthEvidence.signal,
+        weekdayContextSignal: weekdayContextEvidence.signal,
+        ownPricePositionSignal: ownPricePositionEvidence.signal,
         diagnostics: [
             ...forecastEvidence.diagnostics,
-            ...salesAdrHealthEvidence.diagnostics
+            ...salesAdrHealthEvidence.diagnostics,
+            ...weekdayContextEvidence.diagnostics,
+            ...ownPricePositionEvidence.diagnostics
         ]
     }];
 }
@@ -4996,6 +5046,208 @@ function buildRankRecommendationSalesAdrHealthEvidence(options: {
         signal,
         diagnostics: Array.from(new Set(diagnostics))
     };
+}
+
+async function buildRankRecommendationWeekdayContextEvidence(options: {
+    facilityId: string;
+    stayDate: string;
+    asOfDate: string;
+    roomGroupId: string;
+    currentTransientRooms: number | null;
+}): Promise<{ signal: RankRecommendationWeekdayContextSignal | null; diagnostics: string[] }> {
+    const diagnostics: string[] = [];
+    if (options.currentTransientRooms === null) {
+        diagnostics.push("weekday_context_current_transient_missing");
+        return { signal: null, diagnostics };
+    }
+
+    const sourceRooms: number[] = [];
+    const candidateStayDates = getRankRecommendationSameWeekdayStayDates(options.stayDate)
+        .filter((stayDate) => {
+            const daysFromAsOf = getDaysBetweenDateKeys(stayDate, options.asOfDate);
+            return daysFromAsOf !== null && daysFromAsOf >= 0;
+        });
+    if (candidateStayDates.length === 0) {
+        diagnostics.push("weekday_context_missing");
+        return { signal: null, diagnostics };
+    }
+
+    await Promise.all(candidateStayDates.map(async (stayDate) => {
+        const query = buildBookingCurveQuerySignature(stayDate, options.roomGroupId);
+        const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+            facilityId: options.facilityId,
+            stayDate,
+            asOfDate: options.asOfDate,
+            scope: "roomGroup",
+            roomGroupId: options.roomGroupId,
+            endpoint: BOOKING_CURVE_ENDPOINT,
+            query
+        });
+        const record = await readBookingCurveRawSourceRecord(rawSourceKey)
+            .catch((error: unknown) => {
+                console.warn(`[${SCRIPT_NAME}] failed to read weekday context source`, {
+                    targetStayDate: options.stayDate,
+                    sourceStayDate: stayDate,
+                    asOfDate: options.asOfDate,
+                    roomGroupId: options.roomGroupId,
+                    error
+                });
+                return undefined;
+            });
+        if (record === undefined) {
+            return;
+        }
+
+        const point = findLatestBookingCurvePoint(record.response, options.asOfDate);
+        const transientRooms = normalizeBookingCurveRoomCount(point?.transient?.this_year_room_sum);
+        if (transientRooms !== null) {
+            sourceRooms.push(transientRooms);
+        }
+    }));
+
+    if (sourceRooms.length === 0) {
+        diagnostics.push("weekday_context_missing");
+        return { signal: null, diagnostics };
+    }
+    if (sourceRooms.length < 2) {
+        diagnostics.push("weekday_reference_source_count_low");
+        return { signal: null, diagnostics };
+    }
+
+    const referenceRooms = averageBookingCurveRoomCounts(sourceRooms);
+    if (referenceRooms === null || referenceRooms <= 0) {
+        diagnostics.push("weekday_context_missing");
+        return { signal: null, diagnostics };
+    }
+
+    let signal: RankRecommendationWeekdayContextSignal = "weekday_reference_neutral";
+    const difference = options.currentTransientRooms - referenceRooms;
+    if (difference >= 1 && options.currentTransientRooms / referenceRooms >= 1.15) {
+        signal = "weekday_reference_supports_raise";
+    } else if (difference <= -1 && options.currentTransientRooms / referenceRooms <= 0.85) {
+        signal = "weekday_reference_supports_lower";
+    }
+
+    diagnostics.push(`weekday_signal_${signal}`);
+    return {
+        signal,
+        diagnostics: Array.from(new Set(diagnostics))
+    };
+}
+
+function getRankRecommendationSameWeekdayStayDates(stayDate: string): string[] {
+    return [-14, -7, 7, 14].map((offsetDays) => shiftDate(stayDate, offsetDays));
+}
+
+async function buildRankRecommendationOwnPricePositionEvidence(options: {
+    facilityId: string;
+    stayDate: string;
+}): Promise<{ signal: RankRecommendationOwnPricePositionSignal | null; diagnostics: string[] }> {
+    const diagnostics: string[] = [];
+    const series = await readCompetitorPriceSnapshotSeriesForStayDate(options.facilityId, options.stayDate)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation competitor price evidence`, {
+                stayDate: options.stayDate,
+                error
+            });
+            return null;
+        });
+    const record = series?.latestRecord ?? null;
+    if (record === null) {
+        return {
+            signal: null,
+            diagnostics: ["competitor_price_snapshot_missing"]
+        };
+    }
+
+    const ownYadNo = record.payload.own?.yadNo ?? null;
+    if (ownYadNo === null) {
+        return {
+            signal: null,
+            diagnostics: ["competitor_price_own_missing"]
+        };
+    }
+    if (record.competitorSet.length === 0 || record.payload.competitors.length === 0) {
+        diagnostics.push("competitor_price_competitor_set_missing");
+    }
+
+    let lowCount = 0;
+    let nearCount = 0;
+    let highCount = 0;
+    let comparableCount = 0;
+
+    for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
+        const minimumPrices = findMinimumCompetitorPrices(record, guestCount, null, null);
+        const ownPrice = minimumPrices.get(ownYadNo)?.price ?? null;
+        if (ownPrice === null) {
+            continue;
+        }
+
+        const competitorPrices = Array.from(minimumPrices.entries())
+            .filter(([yadNo]) => yadNo !== ownYadNo)
+            .map(([, value]) => value.price)
+            .filter((price) => Number.isFinite(price));
+        if (competitorPrices.length === 0) {
+            continue;
+        }
+
+        comparableCount += 1;
+        const median = getMedianNumber(competitorPrices);
+        if (median === null || median <= 0) {
+            continue;
+        }
+
+        const ratio = ownPrice / median;
+        if (ratio <= 0.95) {
+            lowCount += 1;
+        } else if (ratio >= 1.05) {
+            highCount += 1;
+        } else {
+            nearCount += 1;
+        }
+    }
+
+    if (comparableCount === 0) {
+        diagnostics.push("competitor_price_comparable_plan_missing");
+        return {
+            signal: null,
+            diagnostics: Array.from(new Set(diagnostics))
+        };
+    }
+
+    let signal: RankRecommendationOwnPricePositionSignal = "own_price_near_competitors";
+    if (lowCount > highCount && lowCount >= nearCount) {
+        signal = "own_price_low_against_competitors";
+    } else if (highCount > lowCount && highCount >= nearCount) {
+        signal = "own_price_high_against_competitors";
+    }
+
+    diagnostics.push(`competitor_price_signal_${signal}`);
+    return {
+        signal,
+        diagnostics: Array.from(new Set(diagnostics))
+    };
+}
+
+function getMedianNumber(values: number[]): number | null {
+    const sorted = values
+        .filter((value) => Number.isFinite(value))
+        .sort((left, right) => left - right);
+    if (sorted.length === 0) {
+        return null;
+    }
+
+    const middleIndex = Math.floor(sorted.length / 2);
+    const upper = sorted[middleIndex];
+    if (upper === undefined) {
+        return null;
+    }
+    if (sorted.length % 2 === 1) {
+        return upper;
+    }
+
+    const lower = sorted[middleIndex - 1];
+    return lower === undefined ? upper : (lower + upper) / 2;
 }
 
 function buildRankRecommendationHistoricalReferenceCurveResult(options: {

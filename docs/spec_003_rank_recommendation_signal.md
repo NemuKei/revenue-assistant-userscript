@@ -373,6 +373,8 @@ weekday context と競合価格内自社料金位置の扱い:
 - 競合価格内自社料金位置は、`raise_watch`、`lower_watch`、`watch` の action を単独では変更しない。補正範囲は first implementation では confidence の増減 0.03 から 0.06 程度、または `high` と `medium` の間の priority cap / lift に限定する。実データ評価前に補正幅を大きくしない。
 - 競合価格 snapshot がない場合、自社 plan がない場合、比較対象の競合 plan がない場合、同じ条件 signature の snapshot がない場合、部屋タイプまたは食事条件が一致しない場合は、signal を推測で補完しない。diagnostics は `competitor_price_snapshot_missing`、`competitor_price_own_missing`、`competitor_price_comparable_plan_missing`、`competitor_price_condition_mismatch`、`competitor_price_competitor_set_missing` を候補にする。
 - 競合価格 snapshot は、取得済みデータを使う。rank recommendation scoring のために、未確認 request 範囲、取得頻度、対象日付範囲、background queue の上限を増やさない。
+- `RAU-RR-18` の初期実装では、weekday context は `stayDate` から `-14日`、`-7日`、`+7日`、`+14日` の同曜日候補を作り、`asOfDate` 時点で未来または当日の候補だけを使う。各候補の保存済み `booking_curve_raw_source:v2` roomGroup response から `transient.this_year_room_sum` を読み、2 件以上の比較値がある場合だけ current transient rooms と平均を比較する。current が平均より 1 室以上かつ 115% 以上なら `weekday_reference_supports_raise`、平均より 1 室以上低く 85% 以下なら `weekday_reference_supports_lower`、それ以外は `weekday_reference_neutral` とする。
+- `RAU-RR-18` の初期実装では、競合価格内自社料金位置は `stayDate` ごとの最新保存済み snapshot を使い、同じ snapshot 内の人数 1 から 4 の自社最安値と競合施設ごとの最安値中央値を比較する。自社が中央値の 95% 以下なら `own_price_low_against_competitors`、105% 以上なら `own_price_high_against_competitors`、それ以外は `own_price_near_competitors` とする。現時点では Revenue Assistant の roomGroup と jalan room type の対応を安全に確定できないため、roomGroup 別の部屋タイプ filter はかけない。
 
 ## Rank Response / Elasticity
 
@@ -560,7 +562,7 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 7. 様子見 cooldown の LT 帯別 default duration をどう設定するか。
 8. reasonFingerprint に含める reasonCodes、threshold、data version、scoring version の境界をどう切るか。
 9. weekday context で祝前日、連休、イベント日を扱う場合、どの確認済み source を使うか。
-10. 競合価格内自社料金位置の初期閾値を、順位、平均との差、中央値との差、最安値との差のどれで評価するか。
+10. 競合価格内自社料金位置を roomGroup 別に強める場合、Revenue Assistant の roomGroup と `jalanFacilityRoomType` をどの確認済み source で対応づけるか。
 11. `RAU-FC-03` の実データ評価で、forecast diagnostics を priority / confidence に接続できるだけの安定性があるか。
 
 ## References

@@ -3,6 +3,8 @@ export type RankRecommendationPriority = "high" | "medium" | "low";
 export type RankRecommendationStatus = "active" | "not_eligible";
 export type RankRecommendationForecastSignal = "high_occupancy" | "low_occupancy" | "neutral";
 export type RankRecommendationSalesAdrHealthSignal = "adr_down" | "sales_down" | "adr_and_sales_down" | "neutral";
+export type RankRecommendationWeekdayContextSignal = "weekday_reference_supports_raise" | "weekday_reference_supports_lower" | "weekday_reference_neutral";
+export type RankRecommendationOwnPricePositionSignal = "own_price_low_against_competitors" | "own_price_near_competitors" | "own_price_high_against_competitors";
 export type RankRecommendationRankOrderSource = "numeric_rank_name" | "settings_screen" | "manual_override" | "unresolved";
 export type RankRecommendationRecommendedRankUnavailableReason =
     | "rank_ladder_missing"
@@ -61,6 +63,8 @@ export interface RankRecommendationCurveEvidence {
     referenceGroupRooms: number | null;
     forecastSignal: RankRecommendationForecastSignal | null;
     salesAdrHealthSignal: RankRecommendationSalesAdrHealthSignal | null;
+    weekdayContextSignal: RankRecommendationWeekdayContextSignal | null;
+    ownPricePositionSignal: RankRecommendationOwnPricePositionSignal | null;
     diagnostics: string[];
 }
 
@@ -155,6 +159,8 @@ function buildRankRecommendationCandidate(options: {
     const isGroupDriven = isPositive(groupDeviation) && !isPositive(transientDeviation);
     const forecastSignal = curveEvidence?.forecastSignal ?? null;
     const salesAdrHealthSignal = curveEvidence?.salesAdrHealthSignal ?? null;
+    const weekdayContextSignal = curveEvidence?.weekdayContextSignal ?? null;
+    const ownPricePositionSignal = curveEvidence?.ownPricePositionSignal ?? null;
 
     let action: RankRecommendationAction;
     let priority: RankRecommendationPriority;
@@ -257,6 +263,49 @@ function buildRankRecommendationCandidate(options: {
             } else if (action === "watch" && (daysToStay === null || daysToStay <= 30)) {
                 priority = maxPriority(priority, "medium");
                 confidence = increaseConfidence(confidence, 0.03);
+            }
+        }
+    }
+
+    if (action !== "not_eligible" && weekdayContextSignal !== null) {
+        if (weekdayContextSignal === "weekday_reference_supports_raise") {
+            if (action === "raise_watch") {
+                reasonCodes.push("同曜日強め");
+                confidence = increaseConfidence(confidence, 0.04);
+            } else if (action === "watch" && !isGroupDriven) {
+                reasonCodes.push("同曜日強め");
+                priority = maxPriority(priority, "medium");
+                confidence = increaseConfidence(confidence, 0.03);
+            }
+        } else if (weekdayContextSignal === "weekday_reference_supports_lower") {
+            if (action === "lower_watch") {
+                reasonCodes.push("同曜日弱め");
+                confidence = increaseConfidence(confidence, 0.04);
+            } else if (action === "watch" && (daysToStay === null || daysToStay <= 30)) {
+                reasonCodes.push("同曜日弱め");
+                priority = maxPriority(priority, "medium");
+                confidence = increaseConfidence(confidence, 0.03);
+            }
+        }
+    }
+
+    if (action !== "not_eligible" && ownPricePositionSignal !== null) {
+        if (ownPricePositionSignal === "own_price_low_against_competitors") {
+            if (action === "raise_watch") {
+                reasonCodes.push("自社安め");
+                confidence = increaseConfidence(confidence, 0.06);
+            } else if (action === "lower_watch") {
+                reasonCodes.push("自社安め");
+                confidence = decreaseConfidence(confidence, 0.04);
+            }
+        } else if (ownPricePositionSignal === "own_price_high_against_competitors") {
+            if (action === "lower_watch") {
+                reasonCodes.push("自社高め");
+                confidence = increaseConfidence(confidence, 0.06);
+            } else if (action === "raise_watch") {
+                reasonCodes.push("自社高め");
+                priority = minPriority(priority, "medium");
+                confidence = decreaseConfidence(confidence, 0.04);
             }
         }
     }

@@ -1529,6 +1529,13 @@
 
 ### RAU-RR-18 曜日別関係と競合価格内自社料金位置の scoring support を実装する
 
+- 状態:
+  - 2026-05-28 に実装済み。
+  - `src/rankRecommendation.ts` に weekday context signal と competitor own price position signal を追加し、既存 action を単独で変えず priority / confidence / reasonCodes / diagnostics の小さな補助として接続した。
+  - `src/main.ts` では、weekday context を保存済み `booking_curve_raw_source:v2` の同曜日候補から作り、競合価格内自社料金位置を保存済み `competitor-price-snapshots` の最新 snapshot から作るようにした。追加 API request は行わない。
+  - 競合価格内自社料金位置は `stayDate` ごとに読み取り結果を共有し、同じ stayDate の複数 roomGroup で IndexedDB 読み取りを重複させない。
+  - Chrome拡張 backend では通常 Chrome の Revenue Assistant tab が 1 件あることを確認した。
+  - Chrome DevTools Protocol で最新 dist を通常 Chrome の Revenue Assistant root へ一時注入し、候補 list 10 行、page error 0 件、console error 0 件、`自社安め` 7 行、weekday reason 0 行、金額・差額・比率の直接表示 0 行を確認した。
 - 目的:
   - `RAU-RR-17` の設計に従い、rank recommendation の既存 action を単独で変えずに、曜日別関係と競合価格内自社料金位置を priority / confidence / reasonCodes / diagnostics の補助として接続する。
 - 背景:
@@ -1555,6 +1562,31 @@
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: after-spec
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-19 scoring support signal の実データ発火分布と閾値を確認する
+
+- 目的:
+  - `RAU-RR-18` で追加した weekday context signal と competitor own price position signal が、実データで候補順位や主要根拠を過度に偏らせていないか確認する。
+- 背景:
+  - 初回の CDP 確認では top list 10 行のうち `自社安め` が 7 行に出た一方、weekday reason は 0 行だった。
+  - 1 snapshot だけでは、競合価格内自社料金位置の 95% / 105% 閾値や、weekday context の 115% / 85% 閾値が妥当か判断できない。
+- スコープ:
+  - 通常 Chrome の Revenue Assistant root と、可能なら異なる表示範囲または Analyze 起点後の top list で、support reason と diagnostics の分布を確認する。
+  - `own_price_low_against_competitors`、`own_price_high_against_competitors`、`weekday_reference_supports_raise`、`weekday_reference_supports_lower`、欠損 diagnostics の件数を確認する。
+  - 閾値変更が必要な場合は、数値を直接 UI に出さず、補正幅または reason 表示の条件だけを調整する。
+- 非目標:
+  - 新しい競合価格 request 範囲や取得頻度を追加しない。
+  - roomGroup と jalan room type の未確認対応づけを推測しない。
+  - 推奨レート金額、Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - Chrome拡張 backend で通常 Chrome の対象 tab が確認されている。
+  - Chrome DevTools Protocol で top list の support reason 分布、page error、console error が確認されている。
+  - 閾値または補正幅を変更する場合は、`docs/spec_003_rank_recommendation_signal.md` と `docs/context/DECISIONS.md` に理由が残っている。
+  - 変更を行った場合は `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-threshold-change
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
 ## Forecast Bundle
@@ -2095,7 +2127,7 @@
 
 Now:
 
-- `RAU-RR-18` 曜日別関係と競合価格内自社料金位置の scoring support を実装する
+- `RAU-RR-19` scoring support signal の実データ発火分布と閾値を確認する
 
 Next:
 
@@ -2132,7 +2164,8 @@ Later:
 - `RAU-RR-15` は 2026-05-28 に実装済みである。rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` として扱う。first implementation では `numeric_rank_name` と `manual_override` を実装し、top list 上で現在 source と高ランクから低ランクへの順序を確認できる。manual override は browser-local 保存で、reset で推定順序へ戻せる。CDP read-only では `/settings/site-controller` link と fetch 200 は確認したが、response は SPA shell で rank order payload は確認できなかった。
 - `RAU-RR-16` は 2026-05-28 に実装済みである。設定画面 `設定 > 表示 > 料金ランクの並び順` の route は `/settings/price-rank-sequence` であり、`GET /api/v1/rank_sequences` の配列順が設定画面のドラッグリスト順序として表示されることを確認した。RAU は、manual override がない場合、この配列順を source `settings_screen` として使う。名前パターンは企業や施設により数字、ローマ字、記号混在、逆順などがあり得るため、数値 rank 名推定は設定画面順序が取れない場合の fallback とする。
 - `RAU-RR-17` は 2026-05-28 に docs 設計済みである。曜日別関係と競合価格内の自社料金位置は rank order source ではなく、rank recommendation scoring の priority / confidence / reasonCodes / diagnostics 補助として扱う。rank 名は企業や施設により数字、ローマ字、記号混在、逆順などがあり得るため、名前パターン、曜日別販売傾向、競合価格内自社料金位置だけで上下関係を断定しない。
-- `RAU-RR-18` は次の Now である。曜日別関係と競合価格内自社料金位置の初期 signal を、追加 request なしで既存保存済み evidence から作り、既存 action を単独で変えない小さな scoring support として接続する。
+- `RAU-RR-18` は 2026-05-28 に実装済みである。weekday context は保存済み `booking_curve_raw_source:v2` の同曜日候補、競合価格内自社料金位置は保存済み `competitor-price-snapshots` の最新 snapshot から作り、既存 action を単独で変えない小さな scoring support として接続した。Chrome DevTools Protocol の実画面確認では、候補 list 10 行、page error 0 件、console error 0 件、`自社安め` 7 行、weekday reason 0 行、金額・差額・比率の直接表示 0 行だった。
+- `RAU-RR-19` は次の Now である。1 snapshot だけでは補助 signal の発火偏りや閾値妥当性を判断できないため、通常 Chrome の実データで support reason と diagnostics の分布を確認する。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
