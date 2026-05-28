@@ -157,8 +157,8 @@ first phase では次を行わない。
 - 2026-05-28 の追加確認では、Revenue Assistant の配信 JavaScript が `defaultSequence` を「名前順に並べ替える」初期順として扱い、設定保存時は並び替え済みの `priceRankCode` 配列を送信していた。そのため、RAU は `default_sequence` を rank 上げ / 下げの方向として使わない。
 - 2026-05-28 の `RAU-RR-16` 追加確認では、設定画面 `設定 > 表示 > 料金ランクの並び順` の route が `/settings/price-rank-sequence` であり、この画面が `GET /api/v1/rank_sequences` の配列順をそのままドラッグリストへ表示することを確認した。保存時は `POST /api/v1/rank_sequences` へ並び替え後の `priceRankCode` 配列を送る。したがって RAU は、manual override がない場合、`rank_sequences[]` の配列順を Revenue Assistant 設定画面の保存済み rank 並び順として扱う。
 - 大国町では、設定画面 `料金ランクの並び順` が高ランクから低ランクの順に `1` から `20` へ並んでいる。RAU はこの保存済み順序を source `settings_screen` として優先し、`1` を最高ランク、`20` を最低ランクとして扱う。
-- rank 名は企業や施設により、数字、ローマ字、記号混在、逆順などがあり得る。名前パターンだけでは上下関係を安全に断定できないため、数字やローマ字の推定ロジックを積み増して確認済み source と同等に扱わない。
-- 設定画面の保存済み順序が取得できない場合に限り、rank 名がすべて整数として読めるなら、RAU は rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定する。
+- rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ数字系や文字系でも、`1` や `A` が最高ランクになる運用と、最低ランクになる運用の両方があり得る。名前パターンだけでは上下関係を安全に断定できないため、数字、ローマ字、英字、記号の推定ロジックを積み増して確認済み source と同等に扱わない。
+- 設定画面の保存済み順序が取得できない場合に限り、rank 名がすべて整数として読めるなら、RAU は rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定する。この fallback は、設定画面順序や manual override と同じ確定 source ではなく、source `numeric_rank_name` として UI と diagnostics に明示する。
 - `raise_watch` の隣接 recommended rank は、高ランクから低ランクへの順序上で current rank の 1 つ高い rank とする。`lower_watch` の隣接 recommended rank は、同じ順序上で current rank の 1 つ低い rank とする。
 - rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` のいずれかとして扱う。source 優先順位は、利用者が browser-local に保存した `manual_override`、Revenue Assistant 設定画面の保存済み順序である `settings_screen`、設定順序が使えない場合の fallback である `numeric_rank_name`、解決不能の `unresolved` とする。
 - rank 名が数値として読めない場合、または施設ごとの上下関係を推定できない場合は、recommended rank を出さず、原因を diagnostics に残す。
@@ -361,7 +361,7 @@ sales / ADR health の扱い:
 weekday context と競合価格内自社料金位置の扱い:
 
 - rank order は、manual override、Revenue Assistant 設定画面の保存済み順序、数値 rank 名 fallback、unresolved の順で解決する。曜日別関係と競合価格内の自社料金位置は、rank order source にはしない。
-- 理由は、rank rule が企業またはホテルごとに異なるためである。rank 名は数字、ローマ字、記号混在のいずれもあり得る。数字が大きいほど高ランクの施設も、小さいほど高ランクの施設もあり得る。曜日別の rank 使い分けや競合価格との関係も、施設固有の運用であり、上下関係を安全に断定する source にはならない。
+- 理由は、rank rule が企業またはホテルごとに異なるためである。rank 名は数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ表記系でも、高ランクから低ランクへ進む運用と、低ランクから高ランクへ進む運用の両方があり得る。曜日別の rank 使い分けや競合価格との関係も、施設固有の運用であり、上下関係を安全に断定する source にはならない。
 - 大国町では、Revenue Assistant 設定画面の `料金ランクの並び順` が高ランクから低ランクへ `1` から `20` の順に並んでいる。この施設では `1` が最高ランク、`20` が最低ランクである。RAU はこの順序を `settings_screen` source として使い、必要なら利用者が manual override で変更できる。
 - 曜日別関係は、rank order の推定ではなく、同じ曜日または近い営業文脈の需要差を見て、既存 action の priority / confidence を小さく補正する入力にする。初期実装の比較単位は `facilityId x stayDate x asOfDate x roomGroupId x weekday` とし、既存 `booking_curve_raw_source:v2`、reference curve、同曜日 raw source から取れる範囲に限定する。追加 API request、祝日 API、未確認 calendar API は first implementation では使わない。
 - weekday context の初期 signal は、`weekday_reference_supports_raise`、`weekday_reference_supports_lower`、`weekday_reference_neutral` の内部分類候補とする。top list へ表示する場合は、数値を出さず `同曜日強め`、`同曜日弱め` のような非数値 reason に留める。
@@ -431,8 +431,8 @@ rank response dataset の first contract:
 - rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` のいずれかとして record へ残す。
 - 利用者が manual override を保存した場合は、保存された高ランクから低ランクへの順序を source `manual_override` として最優先する。manual override は browser-local 保存に限定し、Revenue Assistant の rank 設定へ write しない。
 - manual override がない場合は、`/api/v1/rank_sequences` の配列順を、Revenue Assistant 設定画面 `料金ランクの並び順` の保存済み順序として使い、source `settings_screen` とする。大国町ではこの設定画面が高ランクから低ランクの順に `1` から `20` へ並んでいる。
-- 設定画面の保存済み順序が取得できない場合だけ、rank 名がすべて整数として読めるなら、rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定し、source を `numeric_rank_name` とする。
-- rank 名は企業や施設により、数字、ローマ字、記号混在、逆順などがあり得るため、名前パターンだけで `settings_screen` と同等の確定 source にはしない。
+- 設定画面の保存済み順序が取得できない場合だけ、rank 名がすべて整数として読めるなら、rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定し、source を `numeric_rank_name` とする。この fallback は、すべての施設で数字が小さいほど高ランクであると断定するものではない。
+- rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ表記系でも高低が逆になる運用があり得るため、名前パターンだけで `settings_screen` と同等の確定 source にはしない。ローマ字または英字順、記号の有無、曜日別販売傾向、競合価格内の自社料金位置は、rank order source としては使わない。
 - `raise_watch` では current rank の 1 つ高い rank を、`lower_watch` では current rank の 1 つ低い rank を、first wave の隣接 `recommendedRank` として扱う。
 - 方向確認後も、first wave の recommendedRank は隣接 rank のみに限定する。2 段階以上の rank 移動、価格差最大化、売上最大化 rank の直接提示は行わない。
 - current rank が欠損する場合、rank ladder に current rank code が存在しない場合、rank order を推定できない場合、または隣接 rank が存在しない場合は、`recommendedRank` を null にする。

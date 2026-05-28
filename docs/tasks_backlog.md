@@ -1475,7 +1475,7 @@
   - `RAU-RR-15` の CDP read-only 確認では、root 画面から `/settings/site-controller` link と fetch 200 は確認できた。
   - ただし response は SPA shell で、rank の全貌や rank order payload は確認できなかった。
   - 利用者によると rank の全貌自体は設定画面内にある。
-  - 利用者補足により、rank 名は企業や施設により数字、ローマ字、記号混在、逆順などがあり得る。名前パターンを増やして推定を強くするより、Revenue Assistant 設定画面の保存済み順序と manual override を優先する必要がある。
+  - 利用者補足により、rank 名は企業や施設により数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ表記系でも上下関係が逆になる運用があり得る。名前パターンを増やして推定を強くするより、Revenue Assistant 設定画面の保存済み順序と manual override を優先する必要がある。
 - スコープ:
   - Chrome拡張で通常 Chrome の設定画面候補を取り違えないよう確認する。
   - CDP read-only で設定画面遷移後の DOM、XHR、fetch request を観測し、rank order を取得できる source があるか確認する。
@@ -1499,7 +1499,7 @@
 - 状態:
   - 2026-05-28 に docs 設計済み。
   - 曜日別関係と競合価格内の自社料金位置は、rank order source ではなく、priority / confidence / reasonCodes / diagnostics の補助 input として採用する。
-  - rank rule は企業またはホテルごとに異なり、rank 名は数字、ローマ字、記号混在、逆順のいずれもあり得るため、名前パターン、曜日別の販売傾向、競合価格内の自社料金位置だけで上下関係を断定しない。
+  - rank rule は企業またはホテルごとに異なり、rank 名は数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ表記系でも上下関係が逆になる運用があり得るため、名前パターン、曜日別の販売傾向、競合価格内の自社料金位置だけで上下関係を断定しない。
   - 大国町では Revenue Assistant 設定画面の `料金ランクの並び順` が高ランクから低ランクへ `1` から `20` の順に並んでいるため、`1` を最高ランク、`20` を最低ランクとして扱う。
   - 曜日別関係は既存 `booking_curve_raw_source:v2`、reference curve、同曜日 raw source から取れる範囲に限定し、追加 API request、祝日 API、未確認 calendar API は使わない。
   - 競合価格内自社料金位置は、保存済み `competitor-price-snapshots` の同じ `conditionSignature`、取得時点、競合施設集合、人数、部屋タイプ、食事条件の範囲で比較する。
@@ -1507,7 +1507,7 @@
   - rank order は設定画面順序を使う前提にしたうえで、料金調整候補の priority / confidence を、カレンダー上の曜日別関係と競合価格 snapshot 内の自社料金位置で補助できるか判断する。
 - 背景:
   - 利用者は、推定ロジック候補として「カレンダーベースでの曜日別の関係」と「競合価格内の自社料金」を挙げている。
-  - rank 名の数字、ローマ字、記号、逆順パターンは施設差が大きく、rank order の確定 source としては使いにくい。一方、曜日別の販売傾向や競合価格内の自社位置は、rank order ではなく候補の優先度や confidence を補助する input として扱える可能性がある。
+  - rank 名の数字系、ローマ字または英字系、記号混在系、上下関係の逆転パターンは施設差が大きく、rank order の確定 source としては使いにくい。一方、曜日別の販売傾向や競合価格内の自社位置は、rank order ではなく候補の優先度や confidence を補助する input として扱える可能性がある。
 - スコープ:
   - カレンダー上の曜日別関係を、同曜日の reference、近い曜日、祝前日などのどの単位で扱うかを設計する。
   - 競合価格 snapshot 内の自社料金位置を、人数、部屋タイプ、食事条件、取得時点、競合施設集合のどの粒度で比較するかを設計する。
@@ -2162,8 +2162,8 @@ Later:
 - `RAU-RR-13` は 2026-05-28 に実装済みである。rank ladder 端で隣接 recommended rank が存在しない場合は、`上限ランク: 上げ余地なし` または `下限ランク: 下げ余地なし` と表示する。端判定は `RAU-RR-14` 後の推定 rank 順序に従う。推奨レート金額、2段階以上の rank 移動、Revenue Assistant write / bulk apply は追加していない。
 - `RAU-RR-14` は 2026-05-28 に実装済みである。大国町では rank 名 `1` が最高ランク、`20` が最低ランクであるため、rank 名がすべて整数として読める場合は数値昇順を高ランクから低ランクへの順序として推定する。top list では `raise_watch` に 1 つ高い rank、`lower_watch` に 1 つ低い rank を表示する。rank order を推定できない場合は recommended rank を出さず `rank_order_unresolved` を diagnostics に残す。
 - `RAU-RR-15` は 2026-05-28 に実装済みである。rank order source は `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` として扱う。first implementation では `numeric_rank_name` と `manual_override` を実装し、top list 上で現在 source と高ランクから低ランクへの順序を確認できる。manual override は browser-local 保存で、reset で推定順序へ戻せる。CDP read-only では `/settings/site-controller` link と fetch 200 は確認したが、response は SPA shell で rank order payload は確認できなかった。
-- `RAU-RR-16` は 2026-05-28 に実装済みである。設定画面 `設定 > 表示 > 料金ランクの並び順` の route は `/settings/price-rank-sequence` であり、`GET /api/v1/rank_sequences` の配列順が設定画面のドラッグリスト順序として表示されることを確認した。RAU は、manual override がない場合、この配列順を source `settings_screen` として使う。名前パターンは企業や施設により数字、ローマ字、記号混在、逆順などがあり得るため、数値 rank 名推定は設定画面順序が取れない場合の fallback とする。
-- `RAU-RR-17` は 2026-05-28 に docs 設計済みである。曜日別関係と競合価格内の自社料金位置は rank order source ではなく、rank recommendation scoring の priority / confidence / reasonCodes / diagnostics 補助として扱う。rank 名は企業や施設により数字、ローマ字、記号混在、逆順などがあり得るため、名前パターン、曜日別販売傾向、競合価格内自社料金位置だけで上下関係を断定しない。
+- `RAU-RR-16` は 2026-05-28 に実装済みである。設定画面 `設定 > 表示 > 料金ランクの並び順` の route は `/settings/price-rank-sequence` であり、`GET /api/v1/rank_sequences` の配列順が設定画面のドラッグリスト順序として表示されることを確認した。RAU は、manual override がない場合、この配列順を source `settings_screen` として使う。名前パターンは企業や施設により数字系、ローマ字または英字系、記号混在系のいずれもあり得て、同じ表記系でも上下関係が逆になる運用があるため、数値 rank 名推定は設定画面順序が取れない場合の fallback とする。
+- `RAU-RR-17` は 2026-05-28 に docs 設計済みである。曜日別関係と競合価格内の自社料金位置は rank order source ではなく、rank recommendation scoring の priority / confidence / reasonCodes / diagnostics 補助として扱う。rank 名は企業や施設により数字系、ローマ字または英字系、記号混在系のいずれもあり得るため、名前パターン、曜日別販売傾向、競合価格内自社料金位置だけで上下関係を断定しない。
 - `RAU-RR-18` は 2026-05-28 に実装済みである。weekday context は保存済み `booking_curve_raw_source:v2` の同曜日候補、競合価格内自社料金位置は保存済み `competitor-price-snapshots` の最新 snapshot から作り、既存 action を単独で変えない小さな scoring support として接続した。Chrome DevTools Protocol の実画面確認では、候補 list 10 行、page error 0 件、console error 0 件、`自社安め` 7 行、weekday reason 0 行、金額・差額・比率の直接表示 0 行だった。
 - `RAU-RR-19` は次の Now である。1 snapshot だけでは補助 signal の発火偏りや閾値妥当性を判断できないため、通常 Chrome の実データで support reason と diagnostics の分布を確認する。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
