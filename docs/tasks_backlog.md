@@ -2497,6 +2497,51 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-41 top list meta の基準日混在時に最古基準日を表示する
+
+- 状態:
+  - 2026-05-29 実装済み。
+- 目的:
+  - 料金調整候補 list 上部で、表示中候補の基準日が複数混在している場合でも、古い基準日の候補が含まれているかをすぐ確認できるようにする。
+- 背景:
+  - `RAU-RR-40` で、表示中候補の `asOfDate` が 1 種類の場合は `基準日 5/28・前日` のように鮮度を確認できるようになった。
+  - ただし、表示中候補の `asOfDate` が複数混在する場合は `基準日 複数` のみであり、古い候補が混じっているか、すべて当日以降なのかを一覧上部から判断できない。
+- スコープ:
+  - 表示中候補の `asOfDate` が複数混在し、valid な最古 `asOfDate` がブラウザの当日より 1 日前なら `基準日 複数・最古 M/D・前日` と表示する。
+  - 表示中候補の `asOfDate` が複数混在し、valid な最古 `asOfDate` がブラウザの当日より 2 日以上前なら `基準日 複数・最古 M/D・n日前` と表示する。
+  - 表示中候補の `asOfDate` が複数混在していても、valid な最古 `asOfDate` が当日または未来日の場合は、従来どおり `基準日 複数` と表示する。
+  - 表示中候補の `asOfDate` が 1 種類の場合は、`RAU-RR-40` の表示を維持する。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonCodes、reasonFingerprint を変更すること。
+  - rank order、manual override、user decision、resolved 判定を変更すること。
+  - API request 範囲、request 件数、request 間隔を変更すること。
+  - forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示すること。
+  - Revenue Assistant write / bulk apply。
+- 受け入れ条件:
+  - top list meta の `基準日` が複数混在し、最古基準日が当日より前の場合、`最古 M/D・前日` または `最古 M/D・n日前` が表示される。
+  - top list meta の `基準日` が複数混在していても、最古基準日が当日または未来日の場合は、余計な鮮度 suffix を表示しない。
+  - top list meta の `基準日` が 1 種類の場合は、`RAU-RR-40` の表示を維持する。
+  - top list に forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で最新 dist 一時注入後の meta 表示を確認する。
+- 実装内容:
+  - `formatRankRecommendationAsOfDateSummary()` で、表示中候補の `asOfDate` が複数ある場合の処理を `formatRankRecommendationMultipleAsOfDateSummary()` へ分離した。
+  - 複数 `asOfDate` のうち、valid な最古日付を `YYYYMMDD` へ正規化して比較し、ブラウザ local 当日より古い場合だけ `基準日 複数・最古 M/D・前日` または `基準日 複数・最古 M/D・n日前` を返すようにした。
+  - 最古日付が当日または未来日である場合、または valid な日付へ正規化できない場合は、従来どおり `基準日 複数` を返す。
+- verify:
+  - `npm run typecheck`: passed。
+  - `npm run lint`: passed。
+  - `npm run build`: sandbox では esbuild spawn が `EPERM` で停止したため、承認付きで再実行して passed。`dist/revenue-assistant-userscript.user.js` と sourcemap を生成した。
+  - `git diff --check`: passed。
+  - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
+  - Chrome拡張 backend の直接 bootstrap は、この thread で利用可能な callable tool として露出していなかった。通常 `node` から `browser-client.mjs` を起動する経路は native pipe 待ちで固まり得るため、直接操作確認は行わず、通常 Chrome の対象 tab 確認は `npm run chrome:pages`、表示確認は Chrome DevTools Protocol で行った。
+  - Chrome DevTools Protocol 合成 DOM 確認: 通常 Chrome の CDP endpoint へ接続し、Revenue Assistant origin の合成 calendar と合成 API response に最新 `dist/revenue-assistant-userscript.user.js` を一時注入した。ブラウザ local 当日 `2026-05-29`、基準日 `2026-05-28` では meta `基準日 5/28・前日`、基準日 `2026-05-29` では meta `基準日 5/29` を確認した。どちらも row 2 件、header は `優先度|確度|宿泊日|宿泊まで|部屋タイプ|現ランク|推奨方向|主要根拠|状態|操作`、金額または percent 0 件、forecast 数値 label 0 件、sales / ADR 数値 label 0 件、unexpected request 0 件、page error 0 件、console error 0 件だった。
+  - 複数 `asOfDate` branch は、現在の候補生成フローでは batch date 単位で `asOfDate` を渡すため、実 DOM の自然発火経路では作れなかった。そのため、`src/main.ts` と build 済み `dist` に `基準日 複数・最古` branch が含まれることを確認し、同じ日付正規化と鮮度計算の focused check で `20260529,20260528` が `基準日 複数・最古 5/28・前日`、`20260529,20260527` が `基準日 複数・最古 5/27・2日前`、`20260529,20260530` が `基準日 複数` になることを確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。

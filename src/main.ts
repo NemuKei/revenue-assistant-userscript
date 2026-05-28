@@ -5923,7 +5923,7 @@ function formatRankRecommendationAsOfDateSummary(candidates: readonly RankRecomm
         return null;
     }
     if (asOfDates.length > 1) {
-        return "基準日 複数";
+        return formatRankRecommendationMultipleAsOfDateSummary(asOfDates);
     }
 
     const asOfDate = asOfDates[0];
@@ -5934,6 +5934,25 @@ function formatRankRecommendationAsOfDateSummary(candidates: readonly RankRecomm
     const displayDate = formatCompactMonthDayForDisplay(asOfDate) ?? formatCompactDateForDisplay(asOfDate);
     const freshness = formatRankRecommendationAsOfDateFreshness(asOfDate);
     return `基準日 ${displayDate}${freshness === null ? "" : `・${freshness}`}`;
+}
+
+function formatRankRecommendationMultipleAsOfDateSummary(asOfDates: readonly string[]): string {
+    const sortedCompactDates = asOfDates
+        .map((asOfDate) => toCompactDateKey(asOfDate))
+        .filter((asOfDate): asOfDate is string => asOfDate !== null)
+        .sort();
+    const oldestAsOfDate = sortedCompactDates[0];
+    if (oldestAsOfDate === undefined) {
+        return "基準日 複数";
+    }
+
+    const freshness = formatRankRecommendationAsOfDateFreshness(oldestAsOfDate);
+    if (freshness === null) {
+        return "基準日 複数";
+    }
+
+    const displayDate = formatCompactMonthDayForDisplay(oldestAsOfDate) ?? formatCompactDateForDisplay(oldestAsOfDate);
+    return `基準日 複数・最古 ${displayDate}・${freshness}`;
 }
 
 function formatRankRecommendationAsOfDateFreshness(asOfDate: string): string | null {
