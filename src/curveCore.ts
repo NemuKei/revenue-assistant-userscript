@@ -3,11 +3,15 @@ export type CurveSegment = "all" | "transient" | "group";
 export type CurveTick = number | "ACT";
 export type ReferenceCurveKind = "recent_weighted_90" | "seasonal_component";
 export type RoomsOnlyForecastModelId = "seasonal_ratio_baseline" | "recent_deviation_adjusted_seasonal";
+export type UnitPriceForecastModelId = "api_current_adr_baseline";
+export type SalesForecastModelId = "rooms_x_unit_price";
 
 export const RECENT_WEIGHTED_90_ALGORITHM_VERSION = "recent_weighted_90:v3";
 export const SEASONAL_COMPONENT_ALGORITHM_VERSION = "seasonal_component:v2";
 export const SEASONAL_RATIO_BASELINE_FORECAST_VERSION = "seasonal_ratio_baseline:v1";
 export const RECENT_DEVIATION_ADJUSTED_SEASONAL_FORECAST_VERSION = "recent_deviation_adjusted_seasonal:v1";
+export const API_CURRENT_ADR_BASELINE_FORECAST_VERSION = "api_current_adr_baseline:v1";
+export const ROOMS_X_UNIT_PRICE_SALES_FORECAST_VERSION = "rooms_x_unit_price:v1";
 
 export interface CurveObservation {
     scope: CurveScope;
@@ -24,6 +28,30 @@ export interface CurveInput {
     facilityId: string;
     asOfDate: string;
     observations: CurveObservation[];
+}
+
+export type SalesAdrSource = "api" | "computed" | "missing";
+
+export interface SalesAdrObservation {
+    scope: CurveScope;
+    roomGroupId?: string;
+    segment: CurveSegment;
+    stayDate: string;
+    observedDate: string;
+    lt: number;
+    rooms: number | null;
+    sales: number | null;
+    apiAdr: number | null;
+    computedAdr: number | null;
+    adr: number | null;
+    adrSource: SalesAdrSource;
+    diagnostics: string[];
+}
+
+export interface SalesAdrInput {
+    facilityId: string;
+    asOfDate: string;
+    observations: SalesAdrObservation[];
 }
 
 export interface CurvePoint {
@@ -182,6 +210,74 @@ export interface BuildRoomsOnlyForecastOptions {
     modelVersion?: string;
 }
 
+export interface UnitPriceForecastV1Candidate {
+    modelId: string;
+    modelVersion: string;
+    facilityId: string;
+    targetStayDate: string;
+    asOfDate: string;
+    scope: CurveScope;
+    roomGroupId?: string;
+    segment: CurveSegment;
+    observedLt: number | null;
+    currentAdr: number | null;
+    referenceAdr?: number | null;
+    predictedAdr: number | null;
+    diagnostics: {
+        featureNames: string[];
+        missingReason?: string;
+        warnings: string[];
+        sourceCounts: {
+            observedPointCount: number;
+            referenceAdrSourceCount?: number;
+        };
+    };
+}
+
+export interface SalesForecastV1Candidate {
+    modelId: string;
+    modelVersion: string;
+    facilityId: string;
+    targetStayDate: string;
+    asOfDate: string;
+    scope: CurveScope;
+    roomGroupId?: string;
+    segment: CurveSegment;
+    observedLt: number | null;
+    currentSales: number | null;
+    predictedFinalRooms: number | null;
+    predictedAdr: number | null;
+    predictedSales: number | null;
+    diagnostics: {
+        featureNames: string[];
+        missingReason?: string;
+        warnings: string[];
+        sourceModelIds: {
+            roomsForecastModelId?: string;
+            unitPriceForecastModelId?: string;
+        };
+    };
+}
+
+export interface BuildUnitPriceForecastOptions {
+    input: SalesAdrInput;
+    targetStayDate: string;
+    asOfDate: string;
+    scope: CurveScope;
+    roomGroupId?: string;
+    segment: CurveSegment;
+    modelId?: UnitPriceForecastModelId;
+    modelVersion?: string;
+}
+
+export interface BuildSalesForecastOptions {
+    roomsForecast: ForecastResultV1Candidate;
+    unitPriceForecast: UnitPriceForecastV1Candidate;
+    currentSales?: number | null;
+    modelId?: SalesForecastModelId;
+    modelVersion?: string;
+}
+
 export interface BookingCurveApiScopeCounts {
     this_year_room_sum?: number | null;
     last_year_room_sum?: number | null;
@@ -231,6 +327,8 @@ export interface BuildCurveInputOptions {
     sources: BookingCurveResponseSource[];
     segments?: readonly CurveSegment[];
 }
+
+export type BuildSalesAdrInputOptions = BuildCurveInputOptions;
 
 export interface ReferenceCurveBaseOptions {
     scope: CurveScope;
@@ -311,6 +409,127 @@ export function buildCurveInputFromBookingCurveResponses(options: BuildCurveInpu
         facilityId: options.facilityId,
         asOfDate,
         observations
+    };
+}
+
+export function buildSalesAdrInputFromBookingCurveResponses(options: BuildSalesAdrInputOptions): SalesAdrInput {
+    const observations: SalesAdrObservation[] = [];
+    const asOfDate = normalizeDateKey(options.asOfDate) ?? options.asOfDate;
+    const segments = options.segments ?? (["all", "transient", "group"] as const);
+
+    for (const source of options.sources) {
+        const stayDate = normalizeDateKey(source.response.stay_date);
+        if (stayDate === null) {
+            continue;
+        }
+
+        for (const point of source.response.booking_curve ?? []) {
+            const observedDate = normalizeDateKey(point.date);
+            if (observedDate === null) {
+                continue;
+            }
+
+            const lt = getDaysBetweenDateKeys(stayDate, observedDate);
+            if (lt === null) {
+                continue;
+            }
+
+            for (const segment of segments) {
+                const observation = buildSalesAdrObservation({
+                    counts: point[segment],
+                    scope: source.scope,
+                    ...(source.roomGroupId === undefined ? {} : { roomGroupId: source.roomGroupId }),
+                    segment,
+                    stayDate,
+                    observedDate,
+                    lt
+                });
+                observations.push(observation);
+            }
+        }
+    }
+
+    return {
+        facilityId: options.facilityId,
+        asOfDate,
+        observations
+    };
+}
+
+export function buildUnitPriceForecastResult(options: BuildUnitPriceForecastOptions): UnitPriceForecastV1Candidate {
+    const targetStayDate = normalizeDateKey(options.targetStayDate) ?? options.targetStayDate;
+    const asOfDate = normalizeDateKey(options.asOfDate) ?? options.asOfDate;
+    const observedLt = getDaysBetweenDateKeys(targetStayDate, asOfDate);
+    const modelId = options.modelId ?? "api_current_adr_baseline";
+    const modelVersion = options.modelVersion ?? API_CURRENT_ADR_BASELINE_FORECAST_VERSION;
+    const matchingObservations = selectSalesAdrObservations(options.input.observations, {
+        targetStayDate,
+        asOfDate,
+        scope: options.scope,
+        ...(options.roomGroupId === undefined ? {} : { roomGroupId: options.roomGroupId }),
+        segment: options.segment
+    });
+    const currentObservation = matchingObservations[0];
+    const currentAdr = currentObservation?.adr ?? null;
+    const missingReason = getUnitPriceForecastMissingReason({ observedLt, currentAdr });
+    const warnings = Array.from(new Set(matchingObservations.flatMap((observation) => observation.diagnostics)));
+
+    return {
+        modelId,
+        modelVersion,
+        facilityId: options.input.facilityId,
+        targetStayDate,
+        asOfDate,
+        scope: options.scope,
+        ...(options.roomGroupId === undefined ? {} : { roomGroupId: options.roomGroupId }),
+        segment: options.segment,
+        observedLt,
+        currentAdr,
+        predictedAdr: missingReason === undefined ? currentAdr : null,
+        diagnostics: {
+            featureNames: ["currentAdr"],
+            ...(missingReason === undefined ? {} : { missingReason }),
+            warnings,
+            sourceCounts: {
+                observedPointCount: matchingObservations.length
+            }
+        }
+    };
+}
+
+export function buildSalesForecastResult(options: BuildSalesForecastOptions): SalesForecastV1Candidate {
+    const modelId = options.modelId ?? "rooms_x_unit_price";
+    const modelVersion = options.modelVersion ?? ROOMS_X_UNIT_PRICE_SALES_FORECAST_VERSION;
+    const predictedFinalRooms = options.roomsForecast.predictedFinalRooms;
+    const predictedAdr = options.unitPriceForecast.predictedAdr;
+    const missingReason = getSalesForecastMissingReason({ predictedFinalRooms, predictedAdr });
+
+    return {
+        modelId,
+        modelVersion,
+        facilityId: options.roomsForecast.facilityId,
+        targetStayDate: options.roomsForecast.targetStayDate,
+        asOfDate: options.roomsForecast.asOfDate,
+        scope: options.roomsForecast.scope,
+        ...(options.roomsForecast.roomGroupId === undefined ? {} : { roomGroupId: options.roomsForecast.roomGroupId }),
+        segment: options.roomsForecast.segment,
+        observedLt: options.roomsForecast.observedLt,
+        currentSales: normalizeNonNegativeNumber(options.currentSales),
+        predictedFinalRooms,
+        predictedAdr,
+        predictedSales: predictedFinalRooms === null || predictedAdr === null ? null : predictedFinalRooms * predictedAdr,
+        diagnostics: {
+            featureNames: ["predictedFinalRooms", "predictedAdr"],
+            ...(missingReason === undefined ? {} : { missingReason }),
+            warnings: Array.from(new Set([
+                ...options.roomsForecast.diagnostics.warnings.map((warning) => `rooms_forecast:${warning}`),
+                ...options.unitPriceForecast.diagnostics.warnings.map((warning) => `unit_price_forecast:${warning}`)
+            ])),
+            sourceModelIds: {
+                roomsForecastModelId: options.roomsForecast.modelId,
+                unitPriceForecastModelId: options.unitPriceForecast.modelId
+            }
+        }
     };
 }
 
@@ -965,6 +1184,129 @@ function getRoomsOnlyForecastMissingReason(options: {
         return "recent_observed_lt_missing";
     }
     return undefined;
+}
+
+function buildSalesAdrObservation(options: {
+    counts: BookingCurveApiScopeCounts | undefined;
+    scope: CurveScope;
+    roomGroupId?: string;
+    segment: CurveSegment;
+    stayDate: string;
+    observedDate: string;
+    lt: number;
+}): SalesAdrObservation {
+    const diagnostics: string[] = [];
+    const rooms = normalizeSalesAdrField(options.counts?.this_year_room_sum, "this_year_room_sum", diagnostics);
+    const sales = normalizeSalesAdrField(options.counts?.this_year_sales_sum, "this_year_sales_sum", diagnostics);
+    const apiAdr = normalizeSalesAdrField(options.counts?.this_year_adr, "this_year_adr", diagnostics);
+    const computedAdr = calculateComputedAdr({ rooms, sales, diagnostics });
+    const adr = apiAdr ?? computedAdr;
+    const adrSource: SalesAdrSource = apiAdr !== null ? "api" : computedAdr !== null ? "computed" : "missing";
+
+    if (apiAdr !== null && computedAdr !== null && Math.abs(apiAdr - computedAdr) > 0.01) {
+        diagnostics.push("api_computed_adr_delta");
+    }
+    if (adr === null) {
+        diagnostics.push("adr_missing");
+    }
+
+    return {
+        scope: options.scope,
+        ...(options.roomGroupId === undefined ? {} : { roomGroupId: options.roomGroupId }),
+        segment: options.segment,
+        stayDate: options.stayDate,
+        observedDate: options.observedDate,
+        lt: options.lt,
+        rooms,
+        sales,
+        apiAdr,
+        computedAdr,
+        adr,
+        adrSource,
+        diagnostics: Array.from(new Set(diagnostics))
+    };
+}
+
+function normalizeSalesAdrField(value: number | null | undefined, fieldName: string, diagnostics: string[]): number | null {
+    if (value == null) {
+        return null;
+    }
+    if (!Number.isFinite(value) || value < 0) {
+        diagnostics.push(`invalid_${fieldName}`);
+        return null;
+    }
+    return value;
+}
+
+function calculateComputedAdr(options: {
+    rooms: number | null;
+    sales: number | null;
+    diagnostics: string[];
+}): number | null {
+    if (options.sales === null) {
+        return null;
+    }
+    if (options.rooms === null) {
+        options.diagnostics.push("sales_without_rooms");
+        return null;
+    }
+    if (options.rooms === 0) {
+        options.diagnostics.push("zero_rooms_for_adr");
+        return null;
+    }
+    return options.sales / options.rooms;
+}
+
+function selectSalesAdrObservations(
+    observations: SalesAdrObservation[],
+    options: {
+        targetStayDate: string;
+        asOfDate: string;
+        scope: CurveScope;
+        roomGroupId?: string;
+        segment: CurveSegment;
+    }
+): SalesAdrObservation[] {
+    return observations
+        .filter((observation) => observation.stayDate === options.targetStayDate)
+        .filter((observation) => observation.observedDate <= options.asOfDate)
+        .filter((observation) => observation.scope === options.scope)
+        .filter((observation) => observation.segment === options.segment)
+        .filter((observation) => options.scope === "hotel" || observation.roomGroupId === options.roomGroupId)
+        .sort((left, right) => right.observedDate.localeCompare(left.observedDate));
+}
+
+function getUnitPriceForecastMissingReason(options: {
+    observedLt: number | null;
+    currentAdr: number | null;
+}): string | undefined {
+    if (options.observedLt === null) {
+        return "observed_lt_missing";
+    }
+    if (options.observedLt < 0) {
+        return "future_info_required";
+    }
+    if (options.currentAdr === null) {
+        return "current_adr_missing";
+    }
+    return undefined;
+}
+
+function getSalesForecastMissingReason(options: {
+    predictedFinalRooms: number | null;
+    predictedAdr: number | null;
+}): string | undefined {
+    if (options.predictedFinalRooms === null) {
+        return "predicted_final_rooms_missing";
+    }
+    if (options.predictedAdr === null) {
+        return "predicted_adr_missing";
+    }
+    return undefined;
+}
+
+function normalizeNonNegativeNumber(value: number | null | undefined): number | null {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
 }
 
 function selectCurrentEvaluationObservation(evaluationCase: ForecastEvaluationCase): CurveObservation | undefined {

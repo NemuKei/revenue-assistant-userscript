@@ -375,7 +375,7 @@ rank response dataset の first contract:
 - rank change event は `/api/v3/lincoln/suggest/status` の `date`、`rm_room_group_id`、`before_price_rank_name`、`after_price_rank_name`、`accepted_at`、`completed_at`、`reflector_name` を入力にする。
 - rank change timestamp は、初期実装では `accepted_at ?? completed_at ?? suggest_calc_datetime` を使う。複数 event が同じ `stayDate x roomGroupId` にある場合は、event ごとに別 record とし、同一 window の重なりは diagnostics に残す。
 - LT at change は `stayDate - rankChangeDate` で計算する。timestamp が日付化できない場合は `lt_missing` とする。
-- booking curve input は `booking_curve_raw_source:v2` を第一候補にし、`all`、`transient`、`group` の rooms、sales、ADR を event 前後の asOfDate で読む。
+- booking curve input は `booking_curve_raw_source:v2` を第一候補にし、`all`、`transient`、`group` の rooms、sales、ADR を event 前後の asOfDate で読む。sales / ADR の field 解釈、0 室、売上 0、ADR null、API ADR と計算 ADR の優先順位は `docs/spec_002_curve_core.md` の Sales And ADR Extension に従う。
 - result window は、変更後 1 日、3 日、7 日、ACT または最終観測日を候補にする。該当 asOfDate の raw source がない場合は、推測補完せず `post_window_missing` を出す。
 - baseline は、直近型 reference curve、季節型 reference curve、同曜日・同 LT・同 roomGroup・同 pace 帯の非変更日、変更前 pace trend の順に候補とする。どの baseline を使ったかを `baselineKind` として残す。
 - output は、`pickupRooms`、`transientPickupRooms`、`groupPickupRooms`、`adrChange`、`salesChange`、`revparLikeChange`、`netPickup`、`baselineDelta`、`diagnostics` を持つ。
@@ -509,7 +509,7 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 8. 様子見 cooldown の LT 帯別 default duration をどう設定するか。
 9. reasonFingerprint に含める reasonCodes、threshold、data version、scoring version の境界をどう切るか。
 10. 競合価格 snapshot のどの変化量を `competitor price movement` として扱うか。
-11. sales / ADR の欠損、0 室、売上 0、ADR null を scoring でどう扱うか。
+11. sales / ADR diagnostics を priority / confidence または reasonCodes に接続する場合、どの変化量と閾値を初期値にするか。
 12. `RAU-FC-03` の実データ評価で、forecast diagnostics を priority / confidence に接続できるだけの安定性があるか。
 
 ## References

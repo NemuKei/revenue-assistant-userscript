@@ -31,6 +31,10 @@
 - verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
+  - `npm run build`: passed
+  - `npm run check`: passed
+  - `git diff --check`: passed
+  - `npm run lint`: passed
   - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
   - `git diff --check`: passed
 - GUI 確認:
@@ -1501,6 +1505,8 @@
 
 ### RAU-SALES-02 booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
 
+- 状態:
+  - 2026-05-28 に docs 設計済み。
 - 目的:
   - `/api/v4/booking_curve` raw source に含まれる売上と ADR を、将来の単価予測と売上予測で使える model へ取り出す設計を決める。
   - 室数予測を実装する場合に、予測室数と予測単価から予測売上を算出できるようにする。
@@ -1522,10 +1528,79 @@
   - 売上・ADR を扱う adapter 追加時の入力、出力、null handling、segment 対応が明文化される。
   - 室数予測、単価予測、売上予測の接続順序が明文化される。
   - `RAU-RR-02` の raw source 保存契約更新後、既存 booking curve raw source の保存単位をさらに変更する必要があるかどうかを判断できる。
+- 設計結果:
+  - `docs/spec_002_curve_core.md` に Sales And ADR Extension を追加し、`SalesAdrObservation`、`UnitPriceForecastV1Candidate`、`SalesForecastV1Candidate` の契約を定義した。
+  - sales / ADR は rooms 用 `CurveInput` へ混ぜず、別 adapter で扱う。rooms reference curve と rooms-only forecast は引き続き `CurveObservation.rooms` を使う。
+  - ADR は Revenue Assistant の `*_adr` field を第一候補にし、欠損時だけ `sales_sum / room_sum` で計算する。0 室では ADR を推測せず、売上 0 と ADR 0 は欠損と同一視しない。
+  - 既存 `booking_curve_raw_source:v2` は必要な fields を保持しているため、保存単位と IndexedDB schema は追加変更しない。
+  - 売上予測は rooms forecast と unit price forecast を合成する model とし、sales forecast が rooms forecast を内部で再計算しない。
+- verify:
+  - docs-only のため `git diff --check` を最小 verify とする。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_002_curve_core.md`
+
+### RAU-SALES-03 sales / ADR adapter と baseline forecast pure functions を実装する
+
+- 状態:
+  - 2026-05-28 に実装済み。
+- 目的:
+  - `RAU-SALES-02` で定義した sales / ADR contract を、UI、API 取得、IndexedDB から分離した pure function として実装する。
+  - 将来の rank response、単価予測、売上予測、ADR / sales health diagnostics が同じ adapter を使える状態にする。
+- 背景:
+  - `booking_curve_raw_source:v2` は rooms / sales / ADR fields を保存済みである。
+  - rooms 用 `CurveInput` に sales / ADR を混ぜると、reference curve と forecast の責務が曖昧になるため、別 adapter が必要である。
+- スコープ:
+  - `src/curveCore.ts` に `SalesAdrObservation`、`UnitPriceForecastV1Candidate`、`SalesForecastV1Candidate` の型を追加する。
+  - `/api/v4/booking_curve` response source から `SalesAdrObservation[]` を作る adapter を追加する。
+  - `api_current_adr_baseline:v1` の baseline unit price forecast を追加する。
+  - rooms forecast と unit price forecast を合成する sales forecast 関数を追加する。
+- 非目標:
+  - UI 表示を追加しない。
+  - IndexedDB schema migration を行わない。
+  - Revenue Assistant API request を増やさない。
+  - rank recommendation scoring へ接続しない。
+  - 月次 `/api/v1/booking_curve/monthly` の read path を変更しない。
+- 受け入れ条件:
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+  - 0 室、売上 0、ADR null、API ADR と計算 ADR の差分が diagnostics として区別できる。
+  - 既存 rooms reference curve、rooms-only forecast、rank recommendation の公開 UI が変わらない。
+- 実装内容:
+  - `src/curveCore.ts` に `buildSalesAdrInputFromBookingCurveResponses()` を追加した。
+  - `SalesAdrObservation` は `apiAdr`、`computedAdr`、`adr`、`adrSource`、`diagnostics` を持ち、API ADR を優先し、API ADR 欠損時だけ `sales / rooms` を使う。
+  - `zero_rooms_for_adr`、`sales_without_rooms`、`api_computed_adr_delta`、`adr_missing` を diagnostics として区別する。
+  - `buildUnitPriceForecastResult()` は `api_current_adr_baseline:v1` として、asOfDate 時点の ADR を predictedAdr にする。
+  - `buildSalesForecastResult()` は rooms forecast の `predictedFinalRooms` と unit price forecast の `predictedAdr` を掛け合わせ、欠損時は `predictedSales=null` と diagnostics に理由を残す。
+- verify:
+  - `npm run typecheck`: passed
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_002_curve_core.md`
+
+### RAU-SALES-04 sales / ADR health diagnostics を rank recommendation scoring へ段階接続する
+
+- 目的:
+  - `RAU-SALES-03` の adapter を使い、rank recommendation の候補根拠へ ADR / sales health diagnostics を追加する。
+  - rooms pickup だけでは判断しにくい、ADR 低下や売上悪化を候補の priority / confidence 補助へ反映できるようにする。
+- スコープ:
+  - top list へ sales / ADR 数値を直接表示しない。
+  - `ADR悪化`、`売上弱含み`、`ADR維持` など、非数値 reason / diagnostics として段階接続する。
+  - 既存 `forecastSignal`、reference deviation、rank change resolved、user decision cooldown の挙動を壊さない。
+- 非目標:
+  - Revenue Assistant への write / bulk apply。
+  - 推奨レート金額の表示。
+  - rank price table や現在販売中価格の未確認 API を確認済み仕様として扱うこと。
+  - 月次 `/api/v1/booking_curve/monthly` の read path 変更。
+- 受け入れ条件:
+  - sales / ADR が欠損しても既存候補生成が継続する。
+  - sales / ADR reason は数値を直接出さず、非数値要約に留める。
+  - Chrome DevTools Protocol または Chrome拡張で通常 Chrome 上の Revenue Assistant 候補 list を確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
 ## Completed / Superseded Context
 
@@ -1605,7 +1680,7 @@
 
 Now:
 
-- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+- `RAU-SALES-04` sales / ADR health diagnostics を rank recommendation scoring へ段階接続する
 
 Next:
 
@@ -1641,7 +1716,9 @@ Later:
 - `RAU-FC-03` は 2026-05-28 に実装済みである。`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加し、raw source adapter が作る `CurveInput` から forecast 評価用 case を作れるようにした。
 - `RAU-FC-04` は 2026-05-28 に実装済みである。`recent_deviation_adjusted_seasonal:v1` を first forecast model として追加し、seasonal LT 比率換算の `seasonal_ratio_baseline:v1` も evaluation baseline として返せるようにした。
 - `RAU-FC-05` は 2026-05-28 に完了した。forecast 欠損時は既存 reference deviation scoring を継続し、top list へ forecast 数値を直接表示しない。Chrome DevTools Protocol の実画面確認では、候補 list root と候補 row 10 件が表示され、重大な console / page error は 0 件だった。現在の実データでは forecast reason の表示発火は 0 件だったため、後続で forecast 閾値や実データ確認を行う場合は別 task として扱う。
-- `RAU-SALES-02` は、rooms-only forecast の evaluation dataset と初期 model の後に置く。室数予測、単価予測、売上予測の接続順序を保つため、rank recommendation への forecast diagnostics 接続後に扱う。
+- `RAU-SALES-02` は 2026-05-28 に完了した。`docs/spec_002_curve_core.md` に sales / ADR adapter、unit price forecast、sales forecast の契約を追加した。既存 `booking_curve_raw_source:v2` の保存単位は追加変更しない。次は `RAU-SALES-03` で pure function 実装を行う。
+- `RAU-SALES-03` は 2026-05-28 に実装済みである。室数予測、単価予測、売上予測の接続順序を保つため、UI や rank recommendation scoring へ接続せず、core logic の pure function と diagnostics だけを追加した。
+- `RAU-SALES-04` は、`RAU-SALES-03` の adapter を使って、rank recommendation の候補根拠へ ADR / sales health diagnostics を段階接続する task とする。top list へ sales / ADR 数値を直接表示せず、非数値 reason / diagnostics から入れる。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。

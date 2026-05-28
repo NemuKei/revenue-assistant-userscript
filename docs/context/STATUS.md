@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。次の Now は `RAU-SALES-02` で、booking_curve 売上・ADR adapter と単価・売上予測 model の設計を行う。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-11` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` は実装済み。次の Now は `RAU-SALES-04` で、sales / ADR health diagnostics を rank recommendation scoring へ段階接続する。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -22,6 +22,8 @@
   - `RAU-FC-03` forecast evaluation dataset を実装する
   - `RAU-FC-04` first forecast model を pure function として実装する
   - `RAU-FC-05` rank recommendation scoring へ forecast diagnostics を接続する
+  - `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+  - `RAU-SALES-03` sales / ADR adapter と baseline forecast pure functions を実装する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -33,7 +35,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の `Now` は `RAU-SALES-02` とする。次は、既存 `/api/v4/booking_curve` raw source に含まれる sales / ADR を、将来の単価予測と売上予測へ接続できる adapter / model contract として設計する。
+  - `docs/tasks_backlog.md` の `Now` は `RAU-SALES-04` とする。次は、`RAU-SALES-03` で追加した sales / ADR adapter を使い、rank recommendation の候補根拠へ ADR / sales health diagnostics を段階接続する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -49,9 +51,9 @@
   - 月次 `/api/v1/booking_curve/monthly` の snapshot read path を、過去 batch の履歴比較や日次差分表示へ広げない。
   - Analyze 日付ページ、競合価格 graph、booking curve warm cache の既存挙動を変更しない。
 - 終了条件:
-  - `RAU-SALES-02` で、booking_curve raw source 内の sales / ADR を扱う adapter 追加時の入力、出力、null handling、segment 対応を明文化する。
-  - 室数予測、単価予測、売上予測の接続順序を明文化する。
-  - `RAU-RR-02` の raw source 保存契約更新後、既存 booking curve raw source の保存単位をさらに変更する必要があるかどうかを判断できる状態にする。
+  - `RAU-SALES-04` で、sales / ADR が欠損しても既存候補生成が継続する状態を維持する。
+  - sales / ADR reason は数値を直接出さず、非数値要約に留める。
+  - Chrome DevTools Protocol または Chrome拡張で通常 Chrome 上の Revenue Assistant 候補 list を確認する。
   - 未確認 API を確認済み仕様として扱わない。
 - subagent 利用方針:
   - 既定では使わない。
@@ -92,7 +94,9 @@
   - 競合価格グラフの部屋タイプ filter で、`WAYOUSHITSU` / `wayo` 系の raw value を `和洋室` として表示するようにした。保存データの raw value と filter 判定は従来どおり raw value を使う。
   - 競合価格グラフの系列色は、自社の青色と競合施設の色を分離した。競合施設の差し替えで一時的に施設数が 5 件を超えても、追加された競合施設を自社と同じ青色で表示しない。
   - `RAU-SALES-01` は完了。Analyze 日付単位の売上と ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。
-  - 2026-05-27 に、`RAU-RR-02` で raw source 保存契約を v2 へ更新した。`RAU-SALES-02` は、将来の室数予測、単価予測、売上予測の接続設計として Later に置く。
+  - 2026-05-27 に、`RAU-RR-02` で raw source 保存契約を v2 へ更新した。
+  - `RAU-SALES-02` は docs 設計済み。`docs/spec_002_curve_core.md` に Sales And ADR Extension を追加し、sales / ADR は rooms 用 `CurveInput` へ混ぜず、別 adapter が `SalesAdrObservation` を作る契約にした。ADR は Revenue Assistant の `*_adr` field を第一候補にし、欠損時だけ `sales_sum / room_sum` で計算する。0 室では ADR を推測せず、売上 0 と ADR 0 は欠損と同一視しない。既存 `booking_curve_raw_source:v2` は必要 field を保持しているため、保存単位と IndexedDB schema は追加変更しない。
+  - `RAU-SALES-03` は実装済み。`src/curveCore.ts` に `SalesAdrObservation`、`UnitPriceForecastV1Candidate`、`SalesForecastV1Candidate`、`buildSalesAdrInputFromBookingCurveResponses()`、`buildUnitPriceForecastResult()`、`buildSalesForecastResult()` を追加した。UI、API request、IndexedDB schema、rank recommendation scoring には接続していない。
   - `RAU-MP-01` のコード状態を再確認した。既存実装は `src/monthlyProgress.ts` で `/monthly-progress/YYYY-MM` route を検知し、top / analyze 系同期を停止したうえで月次専用 observer と preview を起動する。
   - 月次 `/api/v1/booking_curve/monthly` は `src/monthlyProgressIndexedDb.ts` で `facilityCacheKey + yearMonth + batchDateKey` ごとに IndexedDB snapshot へ保存する。現在の preview は保存後に `readLatestMonthlyBookingCurveSnapshot()` で読む snapshot-backed read path であり、旧記述の「表示 read path は現行 API response を正とする」は実装状態と一致しない。
   - `RAU-MP-01` では、まず月次実績画面で GUI 確認し、必要なら `src/monthlyProgress.ts` の挿入位置、文言、tooltip、layout だけを最小修正する。
@@ -204,9 +208,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の `Now` にある `RAU-SALES-02` を確認し、`/api/v4/booking_curve` raw source 内の sales / ADR field を使う adapter / model contract を設計する。
-2. `this_year_sales_sum`、`last_year_sales_sum`、`two_years_ago_sales_sum`、`three_years_ago_sales_sum`、`this_year_adr`、`last_year_adr` の型、null handling、segment 対応を明文化する。
-3. API の ADR をそのまま使う場合と、`sales_sum / room_sum` で再計算する場合の優先順位と検算方法を決める。
+1. `docs/tasks_backlog.md` の `Now` にある `RAU-SALES-04` を確認し、`src/curveCore.ts` の sales / ADR adapter を rank recommendation 候補生成へどう渡すかを決める。
+2. sales / ADR 欠損時は既存候補生成を継続し、非数値 reason / diagnostics だけを追加する。
+3. top list へ sales / ADR 数値を直接表示しない。
 4. Rank Recommendation Bundle に戻る場合は、forecast 数値を top list へ直接表示しない契約と、`rank_sequences[].default_sequence` の方向、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
 
 変更しない契約:
@@ -216,7 +220,7 @@
 - 推奨レート金額を first phase で出さない。
 - Revenue Assistant への自動反映や選択範囲一括反映は first phase で扱わない。
 - 未確認 API を確認済み仕様として扱わない。
-- forecast を rank recommendation scoring へ接続しない。
+- forecast 数値を top list または Analyze detail へ直接表示しない。forecast signal は priority / confidence 補助としてのみ扱う。
 - forecast 数値を top list または Analyze detail へ表示しない。
 - 既存の `全体 / 個人` 系列、rank marker、tooltip、`ACT` 空表示、current-ui supplement portal を壊さない。
 - `dist/*.user.js` は手編集しない。
