@@ -89,6 +89,19 @@ const CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const RANK_SEQUENCES_ENDPOINT = "/api/v1/rank_sequences";
 const LINCOLN_SUGGEST_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
+
+class RevenueAssistantRequestError extends Error {
+    readonly endpoint: string;
+    readonly status: number;
+
+    constructor(endpoint: string, status: number) {
+        super(`${endpoint} request failed: ${status}`);
+        this.name = "RevenueAssistantRequestError";
+        this.endpoint = endpoint;
+        this.status = status;
+    }
+}
+
 const SALES_SETTING_WARM_CACHE_LOOKBACK_DAYS = 1;
 const SALES_SETTING_WARM_CACHE_LOOKAHEAD_MONTHS = 3;
 const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 1000;
@@ -4572,9 +4585,11 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     ensureGroupRoomStyles();
 
     const generatedAt = new Date().toISOString();
+    let currentSettingsLoadError: unknown = null;
     const [response, rankLadder] = await Promise.all([
         getRankRecommendationCurrentSettingsForRange(dateRange.fromDateKey, dateRange.toDateKey)
             .catch((error: unknown) => {
+                currentSettingsLoadError = error;
                 console.warn(`[${SCRIPT_NAME}] failed to load rank recommendation current settings`, {
                     fromDateKey: dateRange.fromDateKey,
                     toDateKey: dateRange.toDateKey,
@@ -4597,7 +4612,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         clearRankRecommendationWarmCachePriorityCandidates();
         renderRankRecommendationList([], {
             signature: `error:${facilityCacheKey}:${batchDateKey}:${dateRange.fromDateKey}:${dateRange.toDateKey}`,
-            statusText: "料金調整候補: current settings を取得できませんでした"
+            statusText: formatRankRecommendationCurrentSettingsErrorStatus(currentSettingsLoadError)
         });
         return;
     }
@@ -4714,11 +4729,24 @@ async function loadRankRecommendationRankLadder(): Promise<RankRecommendationRan
     });
 
     if (!response.ok) {
-        throw new Error(`rank sequences request failed: ${response.status}`);
+        throw new RevenueAssistantRequestError(RANK_SEQUENCES_ENDPOINT, response.status);
     }
 
     const payload = (await response.json()) as RankRecommendationRankSequencesResponse;
     return payload.rank_sequences ?? [];
+}
+
+function formatRankRecommendationCurrentSettingsErrorStatus(error: unknown): string {
+    if (error instanceof RevenueAssistantRequestError) {
+        if (error.status === 401) {
+            return "料金調整候補: Revenue Assistant にログインし直すと再取得します";
+        }
+        if (error.status === 403) {
+            return "料金調整候補: current settings の閲覧権限を確認してください";
+        }
+        return `料金調整候補: current settings を取得できませんでした (HTTP ${error.status})`;
+    }
+    return "料金調整候補: current settings を取得できませんでした";
 }
 
 async function buildRankRecommendationCurveEvidenceByKey(
@@ -7162,7 +7190,7 @@ async function loadSalesSettingCurrentSettings(
     });
 
     if (!response.ok) {
-        throw new Error(`current settings request failed: ${response.status}`);
+        throw new RevenueAssistantRequestError(CURRENT_SETTINGS_ENDPOINT, response.status);
     }
 
     return (await response.json()) as SalesSettingCurrentSettingsResponse;

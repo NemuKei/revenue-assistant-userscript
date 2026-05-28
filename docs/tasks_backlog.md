@@ -1768,6 +1768,41 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-25 current settings 取得失敗時の status 表示を具体化する
+
+- 状態:
+  - 2026-05-28 に実装済み。
+  - `current settings` request が HTTP 401 の場合は、top list meta に Revenue Assistant へログインし直すと再取得することを表示する。
+  - HTTP 403 の場合は、`current settings` の閲覧権限確認が必要であることを表示する。
+  - その他の HTTP status の場合は、`current settings` 取得失敗として HTTP status を表示する。
+  - Chrome拡張 runtime は今回の node_repl 確認では `browsers.list()` を公開しなかったため、実 DOM 確認は Chrome DevTools Protocol で行った。
+  - Chrome DevTools Protocol では、同じ RA origin 上の iframe に検証用 calendar DOM と合成 API response を置き、最新 dist を一時実行した。HTTP 401 では meta `料金調整候補: Revenue Assistant にログインし直すと再取得します`、HTTP 403 では meta `料金調整候補: current settings の閲覧権限を確認してください`、HTTP 500 では meta `料金調整候補: current settings を取得できませんでした (HTTP 500)` を確認した。いずれも候補 row は 0 件だった。
+- 目的:
+  - 料金調整候補 list が空になったとき、利用者がログイン切れ、権限不足、その他の API 失敗を区別できるようにする。
+  - 何を確認すれば再取得できるかを top list の表示だけで分かるようにする。
+- 背景:
+  - `RAU-RR-24` の実 Chrome 確認では、通常 Chrome の Revenue Assistant tab が login / current settings 401 状態だった。
+  - 従来の `料金調整候補: current settings を取得できませんでした` だけでは、Revenue Assistant にログインし直すべき状態か、権限不足か、API endpoint 失敗かが分からなかった。
+- スコープ:
+  - `current_settings` 取得失敗時の Error に HTTP status を保持する。
+  - top list の status text を、401、403、その他 HTTP status、HTTP status が取れない失敗に分ける。
+  - `rank_sequences` 取得失敗も同じ Error 型で status を保持できるようにする。ただし、rank ladder 取得失敗時の UI 契約や fallback はこの task では変更しない。
+- 非目標:
+  - `current_settings` の request 範囲、request 回数、cache key を変更しない。
+  - 候補生成、priority / confidence、rank order source、manual override、candidate lifecycle を変更しない。
+  - 推奨レート金額、Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - HTTP 401 の `current_settings` 失敗時、top list meta に Revenue Assistant へログインし直すと再取得することが表示される。
+  - HTTP 403 の `current_settings` 失敗時、top list meta に閲覧権限確認が必要であることが表示される。
+  - その他の HTTP status では、top list meta に HTTP status が表示される。
+  - 成功時の候補生成、summary、rank order 表示、manual override は従来どおりである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab 候補を確認し、Chrome DevTools Protocol で 401 の合成 response を使った top list meta 表示を確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2350,6 +2385,7 @@ Later:
 - `RAU-RR-22` は 2026-05-28 に実装済みである。top list に `確度` 列を追加し、内部 `confidence` を数値や percent ではなく `高`、`中`、`低` の段階表示に丸める。forecast 数値、sales / ADR 数値、金額、比率は top list に表示しない。
 - `RAU-RR-23` は 2026-05-28 に実装済みである。top list の `確度` cell に hover tooltip を追加し、主要根拠と不足または注意の種類を非数値で表示する。tooltip でも forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。
 - `RAU-RR-24` は 2026-05-28 に実装済みである。top list の meta に、表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示する。これは表示中候補の内訳であり、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。
+- `RAU-RR-25` は 2026-05-28 に実装済みである。`current_settings` 取得失敗時の top list status を HTTP 401、HTTP 403、その他 HTTP status、status 不明に分け、ログイン切れまたは権限不足を利用者が区別できるようにした。候補生成、rank order、scoring、API request 範囲は変更していない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

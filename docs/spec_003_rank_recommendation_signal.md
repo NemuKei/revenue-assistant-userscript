@@ -449,6 +449,7 @@ rank response dataset の first contract:
 - 最大件数は初期値を持つ。初期候補は top 10 とする。
 - top 10 の外にも候補がある場合は、件数だけでも分かる表示を候補にする。
 - リスト上部の summary には、表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示する。これは top list に出ている候補の内訳であり、全候補母数、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額または percent を示すものではない。
+- `current settings` が取得できない場合は、候補行を空にし、リスト上部の status に失敗理由を表示する。HTTP 401 の場合は Revenue Assistant への再ログインが必要であること、HTTP 403 の場合は閲覧権限確認が必要であることを表示する。その他の HTTP status は `current settings` 取得失敗として HTTP status を表示する。これは候補生成に使う入力が欠損した状態を利用者に示すための表示であり、rank order、scoring、candidate lifecycle、API request 範囲は変更しない。
 
 行項目:
 
