@@ -488,9 +488,11 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
-- 未確認:
-  - Tampermonkey 再読込後の GUI 目視確認
-  - 実データで `0日前` Tooltip に `（補間）` が表示されること
+- GUI 確認:
+  - 2026-05-29 に Chrome拡張 backend の bootstrap と `openTabs()` が通ることを確認したうえで、通常 Chrome の対象 tab は `npm run chrome:pages`、表示確認は Chrome DevTools Protocol で行った。
+  - Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` で最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、booking curve section 1 件、panel 2 件、page error 0 件、console error 0 件を確認した。
+  - section signature に `0:...:display-interpolated` が含まれ、core logic と derived reference curve cache ではなく表示用 series 側で補間 marker が付いていることを確認した。
+  - `0日前` hitbox の Tooltip で、全体 panel は `直近型 141室（補間）` と `季節型 157室（補間）`、個人 panel は `直近型 117室（補間）` と `季節型 143室（補間）` が表示されることを確認した。
 
 ### RAU-WC-03 Analyze 日付優先 warm cache と reference 完了定義を実装する
 
