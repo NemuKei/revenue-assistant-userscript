@@ -1663,6 +1663,40 @@
   - `spec-checkpoint`: during-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-22 top list に非数値の確度表示を追加する
+
+- 状態:
+  - 2026-05-28 に実装済み。
+  - top list の header に `確度` を追加し、候補行ごとに内部 `confidence` を `高`、`中`、`低` の段階表示へ丸めるようにした。
+  - Chrome拡張 backend で通常 Chrome の Revenue Assistant tab が 1 件あることを確認した。
+  - Chrome DevTools Protocol では、対象 tab が hidden で `requestAnimationFrame` が進まなかったため、検証中だけ `requestAnimationFrame` を `setTimeout` で代替し、最新 dist を一時注入した。top list 10 行、header 9 列、`確度` header 1 件、`確度` sample `高` / `中`、page error 0 件、console error 0 件を確認した。
+  - forecast 数値、sales / ADR 数値、金額、比率は top list に表示されなかった。
+- 目的:
+  - 料金調整候補の作業順を、優先度だけでなく候補根拠の揃い方からも判断できるようにする。
+  - `src/rankRecommendation.ts` は候補ごとに `confidence` を生成しているが、現行 top list は `confidence` を表示していないため、同じ優先度の候補を比較するときの判断材料が不足している。
+- 背景:
+  - `confidence` は forecast、sales / ADR health、weekday context、reference 欠損、小キャパ、group-driven などの補助 signal を受けて変わる。
+  - ただし `confidence` の内部小数値をそのまま出すと、利用者が「予測精度」や「推奨金額の正確さ」と誤読しやすい。
+- スコープ:
+  - top list の行項目に `確度` を追加する。
+  - 表示は `高`、`中`、`低` の段階表示に留める。
+  - 既存の `priority`、`reasonCodes`、`reasonFingerprint`、`diagnostics` の生成ロジックは変更しない。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md` を同期する。
+- 非目標:
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、金額、比率を top list に出さない。
+  - confidence の閾値や scoring 補正幅を変更しない。
+  - Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - top list の header に `確度` が表示される。
+  - 候補行ごとに `confidence` が `高`、`中`、`低` のいずれかで表示される。
+  - empty state の table colSpan が列数と一致する。
+  - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で最新 dist 一時注入後の top list に `確度` 列が出ることを確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2242,6 +2276,7 @@ Later:
 - `RAU-RR-19` は 2026-05-28 に確認済みである。通常 Chrome の実データでは top list 10 行すべてが `raise_watch` / `high` / `active` で、`自社安め` は 7 行、`自社高め` は 0 行、weekday 強弱 reason は 0 行、金額・差額・比率の直接表示は 0 行だった。1 画面の観測では閾値変更の根拠として不十分なため、競合価格内自社料金位置の 95% / 105% 閾値と weekday context の 115% / 85% 閾値は変更しない。
 - `RAU-RR-20` は 2026-05-28 に確認済みである。`current_settings` と `rm_room_groups` は roomGroup field を持つが `jalan` 側部屋タイプ code を持たず、競合価格 snapshot は `jalanFacilityRoomType` と `jalanRoomTypes` を持つが `rm_room_group_id` 相当を持たないため、roomGroup 名と `jalan` 側部屋タイプ名の文字列類似だけで対応を確定しない。
 - `RAU-RR-21` は 2026-05-28 に実装済みである。roomGroup と `jalan` 側部屋タイプの対応 source が未確認であるため、競合価格内自社料金位置 signal は top list の主要 reason と confidence / priority 補正から外し、diagnostics にだけ残す。
+- `RAU-RR-22` は 2026-05-28 に実装済みである。top list に `確度` 列を追加し、内部 `confidence` を数値や percent ではなく `高`、`中`、`低` の段階表示に丸める。forecast 数値、sales / ADR 数値、金額、比率は top list に表示しない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

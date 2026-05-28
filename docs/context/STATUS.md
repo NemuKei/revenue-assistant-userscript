@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-21` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `なし`。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-22` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `なし`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -27,6 +27,7 @@
   - `RAU-RR-19` scoring support signal の実データ発火分布と閾値を確認する
   - `RAU-RR-20` roomGroup と jalan 部屋タイプの対応 source を read-only で確認する
   - `RAU-RR-21` roomGroup 対応 source 未確認の競合価格 signal を主要 reason から外す
+  - `RAU-RR-22` top list に非数値の確度表示を追加する
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
   - `RAU-FC-03` forecast evaluation dataset を実装する
@@ -50,7 +51,7 @@
   - `docs/spec_002_curve_core.md`
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
-  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口まで完了済みとして扱う。
+  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、非数値の確度表示まで完了済みとして扱う。
   - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: なし` とする。次に進める場合は、Rank Recommendation Bundle の残りではなく、`docs/tasks_backlog.md` の既存 later task 群から次の実作業を選び、目的、非目標、受け入れ条件、確認方法を明確にしてから着手する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
@@ -68,6 +69,7 @@
   - `RAU-RR-19` では、Chrome拡張 backend で通常 Chrome の Revenue Assistant tab が 1 件あることを確認し、Chrome DevTools Protocol で最新 dist を一時注入して top list の support reason / diagnostics 分布を確認した。top list は 10 行、page error 0 件、console error 0 件だった。10 行すべてが `raise_watch` / `high` / `active` で、`自社安め` は 7 行、`自社高め` は 0 行、weekday 強弱 reason は 0 行、金額・差額・比率の直接表示は 0 行だった。この 1 画面では閾値変更の根拠として不十分なため、競合価格内自社料金位置の 95% / 105% 閾値と weekday context の 115% / 85% 閾値は変更しない。次は roomGroup と `jalan` 側部屋タイプの対応 source を read-only で確認する。
   - `RAU-RR-20` では、`current_settings`、`rm_room_groups`、`competitors_filter_settings`、保存済み `competitor-price-snapshots` を Chrome DevTools Protocol read-only で確認した。`current_settings` と `rm_room_groups` は roomGroup field を持つが `jalan` 側部屋タイプ code を持たず、競合価格 snapshot は `jalanFacilityRoomType` と `jalanRoomTypes` を持つが `rm_room_group_id` 相当を持たない。したがって、roomGroup 名と `jalan` 側部屋タイプ名の文字列類似だけで対応を確定しない。
   - `RAU-RR-21` では、roomGroup と `jalan` 側部屋タイプの対応 source が未確認であるため、`own_price_low_against_competitors` / `own_price_high_against_competitors` を top list の主要 reason と confidence 補正に使わないようにした。signal 自体は reasonFingerprint と diagnostics に残し、`competitor_price_room_group_scope_unconfirmed` で scope 未確認を明示する。
+  - `RAU-RR-22` では、top list に `確度` 列を追加した。内部 `confidence` は数値や percent ではなく `高`、`中`、`低` の段階表示に丸める。Chrome拡張 backend では通常 Chrome の Revenue Assistant tab が 1 件あることを確認した。Chrome DevTools Protocol では、対象 tab が hidden で `requestAnimationFrame` が進まなかったため、検証中だけ `requestAnimationFrame` を `setTimeout` で代替し、最新 dist を一時注入した。top list は 10 行、header は `優先度`、`確度`、`宿泊日`、`部屋タイプ`、`現ランク`、`推奨方向`、`主要根拠`、`状態`、`操作` の 9 列、`確度` sample は `高` と `中`、page error 0 件、console error 0 件だった。forecast 数値、sales / ADR 数値、金額、比率は表示されなかった。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
 - 次スレッドでやらないこと:
   - 推奨レート金額を出さない。
