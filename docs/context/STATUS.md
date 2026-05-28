@@ -343,7 +343,9 @@
   - 2026-05-28 の Chrome拡張 backend capability 確認では、通常 Chrome の extension browser を取得でき、open tab 3 件の中に Revenue Assistant tab があることを確認した。`npm run chrome:pages` では、通常 Chrome の `https://ra.jalan.net/analyze/2026-06-17` tab を確認した。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Revenue Assistant tab へ build 済み `dist/revenue-assistant-userscript.user.js` を一時注入した。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` で warm cache indicator が表示され、page error と console error は 0 件だった。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の userscript 初期化 log と warm cache indicator を確認した。Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` の page error と console error は 0 件だった。
-  - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Analyze 日付ページで 51 秒観測し、reference curve task 内部の reference source raw source 取得が `/api/v4/booking_curve` request を 1〜数 ms 間隔で連続開始することを確認した。`src/referenceCurveStore.ts` の reference curve request scheduler に request 開始間隔 1.0 秒以上の制御を追加した。修正後の `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` は通過済み。修正後の Tampermonkey 再読込 GUI 確認、skip 即時進行、hidden pause の実ブラウザ確認は未実施。
+  - 2026-05-28 の Chrome DevTools Protocol 確認では、通常 Chrome の Analyze 日付ページで 51 秒観測し、reference curve task 内部の reference source raw source 取得が `/api/v4/booking_curve` request を 1〜数 ms 間隔で連続開始することを確認した。`src/referenceCurveStore.ts` の reference curve request scheduler に request 開始間隔 1.0 秒以上の制御を追加した。
+  - 2026-05-28 の追加確認では、Chrome拡張 backend から通常 Chrome の Revenue Assistant tab 1 件を確認し、`npm run chrome:pages` で `https://ra.jalan.net/analyze/2026-06-17` を確認した。通常 Chrome の Tampermonkey dashboard では Revenue Assistant Userscript `0.1.0.266` が入っていた。
+  - 同日の追加 Chrome DevTools Protocol 観測では、Analyze 日付ページ上で warm cache indicator が進行し、page error と console error は 0 件だった。一方、`/api/v4/booking_curve` は 60 秒で 50 件、1 秒未満の開始間隔が 41 回残ったため、`referenceCurveStore` だけでなく `loadBookingCurve()` から発行される RAU booking curve request 全体を interval scheduler 配下に置いた。`src/requestScheduler.ts` を追加し、`src/referenceCurveStore.ts` と `src/main.ts` から使う。追加 scheduler 修正後の `npm run typecheck`、`npm run lint`、`npm run build` は通過済み。source-level scheduler 検証では、100ms interval の検証で最小開始間隔 109ms、90ms 未満 0 件、重複 request key の in-flight dedupe を確認した。追加 scheduler 修正後の Tampermonkey 再読込 GUI 確認、RAU 発行 request 間隔の実ブラウザ再確認、skip 即時進行、hidden pause の実ブラウザ確認は未実施。
 - 2026-04-29 の `RAU-WC-02` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
@@ -369,7 +371,11 @@
   - `npm run lint`: passed
   - `npm run build`: passed
   - `git diff --check`: passed
-  - Tampermonkey 再読込 GUI 確認: 未実施
+  - 2026-05-28 追加 scheduler 修正後の `npm run typecheck`: passed
+  - 2026-05-28 追加 scheduler 修正後の `npm run lint`: passed
+  - 2026-05-28 追加 scheduler 修正後の `npm run build`: passed
+  - 2026-05-28 追加 scheduler の source-level 検証: passed。100ms interval の検証で最小開始間隔 109ms、90ms 未満 0 件、重複 request key の in-flight dedupe を確認した。
+  - 追加 scheduler 修正後の Tampermonkey 再読込 GUI 確認: 未実施
 - 2026-04-29 の `RAU-AF-10` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed

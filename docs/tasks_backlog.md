@@ -804,6 +804,7 @@
   - 1 回の自動稼働時間を 5 分から 10 分へ延ばす。
   - クールダウンを 10 分から 3 分へ短縮する。
   - IndexedDB raw source が既存のため skip できる task は、API request を発行しないため次 task へ即時に進める。
+  - RAU が `loadBookingCurve()` から発行する `/api/v4/booking_curve` request は、current raw source、same-weekday source、reference source raw source のいずれでも request 開始間隔を 1.0 秒以上にする。
   - 同時 warm cache task 実行 1、reference curve request scheduler の同時数制限、document hidden 中の一時停止、連続エラー 3 回停止は維持する。
 - 非目標:
   - 同時 warm cache task 実行数を 2 以上に増やすこと。
@@ -813,6 +814,7 @@
   - skip task は 1 秒待たずに進む。
   - API request を伴う task は 1.0 秒以上の間隔を置く。
   - reference curve task 内部で reference source raw source を取得する場合も、`/api/v4/booking_curve` request 開始間隔は 1.0 秒以上を保つ。
+  - RAU が `loadBookingCurve()` から発行する `/api/v4/booking_curve` request は、Revenue Assistant 本体の標準画面 request と区別したうえで 1.0 秒以上の開始間隔を保つ。
   - 10 分稼働後は 3 分以上クールダウンしてから再開する。
   - `npm run typecheck`、`npm run lint`、`npm run build` が通る。
 - metadata:
@@ -830,9 +832,18 @@
   - scheduler 修正後の `npm run lint`: passed
   - scheduler 修正後の `npm run build`: passed
   - scheduler 修正後の `git diff --check`: passed
+  - 2026-05-28 の追加確認では、Chrome拡張 backend から通常 Chrome に Revenue Assistant tab が 1 件あることを確認し、`npm run chrome:pages` で `https://ra.jalan.net/analyze/2026-06-17` を確認した。
+  - 2026-05-28 の追加確認では、通常 Chrome の Tampermonkey dashboard で Revenue Assistant Userscript `0.1.0.266` が入っていることを確認した。
+  - 2026-05-28 の追加 CDP 観測では、Analyze 日付ページ上で warm cache indicator が進行し、page error と console error は 0 件だった。一方、`/api/v4/booking_curve` は 60 秒で 50 件、1 秒未満の開始間隔が 41 回残ったため、`referenceCurveStore` だけでなく `loadBookingCurve()` から発行される RAU booking curve request 全体を interval scheduler 配下に置いた。
+  - `src/requestScheduler.ts` を追加し、重複 key の in-flight dedupe と request 開始間隔を持つ共通 scheduler とした。`src/referenceCurveStore.ts` はこの scheduler を使う形へ置き換え、`src/main.ts` の `loadBookingCurve()` は RAU 発行 booking curve fetch を同じ 1.0 秒 interval に通す。
+  - 追加 scheduler 修正後の `npm run typecheck`: passed
+  - 追加 scheduler 修正後の `npm run lint`: passed
+  - 追加 scheduler 修正後の `npm run build`: passed
+  - 追加 scheduler の source-level 検証では、`src/requestScheduler.ts` を TypeScript transpile して直接実行し、5 件の開始間隔が最小 109ms になり、100ms interval の検証で 90ms 未満の開始間隔が 0 件であること、同じ request key の重複 schedule が 1 回の実行を共有することを確認した。
 - 未確認:
-  - 修正後の Tampermonkey 再読込 GUI 目視確認
-  - 修正後に、skip task が即時に進み、API request を伴う task が 1.0 秒以上の間隔を保つこと
+  - 追加 scheduler 修正後の Tampermonkey 再読込 GUI 目視確認
+  - 追加 scheduler 修正後に、通常 Chrome の Tampermonkey 経由だけで RAU 発行 `/api/v4/booking_curve` request が 1.0 秒以上の開始間隔を保つこと
+  - skip task が即時に進むことの実ブラウザ確認
 
 ### RAU-WC-02 warm cache indicator をトップカレンダーと日付単位進捗に広げる
 

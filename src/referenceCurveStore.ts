@@ -1,4 +1,5 @@
 import type { CurveScope, CurveSegment, ReferenceCurveKind, ReferenceCurveResult } from "./curveCore";
+import { createIntervalRequestScheduler } from "./requestScheduler";
 
 const REFERENCE_CURVE_DB_NAME = "revenue-assistant-reference-curves";
 const REFERENCE_CURVE_DB_VERSION = 1;
@@ -40,24 +41,14 @@ export interface GetOrComputeReferenceCurveOptions {
     compute: () => Promise<ReferenceCurveResult>;
 }
 
-type QueuedReferenceCurveRequest<T> = {
-    requestKey: string;
-    run: () => Promise<T>;
-    resolve: (value: T) => void;
-    reject: (reason?: unknown) => void;
-};
-
 const pendingReferenceCurveComputations = new Map<string, Promise<ReferenceCurveResult>>();
-const pendingReferenceCurveRequests = new Map<string, Promise<unknown>>();
-const referenceCurveRequestQueue: Array<QueuedReferenceCurveRequest<unknown>> = [];
-let activeReferenceCurveRequestCount = 0;
-let referenceCurveRequestConcurrency = DEFAULT_REFERENCE_CURVE_REQUEST_CONCURRENCY;
-let lastReferenceCurveRequestStartedAt = 0;
-let referenceCurveRequestDrainTimeoutId: number | null = null;
+const referenceCurveRequestScheduler = createIntervalRequestScheduler({
+    concurrency: DEFAULT_REFERENCE_CURVE_REQUEST_CONCURRENCY,
+    intervalMs: DEFAULT_REFERENCE_CURVE_REQUEST_INTERVAL_MS
+});
 
 export function setReferenceCurveRequestConcurrency(concurrency: number): void {
-    referenceCurveRequestConcurrency = Math.max(1, Math.floor(concurrency));
-    drainReferenceCurveRequestQueue();
+    referenceCurveRequestScheduler.setConcurrency(concurrency);
 }
 
 export function buildReferenceCurveCacheKey(parts: ReferenceCurveCacheKeyParts): string {
@@ -122,25 +113,7 @@ export async function getOrComputeReferenceCurve(options: GetOrComputeReferenceC
 }
 
 export function scheduleReferenceCurveRequest<T>(requestKey: string, run: () => Promise<T>): Promise<T> {
-    const pending = pendingReferenceCurveRequests.get(requestKey) as Promise<T> | undefined;
-    if (pending !== undefined) {
-        return pending;
-    }
-
-    const request = new Promise<T>((resolve, reject) => {
-        referenceCurveRequestQueue.push({
-            requestKey,
-            run: run as () => Promise<unknown>,
-            resolve: resolve as (value: unknown) => void,
-            reject
-        });
-        drainReferenceCurveRequestQueue();
-    }).finally(() => {
-        pendingReferenceCurveRequests.delete(requestKey);
-    });
-
-    pendingReferenceCurveRequests.set(requestKey, request);
-    return request;
+    return referenceCurveRequestScheduler.schedule(requestKey, run);
 }
 
 export async function readReferenceCurveRecord(cacheKey: string): Promise<ReferenceCurveRecord | undefined> {
@@ -168,42 +141,6 @@ async function getOrComputeReferenceCurveInternal(options: GetOrComputeReference
     const result = await options.compute();
     await writeReferenceCurveRecord(buildReferenceCurveRecord(result));
     return result;
-}
-
-function drainReferenceCurveRequestQueue(): void {
-    if (referenceCurveRequestDrainTimeoutId !== null) {
-        return;
-    }
-
-    while (
-        activeReferenceCurveRequestCount < referenceCurveRequestConcurrency
-        && referenceCurveRequestQueue.length > 0
-    ) {
-        const now = Date.now();
-        const elapsedMs = now - lastReferenceCurveRequestStartedAt;
-        if (lastReferenceCurveRequestStartedAt > 0 && elapsedMs < DEFAULT_REFERENCE_CURVE_REQUEST_INTERVAL_MS) {
-            referenceCurveRequestDrainTimeoutId = window.setTimeout(() => {
-                referenceCurveRequestDrainTimeoutId = null;
-                drainReferenceCurveRequestQueue();
-            }, DEFAULT_REFERENCE_CURVE_REQUEST_INTERVAL_MS - elapsedMs);
-            return;
-        }
-
-        const queued = referenceCurveRequestQueue.shift();
-        if (queued === undefined) {
-            continue;
-        }
-
-        activeReferenceCurveRequestCount += 1;
-        lastReferenceCurveRequestStartedAt = now;
-        queued.run()
-            .then(queued.resolve)
-            .catch(queued.reject)
-            .finally(() => {
-                activeReferenceCurveRequestCount -= 1;
-                drainReferenceCurveRequestQueue();
-            });
-    }
 }
 
 async function withReferenceCurveStore<T>(

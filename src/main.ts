@@ -39,6 +39,7 @@ import {
     getOrComputeReferenceCurve,
     scheduleReferenceCurveRequest
 } from "./referenceCurveStore";
+import { createIntervalRequestScheduler } from "./requestScheduler";
 import {
     buildBookingCurveRawSourceCacheKey,
     buildBookingCurveRawSourceRecord,
@@ -84,6 +85,7 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
     : (GM_info.script?.name ?? "Revenue Assistant Userscript");
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
+const BOOKING_CURVE_REQUEST_INTERVAL_MS = 1000;
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
 const CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const RANK_SEQUENCES_ENDPOINT = "/api/v1/rank_sequences";
@@ -699,6 +701,10 @@ const rankRecommendationCurrentSettingsCache = new Map<string, Promise<RankRecom
 const rankRecommendationRankLadderCache = new Map<string, Promise<RankRecommendationRankLadderEntry[]>>();
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const lincolnSuggestStatusRangeCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
+const bookingCurveRequestScheduler = createIntervalRequestScheduler({
+    concurrency: 1,
+    intervalMs: BOOKING_CURVE_REQUEST_INTERVAL_MS
+});
 const interactionSyncTimeoutIds: number[] = [];
 const salesSettingPrefetchKeys = new Set<string>();
 const competitorPriceSnapshotAttemptKeys = new Set<string>();
@@ -3170,12 +3176,15 @@ async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promi
         url.searchParams.set("rm_room_group_id", rmRoomGroupId);
     }
 
-    const response = await fetch(url.toString(), {
-        credentials: "include",
-        headers: {
-            "X-Requested-With": "XMLHttpRequest"
-        }
-    });
+    const response = await bookingCurveRequestScheduler.schedule(
+        url.search,
+        () => fetch(url.toString(), {
+            credentials: "include",
+            headers: {
+                "X-Requested-With": "XMLHttpRequest"
+            }
+        })
+    );
 
     if (!response.ok) {
         throw new Error(`booking curve request failed: ${response.status}`);
