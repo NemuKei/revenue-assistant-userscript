@@ -2099,6 +2099,54 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-32 保存済み manual override が未使用になった理由を表示する
+
+- 状態:
+  - 2026-05-28 実装済み。
+- 目的:
+  - 保存済み manual override が現在の rank ladder と一致せず使われなかった場合に、利用者が画面上で理由を確認できるようにする。
+  - 設定画面の rank 追加、削除、code 変更、重複混入などで手動順序が無効化された場合に、推奨 rank が manual override ではなく別 source に戻っていることを誤読しないようにする。
+- 背景:
+  - 既存実装では、保存済み manual override の件数、code、重複が現在の rank ladder と合わない場合、`resolveRankRecommendationRankOrder()` は null 扱いにして `settings_screen` などへ fallback していた。
+  - この挙動自体は安全だが、UI 上では未使用理由が出ないため、利用者が保存済み manual override が効いていると誤解する可能性があった。
+- スコープ:
+  - manual override が未使用になった理由を `RankRecommendationRankOrderResolution.diagnostics` に残す。
+  - rank 順序調整 status に、保存済み手動順序が未使用になった理由を表示する。
+  - 候補 diagnostics に rank order diagnostics を含め、原因を reasonFingerprint にも反映する。
+  - 保存済み override は自動削除しない。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - Revenue Assistant の設定画面の rank 並び順を書き換えない。
+  - 保存済み manual override を自動削除しない。
+  - rank order source 優先順位を変更しない。
+  - 候補 scoring、priority、confidence、reasonCodes、API request 範囲、request 件数、request 間隔を変更しない。
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply を追加しない。
+- 受け入れ条件:
+  - 保存済み manual override の件数が現在の rank ladder と一致しない場合、rank 順序調整 status に件数不一致で未使用であることが表示される。
+  - 保存済み manual override に現在の rank ladder にない code が含まれる場合、rank 順序調整 status に未使用であることが表示される。
+  - 保存済み manual override に重複 code が含まれる場合、rank 順序調整 status に未使用であることが表示される。
+  - 保存済み manual override が valid な場合は、従来どおり `manual_override` source として使われる。
+  - fallback 先の `settings_screen`、`numeric_rank_name`、`unresolved` の既存挙動は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome Extension backend の可用性を確認し、実 DOM 確認は Chrome DevTools Protocol で行う。
+- 実装内容:
+  - `resolveManualRankOrder()` が、成功時の rank list または未使用理由 diagnostics を返すようにした。
+  - manual override が未使用の場合、fallback 先の rank order resolution に `manual_override_ignored_*` diagnostics を残すようにした。
+  - rank 順序調整 status に、保存済み手動順序が未使用になった理由を表示するようにした。
+  - 候補 diagnostics に rank order diagnostics を含めるようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に同じ command を再実行して通過した。
+  - `git diff --check`: passed
+  - Chrome Extension runtime surface: `agent.browsers` はこの thread では未露出。
+  - Chrome DevTools Protocol: `npm run chrome:pages` で通常 Chrome の Revenue Assistant tab を確認した。
+  - Chrome DevTools Protocol 実 DOM 確認: 最新 dist 一時注入後、保存済み manual override の件数不一致では source が `settings_screen` に fallback し、status に `保存済み手動順序は現在のrank一覧と件数が一致しないため未使用です` が表示されることを確認した。現在の rank ladder にない code を含む場合は、source が `settings_screen` に fallback し、status に `保存済み手動順序に現在のrank一覧にないrankがあるため未使用です` が表示されることを確認した。検証で一時的に作成した browser-local override は確認後に復元し、localStorage の override key が 0 件であることを確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。

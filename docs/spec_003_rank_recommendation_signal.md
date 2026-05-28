@@ -435,6 +435,7 @@ rank response dataset の first contract:
 - 利用者が manual override を保存した場合は、保存された高ランクから低ランクへの順序を source `manual_override` として最優先する。manual override は browser-local 保存に限定し、Revenue Assistant の rank 設定へ write しない。
 - rank の上下関係が現在の推定または設定画面順序と逆の施設では、利用者が現在の入力順を逆順にして manual override として保存できる入口を持つ。この入口は browser-local の RAU override だけを変更し、Revenue Assistant の設定画面の並び順は変更しない。
 - manual override の入力が保存できない場合は、件数、未確認 token、重複 token、不足 rank のうち判定できた理由を status に表示する。これは利用者が入力を修正するための補助であり、rank order の自動確定 source は変更しない。
+- 保存済み manual override が現在の rank ladder と一致しない場合は、その override を使わず、設定画面順序、数値 rank 名 fallback、unresolved の順へ戻す。この場合は status に保存済み手動順序を未使用にした理由を表示する。RAU は保存済み override を自動削除しない。
 - manual override がない場合は、`/api/v1/rank_sequences` の配列順を、Revenue Assistant 設定画面 `料金ランクの並び順` の保存済み順序として使い、source `settings_screen` とする。大国町ではこの設定画面が高ランクから低ランクの順に `1` から `20` へ並んでいる。
 - 設定画面の保存済み順序が取得できない場合だけ、rank 名がすべて整数として読めるなら、rank 名の数値昇順を高ランクから低ランクへの fallback 順序として推定し、source を `numeric_rank_name` とする。この fallback は、すべての施設で数字が小さいほど高ランクであると断定するものではない。
 - rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系のいずれもあり得る。同じ表記系でも高低が逆になる運用があり得るため、名前パターンだけで `settings_screen` と同等の確定 source にはしない。ローマ字または英字順、記号の有無、曜日別販売傾向、競合価格内の自社料金位置は、rank order source としては使わない。

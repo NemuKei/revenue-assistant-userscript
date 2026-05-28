@@ -88,6 +88,11 @@ export interface RankRecommendationRankOrderResolution {
     diagnostics: string[];
 }
 
+interface ManualRankOrderResolution {
+    ranks: RankRecommendationRankOrderEntry[] | null;
+    diagnostics: string[];
+}
+
 export function buildRankRecommendationCandidates(options: {
     response: RankRecommendationCurrentSettingsResponse;
     facilityId: string;
@@ -321,6 +326,7 @@ function buildRankRecommendationCandidate(options: {
     if (currentRankName === null) {
         diagnostics.push("current_rank_missing");
     }
+    diagnostics.push(...options.rankOrder.diagnostics);
     const recommendedRankResolution = resolveRecommendedRank({
         action,
         currentRankCode,
@@ -488,10 +494,10 @@ export function resolveRankRecommendationRankOrder(options: {
     }
 
     const manualOrder = resolveManualRankOrder(normalized, options.override ?? null);
-    if (manualOrder !== null) {
+    if (manualOrder.ranks !== null) {
         return {
             source: "manual_override",
-            ranksHighToLow: manualOrder,
+            ranksHighToLow: manualOrder.ranks,
             diagnostics: []
         };
     }
@@ -501,7 +507,7 @@ export function resolveRankRecommendationRankOrder(options: {
         return {
             source: "settings_screen",
             ranksHighToLow: settingsScreenOrder,
-            diagnostics: []
+            diagnostics: manualOrder.diagnostics
         };
     }
 
@@ -512,12 +518,12 @@ export function resolveRankRecommendationRankOrder(options: {
             ranksHighToLow: [...normalized]
                 .sort((left, right) => (left.orderValue ?? 0) - (right.orderValue ?? 0))
                 .map(({ code, name }) => ({ code, name })),
-            diagnostics: []
+            diagnostics: manualOrder.diagnostics
         }
         : {
             source: "unresolved",
             ranksHighToLow: normalized.map(({ code, name }) => ({ code, name })),
-            diagnostics: ["rank_order_unresolved"]
+            diagnostics: [...manualOrder.diagnostics, "rank_order_unresolved"]
         };
 }
 
@@ -543,9 +549,13 @@ function resolveSettingsScreenRankOrder(
 function resolveManualRankOrder(
     rankLadder: Array<{ code: string; name: string; orderValue: number | null }>,
     override: RankRecommendationRankOrderOverride | null
-): RankRecommendationRankOrderEntry[] | null {
-    if (override === null || override.rankCodesHighToLow.length !== rankLadder.length) {
-        return null;
+): ManualRankOrderResolution {
+    if (override === null) {
+        return { ranks: null, diagnostics: [] };
+    }
+
+    if (override.rankCodesHighToLow.length !== rankLadder.length) {
+        return { ranks: null, diagnostics: ["manual_override_ignored_length_mismatch"] };
     }
 
     const rankByCode = new Map(rankLadder.map((entry) => [entry.code, { code: entry.code, name: entry.name }]));
@@ -553,14 +563,19 @@ function resolveManualRankOrder(
     const resolved: RankRecommendationRankOrderEntry[] = [];
     for (const code of override.rankCodesHighToLow) {
         const rank = rankByCode.get(code);
-        if (rank === undefined || usedCodes.has(code)) {
-            return null;
+        if (rank === undefined) {
+            return { ranks: null, diagnostics: ["manual_override_ignored_unknown_rank"] };
+        }
+        if (usedCodes.has(code)) {
+            return { ranks: null, diagnostics: ["manual_override_ignored_duplicate_rank"] };
         }
         usedCodes.add(code);
         resolved.push(rank);
     }
 
-    return usedCodes.size === rankByCode.size ? resolved : null;
+    return usedCodes.size === rankByCode.size
+        ? { ranks: resolved, diagnostics: [] }
+        : { ranks: null, diagnostics: ["manual_override_ignored_missing_rank"] };
 }
 
 function parseRankNameNumber(value: string): number | null {

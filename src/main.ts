@@ -5805,6 +5805,7 @@ function createRankRecommendationOrderControl(options: {
 
     const statusElement = document.createElement("span");
     statusElement.setAttribute(RANK_RECOMMENDATION_ORDER_STATUS_ATTRIBUTE, "");
+    statusElement.textContent = formatRankRecommendationOrderDiagnosticStatus(options.rankOrder.diagnostics);
 
     actionElement.append(saveButtonElement, reverseButtonElement, resetButtonElement, statusElement);
     detailsElement.append(detailsSummaryElement, inputElement, actionElement);
@@ -5827,6 +5828,22 @@ function formatRankRecommendationOrderSummary(rankOrder: RankRecommendationRankO
         default:
             return `ランク順序: 未推定 / ${orderText}`;
     }
+}
+
+function formatRankRecommendationOrderDiagnosticStatus(diagnostics: readonly string[]): string {
+    if (diagnostics.includes("manual_override_ignored_length_mismatch")) {
+        return "保存済み手動順序は現在のrank一覧と件数が一致しないため未使用です";
+    }
+    if (diagnostics.includes("manual_override_ignored_unknown_rank")) {
+        return "保存済み手動順序に現在のrank一覧にないrankがあるため未使用です";
+    }
+    if (diagnostics.includes("manual_override_ignored_duplicate_rank")) {
+        return "保存済み手動順序に重複rankがあるため未使用です";
+    }
+    if (diagnostics.includes("manual_override_ignored_missing_rank")) {
+        return "保存済み手動順序に不足rankがあるため未使用です";
+    }
+    return "";
 }
 
 function formatRankRecommendationListMeta(
