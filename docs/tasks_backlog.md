@@ -2285,6 +2285,49 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-36 rank price table / current selling price の read-only 追加確認
+
+- 状態:
+  - 2026-05-28 完了。
+- 目的:
+  - rank price table と現在販売中価格を Revenue Assistant から取得できるかを、read-only の範囲で追加確認する。
+  - 推奨レート金額を出すためではなく、推奨レート金額を出さない理由として残っている未確認項目を、確認済み、未確認、取得不可、追加調査必要のどれかへ分類する。
+- 背景:
+  - `RAU-RR-03` では `/api/v1/plan_master/plan_rank_price` の 200 応答を確認したが、観測範囲に実価格 field が見えなかったため、rank price table と現在販売中価格は未確認として残した。
+  - `docs/spec_003_rank_recommendation_signal.md` では、rank price table、現在販売中価格、プラン別、人数別、食事条件別の価格が揃わない段階では推奨レート金額を出さない契約にしている。
+- スコープ:
+  - Chrome拡張または `npm run chrome:pages` で通常 Chrome の Revenue Assistant 対象 tab を確認する。
+  - Chrome DevTools Protocol の read-only fetch で、既知 endpoint 候補の HTTP status、top-level field、価格 table と現在販売中価格に該当しそうな field の有無を確認する。
+  - docs へは field 名、型、null 許容、件数、HTTP status、未確認理由だけを要約する。
+  - response body、実価格、在庫、予約、顧客、credential、request body は保存しない。
+- 非目標:
+  - Revenue Assistant write / bulk apply。
+  - rank 反映 API の実行。
+  - 推奨レート金額、rank 別価格表、現在販売中価格を UI へ表示すること。
+  - 新しい API adapter、storage、cache、request queue を実装すること。
+- 受け入れ条件:
+  - 通常 Chrome の Revenue Assistant tab を確認している。
+  - read-only fetch で確認した endpoint 候補ごとに、HTTP status と、rank price table または現在販売中価格として使えるかを分類している。
+  - 実価格、response body、credential、個人情報、予約情報を repo に保存していない。
+  - 結果を `docs/spec_003_rank_recommendation_signal.md`、`docs/context/DECISIONS.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md` へ同期する。
+  - `git diff --check` が通る。
+- 確認結果:
+  - `npm run chrome:pages`: passed。通常 Chrome に Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
+  - Chrome拡張 backend は、`node_repl` で bundled Chrome runtime を bootstrap し、extension browser、`openTabs()`、tab count 3 を確認した。
+  - Chrome DevTools Protocol では、通常 Chrome の Revenue Assistant root から read-only fetch を実行した。
+  - `/api/v1/plan_master/plan_rank_price?from=20260501`、`from=20260528`、`from=20260529`、`from=20260501&to=20260531` はいずれも HTTP 200 だった。
+  - `plan_rank_prices[]` は 20 件で、field は `price_rank_code`、`price_rank_name`、`from`、`effective_date`、`manual_from`、`manual_effective_date`、`invalid` だった。実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は確認できなかった。
+  - `/api/v1/suggest/output/current_settings?from=20260528&to=20260529` と `from=20260529&to=20260529` は HTTP 200 だった。`latest_current.price_rank_code` と `price_rank_name` は取れるが、`without_meal`、`with_only_breakfast`、`with_only_dinner`、`with_breakfast_and_dinner` は null だった。
+  - Revenue Assistant 配信 JavaScript では `plan_rank_price` 呼び出しが `from` parameter を送る実装であることを確認した。現在販売中価格の全体像に使える別 endpoint は、この確認範囲では特定できなかった。
+  - 実価格、response body、credential、個人情報、予約情報は repo に保存していない。
+- 判断:
+  - rank price table、現在販売中価格、プラン別・人数別・食事条件別価格は、引き続き推奨レート金額の根拠として使わない。
+  - first phase では recommendedRank から推奨レート金額を導出しない契約を維持する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2844,7 +2887,7 @@ Later:
 - Rank Recommendation Bundle は、`RAU-FC-01` の rooms-only 予測モデル導入判断と重なるが、UI、候補 lifecycle、user decision、rank history、rank response、future bulk apply を含むため、独立 bundle として扱う。
 - first phase の rank recommendation は forecast model を必須入力にしない。reference curve deviation、capacity、remaining rooms、transient / group 分解、直近 rank change、競合価格 snapshot、sales / ADR raw source を使って、RM の作業キューを先に作る。
 - `RAU-RR-03` は 2026-05-28 に実施済みである。current rank と rank ladder 候補は確認済みだが、当時は `rank_sequences[].default_sequence` の扱いを未確定としていた。`rank_sequences[].default_sequence` の扱いは `RAU-RR-12` で確認済みに更新した。
-- rank price table、現在販売中価格、rank 反映 API の request shape と安全制約は未確認として残している。
+- rank price table と現在販売中価格は、`RAU-RR-36` の追加確認後も、推奨レート金額を導出できる入力としては未確認として残している。rank 反映 API の request shape と安全制約も未確認として残している。
 - `RAU-RR-04` は実装済みである。トップ画面に `stayDate x roomGroup` 単位の候補リスト shell を追加し、current settings の current rank、remaining、max を使う仮候補生成を `src/rankRecommendation.ts` に分離した。`Analyzeで確認` は URL 導線として表示し、`様子見` と `対応不要` は `RAU-RR-07` まで disabled button として置く。
 - `RAU-RR-05` は実装済みである。`booking_curve_raw_source:v2` の roomGroup raw source から asOfDate 時点の this_year rooms と過去年 rooms 平均を読み、`all`、`transient`、`group` ごとに reference deviation を計算する。欠損は推測で埋めず `reference不足` として出す。group が上振れ主因で transient が上振れていない場合は、個人価格 rank の上げ検討を抑制する。
 - `RAU-RR-06` は実装済みである。`Analyzeで確認` click 時に pending focus を `sessionStorage` へ保存し、Analyze 表示時に対象 roomGroup card を開く、scroll する、highlight する。対象が見つからない場合は通常 Analyze 表示を維持し、console warning へ診断を出す。
@@ -2872,6 +2915,7 @@ Later:
 - `RAU-RR-27` は 2026-05-28 に実装済みである。user decision record に判断時点の confidence 表示段階を保存し、同じ `stayDate x roomGroup x action x reasonFingerprint` でも現在候補の confidence 表示段階が保存時より上がった場合は active list に再表示する。既存 decision record は confidence 表示段階を持たないため、従来どおり exact fingerprint match で抑制する。
 - `RAU-RR-28` は 2026-05-28 に実装済みである。top list に `宿泊まで` 列を追加し、`stayDate - asOfDate` を `n日`、当日を `当日`、計算不能または過去日を `-` として表示する。priority、confidence、scoring、rank order、user decision、resolved 判定、API request 範囲は変更していない。
 - `RAU-RR-29` は 2026-05-28 に実装済みである。candidate generation 時点で top 10 に切らず、user decision filter と rank change resolved filter の後に表示 top 10 を選ぶ。filter 後に top 10 外の active candidate がある場合は、top list meta に `他 n件` を表示する。scoring、priority、confidence、rank order、user decision、resolved 判定、API request 範囲は変更していない。
+- `RAU-RR-36` は 2026-05-28 に確認済みである。`/api/v1/plan_master/plan_rank_price` は `from=YYYYMMDD` 系 query で 20 件の rank metadata を返すが、実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は確認できなかった。`current_settings` は current rank と capacity / remaining には使えるが、観測範囲では食事条件別価格候補 field が null だった。したがって、rank price table、現在販売中価格、プラン別・人数別・食事条件別価格は、引き続き推奨レート金額の根拠として使わない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

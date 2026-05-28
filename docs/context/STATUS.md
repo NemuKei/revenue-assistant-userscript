@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-35` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `なし`。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-36` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `なし`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -41,6 +41,7 @@
   - `RAU-RR-33` 主要根拠 cell で不足理由と注意を確認できるようにする
   - `RAU-RR-34` Analyze focus 先の roomGroup card に候補 summary を表示する
   - `RAU-RR-35` Analyze focus summary に不足または注意を表示する
+  - `RAU-RR-36` rank price table / current selling price の read-only 追加確認
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
   - `RAU-FC-03` forecast evaluation dataset を実装する
@@ -96,6 +97,7 @@
   - `RAU-RR-33` では、top list の `主要根拠` cell に hover tooltip を追加した。tooltip には cell 本体と同じ主要根拠と、既存 diagnostics summary helper から作る不足または注意の種類を非数値で表示する。reasonCodes、diagnostics、reasonFingerprint、candidate scoring、priority、confidence、API request 範囲、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は変更していない。Chrome Extension runtime はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。CDP 確認では、最新 dist 一時注入後に top list 10 行、`主要根拠:` を含む tooltip 10 件、`注意:` を含む tooltip 10 件、空 tooltip 0 件を確認した。検証用に差し替えた `requestAnimationFrame` は確認後に元へ戻した。
   - `RAU-RR-34` では、top list の `Analyzeで確認` link から pending focus へ推奨方向と主要根拠の表示用 text を保存し、Analyze 日付ページで対象 roomGroup card を開く、scroll する、highlight する処理に加えて、card 上部へ focus summary を表示するようにした。summary は非数値の表示補助であり、candidate scoring、reasonFingerprint、API request 範囲、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は変更していない。Chrome Extension backend はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。CDP 確認では、最新 `dist` 一時注入後の `Analyzeで確認` link が推奨方向と主要根拠の data attribute を持つこと、Analyze 画面の既存 roomGroup card に focus summary が 1 件表示され、highlight が 1 件付き、確認後に pending focus が削除されることを確認した。Revenue Assistant の SPA は click 後に URL だけ `/analyze/...` へ変わり、本文 DOM の描画が遅れる、または月次カレンダー本文が先に残る場合があったため、click payload 確認と Analyze card への pending focus 適用確認を分けて検証した。
   - `RAU-RR-35` では、top list の `Analyzeで確認` link から pending focus へ不足または注意の表示用 text を保存し、Analyze focus 先 roomGroup card の summary に、不足または注意がある場合だけ `注意: ...` を追加するようにした。summary は非数値の表示補助であり、candidate scoring、reasonFingerprint、API request 範囲、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は変更していない。Chrome Extension backend はこの thread では `agent.browsers` が露出していなかったため、通常 Chrome の tab 候補確認と実 DOM 確認は Chrome DevTools Protocol で行った。CDP 確認では、最新 `dist` 一時注入後の `Analyzeで確認` link が不足または注意の data attribute を持つこと、Analyze 画面の既存 roomGroup card に `注意: forecast 比較不足 / 競合価格の部屋タイプ対応未確認` を含む focus summary が 1 件表示され、highlight が 1 件付き、確認後に pending focus が削除されること、summary 内に金額または percent が出ないことを確認した。
+  - `RAU-RR-36` では、Chrome拡張 backend がこの thread で使えることを確認し、通常 Chrome の Revenue Assistant root を Chrome DevTools Protocol で read-only 追加確認した。`/api/v1/plan_master/plan_rank_price` は `from=20260501`、`from=20260528`、`from=20260529`、`from=20260501&to=20260531` のいずれも HTTP 200 で `plan_rank_prices[]` 20 件を返したが、field は `price_rank_code`、`price_rank_name`、`from`、`effective_date`、`manual_from`、`manual_effective_date`、`invalid` に限られ、実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は確認できなかった。`current_settings` は current rank と capacity / remaining には使えるが、観測範囲では `without_meal`、`with_only_breakfast`、`with_only_dinner`、`with_breakfast_and_dinner` が null だった。したがって、rank price table、現在販売中価格、プラン別・人数別・食事条件別価格は、引き続き推奨レート金額の根拠として使わない。実価格、response body、credential、個人情報、予約情報は repo に保存していない。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
 - 次スレッドでやらないこと:
   - 推奨レート金額を出さない。
@@ -461,7 +463,8 @@
 - current rank と rank ladder 候補は `RAU-RR-03` で確認済みである。`rank_sequences[].default_sequence` は `RAU-RR-12` で名前順初期化用と確認済みであり、rank 上げ / 下げ方向には使わない。
 - rank order は、manual override、Revenue Assistant 設定画面の保存済み順序、数値 rank 名 fallback、unresolved の順に解決する。大国町では設定画面の `1` から `20` が高ランクから低ランクへの順序であり、`1` を最高ランク、`20` を最低ランクとして扱う。
 - rank 名は企業や施設により、数字系、ローマ字または英字系、記号混在系があり、同じ表記系でも上下関係が逆になる場合がある。曜日別傾向や競合価格内での自社料金位置は rank order source ではなく、priority、confidence、reasonCodes、diagnostics の補助入力候補として扱う。
-- rank 別価格表、現在販売中価格、rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動は未確認である。
+- rank 別価格表と現在販売中価格は、`RAU-RR-36` の追加確認後も、推奨レート金額を導出できる入力としては未確認である。`/api/v1/plan_master/plan_rank_price` は rank metadata を返すが、実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は観測できていない。
+- rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動は未確認である。
 - rank recommendation first phase では推奨レート金額を出さない。金額推奨を行うには、プラン別、人数別、食事条件別、販売中価格、rank ladder、競合価格、施設方針の確認が必要であり、現時点では未確認項目が多い。
 - top 料金調整候補リストは実装済みで、warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示とは別の list layer として表示する。今後追加 UI を行う場合も、これらの意味を混同しない。
 - user snooze / 対応不要の browser-local 保存は実装済みである。priority または reasonFingerprint が変わった候補は従来から別候補として再表示され、`RAU-RR-27` で confidence 表示段階が保存時より上がった場合も再表示されるようにした。今後さらに調整する場合は、実データで false positive と見直し候補を分けながら、再表示条件を広げすぎないか確認する必要がある。

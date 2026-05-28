@@ -178,6 +178,8 @@ first phase では次を行わない。
 
 - 2026-05-28 の Chrome DevTools Protocol read-only 調査で、`from=YYYYMMDD` 形式の query では 200 応答を確認した。`from=YYYY-MM-DD` 形式は 400 応答だった。
 - response は `plan_rank_prices[]` を持ち、観測 field は `price_rank_code`、`price_rank_name`、`from`、`effective_date`、`manual_from`、`manual_effective_date`、`invalid` だった。
+- 2026-05-28 の `RAU-RR-36` 追加確認では、`from=20260501`、`from=20260528`、`from=20260529`、`from=20260501&to=20260531` のいずれも 200 応答で、`plan_rank_prices[]` は 20 件だった。観測 field は前回と同じであり、実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は確認できなかった。
+- 同じ追加確認で、Revenue Assistant 配信 JavaScript 内の `plan_rank_price` 呼び出しは `from` parameter を送る実装だった。`current_settings` の `latest_current` は current rank と capacity / remaining には使えるが、観測範囲では `without_meal`、`with_only_breakfast`、`with_only_dinner`、`with_breakfast_and_dinner` が null であり、現在販売中価格の全体像には使えなかった。
 - 観測範囲では実価格または金額 field は確認できなかった。したがって、rank price table、現在販売中価格、プラン別・人数別・食事条件別価格は引き続き未確認である。
 
 `/api/v1/lincoln/suggest/reflection_allow`
@@ -522,7 +524,7 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 - rank ladder 候補は `/api/v1/rank_sequences` から取得候補を確認済みである。
 - 反映許可候補は `/api/v1/lincoln/suggest/reflection_allow?suggest_calc_datetime=...` の `is_allowed` として確認済みである。
 - write endpoint 候補は JavaScript bundle 内で確認したが、実行していない。request shape、必要 header、CSRF、provider 差、権限差、partial failure、同時更新、rollback、標準 UI との競合条件は未確認である。
-- rank price table と現在販売中価格は未確認である。
+- rank price table と現在販売中価格は、`RAU-RR-36` の追加確認後も、推奨レート金額を導出できる入力としては未確認である。
 - user decision、cooldown、dismissed、resolved の browser-local lifecycle は first phase の候補リスト用に実装済みである。ただし、bulk apply 用の preview、選択状態、反映結果保存、部分失敗保存は未実装である。
 - 以上により、`RAU-RR-11` の結論は `not-now` とする。bulk apply は future candidate のまま残すが、first phase では button も API 実行も追加しない。
 
