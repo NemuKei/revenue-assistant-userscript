@@ -6,6 +6,7 @@ export type RankRecommendationSalesAdrHealthSignal = "adr_down" | "sales_down" |
 export type RankRecommendationRecommendedRankUnavailableReason =
     | "rank_ladder_missing"
     | "current_rank_not_in_ladder"
+    | "rank_order_unresolved"
     | "rank_ladder_boundary";
 
 export interface RankRecommendationCurrentSettingRoomGroup {
@@ -381,13 +382,12 @@ function resolveRecommendedRank(options: {
         return { rank: null, unavailableReason: null };
     }
 
-    const ladder = options.rankLadder.flatMap((entry) => {
-        const code = normalizeNullableText(entry.price_rank_code);
-        const name = normalizeNullableText(entry.price_rank_name);
-        return code === null || name === null ? [] : [{ code, name }];
-    });
+    const ladder = resolveRankOrder(options.rankLadder);
     if (ladder.length === 0) {
         return { rank: null, unavailableReason: "rank_ladder_missing" };
+    }
+    if (!isRankOrderResolved(ladder)) {
+        return { rank: null, unavailableReason: "rank_order_unresolved" };
     }
 
     const currentIndex = ladder.findIndex((entry) => entry.code === options.currentRankCode);
@@ -404,12 +404,50 @@ function resolveRecommendedRank(options: {
 
 function getRecommendedRankStepDirection(action: RankRecommendationAction): -1 | 0 | 1 {
     if (action === "raise_watch") {
-        return 1;
-    }
-    if (action === "lower_watch") {
         return -1;
     }
+    if (action === "lower_watch") {
+        return 1;
+    }
     return 0;
+}
+
+function resolveRankOrder(
+    rankLadder: readonly RankRecommendationRankLadderEntry[]
+): Array<{ code: string; name: string; orderValue: number | null }> {
+    const normalized = rankLadder.flatMap((entry) => {
+        const code = normalizeNullableText(entry.price_rank_code);
+        const name = normalizeNullableText(entry.price_rank_name);
+        if (code === null || name === null) {
+            return [];
+        }
+
+        return [{ code, name, orderValue: parseRankNameNumber(name) }];
+    });
+    if (normalized.length === 0) {
+        return [];
+    }
+
+    const numericRanks = normalized.filter((entry) => entry.orderValue !== null);
+    return numericRanks.length === normalized.length
+        ? [...normalized].sort((left, right) => (left.orderValue ?? 0) - (right.orderValue ?? 0))
+        : normalized;
+}
+
+function isRankOrderResolved(
+    ladder: Array<{ code: string; name: string; orderValue: number | null }>
+): boolean {
+    return ladder.every((entry) => entry.orderValue !== null);
+}
+
+function parseRankNameNumber(value: string): number | null {
+    const normalized = value.trim();
+    if (!/^\d+$/.test(normalized)) {
+        return null;
+    }
+
+    const parsed = Number.parseInt(normalized, 10);
+    return Number.isFinite(parsed) ? parsed : null;
 }
 
 function compareRankRecommendationCandidates(left: RankRecommendationCandidate, right: RankRecommendationCandidate): number {
