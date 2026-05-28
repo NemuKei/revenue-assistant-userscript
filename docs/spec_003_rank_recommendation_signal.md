@@ -323,10 +323,10 @@ scoring では次を守る。
 forecast の扱い:
 
 - forecast は first wave の必須入力にしない。forecast が欠損しても、reference deviation、capacity、remaining rooms、`all` / `transient` / `group` 分解、直近 rank change、競合価格 snapshot、sales / ADR raw source で候補生成を継続する。
-- forecast を使う前に、`docs/spec_002_curve_core.md` の `ForecastResult v1 candidate` と evaluation dataset を `RAU-FC-02` で確定する。
+- `RAU-FC-02` で、`docs/spec_002_curve_core.md` の evaluation dataset と `ForecastResult v1 candidate` を proposed contract として確定した。forecast を scoring へ接続する場合は、この contract に従い、実データ評価後に priority / confidence の補助として使う。
 - forecast を接続する場合は、`scope="roomGroup"`、`segment="transient"` を個人向け rank 判断の主入力候補にする。`segment="all"` は全体着地見込み、`segment="group"` は団体起因の抑制条件と diagnostics に使う。
 - forecast 欠損時、reference curve 欠損時、sourceCount 不足時、capacity 不足時、`0日前` / `ACT` 分離制約がある場合は、推測で補完せず diagnostics に残す。
-- forecast による priority / confidence 補正は、過去 stayDate 評価で誤差、bias、小キャパ、group-driven case、rank recommendation impact proxy を確認してから実装する。
+- forecast による priority / confidence 補正は、過去 stayDate 評価で `maeRooms`、`smape`、`biasRooms`、小キャパ、group-driven case、rank recommendation impact proxy を確認してから実装する。
 - `snoozed_by_user`、`dismissed_by_user`、`resolved_by_rank_change` は、初期評価では真の正解ラベルではなく evaluation proxy として扱う。`snoozed_by_user` は false positive ではなく一時判断ログである。
 
 ## Rank Response / Elasticity
@@ -506,8 +506,7 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 9. reasonFingerprint に含める reasonCodes、threshold、data version、scoring version の境界をどう切るか。
 10. 競合価格 snapshot のどの変化量を `competitor price movement` として扱うか。
 11. sales / ADR の欠損、0 室、売上 0、ADR null を scoring でどう扱うか。
-12. forecast evaluation で、`maeRooms`、`smape`、`biasRooms` と rank recommendation impact proxy をどの保存単位で集計するか。
-13. `ForecastResult v1 candidate` の field、diagnostics、`scope`、`roomGroupId`、capacity、observed prefix のどこまでを RAU-FC-02 で確定するか。
+12. `RAU-FC-03` の実データ評価で、forecast diagnostics を priority / confidence に接続できるだけの安定性があるか。
 
 ## References
 
