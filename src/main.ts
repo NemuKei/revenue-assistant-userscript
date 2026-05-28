@@ -4654,6 +4654,9 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             rankOrderResolution.ranksHighToLow.map((rank) => rank.code).join(">"),
             visibleCandidates.map((candidate) => [
                 candidate.reasonFingerprint,
+                candidate.action,
+                candidate.priority,
+                formatRankRecommendationConfidence(candidate.confidence),
                 candidate.currentRankName ?? "",
                 candidate.recommendedRankName ?? "",
                 candidate.recommendedRankUnavailableReason ?? "",
@@ -5506,7 +5509,7 @@ function renderRankRecommendationList(
 
     const metaElement = document.createElement("div");
     metaElement.setAttribute("data-ra-rank-recommendation-meta", "");
-    metaElement.textContent = options.statusText ?? `優先度順 ${candidates.length}件`;
+    metaElement.textContent = formatRankRecommendationListMeta(candidates, options.statusText);
 
     const rankOrderControlElement = options.facilityCacheKey !== undefined
         && options.rankLadder !== undefined
@@ -5619,6 +5622,74 @@ function formatRankRecommendationOrderSummary(rankOrder: RankRecommendationRankO
     }
 }
 
+function formatRankRecommendationListMeta(
+    candidates: readonly RankRecommendationCandidate[],
+    statusText: string | null
+): string {
+    if (statusText !== null) {
+        return statusText;
+    }
+    const parts = [
+        `優先度順 ${candidates.length}件`,
+        formatRankRecommendationActionSummary(candidates),
+        formatRankRecommendationPrioritySummary(candidates),
+        formatRankRecommendationConfidenceSummary(candidates)
+    ].filter((part): part is string => part !== null);
+    return parts.join(" / ");
+}
+
+function formatRankRecommendationActionSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
+    return formatRankRecommendationCountSummary(
+        "推奨方向",
+        candidates.map((candidate) => candidate.action),
+        ["raise_watch", "lower_watch", "watch", "not_eligible"],
+        formatRankRecommendationActionLabel
+    );
+}
+
+function formatRankRecommendationPrioritySummary(candidates: readonly RankRecommendationCandidate[]): string | null {
+    return formatRankRecommendationCountSummary(
+        "優先度",
+        candidates.map((candidate) => candidate.priority),
+        ["high", "medium", "low"],
+        formatRankRecommendationPriority
+    );
+}
+
+function formatRankRecommendationConfidenceSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
+    return formatRankRecommendationCountSummary(
+        "確度",
+        candidates.map((candidate) => formatRankRecommendationConfidence(candidate.confidence)),
+        ["高", "中", "低"],
+        (label) => label
+    );
+}
+
+function formatRankRecommendationCountSummary<T extends string>(
+    prefix: string,
+    values: readonly T[],
+    orderedValues: readonly T[],
+    formatLabel: (value: T) => string
+): string | null {
+    if (values.length === 0) {
+        return null;
+    }
+    const counts = new Map<T, number>();
+    for (const value of values) {
+        counts.set(value, (counts.get(value) ?? 0) + 1);
+    }
+    const parts = orderedValues
+        .map((value) => {
+            const count = counts.get(value) ?? 0;
+            return count > 0 ? `${formatLabel(value)} ${count}件` : null;
+        })
+        .filter((part): part is string => part !== null);
+    if (parts.length === 0) {
+        return null;
+    }
+    return `${prefix} ${parts.join("・")}`;
+}
+
 function createRankRecommendationRow(candidate: RankRecommendationCandidate): HTMLTableRowElement {
     const rowElement = document.createElement("tr");
     rowElement.setAttribute(RANK_RECOMMENDATION_ROW_ATTRIBUTE, "");
@@ -5725,6 +5796,20 @@ function formatRankRecommendationPriority(priority: RankRecommendationPriority):
         case "low":
         default:
             return "低";
+    }
+}
+
+function formatRankRecommendationActionLabel(action: RankRecommendationAction): string {
+    switch (action) {
+        case "raise_watch":
+            return "上げ検討";
+        case "lower_watch":
+            return "下げ注意";
+        case "not_eligible":
+            return "判定対象外";
+        case "watch":
+        default:
+            return "監視";
     }
 }
 

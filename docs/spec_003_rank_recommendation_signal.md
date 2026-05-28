@@ -448,6 +448,7 @@ rank response dataset の first contract:
 - 日付 x 部屋タイプ単位の候補を優先度順に表示する。
 - 最大件数は初期値を持つ。初期候補は top 10 とする。
 - top 10 の外にも候補がある場合は、件数だけでも分かる表示を候補にする。
+- リスト上部の summary には、表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示する。これは top list に出ている候補の内訳であり、全候補母数、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額または percent を示すものではない。
 
 行項目:
 
@@ -465,7 +466,7 @@ rank response dataset の first contract:
 - `様子見`。
 - `対応不要`。
 
-first wave の top list では forecast 数値を直接表示しない。forecast が評価後に scoring 補助として使われる場合でも、top list では priority、confidence、主要根拠、diagnostics に反映する。`予測最終室数` のような数値を top list に出すと、利用者が current、reference curve、forecast、推奨ランク方向を混同しやすいためである。`confidence` は候補の根拠がどれだけ揃っているかを示す補助情報であり、実価格や予測値の精度を保証する値ではない。そのため top list では、内部値を直接出さず、確度の段階表示に留める。確度の tooltip でも forecast 数値、sales / ADR 数値、競合価格の金額または差額、percent は表示しない。
+first wave の top list では forecast 数値を直接表示しない。forecast が評価後に scoring 補助として使われる場合でも、top list では priority、confidence、主要根拠、diagnostics に反映する。`予測最終室数` のような数値を top list に出すと、利用者が current、reference curve、forecast、推奨ランク方向を混同しやすいためである。`confidence` は候補の根拠がどれだけ揃っているかを示す補助情報であり、実価格や予測値の精度を保証する値ではない。そのため top list では、内部値を直接出さず、確度の段階表示に留める。summary と確度 tooltip でも forecast 数値、sales / ADR 数値、競合価格の金額または差額、percent は表示しない。
 
 トップカレンダー badge は optional とする。入れる場合でも、warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示と意味を混同しない。候補リストを作業順の主導線とし、badge は補助表示に留める。
 

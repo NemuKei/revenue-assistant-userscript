@@ -1731,6 +1731,43 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-24 top list meta に候補内訳を表示する
+
+- 状態:
+  - 2026-05-28 に実装済み。
+  - top list 上部の meta に、表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示するようにした。
+  - summary は top list に出ている候補の内訳だけを示し、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。
+  - Chrome拡張 backend は Browser Use runtime から extension instance 2 件を検出した。公開 capability は `pageAssets` のみで tab list / tab content 操作は提供されていなかったため、実画面 DOM 確認は Chrome DevTools Protocol で行った。
+  - Chrome DevTools Protocol で通常 Chrome の Revenue Assistant tab に接続した。実 tab は login / current settings 401 状態だったため、実データ候補ではなく、同じ RA origin 上の iframe に検証用 calendar DOM と合成 API response を置き、最新 dist だけを一時実行して確認した。合成確認では top list 3 行、meta `優先度順 3件 / 推奨方向 上げ検討 1件・下げ注意 1件・判定対象外 1件 / 優先度 高 1件・中 1件・低 1件 / 確度 中 1件・低 2件`、金額または percent 0 件、verify error 0 件だった。
+- 目的:
+  - 候補行を 1 行ずつ読む前に、表示中の候補が `上げ検討` に偏っているのか、優先度や確度がどの程度に分かれているのかを把握できるようにする。
+  - RM がその日の確認順を決めるとき、top list 全体の構成を短時間で読めるようにする。
+- 背景:
+  - `RAU-RR-22` と `RAU-RR-23` で行ごとの確度表示と tooltip は追加済みである。
+  - 一方で、top list 全体がすべて同じ推奨方向なのか、優先度や確度にばらつきがあるのかは、行を読まないと分かりにくい。
+  - rank rule は企業またはホテルごとに異なる。数字系、ローマ字または英字系、記号混在系などの表記があり、同じ表記系でも高ランクから低ランクへ進む運用と、低ランクから高ランクへ進む運用の両方があり得る。
+  - そのため、この task では rank 名のパターン、曜日別販売傾向、競合価格内の自社料金位置だけで rank order を確定しない。大国町では Revenue Assistant 設定画面の `料金ランクの並び順` が高ランクから低ランクへ `1` から `20` の順に並んでいるため、設定画面由来の `settings_screen` source を優先する。必要な場合は利用者が manual override で高ランクから低ランクへの順序を保存できる。
+- スコープ:
+  - `data-ra-rank-recommendation-meta` の text に、候補件数、推奨方向別件数、優先度別件数、確度別件数を追加する。
+  - 既存の候補生成、scoring、confidence 閾値、reasonFingerprint、diagnostics、rank order source、manual override は変更しない。
+  - `docs/spec_003_rank_recommendation_signal.md`、`docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md` を同期する。
+- 非目標:
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を表示しない。
+  - confidence の閾値や scoring 補正幅を変更しない。
+  - Revenue Assistant write / bulk apply を追加しない。
+  - top 10 外を展開する UI、filter、sort UI は追加しない。
+- 受け入れ条件:
+  - top list の meta に `優先度順 n件` が表示される。
+  - 候補がある場合、meta に推奨方向別、優先度別、確度別の件数が表示される。
+  - meta は forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を表示しない。
+  - current settings 取得失敗などの `statusText` がある場合は、従来どおり statusText を優先表示する。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で最新 dist 一時注入後の top list meta に候補内訳が出ることを確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -2312,6 +2349,7 @@ Later:
 - `RAU-RR-21` は 2026-05-28 に実装済みである。roomGroup と `jalan` 側部屋タイプの対応 source が未確認であるため、競合価格内自社料金位置 signal は top list の主要 reason と confidence / priority 補正から外し、diagnostics にだけ残す。
 - `RAU-RR-22` は 2026-05-28 に実装済みである。top list に `確度` 列を追加し、内部 `confidence` を数値や percent ではなく `高`、`中`、`低` の段階表示に丸める。forecast 数値、sales / ADR 数値、金額、比率は top list に表示しない。
 - `RAU-RR-23` は 2026-05-28 に実装済みである。top list の `確度` cell に hover tooltip を追加し、主要根拠と不足または注意の種類を非数値で表示する。tooltip でも forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。
+- `RAU-RR-24` は 2026-05-28 に実装済みである。top list の meta に、表示中候補の件数、推奨方向別件数、優先度別件数、確度別件数を表示する。これは表示中候補の内訳であり、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent は表示しない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
