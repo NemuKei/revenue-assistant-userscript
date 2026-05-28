@@ -1434,6 +1434,9 @@
 
 ### RAU-FC-04 first forecast model を pure function として実装する
 
+- 状態:
+  - 実装済み。
+  - `src/curveCore.ts` に `buildRoomsOnlyForecastResult()` を追加し、`recent_deviation_adjusted_seasonal:v1` と evaluation baseline の `seasonal_ratio_baseline:v1` を `ForecastResultV1Candidate` として返せるようにした。
 - 目的:
   - `RAU-FC-02` / `RAU-FC-03` の評価基盤を使い、最初の rooms-only forecast model を UI、API、storage から分離した pure function として実装する。
 - スコープ:
@@ -1444,6 +1447,17 @@
   - rank recommendation scoring への接続。
   - UI 表示。
   - BCL Python 実装の直接呼び出し。
+- 実装内容:
+  - 既定 model は `recent_deviation_adjusted_seasonal` とし、既定 version は `recent_deviation_adjusted_seasonal:v1` とする。
+  - 計算式は `seasonalFinalRooms + (currentRooms - recentRoomsAtObservedLt)` とする。
+  - evaluation baseline として `seasonal_ratio_baseline:v1` も同じ関数で指定できる。計算式は `currentRooms / (seasonalRoomsAtObservedLt / seasonalFinalRooms)` とする。
+  - `currentRooms`、observed LT の reference curve、seasonal final rooms が欠損する場合は `predictedFinalRooms=null` とし、diagnostics の `missingReason` に理由を残す。
+  - capacity がある場合は、予測室数を 0 以上 capacity 以下に丸め、`expectedOccupancyRatio` を返す。
+  - diagnostics に、feature 名、source count、`actSeparated`、`smallCapacity`、`groupDriven` を返す。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -1573,15 +1587,15 @@
 
 Now:
 
-- `RAU-FC-04` first forecast model を pure function として実装する
+- `RAU-FC-05` rank recommendation scoring へ forecast diagnostics を接続する
 
 Next:
 
-- `RAU-FC-05` rank recommendation scoring へ forecast diagnostics を接続する
+- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
 
 After Next:
 
-- `RAU-SALES-02` booking_curve 売上・ADR adapter と単価・売上予測 model を設計する
+- なし
 
 Later:
 
@@ -1607,9 +1621,9 @@ Later:
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
 - `RAU-FC-03` は 2026-05-28 に実装済みである。`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加し、raw source adapter が作る `CurveInput` から forecast 評価用 case を作れるようにした。
-- `RAU-FC-04` は、評価 dataset ができた後に first forecast model を pure function として実装する task とする。初期候補は recent deviation で seasonal final rooms を補正する単純モデルとし、seasonal LT 比率換算は baseline として扱うため、Now に置く。
-- `RAU-FC-05` は、forecast が評価済みになった後で rank recommendation scoring へ diagnostics を接続する task とする。forecast 欠損時は既存 reference deviation scoring を継続し、top list へ forecast 数値を直接表示しない。
-- `RAU-SALES-02` は、rooms-only forecast の evaluation dataset と初期 model の後に置く。室数予測、単価予測、売上予測の接続順序を保つため、forecast model が固まる前に単価・売上予測へ進めない。
+- `RAU-FC-04` は 2026-05-28 に実装済みである。`recent_deviation_adjusted_seasonal:v1` を first forecast model として追加し、seasonal LT 比率換算の `seasonal_ratio_baseline:v1` も evaluation baseline として返せるようにした。
+- `RAU-FC-05` は、forecast が評価済みになった後で rank recommendation scoring へ diagnostics を接続する task とする。forecast 欠損時は既存 reference deviation scoring を継続し、top list へ forecast 数値を直接表示しないため、Now に置く。
+- `RAU-SALES-02` は、rooms-only forecast の evaluation dataset と初期 model の後に置く。室数予測、単価予測、売上予測の接続順序を保つため、rank recommendation への forecast diagnostics 接続後に扱う。
 - 旧 `RAU-AF-03` は UI shell 実装として扱い、BCL-tuned 算出ロジックへの差し替えは `RAU-AF-04`、cache と request scheduling は `RAU-AF-05`、GUI 接続と確認は `RAU-AF-06` に分ける。
 - `直近型カーブ` と `季節型カーブ` は同じ入力 matrix と cache key 設計を共有するため、算出コアは同じ task bundle で扱う。
 - response 改善は算出ロジックと密接に関係するが、主成果物と verify 観点が異なるため `RAU-AF-05` として分ける。
