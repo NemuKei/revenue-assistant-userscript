@@ -12017,8 +12017,17 @@ function buildSalesSettingRankHistoryByRoomGroup(
 ): Map<string, SalesSettingRankHistoryEvent[]> {
     const historyByRoomGroup = new Map<string, SalesSettingRankHistoryEvent[]>();
     const latestStatusByRoomAndDate = new Set<string>();
+    const targetStayDateKey = toCompactDateKey(stayDate);
+    if (targetStayDateKey === null) {
+        return historyByRoomGroup;
+    }
 
     for (const status of statuses.slice().sort(compareLincolnSuggestStatuses)) {
+        const statusStayDateKey = toCompactDateKey(status.date ?? "");
+        if (statusStayDateKey !== targetStayDateKey) {
+            continue;
+        }
+
         const roomGroupName = status.rm_room_group_name?.trim();
         if (roomGroupName === undefined || roomGroupName === "") {
             continue;

@@ -2827,6 +2827,7 @@
   - preview は既存保存済みの `booking_curve_raw_source:v2` を読む。top list preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やさない。
   - reference curve は保存済み raw source 内の前年、2年前、3年前の room count から作る preview 用 reference とする。
   - raw source がない場合または基準日以前の booking curve point がない場合は chart の代わりに不足 diagnostics を表示する。
+  - 2026-05-29 の修正で、preview の rank marker は対象 `stayDate` と同じ `suggest_statuses[].date` の履歴だけを使うようにした。これにより、月表示範囲内の別宿泊日の同じ roomGroup 変更履歴を、対象候補の booking curve 上へ誤って表示しない。
 - 非目標:
   - 新しい forecast 数値、sales / ADR 数値、競合価格の金額、推奨レート金額を top list に追加すること。
   - request 範囲、request 件数、request 間隔を増やすこと。
@@ -2843,6 +2844,7 @@
   - `git diff --check`
   - Chrome拡張 backend 確認: node_repl から Chrome extension browser の `openTabs()` が通ることを確認した。
   - Chrome DevTools Protocol 実ログイン通常 Chrome 確認: 最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10件、`曲線` button 10件、preview 開閉、表示中 preview row、SVG chart 2個、diagnostics 1件、page error 0件、console error 0件、preview text 内の金額・percent・ADR・sales・競合価格・推奨レート表示 0件を確認した。既存画面側で background の `/api/v4/booking_curve` request が継続していたため、CDP 上では click 起因の request だけを完全分離できなかった。ただし実装上の click handler は `queueCalendarSync()`、`loadBookingCurve()`、`getBookingCurve()` を呼ばず、描画済み preview row の `hidden` と button の `aria-expanded` だけを変更する。
+  - 2026-05-29 の preview marker 修正確認: Chrome DevTools Protocol で通常 Chrome の Revenue Assistant root tab に最新 `dist/revenue-assistant-userscript.user.js` を一時注入した。表示範囲 `20260601` から `20260630` の `suggest_statuses` は 443 件で、対象行 `20260620 x キャンプ、ツインS` について、修正前ロジック相当の同一 roomGroup 変更履歴は 73 件、修正後の同一 stayDate かつ同一 roomGroup 変更履歴は 3 件だった。preview 表示では SVG 2 件、marker point 6 件、marker hitbox 6 件、page error 0 件、console error 0 件だった。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl

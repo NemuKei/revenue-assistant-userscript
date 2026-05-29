@@ -259,6 +259,7 @@
 - `RAU-WC-04` はコード実装済み。request 間隔を 1.0 秒、1 回の自動稼働を 10 分、クールダウンを 3 分へ緩和した。IndexedDB raw source が既存で skip できる task は API request を発行しないため即時に次 task へ進める。
 - `RAU-AF-10` はコード実装済み、GUI 確認済み。reference curve の `0日前` は core logic と IndexedDB derived cache では推測補完せず、表示層だけで `1日前` と `ACT` の線形補間値を使う。初期実装では `round(1日前 + (ACT - 1日前) * 0.5)` とし、整数室数に丸める。2026-05-29 に通常 Chrome の Analyze 日付ページで、`0日前` Tooltip に `直近型 ...（補間）` と `季節型 ...（補間）` が表示されることを Chrome DevTools Protocol で確認した。
 - `RAU-WC-11` はコード実装済み。`loadBookingCurve()` は scheduler で `Response` を共有せず、`response.json()` と `compactBookingCurveResponse()` まで終えた `BookingCurveResponse` を共有する。これにより、同じ `/api/v4/booking_curve` request key を同時に必要とする consistency check、raw source 保存、roomGroup count 取得が、同じ response body を複数回読んで `body stream already read` になる経路をなくした。
+- `RAU-RR-47` の booking curve preview は、2026-05-29 の修正で rank marker 対象を同じ `stayDate x roomGroup` の rank change history に限定した。候補一覧の月表示範囲全体から同じ roomGroup の別宿泊日履歴を混ぜる経路はなくした。
 - `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル下端に、一部取得済み、完了、エラーの line を表示する。
 - `RAU-WC-06` はコード実装済み。warm cache の通常対象を `as_of_date - 1日` から `as_of_date + 3か月` までへ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
 - `RAU-WC-08` は GUI 確認済み。トップカレンダーの一部取得済み line は固定幅ではなく、現在 queue の `raw / reference / sameWeekday` 合計進捗に応じた幅で表示する。完了は緑の全幅、エラーは赤の全幅とする。Tampermonkey 再読込後、Chrome CDP で `calendar-date-2026-05-01` の marker state、title、progress custom property を確認した。
@@ -424,6 +425,12 @@
   - root cause は、`bookingCurveRequestScheduler.schedule()` が同じ request key の実行中 Promise を共有し、共有された `Response` を複数の呼び出し元がそれぞれ `response.json()` していたことである。
   - 修正後は、scheduler callback 内で `fetch()`、HTTP status 確認、`response.json()`、`compactBookingCurveResponse()` まで実行し、scheduler は parse 済みの `BookingCurveResponse` を共有する。
   - 2026-05-29 に通常 Chrome の Tampermonkey dashboard で Revenue Assistant Userscript を `0.1.0.295` へ更新し、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-09-15` を reload して Chrome DevTools Protocol で 90 秒 + 180 秒観測した。`body stream already read`、`failed to load booking curve`、`consistency check skipped`、page error、console error、console warning は 0 件だった。indicator detail は `この日 2026-09-15 raw 100%（7/7）`、`同曜日 100%（28/28）`、`参考線 28%（12/42）` まで進行した。
+- 2026-05-29 の `RAU-RR-47` preview marker 修正 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過
+  - `git diff --check`: passed
+  - Chrome DevTools Protocol で通常 Chrome の Revenue Assistant root tab に最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row `20260620 x キャンプ、ツインS` の preview を確認した。表示範囲 `20260601` から `20260630` の `suggest_statuses` 443 件のうち、修正前ロジック相当では同じ roomGroup 変更履歴 73 件を marker 候補にできていたが、修正後は同じ stayDate かつ同じ roomGroup の 3 件だけを marker 候補にした。preview 表示は SVG 2 件、marker point 6 件、marker hitbox 6 件、page error 0 件、console error 0 件だった。
 - 2026-04-29 の `RAU-WC-04` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
