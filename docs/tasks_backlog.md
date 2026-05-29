@@ -2775,7 +2775,7 @@
 ### RAU-RR-46 料金調整候補に前回変更日とcooldown診断を表示する
 
 - 状態:
-  - 未着手。
+  - 実装済み。
 - 目的:
   - 直近で調整した部屋タイプに推奨が出ている場合に、前回変更日、cooldown、再表示理由を候補上で確認できるようにする。
 - 背景:
@@ -2792,6 +2792,19 @@
   - rank change history がある候補では、前回変更日または経過日数が top list 上で確認できる。
   - 直近変更済みの候補が表示される場合、resolved 判定外なのか、cooldown 対象外なのか、別 reasonFingerprint なのか、confidence 表示段階上昇なのかを切り分けられる。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- 実装:
+  - top list に `前回変更` 列を追加した。
+  - 同じ `stayDate x roomGroupId` の最新 rank change history がある場合は、前回変更日と経過日を cell 本体に表示する。
+  - hover tooltip には、変更内容、実行者が取れる場合の実行者、前回変更が基準日より前か、基準日以降か、利用者判断がないか、様子見 cooldown が切れているか、別 `reasonFingerprint` か、confidence 表示段階上昇かを表示する。
+  - 表示補助だけを追加し、cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
+- 確認:
+  - `npm run typecheck`
+  - `npm run lint`
+  - `npm run build`
+  - `git diff --check`
+  - Chrome拡張 backend 確認: node_repl から Chrome extension browser の `openTabs()` が通ることを確認した。
+  - Chrome DevTools Protocol 合成 DOM 確認: 合成 Revenue Assistant origin で最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、`前回変更` header、`5/27・2日前` 表示、`変更内容: 5→4`、様子見期限切れ、別 `reasonFingerprint`、カレンダー直下配置、page error 0 件、console error 0 件を確認した。
+  - Chrome DevTools Protocol 実ログイン通常 Chrome 確認: 読み取り専用の `https://ra.jalan.net/` page で最新 build を一時注入し、top list 10 行、`前回変更` cell 10 件、tooltip 診断 10 件、カレンダー直下配置、page error 0 件、console error 0 件を確認した。rank 変更、送信、設定変更は行っていない。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -3435,19 +3448,18 @@
 
 Now:
 
-- `RAU-RR-46` 料金調整候補に前回変更日とcooldown診断を表示する
+- `RAU-RR-50` 上げ推奨と下げ推奨のpriority比較を見直す
 
 Next:
 
-- `RAU-RR-50` 上げ推奨と下げ推奨のpriority比較を見直す
+- `RAU-RR-47` 料金調整候補上でbooking curve previewを表示する
 
 After Next:
 
-- `RAU-RR-47` 料金調整候補上でbooking curve previewを表示する
+- `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
 
 Later:
 
-- `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
 - `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
 
 統合判断:
@@ -3489,10 +3501,10 @@ Later:
 - `RAU-RR-37` は 2026-05-28 に実装済みである。top list meta に表示中候補の不足または注意の種類別件数を追加し、候補一覧を読む前に判断材料の不足や注意の偏りを確認できるようにした。既存 diagnostics の表示集計だけを使い、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-38` は 2026-05-28 に実装済みである。top list の `確度` cell で、不足または注意が残る候補に `注意あり` を表示し、同じ確度段階でも追加確認が必要な候補を行本体で見分けられるようにした。既存 diagnostics summary helper の有無を表示に反映するだけで、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-45` は 2026-05-29 に実装済みである。top list の挿入位置を、toolbar 直下から月次カレンダー container の直後へ移した。candidate scoring、priority、confidence、reasonFingerprint、表示モード、表示件数、user decision、resolved 判定、rank order、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
-- `RAU-RR-46` を Now に置く理由は、利用者が直近変更済みの部屋で販売状況が変わっていないのに推奨が出る事象を挙げており、前回変更日、resolved 判定、user decision cooldown、reasonFingerprint、confidence 表示段階上昇のどれが効いているかを候補上で切り分ける必要があるためである。
-- `RAU-RR-50` を Next に置く理由は、現在の実データ確認で上げ推奨が多く見えており、下げ推奨が入力データ上少ないのか、scoring 条件、priority、sort、表示モードで見えにくくなっているのかを、直接 rank write を設計する前に確認する必要があるためである。
-- `RAU-RR-47` は、Analyze へ遷移せずに判断材料を確認するための次の UI 改善候補である。ただし、既存 top list の密度と request 範囲を壊さない表示形式を決める必要があるため、前回変更日と priority 比較の切り分け後に置く。
-- `RAU-RR-48` と `RAU-RR-49` は write safety と取消可能性に関わるため Later に置く。実 rank 変更を伴う確認は、対象施設、対象日付、対象 roomGroup、変更前 rank、変更後 rank、戻し方を固定してから行う。
+- `RAU-RR-46` は 2026-05-29 に実装済みである。top list に `前回変更` 列を追加し、既存取得済み rank change history と browser-local user decision record から、前回変更日、変更内容、様子見 cooldown 期限切れ、別 `reasonFingerprint`、confidence 表示段階上昇を tooltip で確認できるようにした。cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
+- `RAU-RR-50` を Now に置く理由は、現在の実データ確認で上げ推奨が多く見えており、下げ推奨が入力データ上少ないのか、scoring 条件、priority、sort、表示モードで見えにくくなっているのかを、直接 rank write を設計する前に確認する必要があるためである。
+- `RAU-RR-47` は、Analyze へ遷移せずに判断材料を確認するための次の UI 改善候補である。ただし、booking curve preview は表示密度、既存 top list の横幅、追加 request 範囲に影響するため、上げ推奨と下げ推奨のpriority比較を確認した後に置く。
+- `RAU-RR-48` と `RAU-RR-49` は write safety と取消可能性に関わるため、booking curve preview より後に置く。実 rank 変更を伴う確認は、対象施設、対象日付、対象 roomGroup、変更前 rank、変更後 rank、戻し方を固定してから行う。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

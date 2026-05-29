@@ -473,6 +473,7 @@ rank response dataset の first contract:
 - 確度。`confidence` の内部値をそのまま数値表示せず、`高`、`中`、`低` の段階表示に丸める。不足または注意が残る候補では、cell 本体に `高・注意あり`、`中・注意あり`、`低・注意あり` のように短い補助表示を付ける。hover tooltip では、確度が予測精度、推奨金額の正確さ、または Revenue Assistant への反映可否を保証する値ではないことを示し、主要根拠と不足または注意の種類だけを非数値で表示する。
 - 宿泊日。
 - 宿泊まで。`stayDate - asOfDate` を日数で表示する。当日は `当日`、日数を計算できない場合または宿泊日が `asOfDate` より過去の場合は `-` と表示する。これは作業の緊急度を読みやすくするための表示であり、priority、confidence、candidate lifecycle、API request 範囲は変更しない。
+- 前回変更。`/api/v3/lincoln/suggest/status` で取得済みの rank change history から、同じ `stayDate x roomGroupId` の最新 rank 変更日と経過日を表示する。cell 本体は `5/27・2日前` のような短い表示にし、履歴がない場合は `-` とする。hover tooltip では、前回変更日、変更内容、実行者が取れる場合の実行者、候補が表示されている理由を表示する。候補表示理由は、前回変更が基準日より前であること、基準日以降の変更で通常は resolved 非表示になること、利用者判断がないこと、様子見 cooldown が切れていること、前回判断とは別の `reasonFingerprint` であること、または前回判断後に `confidence` 表示段階が上がったことを区別する。この列は表示補助であり、cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲は変更しない。
 - 部屋タイプ。
 - 現ランク。
 - 推奨方向または推奨ランク方向。
@@ -489,7 +490,7 @@ rank response dataset の first contract:
 - first wave の後続では、トップ画面の料金調整候補から Analyze 画面へ遷移せずに、該当 roomGroup の booking curve、前回変更日、rank 調整操作、取消可能な反映バッファを確認または操作できるようにする。
 - ただし、Revenue Assistant write API、rank 変更の request shape、安全制約、取消可能時間、partial failure、同時更新時の挙動が未確認の間は、トップ画面からの rank 変更を実装済み仕様として扱わない。
 - `様子見`、`対応不要`、将来の rank 変更操作は、押下直後に即時確定して戻せない挙動にしない。少なくとも短時間の取消入口を持つ反映バッファを設ける。反映バッファの秒数、表示位置、確定条件は、Revenue Assistant 標準の料金変更挙動を確認してから確定する。
-- 前回変更日を top list に表示する場合は、rank change history による resolved 判定、user decision cooldown、候補再表示条件を区別できる表示にする。前回変更日が近い候補に推奨が出る場合は、cooldown が効いていないのか、別 roomGroup、別 reasonFingerprint、confidence 表示段階上昇、または販売状況変化として再表示されているのかを検証できるようにする。
+- 前回変更日は top list の `前回変更` 列に表示する。rank change history による resolved 判定、user decision cooldown、候補再表示条件を区別できる表示にする。前回変更日が近い候補に推奨が出る場合は、cooldown が効いていないのか、別 roomGroup、別 reasonFingerprint、confidence 表示段階上昇、または販売状況変化として再表示されているのかを検証できるようにする。
 - booking curve preview は、Analyze 画面と同じ意味の全体 / 個人 / 団体、reference curve、不足 diagnostics を使う。top list 上では作業キューを壊さない短い preview とし、forecast 数値、sales / ADR 数値、競合価格の金額、推奨レート金額を直接出す契約にはしない。
 
 first wave の top list では forecast 数値を直接表示しない。forecast が評価後に scoring 補助として使われる場合でも、top list では priority、confidence、主要根拠、diagnostics に反映する。`予測最終室数` のような数値を top list に出すと、利用者が current、reference curve、forecast、推奨ランク方向を混同しやすいためである。`confidence` は候補の根拠がどれだけ揃っているかを示す補助情報であり、実価格や予測値の精度を保証する値ではない。そのため top list では、内部値を直接出さず、確度の段階表示に留める。summary と確度 tooltip でも forecast 数値、sales / ADR 数値、競合価格の金額または差額、percent は表示しない。
