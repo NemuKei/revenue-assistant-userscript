@@ -876,13 +876,19 @@ function installInteractionHooks(): void {
                 return;
             }
 
-            const rankRecommendationDisplayMoreButton = target.closest<HTMLButtonElement>(
-                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="display-more"]`
+            const rankRecommendationDisplayLimitButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="display-more"],`
+                + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="display-reset"]`
             );
-            if (rankRecommendationDisplayMoreButton !== null) {
+            if (rankRecommendationDisplayLimitButton !== null) {
                 event.preventDefault();
                 event.stopPropagation();
-                increaseRankRecommendationDisplayLimit();
+                const action = rankRecommendationDisplayLimitButton.getAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE);
+                if (action === "display-more") {
+                    increaseRankRecommendationDisplayLimit();
+                } else if (action === "display-reset") {
+                    resetRankRecommendationDisplayLimit();
+                }
                 return;
             }
 
@@ -1268,6 +1274,15 @@ function increaseRankRecommendationDisplayLimit(): void {
 
     rankRecommendationDisplayLimit = nextLimit;
     queueCalendarSync({ force: true, reason: "rank-recommendation-display-more" });
+}
+
+function resetRankRecommendationDisplayLimit(): void {
+    if (rankRecommendationDisplayLimit === RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT) {
+        return;
+    }
+
+    rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+    queueCalendarSync({ force: true, reason: "rank-recommendation-display-reset" });
 }
 
 function parseRankRecommendationRankLadderFromElement(element: HTMLElement): RankRecommendationRankLadderEntry[] {
@@ -4876,7 +4891,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         rankLadder,
         rankOrder: rankOrderResolution,
         hiddenSummary,
-        canShowMore: hiddenSummary.overflow > 0 && rankRecommendationDisplayLimit < RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT
+        canShowMore: hiddenSummary.overflow > 0 && rankRecommendationDisplayLimit < RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
+        canResetDisplayLimit: rankRecommendationDisplayLimit > RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT
     });
 }
 
@@ -5773,6 +5789,7 @@ function renderRankRecommendationList(
         rankOrder?: RankRecommendationRankOrderResolution;
         hiddenSummary?: RankRecommendationHiddenSummary;
         canShowMore?: boolean;
+        canResetDisplayLimit?: boolean;
     }
 ): void {
     const host = resolveRankRecommendationListHost();
@@ -5792,8 +5809,12 @@ function renderRankRecommendationList(
     metaElement.setAttribute("data-ra-rank-recommendation-meta", "");
     metaElement.textContent = formatRankRecommendationListMeta(candidates, options.statusText, options.hiddenSummary);
 
-    const displayMoreElement = options.canShowMore === true
-        ? createRankRecommendationDisplayMoreControl(options.hiddenSummary?.overflow ?? 0)
+    const displayLimitControlElement = options.canShowMore === true || options.canResetDisplayLimit === true
+        ? createRankRecommendationDisplayLimitControl({
+            remainingCount: options.hiddenSummary?.overflow ?? 0,
+            canShowMore: options.canShowMore === true,
+            canReset: options.canResetDisplayLimit === true
+        })
         : null;
 
     const rankOrderControlElement = options.facilityCacheKey !== undefined
@@ -5833,7 +5854,7 @@ function renderRankRecommendationList(
     rootElement.replaceChildren(...[
         titleElement,
         metaElement,
-        ...(displayMoreElement === null ? [] : [displayMoreElement]),
+        ...(displayLimitControlElement === null ? [] : [displayLimitControlElement]),
         ...(rankOrderControlElement === null ? [] : [rankOrderControlElement]),
         tableElement
     ]);
@@ -5844,18 +5865,33 @@ function renderRankRecommendationList(
     }
 }
 
-function createRankRecommendationDisplayMoreControl(remainingCount: number): HTMLElement {
+function createRankRecommendationDisplayLimitControl(options: {
+    remainingCount: number;
+    canShowMore: boolean;
+    canReset: boolean;
+}): HTMLElement {
     const controlElement = document.createElement("div");
-    controlElement.setAttribute("data-ra-rank-recommendation-display-more", "");
+    controlElement.setAttribute("data-ra-rank-recommendation-display-limit-control", "");
 
-    const buttonElement = document.createElement("button");
-    buttonElement.type = "button";
-    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
-    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "display-more");
-    buttonElement.textContent = `さらに表示 (${Math.min(RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP, remainingCount)}件)`;
-    buttonElement.title = "表示件数を10件増やす";
+    if (options.canShowMore) {
+        const buttonElement = document.createElement("button");
+        buttonElement.type = "button";
+        buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+        buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "display-more");
+        buttonElement.textContent = `さらに表示 (${Math.min(RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP, options.remainingCount)}件)`;
+        buttonElement.title = "表示件数を10件増やす";
+        controlElement.append(buttonElement);
+    }
 
-    controlElement.append(buttonElement);
+    if (options.canReset) {
+        const resetButtonElement = document.createElement("button");
+        resetButtonElement.type = "button";
+        resetButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+        resetButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "display-reset");
+        resetButtonElement.textContent = "10件に戻す";
+        resetButtonElement.title = "表示件数を初期値の10件に戻す";
+        controlElement.append(resetButtonElement);
+    }
     return controlElement;
 }
 
@@ -12215,8 +12251,10 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.4;
         }
 
-        [data-ra-rank-recommendation-display-more] {
+        [data-ra-rank-recommendation-display-limit-control] {
             display: flex;
+            gap: 6px;
+            flex-wrap: wrap;
             justify-content: flex-start;
             margin: 0 0 8px;
         }

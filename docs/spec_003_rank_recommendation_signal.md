@@ -456,12 +456,12 @@ rank response dataset の first contract:
 トップ画面には、料金調整候補リストを追加する。
 
 - 日付 x 部屋タイプ単位の候補を優先度順に表示する。
-- 最大件数は初期値を持つ。初期候補は top 10 とする。利用者が top 10 の外の active candidates を確認したい場合は、`さらに表示` で表示上限を 10 件ずつ増やせる。表示上限の最大値は 50 件とする。
+- 最大件数は初期値を持つ。初期候補は top 10 とする。利用者が top 10 の外の active candidates を確認したい場合は、`さらに表示` で表示上限を 10 件ずつ増やせる。表示上限の最大値は 50 件とする。表示上限が初期値を超えている場合は、`10件に戻す` で初期表示へ戻せる。
 - 表示対象は、user decision と rank change resolved による lifecycle filter を適用した後の active candidates から選ぶ。candidate pool を作る段階で先に top 10 へ切ると、上位候補が `様子見`、`対応不要`、または `反映済み` で非表示になった場合に、11 件目以降の有効候補で作業キューを埋め戻せないためである。
-- top 10 の外にも候補がある場合は、件数を表示し、表示上限が最大値に達していない場合だけ `さらに表示` を表示する。
+- top 10 の外にも候補がある場合は、件数を表示し、表示上限が最大値に達していない場合だけ `さらに表示` を表示する。表示上限が初期値を超えている場合は、top list meta の下に `10件に戻す` を表示する。
 - リスト上部の summary には、表示中候補の件数、基準日、推奨方向別件数、優先度別件数、確度別件数、不足または注意の種類別件数を表示する。基準日は表示中候補の `asOfDate` であり、`宿泊まで` の日数計算に使う日付を利用者が確認するための表示である。表示中候補の `asOfDate` が 1 種類で、ブラウザの当日より前である場合は、`基準日 5/28・前日`、`基準日 5/27・2日前` のように、当日から見た鮮度を追加表示する。表示中候補の `asOfDate` が複数混在し、かつ最古の `asOfDate` がブラウザの当日より前である場合は、`基準日 複数・最古 5/28・前日` のように、最も古い基準日と鮮度を追加表示する。これは top list に出ている候補の内訳であり、全候補母数、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額または percent を示すものではない。
 - 不足または注意の種類別件数は、表示中候補の diagnostics から作る `booking_curve または reference 不足`、`forecast 比較不足`、`sales / ADR 比較不足`、`同曜日比較不足`、`競合価格の部屋タイプ対応未確認`、`団体主因のため上げ判断を抑制`、`部屋数条件により判定制限`、`隣接ランク表示に制約あり` の非数値要約である。これは候補行を読む前に、判断材料の不足がどこに偏っているかを知るための表示であり、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨金額は変更しない。
-- lifecycle filter 後に表示上限を超える active candidates がある場合は、summary に `他 n件` を表示する。これは現在の表示上限の外にも確認候補が残っていることを示すための件数である。`さらに表示` は表示件数だけを増やす入口であり、candidate scoring、sort、filter 条件、rank order、manual override、user decision、resolved 判定、API request 範囲、request 件数、推奨金額表示は変更しない。
+- lifecycle filter 後に表示上限を超える active candidates がある場合は、summary に `他 n件` を表示する。これは現在の表示上限の外にも確認候補が残っていることを示すための件数である。`さらに表示` と `10件に戻す` は表示件数だけを変更する入口であり、candidate scoring、sort、filter 条件、rank order、manual override、user decision、resolved 判定、API request 範囲、request 件数、推奨金額表示は変更しない。
 - user decision または rank change resolved により active list から外れた候補がある場合は、summary に非表示件数を表示する。分類は、利用者判断による非表示と、rank 変更反映済みによる非表示に分ける。これは候補 list が短い、または空に見える理由を説明するための表示であり、candidate lifecycle、scoring、rank order、API request 範囲、推奨金額は変更しない。
 - `current settings` が取得できない場合は、候補行を空にし、リスト上部の status に失敗理由を表示する。HTTP 401 の場合は Revenue Assistant への再ログインが必要であること、HTTP 403 の場合は閲覧権限確認が必要であることを表示する。その他の HTTP status は `current settings` 取得失敗として HTTP status を表示する。これは候補生成に使う入力が欠損した状態を利用者に示すための表示であり、rank order、scoring、candidate lifecycle、API request 範囲は変更しない。
 
