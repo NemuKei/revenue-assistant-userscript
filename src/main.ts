@@ -276,9 +276,8 @@ const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
     "#9a4fb3",
     "#4f7f9f"
 ];
-const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v8";
-const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-meal-filter-v3";
-const PRICE_TREND_COMPETITOR_MIN_YAD_NO = "__competitor_min__";
+const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-tooltip-facility-v9";
+const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-room-tooltip-v4";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
@@ -12806,7 +12805,7 @@ function formatPriceTrendOverviewMeta(
         .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
     const parts = [
         state.stayDate === null ? null : `対象宿泊日 ${formatCompactDateForDisplay(state.stayDate)}`,
-        latestRecord === null ? null : `部屋タイプ ${formatPriceTrendRoomTypeForDisplay(roomTypeFilter ?? getPriceTrendRecordRoomTypeLabel(latestRecord))}`,
+        latestRecord === null ? null : `部屋タイプ ${roomTypeFilter === null ? "全部屋タイプから最安値" : formatPriceTrendRoomTypeForDisplay(roomTypeFilter)}`,
         latestRecord === null ? null : `食事 ${mealTypeFilter === null ? "指定なし" : formatMealTypeForDisplay(mealTypeFilter)}`,
         latestRecord === null ? null : `公式更新 ${formatNullableDateTimeForDisplay(latestRecord.payload.latestSourceUpdatedAt)}`,
         latestRecord === null ? null : `保存 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
@@ -12859,11 +12858,11 @@ function selectPriceTrendRecordsForFilters(
     roomTypeFilter: string | null,
     mealTypeFilter: string | null
 ): PriceTrendRecord[] {
-    const hasUnspecifiedRoomTypeRecords = records.some((record) => getPriceTrendRecordRoomTypeLabel(record) === null);
+    const hasSpecificRoomTypeRecords = records.some((record) => getPriceTrendRecordRoomTypeLabel(record) !== null);
     return records.filter((record) => {
         const roomType = getPriceTrendRecordRoomTypeLabel(record);
         const roomTypeMatches = roomTypeFilter === null
-            ? (hasUnspecifiedRoomTypeRecords ? roomType === null : true)
+            ? (hasSpecificRoomTypeRecords ? roomType !== null : true)
             : roomType === roomTypeFilter;
         const mealTypeMatches = mealTypeFilter === null || record.mealType === mealTypeFilter;
         return roomTypeMatches && mealTypeMatches;
@@ -12891,9 +12890,6 @@ function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTren
         .slice()
         .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
     const facilities = buildPriceTrendFacilities(latestRecord);
-    const facilityRoleByYadNo = new Map(
-        (latestRecord?.facilities ?? []).map((facility) => [facility.yadNo, facility.role])
-    );
 
     for (const record of records) {
         const minimumPoints = minimumPointsByGuestCount.get(record.numGuests) ?? new Map<string, PriceTrendChartPoint>();
@@ -12926,20 +12922,6 @@ function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTren
     const pointsByGuestCount = new Map<PriceTrendGuestCount, PriceTrendChartPoint[]>();
     for (const guestCount of PRICE_TREND_GUEST_COUNTS) {
         const points = Array.from(minimumPointsByGuestCount.get(guestCount)?.values() ?? []);
-        const competitorMinimumByLeadTime = new Map<number, PriceTrendChartPoint>();
-        for (const chartPoint of points) {
-            if (facilityRoleByYadNo.get(chartPoint.yadNo) !== "competitor") {
-                continue;
-            }
-            const currentMinimum = competitorMinimumByLeadTime.get(chartPoint.leadTimeDays);
-            if (currentMinimum === undefined || chartPoint.price < currentMinimum.price) {
-                competitorMinimumByLeadTime.set(chartPoint.leadTimeDays, {
-                    ...chartPoint,
-                    yadNo: PRICE_TREND_COMPETITOR_MIN_YAD_NO
-                });
-            }
-        }
-        points.push(...competitorMinimumByLeadTime.values());
         pointsByGuestCount.set(guestCount, points);
     }
 
@@ -12965,11 +12947,6 @@ function buildPriceTrendFacilities(record: PriceTrendRecord | null): CompetitorP
                 name: "自社",
                 color: COMPETITOR_PRICE_OWN_SERIES_COLOR
             }]),
-        {
-            yadNo: PRICE_TREND_COMPETITOR_MIN_YAD_NO,
-            name: "競合最低価格",
-            color: "#1f2937"
-        },
         ...competitorFacilities.map((facility, index) => ({
             yadNo: facility.yadNo,
             name: facility.name,
@@ -13516,10 +13493,7 @@ function createPriceTrendChartSvg(
         pathElement.setAttribute("d", pathData);
         pathElement.setAttribute("fill", "none");
         pathElement.setAttribute("stroke", facility.color);
-        pathElement.setAttribute("stroke-width", facility.yadNo === PRICE_TREND_COMPETITOR_MIN_YAD_NO ? "2.5" : "2");
-        if (facility.yadNo === PRICE_TREND_COMPETITOR_MIN_YAD_NO) {
-            pathElement.setAttribute("stroke-dasharray", "5 4");
-        }
+        pathElement.setAttribute("stroke-width", "2");
         svgElement.append(pathElement);
     }
 
@@ -13631,7 +13605,7 @@ function showCompetitorPriceTooltip(
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
     const headRowElement = document.createElement("tr");
-    for (const label of ["部屋タイプ", "価格", "前回差分", "自社との差"]) {
+    for (const label of ["施設", "部屋タイプ", "価格", "前回差分", "自社との差"]) {
         const cellElement = document.createElement("th");
         cellElement.scope = "col";
         cellElement.textContent = label;
@@ -13642,8 +13616,10 @@ function showCompetitorPriceTooltip(
     const bodyElement = document.createElement("tbody");
     for (const row of rows) {
         const rowElement = document.createElement("tr");
+        const facilityElement = document.createElement("td");
+        facilityElement.append(createPriceSeriesFacilityLabel(row.facility));
         const roomTypeElement = document.createElement("td");
-        roomTypeElement.append(createPriceSeriesTooltipLabel(row.facility, row.point.roomType === null ? "不明" : formatRoomTypeForDisplay(row.point.roomType)));
+        roomTypeElement.textContent = row.point.roomType === null ? "不明" : formatRoomTypeForDisplay(row.point.roomType);
         const priceElement = document.createElement("td");
         priceElement.textContent = formatPriceForDisplay(row.point.price);
         const previousDeltaElement = document.createElement("td");
@@ -13652,7 +13628,7 @@ function showCompetitorPriceTooltip(
         const ownDeltaElement = document.createElement("td");
         ownDeltaElement.textContent = row.ownDelta === null ? "-" : formatSignedPriceForDisplay(row.ownDelta);
         ownDeltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.ownDelta));
-        rowElement.append(roomTypeElement, priceElement, previousDeltaElement, ownDeltaElement);
+        rowElement.append(facilityElement, roomTypeElement, priceElement, previousDeltaElement, ownDeltaElement);
         bodyElement.append(rowElement);
     }
     tableElement.append(headElement, bodyElement);
@@ -13712,7 +13688,7 @@ function showPriceTrendTooltip(
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
     const headRowElement = document.createElement("tr");
-    for (const label of ["部屋タイプ", "価格", "前回差分", "自社との差"]) {
+    for (const label of ["施設", "部屋タイプ", "価格", "前回差分", "自社との差"]) {
         const cellElement = document.createElement("th");
         cellElement.scope = "col";
         cellElement.textContent = label;
@@ -13723,8 +13699,10 @@ function showPriceTrendTooltip(
     const bodyElement = document.createElement("tbody");
     for (const row of rows) {
         const rowElement = document.createElement("tr");
+        const facilityElement = document.createElement("td");
+        facilityElement.append(createPriceSeriesFacilityLabel(row.facility));
         const roomTypeElement = document.createElement("td");
-        roomTypeElement.append(createPriceSeriesTooltipLabel(row.facility, formatPriceTrendRoomTypeForDisplay(row.point.roomType)));
+        roomTypeElement.textContent = formatPriceTrendRoomTypeForDisplay(row.point.roomType);
         const priceElement = document.createElement("td");
         priceElement.textContent = formatPriceForDisplay(row.point.price);
         const previousDeltaElement = document.createElement("td");
@@ -13733,7 +13711,7 @@ function showPriceTrendTooltip(
         const ownDeltaElement = document.createElement("td");
         ownDeltaElement.textContent = row.ownDelta === null ? "-" : formatSignedPriceForDisplay(row.ownDelta);
         ownDeltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.ownDelta));
-        rowElement.append(roomTypeElement, priceElement, previousDeltaElement, ownDeltaElement);
+        rowElement.append(facilityElement, roomTypeElement, priceElement, previousDeltaElement, ownDeltaElement);
         bodyElement.append(rowElement);
     }
     tableElement.append(headElement, bodyElement);
@@ -13743,13 +13721,13 @@ function showPriceTrendTooltip(
     positionCompetitorPriceTooltip(tooltipElement, x, width, cursorClientX);
 }
 
-function createPriceSeriesTooltipLabel(facility: CompetitorPriceFacilitySeries, roomType: string): HTMLElement {
+function createPriceSeriesFacilityLabel(facility: CompetitorPriceFacilitySeries): HTMLElement {
     const labelElement = document.createElement("span");
     labelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE, "");
     const swatchElement = document.createElement("span");
     swatchElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE, "");
     swatchElement.style.backgroundColor = facility.color;
-    labelElement.append(swatchElement, document.createTextNode(`${facility.name} / ${roomType}`));
+    labelElement.append(swatchElement, document.createTextNode(facility.name));
     return labelElement;
 }
 

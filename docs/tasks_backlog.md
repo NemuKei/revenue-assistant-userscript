@@ -108,9 +108,9 @@
 - スコープ:
   - `price-trends-content` が表示されている場合、`競合価格 最安値推移（90日版）` セクションを同じ親要素内に描画する。`公式価格推移` という見出しは、RAU 追加表示が公式サイト自体の価格であると誤読されやすいため使わない。
   - 公式 `価格推移` API を人数 1 から 4 まで取得し、人数別の 4 panel を既定表示する。
-  - `yad_nos[]` は自社と競合施設を含め、表示 series は `自社`、`競合最低価格`、競合施設別 series とする。
+  - `yad_nos[]` は自社と競合施設を含め、表示 series は `自社` と競合施設別 series とする。集計 series `競合最低価格` は表示しない。
   - `価格推移` タブ側にも、既存 `競合価格` タブの graph と同じ形の `部屋タイプ`、`食事` 絞り込み UI を表示する。部屋タイプ別データは、公式 frontend bundle と同じ `room_type_options[]` の単独指定 request で取得する。食事タイプ別データは、`meal_type` に `NONE`、`BREAKFAST`、`DINNER`、`BREAKFAST_DINNER` を個別指定して取得する。
-  - graph tooltip の列は、`競合価格` タブと `価格推移` タブの両方で `部屋タイプ`、`価格`、`前回差分`、`自社との差` に揃える。施設名は系列識別のため、`部屋タイプ` cell 内に色 swatch と施設名を併記する。
+  - graph tooltip の列は、`競合価格` タブと `価格推移` タブの両方で `施設`、`部屋タイプ`、`価格`、`前回差分`、`自社との差` に揃える。`施設` cell には色 swatch と施設名を表示し、`部屋タイプ` cell にはその行の最安値として採用した plan または request scope の部屋タイプを表示する。
   - 公式価格推移データは、既存 `competitor-price-snapshots` とは別の IndexedDB database / store に永続保存する。
 - 非目標:
   - 既存 `競合価格` タブの snapshot グラフを削除または置換すること。
@@ -118,8 +118,8 @@
   - 公式価格推移データを料金調整候補の scoring 補正へ接続すること。
 - 受け入れ条件:
   - `価格推移` タブ本文が表示されている場合、公式価格推移データがあれば人数 1 から 4 の graph が表示される。
-  - `価格推移` タブの RAU graph に `部屋タイプ` と `食事` の絞り込み UI が表示され、部屋タイプの `指定なし` は指定なし request、部屋タイプ選択時は対応する `room_type_options[]` 単独指定 request の保存済み公式価格推移 record で graph が更新される。食事の `指定なし` は保存済み食事タイプ全体の最安値、食事タイプ選択時は該当 `mealType` scope の record で graph が更新される。
-  - `競合価格` タブと `価格推移` タブの tooltip は、列名として `部屋タイプ`、`価格`、`前回差分`、`自社との差` を表示する。
+  - `価格推移` タブの RAU graph に `部屋タイプ` と `食事` の絞り込み UI が表示され、部屋タイプの `指定なし` は、部屋タイプ別 request record が保存されている場合は部屋タイプ別 request record 全体から `facility x leadTime` ごとの最安値、部屋タイプ別 request record がない場合だけ指定なし request の record で graph が更新される。部屋タイプ選択時は対応する `room_type_options[]` 単独指定 request の保存済み公式価格推移 record で graph が更新される。食事の `指定なし` は保存済み食事タイプ全体の最安値、食事タイプ選択時は該当 `mealType` scope の record で graph が更新される。
+  - `競合価格` タブと `価格推移` タブの tooltip は、列名として `施設`、`部屋タイプ`、`価格`、`前回差分`、`自社との差` を表示する。
   - 89日より先、または公式側に対象データがない宿泊日は、空 graph ではなく対象外理由を表示する。
   - 販売設定タブや非表示タブには RAU の競合価格 graph が割り込まない。
   - `競合価格` タブの既存表示と IndexedDB snapshot 保存挙動を壊さない。
@@ -132,9 +132,9 @@
 - GUI 確認:
   - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-05` へ最新 `dist` を一時注入して確認した。`価格推移` タブでは `price-trends-content` 直下の RAU overview 1 件、panel 4 件、SVG 4 件、empty 表示 0 件、別 store record 4 件だった。
   - 同じ確認で、`価格推移` タブでは既存 `競合価格` snapshot overview は 0 件だった。`競合価格` タブへ切り替えると価格推移 overview は 0 件、競合価格 overview は 1 件だった。page error と console error は 0 件だった。
-  - 2026-05-29 の追加確認では、`価格推移` タブの RAU overview 1 件、既存競合価格 overview 0 件、見出し `競合価格 最安値推移（90日版）`、filter label `部屋タイプ` / `食事`、panel title `1名 最安値` から `4名 最安値`、SVG 4 件を確認した。価格推移側 tooltip は、データがある hitbox で header `部屋タイプ` / `価格` / `前回差分` / `自社との差`、row 6 件、first cell `自社 / 指定なし` だった。`競合価格` タブ側も tooltip header が同じ 4 列で、first cell は `自社 / シングル` だった。page error と console error は 0 件だった。
+  - 2026-05-29 の追加確認では、`価格推移` タブの RAU overview 1 件、既存競合価格 overview 0 件、見出し `競合価格 最安値推移（90日版）`、filter label `部屋タイプ` / `食事`、panel title `1名 最安値` から `4名 最安値`、SVG 4 件、page error 0 件、console error 0 件を確認した。この確認後、D-20260529-023 で tooltip は `施設`、`部屋タイプ`、`価格`、`前回差分`、`自社との差` の 5 列へ変更し、価格推移側の `部屋タイプ=指定なし` は採用された部屋タイプ別 request scope を表示する仕様へ変更した。
   - 2026-05-29 の部屋タイプ別取得確認では、最新 `dist` の一時注入により `price-trend-records` に同一 fetch run の 32 record が保存され、scope は `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS`、`WASHITSU`、`WAYOUSHITSU` と人数 1 から 4 の組み合わせだった。UI では `シングル`、`ダブル`、`ツイン`、`トリプル`、`フォース`、`和室`、`和洋室` の filter button が表示され、`ツイン` 選択後の tooltip first cell は `自社 / ツイン` だった。page error と console error は 0 件だった。
-  - 2026-05-29 の食事タイプ別取得確認では、最新 `dist` の一時注入により `price-trend-records` に同一 fetch run の 128 record が保存され、scope は `mealType` が `NONE`、`BREAKFAST`、`DINNER`、`BREAKFAST_DINNER`、`roomType` が `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS`、`WASHITSU`、`WAYOUSHITSU`、`guestCount` が 1 から 4 の組み合わせだった。UI では `朝食`、`夕食`、`朝夕食` の filter button が表示され、`朝食` 選択後の active state は `指定なし` / `朝食`、meta は `食事 朝食`、panel title は `1名 最安値` から `4名 最安値`、tooltip header は `部屋タイプ` / `価格` / `前回差分` / `自社との差` だった。page error と console error は 0 件だった。
+  - 2026-05-29 の食事タイプ別取得確認では、最新 `dist` の一時注入により `price-trend-records` に同一 fetch run の 128 record が保存され、scope は `mealType` が `NONE`、`BREAKFAST`、`DINNER`、`BREAKFAST_DINNER`、`roomType` が `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS`、`WASHITSU`、`WAYOUSHITSU`、`guestCount` が 1 から 4 の組み合わせだった。UI では `朝食`、`夕食`、`朝夕食` の filter button が表示され、`朝食` 選択後の active state は `指定なし` / `朝食`、meta は `食事 朝食`、panel title は `1名 最安値` から `4名 最安値`、page error と console error は 0 件だった。tooltip 5 列化、価格推移側の採用部屋タイプ表示、`競合最低価格` series 廃止は D-20260529-023 で追加更新した。
   - 89日超過候補の `2026-09-01` と `2026-09-30` は公式側の `price-trends-content` が表示されず、RAU の対象外表示は今回の GUI では確認できなかった。
 - metadata:
   - `spec-impact`: yes
