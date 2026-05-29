@@ -198,12 +198,69 @@ JavaScript bundle から見つかった write endpoint 候補
 - 標準 UI には、modal 内の未反映 state、`最初からやり直す`、`閉じる` 時の確認 prompt、`続けて反映する` state、成功、一部失敗、失敗の通知種別がある。ただし、これは送信前の取り消しと送信後の結果表示に関する手掛かりであり、送信後に Revenue Assistant 側が一定時間の rollback または undo を提供することは確認していない。
 - したがって、RAU から top list 直接 rank 変更を実装する場合でも、標準 UI と同じ write endpoint をすぐ呼ぶのではなく、少なくとも事前 preview、現在 rank 再取得、対象 `stayDate x roomGroup` の固定、隣接 rank 限定、送信前の取消可能な pending state、送信結果の成功 / 一部失敗 / 失敗記録、同時更新検知、実 POST の低リスク確認を別 task で満たす必要がある。
 
+### Single-row Rank Change From Top List
+
+2026-05-29 の `RAU-RR-51` では、利用者が実務上変更してよい対象として選んだ `2026-07-23 x キャンプ、ツインS` の rank 変更 `11 -> 10` を Revenue Assistant 標準 UI 経由で実行し、Chrome DevTools Protocol で通信を観測した。
+
+この観測により、標準 UI で任意 rank を選ぶ手動操作は `カスタム販売設定する` から rank のプルダウンを選択する操作であり、観測済みの送信は次の形である。
+
+- endpoint: `/api/v1/lincoln/suggest`
+- HTTP method: `POST`
+- success HTTP status: `204`
+- observed request header names: `accept`、`content-type`、`referer`、`sec-ch-ua`、`sec-ch-ua-mobile`、`sec-ch-ua-platform`、`user-agent`、`x-requested-with`
+- observed payload field names: `date`、`rm_room_group_id`、`price_rank_code`、`price_rank_name`
+- response body: none
+- completion observation: `/api/v3/lincoln/suggest/status` に `reflection_type = CUSTOM`、`before_price_rank_name = 11`、`after_price_rank_name = 10`、`accepted_at`、`completed_at` が反映された。
+- current settings observation: `/api/v1/suggest/output/current_settings` の同じ `stayDate x roomGroup` に変更後 rank code / rank name が反映された。
+
+docs へは raw trace、request body 全文、response body 全文、Cookie、token、顧客情報、価格や在庫の非公開データを保存しない。仕様に残すのは endpoint、method、status、header 名、payload field 名、反映確認先、成功 / 失敗分類だけである。
+
+RAU が top list から単一行 rank 変更を実装する場合、対象は rank 変更だけに限定する。推奨金額、人数別価格、食事条件別価格、プラン別価格、販売停止、在庫、複数行選択、bulk apply、自動反映は対象外である。
+
+RAU の単一行 rank 変更 proposal は少なくとも次を持つ。
+
+- `facilityId`
+- `stayDate`
+- `asOfDate`
+- `roomGroupId`
+- `roomGroupName`
+- `currentRankCode`
+- `currentRankName`
+- `targetRankCode`
+- `targetRankName`
+- `reasonFingerprint`
+- `confidenceLevel`
+- `disabledReasons`
+
+変更可能にしてよい条件は、次をすべて満たす場合に限る。
+
+- candidate が `active` である。
+- action が `raise_watch` または `lower_watch` である。
+- current rank code と current rank name が取得済みである。
+- recommended rank code と recommended rank name が存在し、隣接 rank 欠落理由がない。
+- rank order source が `manual_override` または `settings_screen` である。
+- confidence 表示段階が `高` または `中` である。
+- diagnostics に `small_capacity`、`capacity_missing`、`group_driven_raise_suppressed` が含まれない。
+- write adapter が観測済み provider / endpoint として `/api/v1/lincoln/suggest` を扱える。
+
+UI は最初の `rank調整` 押下で inline preview を開く。preview には、対象宿泊日、roomGroup、現在 rank、変更後 rank、主要根拠、注意、送信不可理由を表示する。送信不可理由がある場合は `反映する` を disabled にし、POST を発生させない。
+
+`反映する` 押下後は 5 秒の in-memory pending state に入り、`n秒後に送信` と `取消` を表示する。pending 中に reload、施設切替、batch 切替、script 再実行が起きた場合は送信しない。RAU の pending state は送信前取消であり、送信後 rollback または undo ではない。
+
+送信直前には、exact `stayDate x roomGroup` の current settings と rank change status を再取得する。current rank が候補表示時から変わっていた場合、または同じ `stayDate x roomGroup` に候補生成後の rank change status がある場合は送信しない。
+
+POST 成功後は、adapter の HTTP response だけで成功扱いにせず、可能な範囲で `/api/v3/lincoln/suggest/status` または fresh current settings により反映結果を再確認する。成功後は current settings cache と rank status cache を破棄し、再取得結果で row を更新する。
+
+POST 失敗または送信前 guard 失敗時は同じ row に要約を表示し、自動再送しない。browser-local に保存してよいのは HTTP status、失敗分類、発生時刻、対象を識別する最小 key だけである。raw response body、credential、非公開データは保存しない。
+
+`POST /api/v1/lincoln/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/neppan/price_ranks` は、2026-05-29 時点では一括反映または別操作系の候補として扱う。`RAU-RR-51` の単一行 rank 変更では呼ばない。
+
 ### Unconfirmed / Investigation Tasks
 
 次は確認済み仕様として扱わず、browser-trace / browser-to-api 調査 task、または対象を固定した低リスクの手動確認 task にする。
 
 - rank 別、日付別、部屋タイプ別価格表の取得可否。
-- Revenue Assistant への rank 反映 API の server-side validation、CSRF、権限差、error response、partial failure response schema、同時更新時の挙動、反映後 rollback 可否。`RAU-RR-48` で payload 候補は read-only 確認したが、実 POST は実行していない。
+- Revenue Assistant への rank 反映 API の server-side validation、CSRF、権限差、error response、partial failure response schema、同時更新時の挙動、反映後 rollback 可否。`RAU-RR-51` で `/api/v1/lincoln/suggest` の単一行 custom rank 変更は 1 件だけ実 POST 観測したが、error response、partial failure、権限差、他 provider は未確認である。
 - 現在販売中価格の全体像が取れるか。
 - プラン別、人数別、食事条件別の価格と rank の関係が取れるか。
 

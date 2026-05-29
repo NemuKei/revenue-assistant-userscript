@@ -1,11 +1,23 @@
 export type RankRecommendationAction = "raise_watch" | "lower_watch" | "watch" | "not_eligible";
 export type RankRecommendationPriority = "high" | "medium" | "low";
 export type RankRecommendationStatus = "active" | "not_eligible";
+export type RankRecommendationConfidenceLevel = "high" | "medium" | "low";
 export type RankRecommendationForecastSignal = "high_occupancy" | "low_occupancy" | "neutral";
 export type RankRecommendationSalesAdrHealthSignal = "adr_down" | "sales_down" | "adr_and_sales_down" | "neutral";
 export type RankRecommendationWeekdayContextSignal = "weekday_reference_supports_raise" | "weekday_reference_supports_lower" | "weekday_reference_neutral";
 export type RankRecommendationOwnPricePositionSignal = "own_price_low_against_competitors" | "own_price_near_competitors" | "own_price_high_against_competitors";
 export type RankRecommendationRankOrderSource = "numeric_rank_name" | "settings_screen" | "manual_override" | "unresolved";
+export type RankRecommendationRankChangeProvider = "lincoln_custom_suggest" | "unsupported";
+export type RankRecommendationRankChangeDisabledReason =
+    | "candidate_not_active"
+    | "unsupported_action"
+    | "current_rank_missing"
+    | "recommended_rank_missing"
+    | "rank_order_untrusted"
+    | "low_confidence"
+    | "small_capacity_or_capacity_missing"
+    | "group_driven_raise_suppressed"
+    | "unsupported_provider";
 export type RankRecommendationRecommendedRankUnavailableReason =
     | "rank_ladder_missing"
     | "current_rank_not_in_ladder"
@@ -52,6 +64,22 @@ export interface RankRecommendationCandidate {
     diagnostics: string[];
     status: RankRecommendationStatus;
     generatedAt: string;
+}
+
+export interface RankRecommendationRankChangeProposal {
+    facilityId: string;
+    stayDate: string;
+    asOfDate: string;
+    roomGroupId: string;
+    roomGroupName: string;
+    currentRankCode: string | null;
+    currentRankName: string | null;
+    targetRankCode: string | null;
+    targetRankName: string | null;
+    reasonFingerprint: string;
+    confidenceLevel: RankRecommendationConfidenceLevel;
+    disabledReasons: RankRecommendationRankChangeDisabledReason[];
+    enabled: boolean;
 }
 
 export interface RankRecommendationCurveEvidence {
@@ -373,6 +401,74 @@ function buildRankRecommendationCandidate(options: {
 
 export function buildRankRecommendationEvidenceKey(stayDate: string, roomGroupId: string): string {
     return `${stayDate}:${roomGroupId}`;
+}
+
+export function buildRankRecommendationRankChangeProposal(options: {
+    candidate: RankRecommendationCandidate;
+    provider: RankRecommendationRankChangeProvider;
+}): RankRecommendationRankChangeProposal {
+    const candidate = options.candidate;
+    const disabledReasons: RankRecommendationRankChangeDisabledReason[] = [];
+    const confidenceLevel = getRankRecommendationConfidenceLevel(candidate.confidence);
+
+    if (candidate.status !== "active") {
+        disabledReasons.push("candidate_not_active");
+    }
+    if (candidate.action !== "raise_watch" && candidate.action !== "lower_watch") {
+        disabledReasons.push("unsupported_action");
+    }
+    if (candidate.currentRankCode === null || candidate.currentRankName === null) {
+        disabledReasons.push("current_rank_missing");
+    }
+    if (
+        candidate.recommendedRankCode === null
+        || candidate.recommendedRankName === null
+        || candidate.recommendedRankUnavailableReason !== null
+    ) {
+        disabledReasons.push("recommended_rank_missing");
+    }
+    if (candidate.rankOrderSource !== "manual_override" && candidate.rankOrderSource !== "settings_screen") {
+        disabledReasons.push("rank_order_untrusted");
+    }
+    if (confidenceLevel === "low") {
+        disabledReasons.push("low_confidence");
+    }
+    if (candidate.diagnostics.includes("small_capacity") || candidate.diagnostics.includes("capacity_missing")) {
+        disabledReasons.push("small_capacity_or_capacity_missing");
+    }
+    if (candidate.diagnostics.includes("group_driven_raise_suppressed")) {
+        disabledReasons.push("group_driven_raise_suppressed");
+    }
+    if (options.provider !== "lincoln_custom_suggest") {
+        disabledReasons.push("unsupported_provider");
+    }
+
+    const uniqueDisabledReasons = Array.from(new Set(disabledReasons));
+    return {
+        facilityId: candidate.facilityId,
+        stayDate: candidate.stayDate,
+        asOfDate: candidate.asOfDate,
+        roomGroupId: candidate.roomGroupId,
+        roomGroupName: candidate.roomGroupName,
+        currentRankCode: candidate.currentRankCode,
+        currentRankName: candidate.currentRankName,
+        targetRankCode: candidate.recommendedRankCode,
+        targetRankName: candidate.recommendedRankName,
+        reasonFingerprint: candidate.reasonFingerprint,
+        confidenceLevel,
+        disabledReasons: uniqueDisabledReasons,
+        enabled: uniqueDisabledReasons.length === 0
+    };
+}
+
+export function getRankRecommendationConfidenceLevel(confidence: number): RankRecommendationConfidenceLevel {
+    if (confidence >= 0.6) {
+        return "high";
+    }
+    if (confidence >= 0.4) {
+        return "medium";
+    }
+    return "low";
 }
 
 function getDeviation(current: number | null, reference: number | null): number | null {

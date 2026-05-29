@@ -2962,25 +2962,57 @@
 ### RAU-RR-51 料金調整候補からrank調整するUI shellを設計する
 
 - 状態:
-  - 未着手。
+  - 実装済み。
 - 目的:
-  - top list の料金調整候補上で、Analyze へ遷移せずに rank 変更候補を選択できる UI shell を設計する。
+  - top list の料金調整候補上で、Analyze へ遷移せずに 1 件ずつ販売 rank を変更できる導線を実装する。
 - 背景:
   - `RAU-RR-48` で標準画面の rank write endpoint 候補と pending 前提を read-only 確認した。
   - `RAU-RR-49` で browser-local decision の取消可能な pending 操作モデルを実装した。
   - 利用者は、料金調整候補から Analyze に移動せずに rank 調整したいと要望している。
+  - 2026-05-29 に、利用者が実務上変更してよい対象として `2026-07-23 x キャンプ、ツインS` の `11 -> 10` を選び、Revenue Assistant 標準 UI 経由の実 POST を観測した。
 - スコープ:
-  - top list の各候補で、現在 rank、推奨方向、隣接 recommended rank、対象 `stayDate x roomGroup` を確認できる rank 調整 UI shell を設計する。
-  - Revenue Assistant write API を呼ばない UI shell とし、送信前 preview、current rank 再取得、同時更新検知、低 confidence 除外、実 POST 前の明示確認を後続 task へ分ける。
-  - `RAU-RR-49` の pending 操作モデルを、将来の rank 変更へどう接続するかを整理する。
+  - top list の各候補で、現在 rank、推奨方向、隣接 recommended rank、対象 `stayDate x roomGroup` を確認できる inline preview を表示する。
+  - 対象は rank 変更だけに限定する。推奨金額、人数別価格、食事条件別価格、プラン別価格は扱わない。
+  - 観測済みの Lincoln custom rank path、つまり `POST /api/v1/lincoln/suggest` だけを write adapter の対応対象にする。
+  - 送信前 preview、5 秒の in-memory pending、取消、送信直前の exact current rank 再取得、同じ `stayDate x roomGroup` の rank change status 再取得、current rank mismatch 時の送信停止を実装する。
+  - POST 成功後は current settings cache と rank status cache を破棄し、再取得結果で row を更新する。
+  - POST 失敗または送信前 guard 失敗時は自動再送せず、同じ row に要約を表示する。
 - 非目標:
-  - Revenue Assistant write API をこの task で実行すること。
-  - rank 変更を自動反映すること。
+  - `POST /api/v1/lincoln/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/neppan/price_ranks` を呼ぶこと。
+  - 推奨金額、人数別価格、食事条件別価格、プラン別価格を変更すること。
+  - 任意の未観測 provider に対して RAU 独自の手作り POST を実行すること。
+  - 送信後 rollback または undo を RAU が提供すると見せること。
+  - rank 変更を自動反映すること。利用者が行単位で preview を開き、`反映する` を押した場合だけ送信候補にする。
   - bulk apply。
 - 受け入れ条件:
-  - top list rank 調整 UI shell の表示項目、操作、disabled 条件、未確認 API の扱いが定義されている。
-  - 将来の write 実行 task に必要な guardrail が列挙されている。
-  - 実装する場合でも Revenue Assistant write API を呼ばないことが確認できる。
+  - rank 変更可能な候補は、active candidate、`raise_watch` または `lower_watch`、current rank 取得済み、隣接 recommended rank あり、rank order source が `manual_override` または `settings_screen`、confidence が `高` または `中`、小キャパや団体主因の抑制診断なし、観測済み Lincoln custom rank path 対応、のすべてを満たす。
+  - 条件を満たさない候補では `rank調整` または `反映する` が disabled になり、送信不可理由が表示される。
+  - `rank調整` 押下では POST が発生せず、inline preview だけが開く。
+  - `反映する` 押下後は 5 秒 pending に入り、`取消` できる。pending 中に reload、施設切替、batch 切替、script 再実行が起きた場合は送信しない。
+  - 送信直前に current rank mismatch または候補生成後の rank change status が見つかった場合は POST しない。
+  - POST 成功後は `/api/v3/lincoln/suggest/status` または fresh current settings で可能な限り反映確認し、cache を破棄して row を更新する。
+  - POST 失敗時は HTTP status、失敗分類、発生時刻だけを browser-local に保存し、raw response body は保存しない。
+  - 実データ、credential、raw trace、request / response body 全文が Git に入っていない。
+- 観測結果:
+  - 標準 UI で任意 rank を選ぶ手動操作は `カスタム販売設定する` から rank のプルダウンを選択する操作である。
+  - 実 POST は `POST /api/v1/lincoln/suggest`、success HTTP status は `204`、payload field は `date`、`rm_room_group_id`、`price_rank_code`、`price_rank_name` である。
+  - 反映後、`/api/v3/lincoln/suggest/status` に `reflection_type = CUSTOM`、変更前後 rank、`accepted_at`、`completed_at` が入り、`/api/v1/suggest/output/current_settings` は変更後 rank を返した。
+  - 調査中に `シングル` で意図しない rank 変更 `10 -> 14` が発生したが、利用者操作で `14 -> 10` へ戻され、最終確認では `シングル` と `キャンプ、ツインS` の current settings はどちらも rank `10` である。
+- 実装:
+  - `src/rankRecommendation.ts` に単一行 rank 変更 proposal を追加した。proposal は `facilityId`、`stayDate`、`asOfDate`、`roomGroupId`、`roomGroupName`、現在 rank、変更後 rank、`reasonFingerprint`、`confidenceLevel`、`disabledReasons`、`enabled` を持つ。
+  - enabled 条件は、active candidate、`raise_watch` または `lower_watch`、current rank 取得済み、隣接 recommended rank あり、rank order source が `manual_override` または `settings_screen`、confidence が `高` または `中`、小キャパや団体主因抑制なし、観測済み Lincoln custom rank path 対応、に限定した。
+  - `src/rankRecommendationWriteAdapter.ts` を追加し、`POST /api/v1/lincoln/suggest` だけを送信する adapter 境界にした。payload は観測済み field の `date`、`rm_room_group_id`、`price_rank_code`、`price_rank_name` だけを送る。
+  - `src/main.ts` の top list に `rank調整` button、inline preview、`反映する`、5 秒 pending、`取消`、送信結果要約を追加した。
+  - `反映する` 押下後も即時 POST せず、5 秒 pending timer の満了後だけ送信候補にする。pending は memory に限定し、施設切替または batch 切替では破棄する。
+  - 送信直前に exact `stayDate x roomGroup` の current settings と rank change status を再取得し、current rank mismatch または候補生成後の rank change status があれば送信しない。
+  - POST 成功後は current settings cache と rank status cache を破棄し、fresh current settings または rank status で反映確認を試みる。反映未確認の場合は成功扱いにせず、要約を表示する。
+  - 失敗時は HTTP status、失敗分類、発生時刻、最小識別 key だけを browser-local に保存し、raw response body は保存しない。
+- verify:
+  - `npm run typecheck`: passed。
+  - `npm run lint`: passed。
+  - `npm run build`: sandbox 内では `esbuild` の `spawn EPERM` で失敗したため、同じ command を権限付きで再実行して passed。`dist/revenue-assistant-userscript.user.js` を生成した。
+  - `git diff --check`: passed。
+  - Chrome DevTools Protocol / 通常 Chrome 非送信確認: Revenue Assistant root `https://ra.jalan.net/` に最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10 件、`rank調整` button 10 件、rank change preview 表示 1 件、`反映する` button 10 件、disabled `反映する` 2 件、`POST /api/v1/lincoln/suggest` 0 件、page error 0 件を確認した。実送信を避けるため `反映する` と `取消` の GUI click は実施していない。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -3524,7 +3556,7 @@
 
 Now:
 
-- `RAU-RR-51` 料金調整候補からrank調整するUI shellを設計する
+- なし。
 
 Next:
 
@@ -3582,7 +3614,7 @@ Later:
 - `RAU-RR-47` は 2026-05-29 に実装済みである。top list の候補 row に `曲線` button を追加し、候補 row 直下の追加 row で Analyze 画面と同じ chart component を使った booking curve preview を開閉できるようにした。data source は既存保存済みの `booking_curve_raw_source:v2` と derived reference curve cache に限定し、raw source がない場合は不足 diagnostics を表示する。preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やしていない。直近型と季節型の reference curve は同じ historical fallback を共有せず、保存済み derived record または保存済み raw source から Analyze と同じ種類別計算を使う。
 - `RAU-RR-48` は 2026-05-29 に read-only 調査済みである。標準画面の料金ランク一括反映は、site controller ごとに `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を呼び分ける候補があり、payload 候補は `date`、`rmRoomGroupId`、`priceRankCode` と、現在設定に値がある場合の `limitedNumber`、食事条件 field から作られる。標準 UI には送信前の確認ややり直し入口、成功、一部失敗、失敗の通知種別がある。ただし実 POST は実行していないため、server 側 validation、error body、partial failure response schema、同時更新時の挙動、反映後 rollback 可否は未確認である。top list 直接 rank 変更の実装はまだ行わない。
 - `RAU-RR-49` は 2026-05-29 に実装済みである。`様子見` と `対応不要` は押下直後に保存せず、5 秒の in-memory pending state に入れる。pending 中は行内に `n秒後に確定` と `取消` button を表示し、`取消` で decision record を保存せずに戻せる。timer 満了後だけ従来と同じ decision record を保存し、cooldown、dismiss、confidence escalation、reasonFingerprint による lifecycle filter は変更していない。Revenue Assistant write API、rank 直接変更、bulk apply は追加していない。
-- `RAU-RR-51` は、料金調整候補から rank 調整する UI shell の設計 task とする。`RAU-RR-48` の write endpoint 候補と `RAU-RR-49` の pending 操作モデルを前提にするが、実 POST はまだ行わない。
+- `RAU-RR-51` は 2026-05-29 に実装済みである。料金調整候補から 1 件ずつ rank 調整する導線として、`rank調整` preview、5 秒 pending、取消、送信直前 current rank 再取得、同じ `stayDate x roomGroup` の rank change status 再取得、観測済み `POST /api/v1/lincoln/suggest` adapter を追加した。実装は、利用者が実務上変更してよい対象として選んだ `2026-07-23 x キャンプ、ツインS 11 -> 10` の標準 UI 観測結果に限定し、未観測 provider、`price_ranks` 系 endpoint、bulk apply、自動反映、推奨金額や人数別・食事条件別・プラン別価格の変更は対象外である。Chrome DevTools Protocol の通常 Chrome 非送信確認では、候補 row 10 件、`rank調整` button 10 件、preview 表示 1 件、`POST /api/v1/lincoln/suggest` 0 件を確認した。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

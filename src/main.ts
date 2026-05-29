@@ -57,6 +57,7 @@ import {
 import {
     buildRankRecommendationEvidenceKey,
     buildRankRecommendationCandidates,
+    buildRankRecommendationRankChangeProposal,
     resolveRankRecommendationRankOrder,
     type RankRecommendationAction,
     type RankRecommendationCandidate,
@@ -68,6 +69,8 @@ import {
     type RankRecommendationRankOrderOverride,
     type RankRecommendationRankOrderResolution,
     type RankRecommendationOwnPricePositionSignal,
+    type RankRecommendationRankChangeDisabledReason,
+    type RankRecommendationRankChangeProposal,
     type RankRecommendationSalesAdrHealthSignal,
     type RankRecommendationStatus,
     type RankRecommendationWeekdayContextSignal
@@ -81,6 +84,10 @@ import {
     type RankRecommendationDecisionRecord,
     type RankRecommendationDecisionType
 } from "./rankRecommendationDecisionStore";
+import {
+    submitLincolnCustomRankSuggestion,
+    type RankRecommendationWriteFailureType
+} from "./rankRecommendationWriteAdapter";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Userscript"
@@ -156,6 +163,16 @@ const RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE = "data-ra-rank-recommend
 const RANK_RECOMMENDATION_BUTTON_CAUTION_TEXT_ATTRIBUTE = "data-ra-rank-recommendation-caution-text";
 const RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE = "data-ra-rank-recommendation-pending-decision";
 const RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE = "data-ra-rank-recommendation-pending-decision-key";
+const RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-preview-row";
+const RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-preview-cell";
+const RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-status";
+const RANK_RECOMMENDATION_RANK_CHANGE_TARGET_CODE_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-target-code";
+const RANK_RECOMMENDATION_RANK_CHANGE_TARGET_NAME_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-target-name";
+const RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_CODE_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-current-code";
+const RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_NAME_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-current-name";
+const RANK_RECOMMENDATION_RANK_CHANGE_DISABLED_REASONS_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-disabled-reasons";
+const RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE = "data-ra-rank-recommendation-pending-rank-change";
+const RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE = "data-ra-rank-recommendation-pending-rank-change-key";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-row";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-cell";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-diagnostics";
@@ -163,6 +180,7 @@ const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendati
 const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
 const RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX = "revenue-assistant:rank-recommendation:rank-order-override:";
+const RANK_RECOMMENDATION_RANK_CHANGE_FAILURE_STORAGE_KEY = "revenue-assistant:rank-recommendation:rank-change-failures:v1";
 const RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS = 5000;
 const RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT = 10;
 const RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP = 10;
@@ -733,6 +751,34 @@ interface PendingRankRecommendationDecision {
     commitAt: number;
 }
 
+interface PendingRankRecommendationRankChangeDraft {
+    cacheKey: string;
+    proposal: RankRecommendationRankChangeProposal;
+    createdAt: string;
+}
+
+interface PendingRankRecommendationRankChange {
+    draft: PendingRankRecommendationRankChangeDraft;
+    timeoutId: number;
+    commitAt: number;
+}
+
+type RankRecommendationRankChangeResultStatus = "success" | "blocked" | "failed";
+type RankRecommendationRankChangeFailureClass =
+    | "current_rank_mismatch"
+    | "rank_status_changed"
+    | "proposal_disabled"
+    | RankRecommendationWriteFailureType
+    | "reflection_unconfirmed";
+
+interface RankRecommendationRankChangeResult {
+    status: RankRecommendationRankChangeResultStatus;
+    message: string;
+    failureClass: RankRecommendationRankChangeFailureClass | null;
+    httpStatus: number | null;
+    occurredAt: string;
+}
+
 interface RankRecommendationWarmCachePriorityCandidate {
     stayDate: string;
     roomGroupId: string;
@@ -794,7 +840,10 @@ const competitorPriceSnapshotBackgroundQueue: CompetitorPriceSnapshotBackgroundT
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
 const salesSettingBookingCurveReferenceVisibilityState = new Map<SalesSettingBookingCurveReferenceKind, boolean>();
 const rankRecommendationCurvePreviewOpenState = new Map<string, boolean>();
+const rankRecommendationRankChangePreviewOpenState = new Map<string, boolean>();
 const pendingRankRecommendationDecisionByKey = new Map<string, PendingRankRecommendationDecision>();
+const pendingRankRecommendationRankChangeByKey = new Map<string, PendingRankRecommendationRankChange>();
+const rankRecommendationRankChangeResultByKey = new Map<string, RankRecommendationRankChangeResult>();
 let salesSettingBookingCurveSameWeekdayVisible = false;
 let salesSettingBookingCurveSecondarySegment: SalesSettingBookingCurveSecondarySegment = "individual";
 let latestSalesSettingPreparedSnapshot: {
@@ -931,6 +980,36 @@ function installInteractionHooks(): void {
                 event.preventDefault();
                 event.stopPropagation();
                 toggleRankRecommendationCurvePreviewFromElement(rankRecommendationCurvePreviewButton);
+                return;
+            }
+
+            const rankRecommendationRankChangeToggleButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-change-preview-toggle"]`
+            );
+            if (rankRecommendationRankChangeToggleButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleRankRecommendationRankChangePreviewFromElement(rankRecommendationRankChangeToggleButton);
+                return;
+            }
+
+            const rankRecommendationRankChangeCancelButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-change-cancel"]`
+            );
+            if (rankRecommendationRankChangeCancelButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                cancelPendingRankRecommendationRankChangeFromElement(rankRecommendationRankChangeCancelButton);
+                return;
+            }
+
+            const rankRecommendationRankChangeSubmitButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-change-submit"]`
+            );
+            if (rankRecommendationRankChangeSubmitButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                schedulePendingRankRecommendationRankChangeFromElement(rankRecommendationRankChangeSubmitButton);
                 return;
             }
 
@@ -1457,6 +1536,494 @@ function toggleRankRecommendationCurvePreviewFromElement(element: HTMLElement): 
     }
 }
 
+function toggleRankRecommendationRankChangePreviewFromElement(element: HTMLElement): void {
+    const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
+    const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
+    const reasonFingerprint = element.getAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE);
+    const facilityId = activeFacilityCacheKey;
+    if (
+        facilityId === null
+        || stayDate === null
+        || roomGroupId === null
+        || reasonFingerprint === null
+        || stayDate === ""
+        || roomGroupId === ""
+    ) {
+        return;
+    }
+
+    const key = buildRankRecommendationRankChangeKey({ facilityId, stayDate, roomGroupId, reasonFingerprint });
+    const nextOpen = element.getAttribute("aria-expanded") !== "true";
+    rankRecommendationRankChangePreviewOpenState.set(key, nextOpen);
+    element.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+    element.textContent = nextOpen ? "rank調整を閉じる" : "rank調整";
+
+    const rowElement = element.closest("tr");
+    const previewRowElement = rowElement?.parentElement?.querySelector<HTMLTableRowElement>(
+        `tr[${RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE}="${cssEscapeAttributeValue(key)}"]`
+    );
+    if (previewRowElement !== null && previewRowElement !== undefined) {
+        previewRowElement.hidden = !nextOpen;
+    }
+}
+
+function schedulePendingRankRecommendationRankChangeFromElement(element: HTMLElement): void {
+    const draft = buildPendingRankRecommendationRankChangeDraftFromElement(element);
+    if (draft === null) {
+        return;
+    }
+    if (!draft.proposal.enabled) {
+        setRankRecommendationRankChangeResult(draft.cacheKey, {
+            status: "blocked",
+            message: "送信不可条件が残っているため送信しません",
+            failureClass: "proposal_disabled",
+            httpStatus: null,
+            occurredAt: new Date().toISOString()
+        });
+        queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-disabled" });
+        return;
+    }
+
+    const current = pendingRankRecommendationRankChangeByKey.get(draft.cacheKey);
+    if (current !== undefined) {
+        window.clearTimeout(current.timeoutId);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+        void commitPendingRankRecommendationRankChange(draft.cacheKey);
+    }, RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS);
+
+    pendingRankRecommendationRankChangeByKey.set(draft.cacheKey, {
+        draft,
+        timeoutId,
+        commitAt: Date.now() + RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS
+    });
+
+    queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-pending" });
+}
+
+function cancelPendingRankRecommendationRankChangeFromElement(element: HTMLElement): void {
+    const cacheKey = element.getAttribute(RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE);
+    if (cacheKey === null) {
+        return;
+    }
+
+    const current = pendingRankRecommendationRankChangeByKey.get(cacheKey);
+    if (current === undefined) {
+        return;
+    }
+
+    window.clearTimeout(current.timeoutId);
+    pendingRankRecommendationRankChangeByKey.delete(cacheKey);
+    queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-cancel" });
+}
+
+function clearPendingRankRecommendationRankChanges(): void {
+    for (const pending of pendingRankRecommendationRankChangeByKey.values()) {
+        window.clearTimeout(pending.timeoutId);
+    }
+    pendingRankRecommendationRankChangeByKey.clear();
+}
+
+function buildPendingRankRecommendationRankChangeDraftFromElement(
+    element: HTMLElement
+): PendingRankRecommendationRankChangeDraft | null {
+    const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
+    const asOfDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE);
+    const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
+    const roomGroupName = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE);
+    const reasonFingerprint = element.getAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE);
+    const currentRankCode = element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_CODE_ATTRIBUTE);
+    const currentRankName = element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_NAME_ATTRIBUTE);
+    const targetRankCode = element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_CODE_ATTRIBUTE);
+    const targetRankName = element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_NAME_ATTRIBUTE);
+    const confidenceLevel = parseRankRecommendationDecisionConfidenceLevel(
+        element.getAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE)
+    );
+    const disabledReasons = parseRankRecommendationRankChangeDisabledReasons(
+        element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_DISABLED_REASONS_ATTRIBUTE)
+    );
+    const facilityId = activeFacilityCacheKey;
+
+    if (
+        facilityId === null
+        || stayDate === null
+        || asOfDate === null
+        || roomGroupId === null
+        || roomGroupName === null
+        || reasonFingerprint === null
+        || confidenceLevel === null
+    ) {
+        return null;
+    }
+
+    const proposal: RankRecommendationRankChangeProposal = {
+        facilityId,
+        stayDate,
+        asOfDate,
+        roomGroupId,
+        roomGroupName,
+        currentRankCode: normalizeRankRecommendationElementText(currentRankCode),
+        currentRankName: normalizeRankRecommendationElementText(currentRankName),
+        targetRankCode: normalizeRankRecommendationElementText(targetRankCode),
+        targetRankName: normalizeRankRecommendationElementText(targetRankName),
+        reasonFingerprint,
+        confidenceLevel,
+        disabledReasons,
+        enabled: disabledReasons.length === 0
+    };
+
+    return {
+        cacheKey: buildRankRecommendationRankChangeKey({ facilityId, stayDate, roomGroupId, reasonFingerprint }),
+        proposal,
+        createdAt: new Date().toISOString()
+    };
+}
+
+async function commitPendingRankRecommendationRankChange(cacheKey: string): Promise<void> {
+    const pending = pendingRankRecommendationRankChangeByKey.get(cacheKey);
+    if (pending === undefined) {
+        return;
+    }
+
+    pendingRankRecommendationRankChangeByKey.delete(cacheKey);
+    const proposal = pending.draft.proposal;
+    if (activeFacilityCacheKey !== proposal.facilityId || activeBatchDateKey !== proposal.asOfDate) {
+        return;
+    }
+    if (
+        !proposal.enabled
+        || proposal.currentRankCode === null
+        || proposal.currentRankName === null
+        || proposal.targetRankCode === null
+        || proposal.targetRankName === null
+    ) {
+        setRankRecommendationRankChangeResult(cacheKey, {
+            status: "blocked",
+            message: "送信不可条件が残っているため送信しません",
+            failureClass: "proposal_disabled",
+            httpStatus: null,
+            occurredAt: new Date().toISOString()
+        });
+        queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-proposal-disabled" });
+        return;
+    }
+
+    const preflight = await preflightRankRecommendationRankChange(pending.draft);
+    if (preflight !== null) {
+        setRankRecommendationRankChangeResult(cacheKey, preflight);
+        recordRankRecommendationRankChangeFailure(cacheKey, preflight);
+        queueCalendarSync({ force: true, reason: `rank-recommendation-rank-change-${preflight.failureClass ?? "blocked"}` });
+        return;
+    }
+
+    const submittedAt = new Date().toISOString();
+    const submitResult = await submitLincolnCustomRankSuggestion({
+        stayDate: proposal.stayDate,
+        roomGroupId: proposal.roomGroupId,
+        targetRankCode: proposal.targetRankCode,
+        targetRankName: proposal.targetRankName
+    });
+    clearRankRecommendationRankChangeReadCaches();
+
+    if (!submitResult.ok) {
+        const result: RankRecommendationRankChangeResult = {
+            status: "failed",
+            message: formatRankRecommendationRankChangeSubmitFailureMessage(submitResult.failureType, submitResult.status),
+            failureClass: submitResult.failureType ?? "unexpected_error",
+            httpStatus: submitResult.status,
+            occurredAt: new Date().toISOString()
+        };
+        setRankRecommendationRankChangeResult(cacheKey, result);
+        recordRankRecommendationRankChangeFailure(cacheKey, result);
+        queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-submit-failed" });
+        return;
+    }
+
+    const confirmed = await confirmRankRecommendationRankChangeReflection(proposal, submittedAt);
+    if (!confirmed) {
+        const result: RankRecommendationRankChangeResult = {
+            status: "failed",
+            message: "送信は完了しましたが、反映確認がまだ取れていません",
+            failureClass: "reflection_unconfirmed",
+            httpStatus: submitResult.status,
+            occurredAt: new Date().toISOString()
+        };
+        setRankRecommendationRankChangeResult(cacheKey, result);
+        recordRankRecommendationRankChangeFailure(cacheKey, result);
+        queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-unconfirmed" });
+        return;
+    }
+
+    setRankRecommendationRankChangeResult(cacheKey, {
+        status: "success",
+        message: "反映を確認しました",
+        failureClass: null,
+        httpStatus: submitResult.status,
+        occurredAt: new Date().toISOString()
+    });
+    clearRankRecommendationRankChangeReadCaches();
+    queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-success" });
+}
+
+async function preflightRankRecommendationRankChange(
+    draft: PendingRankRecommendationRankChangeDraft
+): Promise<RankRecommendationRankChangeResult | null> {
+    const proposal = draft.proposal;
+    const [currentSettings, statuses] = await Promise.all([
+        loadSalesSettingCurrentSettings(proposal.stayDate, proposal.stayDate),
+        loadLincolnSuggestStatuses(proposal.stayDate)
+    ]).catch((error: unknown) => {
+        console.warn(`[${SCRIPT_NAME}] failed to preflight rank recommendation rank change`, {
+            stayDate: proposal.stayDate,
+            roomGroupId: proposal.roomGroupId,
+            error
+        });
+        return [null, null] as const;
+    });
+
+    if (currentSettings === null || statuses === null) {
+        return {
+            status: "blocked",
+            message: "送信直前の再取得に失敗したため送信しません",
+            failureClass: "unexpected_error",
+            httpStatus: null,
+            occurredAt: new Date().toISOString()
+        };
+    }
+
+    const currentRoomGroup = findRankRecommendationCurrentRoomGroup(currentSettings, proposal.stayDate, proposal.roomGroupId);
+    const latestRankCode = normalizeRankRecommendationElementText(currentRoomGroup?.latest_current?.price_rank_code ?? null);
+    const latestRankName = normalizeRankRecommendationElementText(currentRoomGroup?.latest_current?.price_rank_name ?? null);
+    if (latestRankCode !== proposal.currentRankCode || latestRankName !== proposal.currentRankName) {
+        return {
+            status: "blocked",
+            message: `現在rankが候補表示時から変わったため送信しません（表示時 ${proposal.currentRankName ?? "-"} / 現在 ${latestRankName ?? "-"}）`,
+            failureClass: "current_rank_mismatch",
+            httpStatus: null,
+            occurredAt: new Date().toISOString()
+        };
+    }
+
+    if (hasRankRecommendationStatusAfter(statuses, proposal, draft.createdAt)) {
+        return {
+            status: "blocked",
+            message: "候補表示後に同じ宿泊日と部屋タイプのrank変更履歴があるため送信しません",
+            failureClass: "rank_status_changed",
+            httpStatus: null,
+            occurredAt: new Date().toISOString()
+        };
+    }
+
+    return null;
+}
+
+async function confirmRankRecommendationRankChangeReflection(
+    proposal: RankRecommendationRankChangeProposal,
+    submittedAt: string
+): Promise<boolean> {
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+        if (attempt > 0) {
+            await delay(3000);
+        }
+        clearRankRecommendationRankChangeReadCaches();
+        const [currentSettings, statuses] = await Promise.all([
+            loadSalesSettingCurrentSettings(proposal.stayDate, proposal.stayDate).catch(() => null),
+            loadLincolnSuggestStatuses(proposal.stayDate).catch(() => null)
+        ]);
+
+        if (currentSettings !== null) {
+            const currentRoomGroup = findRankRecommendationCurrentRoomGroup(currentSettings, proposal.stayDate, proposal.roomGroupId);
+            const latestRankCode = normalizeRankRecommendationElementText(currentRoomGroup?.latest_current?.price_rank_code ?? null);
+            const latestRankName = normalizeRankRecommendationElementText(currentRoomGroup?.latest_current?.price_rank_name ?? null);
+            if (latestRankCode === proposal.targetRankCode && latestRankName === proposal.targetRankName) {
+                return true;
+            }
+        }
+
+        if (statuses !== null && hasConfirmedRankRecommendationStatus(statuses, proposal, submittedAt)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
+function findRankRecommendationCurrentRoomGroup(
+    response: SalesSettingCurrentSettingsResponse,
+    stayDate: string,
+    roomGroupId: string
+): SalesSettingCurrentSettingRoomGroup | null {
+    for (const currentSetting of response.suggest_output_current_settings ?? []) {
+        if (toCompactDateKey(currentSetting.stay_date ?? "") !== stayDate) {
+            continue;
+        }
+        for (const roomGroup of currentSetting.rm_room_groups ?? []) {
+            if ((roomGroup.rm_room_group_id?.trim() ?? "") === roomGroupId) {
+                return roomGroup;
+            }
+        }
+    }
+    return null;
+}
+
+function hasRankRecommendationStatusAfter(
+    statuses: readonly LincolnSuggestStatus[],
+    proposal: RankRecommendationRankChangeProposal,
+    since: string
+): boolean {
+    const sinceTime = Date.parse(since);
+    return statuses.some((status) => {
+        if (!isRankRecommendationStatusForProposal(status, proposal)) {
+            return false;
+        }
+        const timestamp = getLincolnSuggestStatusTimestamp(status);
+        if (timestamp === null) {
+            return false;
+        }
+        const statusTime = Date.parse(timestamp);
+        return Number.isFinite(statusTime) && Number.isFinite(sinceTime) && statusTime > sinceTime;
+    });
+}
+
+function hasConfirmedRankRecommendationStatus(
+    statuses: readonly LincolnSuggestStatus[],
+    proposal: RankRecommendationRankChangeProposal,
+    since: string
+): boolean {
+    const sinceTime = Date.parse(since);
+    return statuses.some((status) => {
+        if (!isRankRecommendationStatusForProposal(status, proposal)) {
+            return false;
+        }
+        if ((status.after_price_rank_name ?? null) !== proposal.targetRankName) {
+            return false;
+        }
+        const timestamp = getLincolnSuggestStatusTimestamp(status);
+        if (timestamp === null) {
+            return false;
+        }
+        const statusTime = Date.parse(timestamp);
+        return Number.isFinite(statusTime) && Number.isFinite(sinceTime) && statusTime >= sinceTime;
+    });
+}
+
+function isRankRecommendationStatusForProposal(
+    status: LincolnSuggestStatus,
+    proposal: RankRecommendationRankChangeProposal
+): boolean {
+    return toCompactDateKey(status.date ?? "") === proposal.stayDate
+        && (status.rm_room_group_id?.trim() ?? "") === proposal.roomGroupId;
+}
+
+function setRankRecommendationRankChangeResult(
+    cacheKey: string,
+    result: RankRecommendationRankChangeResult
+): void {
+    rankRecommendationRankChangeResultByKey.set(cacheKey, result);
+}
+
+function clearRankRecommendationRankChangeReadCaches(): void {
+    rankRecommendationCurrentSettingsCache.clear();
+    salesSettingCurrentSettingsPromiseCache.clear();
+    lincolnSuggestStatusCache.clear();
+    lincolnSuggestStatusRangeCache.clear();
+}
+
+function recordRankRecommendationRankChangeFailure(cacheKey: string, result: RankRecommendationRankChangeResult): void {
+    if (result.failureClass === null) {
+        return;
+    }
+
+    try {
+        const rawValue = window.localStorage.getItem(RANK_RECOMMENDATION_RANK_CHANGE_FAILURE_STORAGE_KEY);
+        const current = rawValue === null ? [] : JSON.parse(rawValue);
+        const records = Array.isArray(current) ? current.slice(0, 19) : [];
+        records.unshift({
+            cacheKey,
+            failureClass: result.failureClass,
+            httpStatus: result.httpStatus,
+            occurredAt: result.occurredAt
+        });
+        window.localStorage.setItem(RANK_RECOMMENDATION_RANK_CHANGE_FAILURE_STORAGE_KEY, JSON.stringify(records));
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to store rank recommendation rank change failure`, { error });
+    }
+}
+
+function parseRankRecommendationRankChangeDisabledReasons(
+    value: string | null
+): RankRecommendationRankChangeDisabledReason[] {
+    if (value === null || value.trim() === "") {
+        return [];
+    }
+
+    return value.split(",")
+        .map((reason) => reason.trim())
+        .filter((reason): reason is RankRecommendationRankChangeDisabledReason => isRankRecommendationRankChangeDisabledReason(reason));
+}
+
+function isRankRecommendationRankChangeDisabledReason(
+    value: string
+): value is RankRecommendationRankChangeDisabledReason {
+    return [
+        "candidate_not_active",
+        "unsupported_action",
+        "current_rank_missing",
+        "recommended_rank_missing",
+        "rank_order_untrusted",
+        "low_confidence",
+        "small_capacity_or_capacity_missing",
+        "group_driven_raise_suppressed",
+        "unsupported_provider"
+    ].includes(value);
+}
+
+function normalizeRankRecommendationElementText(value: string | null | undefined): string | null {
+    const trimmed = value?.trim() ?? "";
+    return trimmed === "" ? null : trimmed;
+}
+
+function buildRankRecommendationRankChangeKey(parts: {
+    facilityId: string;
+    stayDate: string;
+    roomGroupId: string;
+    reasonFingerprint: string;
+}): string {
+    return [
+        `facility:${parts.facilityId}`,
+        `stayDate:${parts.stayDate}`,
+        `roomGroup:${parts.roomGroupId}`,
+        `reason:${parts.reasonFingerprint}`
+    ].join("|");
+}
+
+function formatRankRecommendationRankChangeSubmitFailureMessage(
+    failureType: RankRecommendationWriteFailureType | null,
+    status: number | null
+): string {
+    if (failureType === "http_error") {
+        return `送信に失敗しました（HTTP ${status ?? "-"}）`;
+    }
+    if (failureType === "network_error") {
+        return "送信に失敗しました（network error）";
+    }
+    return "送信に失敗しました";
+}
+
+function delay(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+        window.setTimeout(resolve, ms);
+    });
+}
+
+function cssEscapeAttributeValue(value: string): string {
+    if (typeof CSS !== "undefined" && typeof CSS.escape === "function") {
+        return CSS.escape(value);
+    }
+    return value.replace(/["\\]/g, "\\$&");
+}
+
 function increaseRankRecommendationDisplayLimit(): void {
     const nextLimit = Math.min(
         RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
@@ -1488,6 +2055,7 @@ function setRankRecommendationViewModeFromElement(element: HTMLElement): void {
     rankRecommendationViewMode = viewMode;
     rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
     rankRecommendationCurvePreviewOpenState.clear();
+    rankRecommendationRankChangePreviewOpenState.clear();
     queueCalendarSync({ force: true, reason: "rank-recommendation-view-mode" });
 }
 
@@ -5121,9 +5689,18 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
                 candidate.recommendedRankName ?? "",
                 candidate.recommendedRankUnavailableReason ?? "",
                 candidate.rankOrderSource,
+                formatRankRecommendationRankChangeProposalSignature(
+                    buildRankRecommendationRankChangeProposal({
+                        candidate,
+                        provider: "lincoln_custom_suggest"
+                    })
+                ),
                 displayInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate))?.signature ?? "",
                 curvePreviewInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate))?.signature ?? "",
-                isRankRecommendationCurvePreviewOpen(candidate) ? "preview-open" : "preview-closed"
+                isRankRecommendationCurvePreviewOpen(candidate) ? "preview-open" : "preview-closed",
+                isRankRecommendationRankChangePreviewOpen(candidate) ? "rank-change-open" : "rank-change-closed",
+                getPendingRankRecommendationRankChange(candidate) === null ? "rank-change-no-pending" : "rank-change-pending",
+                getRankRecommendationRankChangeResult(candidate)?.message ?? ""
             ].join(",")).join("|")
         ].join(":"),
         statusText: null,
@@ -7054,6 +7631,10 @@ function createRankRecommendationRows(
     const actionLabel = formatRankRecommendationAction(candidate);
     const reasonText = candidate.reasonCodes.join(" / ");
     const cautionText = summarizeRankRecommendationConfidenceCautions(candidate.diagnostics).join(" / ");
+    const rankChangeProposal = buildRankRecommendationRankChangeProposal({
+        candidate,
+        provider: "lincoln_custom_suggest"
+    });
 
     const cells: Array<{ value: string; title?: string; attribute?: string }> = [
         { value: formatRankRecommendationPriority(candidate.priority) },
@@ -7121,8 +7702,25 @@ function createRankRecommendationRows(
         toggleRankRecommendationCurvePreviewFromElement(curvePreviewButtonElement);
     });
 
+    const isRankChangePreviewOpen = isRankRecommendationRankChangePreviewOpen(candidate);
+    const pendingRankChange = getPendingRankRecommendationRankChange(candidate);
+    const rankChangeResult = getRankRecommendationRankChangeResult(candidate);
+    const rankChangeButtonElement = document.createElement("button");
+    rankChangeButtonElement.type = "button";
+    rankChangeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    rankChangeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-change-preview-toggle");
+    rankChangeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, candidate.stayDate);
+    rankChangeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, candidate.roomGroupId);
+    rankChangeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, candidate.reasonFingerprint);
+    rankChangeButtonElement.setAttribute("aria-expanded", isRankChangePreviewOpen ? "true" : "false");
+    rankChangeButtonElement.textContent = isRankChangePreviewOpen ? "rank調整を閉じる" : "rank調整";
+    rankChangeButtonElement.title = rankChangeProposal.enabled
+        ? "Analyzeへ移動せずに、この候補のrank変更 preview を表示"
+        : `rank調整不可: ${formatRankRecommendationRankChangeDisabledReasons(rankChangeProposal.disabledReasons)}`;
+
     const pendingDecision = getPendingRankRecommendationDecision(candidate);
     const hasPendingDecision = pendingDecision !== null;
+    const hasPendingRankChange = pendingRankChange !== null;
     const snoozeButtonElement = document.createElement("button");
     snoozeButtonElement.type = "button";
     snoozeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
@@ -7130,7 +7728,7 @@ function createRankRecommendationRows(
     setRankRecommendationDecisionButtonAttributes(snoozeButtonElement, candidate);
     snoozeButtonElement.title = "同じ候補を一時的に非表示にする";
     snoozeButtonElement.textContent = "様子見";
-    snoozeButtonElement.disabled = hasPendingDecision;
+    snoozeButtonElement.disabled = hasPendingDecision || hasPendingRankChange;
 
     const dismissButtonElement = document.createElement("button");
     dismissButtonElement.type = "button";
@@ -7139,16 +7737,22 @@ function createRankRecommendationRows(
     setRankRecommendationDecisionButtonAttributes(dismissButtonElement, candidate);
     dismissButtonElement.title = "同じ根拠の候補を非表示にする";
     dismissButtonElement.textContent = "対応不要";
-    dismissButtonElement.disabled = hasPendingDecision;
+    dismissButtonElement.disabled = hasPendingDecision || hasPendingRankChange;
 
-    actionCellElement.append(analyzeLinkElement, curvePreviewButtonElement, snoozeButtonElement, dismissButtonElement);
+    actionCellElement.append(analyzeLinkElement, curvePreviewButtonElement, rankChangeButtonElement, snoozeButtonElement, dismissButtonElement);
     if (pendingDecision !== null) {
         actionCellElement.append(createRankRecommendationPendingDecisionElement(pendingDecision));
+    }
+    if (pendingRankChange !== null) {
+        actionCellElement.append(createRankRecommendationPendingRankChangeElement(pendingRankChange));
+    } else if (rankChangeResult !== null) {
+        actionCellElement.append(createRankRecommendationRankChangeResultElement(rankChangeResult));
     }
     rowElement.append(actionCellElement);
     return [
         rowElement,
-        createRankRecommendationCurvePreviewRow(candidate, curvePreviewInfo, isPreviewOpen)
+        createRankRecommendationCurvePreviewRow(candidate, curvePreviewInfo, isPreviewOpen),
+        createRankRecommendationRankChangePreviewRow(candidate, rankChangeProposal, reasonText, cautionText, isRankChangePreviewOpen)
     ];
 }
 
@@ -7177,6 +7781,104 @@ function createRankRecommendationCurvePreviewRow(
 
     rowElement.append(cellElement);
     return rowElement;
+}
+
+function createRankRecommendationRankChangePreviewRow(
+    candidate: RankRecommendationCandidate,
+    proposal: RankRecommendationRankChangeProposal,
+    reasonText: string,
+    cautionText: string,
+    isOpen: boolean
+): HTMLTableRowElement {
+    const rowElement = document.createElement("tr");
+    rowElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE, "");
+    rowElement.setAttribute(RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE, buildRankRecommendationRankChangeKey({
+        facilityId: proposal.facilityId,
+        stayDate: proposal.stayDate,
+        roomGroupId: proposal.roomGroupId,
+        reasonFingerprint: proposal.reasonFingerprint
+    }));
+    rowElement.hidden = !isOpen;
+
+    const cellElement = document.createElement("td");
+    cellElement.colSpan = 11;
+    cellElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_CELL_ATTRIBUTE, "");
+
+    const sectionElement = document.createElement("section");
+    sectionElement.setAttribute("data-ra-rank-recommendation-rank-change-preview", "");
+
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute("data-ra-rank-recommendation-rank-change-title", "");
+    titleElement.textContent = "rank変更 preview";
+
+    const detailsElement = document.createElement("dl");
+    appendRankRecommendationRankChangePreviewItem(detailsElement, "宿泊日", formatCompactDateForDisplay(proposal.stayDate));
+    appendRankRecommendationRankChangePreviewItem(detailsElement, "部屋タイプ", proposal.roomGroupName);
+    appendRankRecommendationRankChangePreviewItem(detailsElement, "現在rank", proposal.currentRankName ?? "-");
+    appendRankRecommendationRankChangePreviewItem(detailsElement, "変更後rank", proposal.targetRankName ?? "-");
+    appendRankRecommendationRankChangePreviewItem(detailsElement, "主要根拠", reasonText === "" ? "-" : reasonText);
+    appendRankRecommendationRankChangePreviewItem(detailsElement, "注意", cautionText === "" ? "なし" : cautionText);
+    appendRankRecommendationRankChangePreviewItem(
+        detailsElement,
+        "送信不可理由",
+        proposal.disabledReasons.length === 0 ? "なし" : formatRankRecommendationRankChangeDisabledReasons(proposal.disabledReasons)
+    );
+
+    const noteElement = document.createElement("p");
+    noteElement.textContent = "送信直前に現在rankと変更履歴を再取得し、候補表示時から変わっていた場合は送信しません。5秒の送信待ち中は取消できます。";
+
+    const submitButtonElement = document.createElement("button");
+    submitButtonElement.type = "button";
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-change-submit");
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, proposal.stayDate);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE, proposal.asOfDate);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, proposal.roomGroupId);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, proposal.roomGroupName);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, proposal.reasonFingerprint);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE, proposal.confidenceLevel);
+    if (proposal.currentRankCode !== null) {
+        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_CODE_ATTRIBUTE, proposal.currentRankCode);
+    }
+    if (proposal.currentRankName !== null) {
+        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_NAME_ATTRIBUTE, proposal.currentRankName);
+    }
+    if (proposal.targetRankCode !== null) {
+        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_CODE_ATTRIBUTE, proposal.targetRankCode);
+    }
+    if (proposal.targetRankName !== null) {
+        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_NAME_ATTRIBUTE, proposal.targetRankName);
+    }
+    submitButtonElement.setAttribute(
+        RANK_RECOMMENDATION_RANK_CHANGE_DISABLED_REASONS_ATTRIBUTE,
+        proposal.disabledReasons.join(",")
+    );
+    submitButtonElement.textContent = "反映する";
+    submitButtonElement.title = proposal.enabled
+        ? "5秒の送信待ちに入る"
+        : `送信不可: ${formatRankRecommendationRankChangeDisabledReasons(proposal.disabledReasons)}`;
+    submitButtonElement.disabled = !proposal.enabled || getPendingRankRecommendationRankChange(candidate) !== null;
+
+    const result = getRankRecommendationRankChangeResult(candidate);
+    sectionElement.append(titleElement, detailsElement, noteElement, submitButtonElement);
+    if (result !== null) {
+        sectionElement.append(createRankRecommendationRankChangeResultElement(result));
+    }
+    cellElement.append(sectionElement);
+    rowElement.append(cellElement);
+    return rowElement;
+}
+
+function appendRankRecommendationRankChangePreviewItem(
+    element: HTMLDListElement,
+    label: string,
+    value: string
+): void {
+    const termElement = document.createElement("dt");
+    termElement.textContent = label;
+    const descriptionElement = document.createElement("dd");
+    descriptionElement.textContent = value;
+    element.append(termElement, descriptionElement);
 }
 
 function createRankRecommendationCurvePreviewSection(
@@ -7319,6 +8021,89 @@ function createRankRecommendationPendingDecisionElement(
 
     wrapperElement.append(labelElement, cancelButtonElement);
     return wrapperElement;
+}
+
+function getPendingRankRecommendationRankChange(
+    candidate: RankRecommendationCandidate
+): PendingRankRecommendationRankChange | null {
+    const cacheKey = buildRankRecommendationRankChangeKey({
+        facilityId: candidate.facilityId,
+        stayDate: candidate.stayDate,
+        roomGroupId: candidate.roomGroupId,
+        reasonFingerprint: candidate.reasonFingerprint
+    });
+    return pendingRankRecommendationRankChangeByKey.get(cacheKey) ?? null;
+}
+
+function getRankRecommendationRankChangeResult(
+    candidate: RankRecommendationCandidate
+): RankRecommendationRankChangeResult | null {
+    const cacheKey = buildRankRecommendationRankChangeKey({
+        facilityId: candidate.facilityId,
+        stayDate: candidate.stayDate,
+        roomGroupId: candidate.roomGroupId,
+        reasonFingerprint: candidate.reasonFingerprint
+    });
+    return rankRecommendationRankChangeResultByKey.get(cacheKey) ?? null;
+}
+
+function createRankRecommendationPendingRankChangeElement(
+    pendingRankChange: PendingRankRecommendationRankChange
+): HTMLDivElement {
+    const wrapperElement = document.createElement("div");
+    wrapperElement.setAttribute(RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE, "");
+
+    const labelElement = document.createElement("span");
+    const secondsUntilCommit = Math.max(1, Math.ceil((pendingRankChange.commitAt - Date.now()) / 1000));
+    labelElement.textContent = `${secondsUntilCommit}秒後に送信`;
+
+    const cancelButtonElement = document.createElement("button");
+    cancelButtonElement.type = "button";
+    cancelButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    cancelButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-change-cancel");
+    cancelButtonElement.setAttribute(RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE, pendingRankChange.draft.cacheKey);
+    cancelButtonElement.title = "rank変更の送信を取り消す";
+    cancelButtonElement.textContent = "取消";
+
+    wrapperElement.append(labelElement, cancelButtonElement);
+    return wrapperElement;
+}
+
+function createRankRecommendationRankChangeResultElement(
+    result: RankRecommendationRankChangeResult
+): HTMLDivElement {
+    const wrapperElement = document.createElement("div");
+    wrapperElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE, result.status);
+    wrapperElement.textContent = result.message;
+    wrapperElement.title = [
+        `発生時刻: ${formatDateTimeForDisplay(result.occurredAt)}`,
+        result.failureClass === null ? null : `分類: ${formatRankRecommendationRankChangeFailureClass(result.failureClass)}`,
+        result.httpStatus === null ? null : `HTTP status: ${result.httpStatus}`
+    ].filter((part): part is string => part !== null).join("\n");
+    return wrapperElement;
+}
+
+function isRankRecommendationRankChangePreviewOpen(candidate: RankRecommendationCandidate): boolean {
+    return rankRecommendationRankChangePreviewOpenState.get(buildRankRecommendationRankChangeKey({
+        facilityId: candidate.facilityId,
+        stayDate: candidate.stayDate,
+        roomGroupId: candidate.roomGroupId,
+        reasonFingerprint: candidate.reasonFingerprint
+    })) === true;
+}
+
+function formatRankRecommendationRankChangeProposalSignature(
+    proposal: RankRecommendationRankChangeProposal
+): string {
+    return [
+        proposal.enabled ? "enabled" : "disabled",
+        proposal.currentRankCode ?? "",
+        proposal.currentRankName ?? "",
+        proposal.targetRankCode ?? "",
+        proposal.targetRankName ?? "",
+        proposal.confidenceLevel,
+        proposal.disabledReasons.join("/")
+    ].join(":");
 }
 
 function resolveRankRecommendationListHost(): { parentElement: HTMLElement; insertAfterElement: HTMLElement } | null {
@@ -7621,6 +8406,63 @@ function formatRankRecommendationAction(candidate: RankRecommendationCandidate):
 
 function formatRankRecommendationStatus(status: RankRecommendationStatus): string {
     return status === "active" ? "確認待ち" : "判定対象外";
+}
+
+function formatRankRecommendationRankChangeDisabledReasons(
+    reasons: readonly RankRecommendationRankChangeDisabledReason[]
+): string {
+    if (reasons.length === 0) {
+        return "なし";
+    }
+    return reasons.map(formatRankRecommendationRankChangeDisabledReason).join(" / ");
+}
+
+function formatRankRecommendationRankChangeDisabledReason(
+    reason: RankRecommendationRankChangeDisabledReason
+): string {
+    switch (reason) {
+        case "candidate_not_active":
+            return "候補がactiveではありません";
+        case "unsupported_action":
+            return "上げ検討または下げ注意ではありません";
+        case "current_rank_missing":
+            return "現在rankを取得できません";
+        case "recommended_rank_missing":
+            return "隣接recommended rankがありません";
+        case "rank_order_untrusted":
+            return "rank順序が設定画面または手動調整で確認されていません";
+        case "low_confidence":
+            return "確度が低です";
+        case "small_capacity_or_capacity_missing":
+            return "小キャパまたは部屋数不明です";
+        case "group_driven_raise_suppressed":
+            return "団体主因のため上げ判断を抑制しています";
+        case "unsupported_provider":
+        default:
+            return "観測済みのLincoln custom rank pathではありません";
+    }
+}
+
+function formatRankRecommendationRankChangeFailureClass(
+    failureClass: RankRecommendationRankChangeFailureClass
+): string {
+    switch (failureClass) {
+        case "current_rank_mismatch":
+            return "current rank mismatch";
+        case "rank_status_changed":
+            return "rank status changed";
+        case "proposal_disabled":
+            return "proposal disabled";
+        case "http_error":
+            return "HTTP error";
+        case "network_error":
+            return "network error";
+        case "reflection_unconfirmed":
+            return "reflection unconfirmed";
+        case "unexpected_error":
+        default:
+            return "unexpected error";
+    }
 }
 
 function renderCachedMonthlyCalendarGroupRooms(
@@ -9126,6 +9968,7 @@ function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
     activeBatchDateKey = batchDateKey;
     activeFacilityCacheKey = facilityCacheKey;
     clearPendingRankRecommendationDecisions();
+    clearPendingRankRecommendationRankChanges();
     salesSettingPrefetchKeys.clear();
     groupRoomCache.clear();
     bookingCurveCache.clear();
@@ -13614,6 +14457,61 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.45;
         }
 
+        [${RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE}] td {
+            padding: 0 8px 10px;
+            border-top: 0;
+            white-space: normal;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_CELL_ATTRIBUTE}] {
+            background: #f6f8fb;
+        }
+
+        [data-ra-rank-recommendation-rank-change-preview] {
+            display: grid;
+            gap: 8px;
+            padding: 10px 12px;
+            border: 1px solid #d7e0ea;
+            border-radius: 6px;
+            background: #ffffff;
+        }
+
+        [data-ra-rank-recommendation-rank-change-title] {
+            color: #243245;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.4;
+        }
+
+        [data-ra-rank-recommendation-rank-change-preview] dl {
+            display: grid;
+            grid-template-columns: max-content minmax(0, 1fr);
+            gap: 5px 10px;
+            margin: 0;
+            color: #33445a;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        [data-ra-rank-recommendation-rank-change-preview] dt {
+            color: #5b6b7d;
+            font-weight: 800;
+        }
+
+        [data-ra-rank-recommendation-rank-change-preview] dd {
+            min-width: 0;
+            margin: 0;
+            white-space: normal;
+        }
+
+        [data-ra-rank-recommendation-rank-change-preview] p {
+            margin: 0;
+            color: #5b6b7d;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.5;
+        }
+
         [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
@@ -13659,7 +14557,24 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
-        [${RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE}] [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}] {
+        [${RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            padding: 4px 6px;
+            border: 1px solid #d8b247;
+            border-radius: 5px;
+            background: #fff7df;
+            color: #5c4300;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.3;
+            white-space: nowrap;
+        }
+
+        [${RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE}] [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}],
+        [${RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE}] [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}] {
             min-height: 22px;
             margin-right: 0;
             padding: 2px 6px;
@@ -13667,6 +14582,31 @@ function ensureGroupRoomStyles(): void {
             background: #ffffff;
             color: #5c4300;
             font-size: 11px;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE}] {
+            display: block;
+            width: fit-content;
+            margin-top: 6px;
+            padding: 4px 6px;
+            border-radius: 5px;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.35;
+            white-space: normal;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE}="success"] {
+            border: 1px solid #9bc7aa;
+            background: #ecf8ef;
+            color: #17663a;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE}="blocked"],
+        [${RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE}="failed"] {
+            border: 1px solid #e1b1b1;
+            background: #fff0f0;
+            color: #8b2f2f;
         }
 
         [${RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE}] {
