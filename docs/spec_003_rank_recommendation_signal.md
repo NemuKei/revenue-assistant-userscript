@@ -337,6 +337,9 @@ scoring では次を守る。
 - reference curve、forecast、capacity、current rank、rank ladder、weekday context、競合価格 snapshot が欠損している場合は、推測で埋めず diagnostics に不足理由を出す。
 - 直近に rank 変更がある場合は、同じ方向の recommendation を出し続けないよう cooldown を使う。
 - 過去に反応が悪かった rank transition は、priority または confidence を下げる。
+- `lower_watch` は、宿泊日まで 30 日以内、稼働率 40% 以下、かつ reference 比較または個人 pace 比較が不足または下振れしている場合に出す。reference 比較または個人 pace 比較で実際の下振れが確認できる場合は、`raise_watch` と同じ `high` priority tier に置き、sort で confidence、宿泊日、roomGroup 名によって比較する。
+- `lower_watch` のうち、reference 比較または個人 pace 比較が欠損しているために「下振れの可能性」として出している候補は、`medium` priority に留める。欠損だけを理由に `high` へ上げると、下げ候補の過剰表示になり、実際に下振れしている候補と区別できなくなるためである。
+- `priority` は `reasonFingerprint` に含める。したがって、`medium` だった `lower_watch` が下振れ evidence により `high` へ変わった場合は、過去の同一 `stayDate x roomGroup x action` の利用者判断と別 fingerprint になることがある。これは、優先度が変わった候補を再確認できるようにするための挙動である。
 
 forecast の扱い:
 

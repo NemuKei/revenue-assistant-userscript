@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-46` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `RAU-RR-50`。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-46` まで、および `RAU-RR-50` が完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `RAU-RR-47`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -52,6 +52,7 @@
   - `RAU-RR-44` top list の表示モードを切り替える
   - `RAU-RR-45` 料金調整候補をカレンダー下に配置する
   - `RAU-RR-46` 料金調整候補に前回変更日とcooldown診断を表示する
+  - `RAU-RR-50` 上げ推奨と下げ推奨のpriority比較を見直す
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
   - `RAU-FC-03` forecast evaluation dataset を実装する
@@ -75,8 +76,8 @@
   - `docs/spec_002_curve_core.md`
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
-  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日とcooldown診断の表示まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-50` とする。次に進める場合は、上げ推奨が多く見えている理由を、入力データ分布、scoring 条件、priority、sort、表示モードの順に切り分ける。
+  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日とcooldown診断の表示、上げ推奨と下げ推奨の priority 比較見直しまで完了済みとして扱う。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-47` とする。次に進める場合は、料金調整候補上で booking curve preview を表示するため、既存 `booking_curve_raw_source:v2` を使う範囲と、追加取得が必要になる範囲を分けて確認する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -118,6 +119,8 @@
   - `RAU-RR-43` では、top list の表示上限が初期値 10 件を超えている場合に `10件に戻す` を出し、表示件数だけを初期値へ戻せるようにした。`さらに表示` と `10件に戻す` は同じ表示件数 control として top list meta の下に表示する。candidate scoring、priority、confidence、reasonFingerprint、rank order、manual override、user decision、resolved 判定、API request 範囲、request 件数、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は変更していない。Chrome拡張 backend では extension browser 2 件を検出したが、今回の callable capability は `pageAssets` のみで `openTabs()` は利用できなかったため、通常 Chrome の対象 tab は `npm run chrome:pages` で確認した。Chrome DevTools Protocol 合成 DOM 確認では、active candidates 25 件の条件で、初期 row 10 件、`さらに表示 (10件)`、`10件に戻す` なし、展開後 row 20 件、`さらに表示 (5件)`、`10件に戻す` あり、リセット後 row 10 件、`さらに表示 (10件)`、`10件に戻す` なしへ戻ることを確認した。金額または percent 0 件、forecast 数値 label 0 件、sales / ADR 数値 label 0 件、unexpected request 0 件、page error 0 件、console error 0 件だった。
   - `RAU-RR-44` では、top list meta の下に `全て`、`上げ検討`、`下げ注意`、`注意あり` の表示モード control を追加した。表示モードは user decision と rank change resolved の lifecycle filter 後に適用し、表示中 row、summary、`他 n件`、`さらに表示` の対象だけを切り替える。表示モード変更時は表示上限を初期値 10 件へ戻す。candidate scoring、priority、confidence、reasonFingerprint、rank order、manual override、user decision、resolved 判定、API request 範囲、request 件数、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、Revenue Assistant write / bulk apply は変更していない。Chrome拡張 backend では extension browser、`openTabs()`、tab count 3 を確認し、`npm run chrome:pages` でも通常 Chrome の Revenue Assistant tab を確認した。Chrome DevTools Protocol 合成 DOM 確認では、active candidates 25 件の条件で、`上げ検討` が `raise_watch` だけ、`下げ注意` が `lower_watch` だけ、`注意あり` が diagnostics summary ありの候補を表示し、summary に `表示条件 ...` と条件外件数が出ること、`全て` へ戻すと `表示条件` が消えることを確認した。金額、percent、forecast、売上、ADR の文字列は top list に出ず、unexpected request、page error、console error は 0 件だった。
   - `RAU-RR-45` では、top list の挿入先を toolbar 直下から月次カレンダー container の直後へ移した。候補生成、優先度、表示モード、表示件数、user decision、resolved 判定、rank order、API request 範囲、Revenue Assistant write / bulk apply は変更していない。Chrome拡張 backend では extension browser、`openTabs()`、tab count 3 を確認し、`npm run chrome:pages` でも通常 Chrome の Revenue Assistant tab を確認した。Chrome DevTools Protocol 合成 DOM 確認では、候補 row 3 件、表示モード 4 件、list の直前要素が `monthly-calendar`、page error 0 件、console warning / error 0 件を確認した。実ログイン通常 Chrome の読み取り確認では、calendar cell 92 件、候補 row 10 件、表示モード 4 件、list が calendar cell を含む container の後続にあり、page error 0 件、console error 0 件だった。rank 変更、送信、設定変更は行っていない。
+  - `RAU-RR-46` では、top list に `前回変更` 列を追加し、既存取得済み rank change history と browser-local user decision record から、前回変更日、変更内容、実行者、候補が表示されている理由を tooltip で確認できるようにした。候補表示理由は、前回変更が基準日より前であること、基準日以降の変更で通常は resolved 非表示になること、利用者判断がないこと、様子見 cooldown が切れていること、前回判断とは別の `reasonFingerprint` であること、または前回判断後に `confidence` 表示段階が上がったことを区別する。cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
+  - `RAU-RR-50` では、下げ候補が見えにくい理由を入力データ、scoring 条件、priority、sort、表示モードに分けて確認した。Chrome DevTools Protocol の read-only 確認では、`current_settings` に下げ条件に近い入力があり、`下げ注意` 表示モードでは `lower_watch` が表示されたが、`全て` の初期 10 件と展開後 50 件はすべて `raise_watch` / `high` だった。原因は `lower_watch` の初期 priority が `medium` で、sort が priority を最優先するためである。実下振れ evidence がある `lower_watch` は `high` に上げ、欠損だけで出ている `lower_watch` は `medium` に留めるようにした。実装後の Chrome DevTools Protocol 確認では、`全て` の初期 10 件に `lower_watch` 9 件と `raise_watch` 1 件が入り、展開後 50 件には `lower_watch` 9 件と `raise_watch` 41 件が入った。`下げ注意` 表示モードでは 10 件中 `high` 9 件、`medium` 1 件だった。page error、console error、top list 内の金額または percent 表示はいずれも 0 件だった。候補対象範囲、表示モード、推奨レート金額、rank write、Revenue Assistant write / bulk apply は変更していない。
   - `RAU-RR-11` では bulk apply を `not-now` と判断した。write endpoint 候補は見えているが、request shape、安全制約、preview、明示選択、反映結果保存、partial failure 保存が未確認または未実装であるため、first phase では button も API 実行も追加しない。
 - 次スレッドでやらないこと:
   - 推奨レート金額を出さない。
@@ -295,8 +298,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-50` であることを確認する。
-2. `RAU-RR-50` では、上げ推奨が多く見えている理由を、入力データ分布、scoring 条件、priority、sort、表示モードの順に切り分ける。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-47` であることを確認する。
+2. `RAU-RR-47` では、料金調整候補上で booking curve preview を表示するため、Analyze 画面と同等の表示に必要な data source、既存 raw source の利用可否、追加 request の有無、top list 上の表示密度を切り分ける。
 3. Rank Recommendation Bundle を進める場合は、forecast 数値、sales / ADR 数値、競合価格の金額または差額を top list へ直接表示しない契約と、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
 
 変更しない契約:

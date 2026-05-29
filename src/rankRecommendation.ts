@@ -205,7 +205,7 @@ function buildRankRecommendationCandidate(options: {
             && (allDeviation === null || allDeviation < 0 || transientDeviation === null || transientDeviation < 0)
         ) {
             action = "lower_watch";
-            priority = "medium";
+            priority = hasConfirmedLowerPaceEvidence(allDeviation, transientDeviation) ? "high" : "medium";
             confidence = curveEvidence === null || allDeviation === null ? 0.35 : 0.5;
             reasonCodes.push("近日程で稼働低め");
         } else {
@@ -381,6 +381,14 @@ function getDeviation(current: number | null, reference: number | null): number 
 
 function isPositive(value: number | null): boolean {
     return value !== null && value > 0;
+}
+
+function isNegative(value: number | null): boolean {
+    return value !== null && value < 0;
+}
+
+function hasConfirmedLowerPaceEvidence(allDeviation: number | null, transientDeviation: number | null): boolean {
+    return isNegative(allDeviation) || isNegative(transientDeviation);
 }
 
 function increaseConfidence(current: number, delta: number): number {

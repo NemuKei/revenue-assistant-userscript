@@ -2889,7 +2889,7 @@
 ### RAU-RR-50 上げ推奨と下げ推奨のpriority比較を見直す
 
 - 状態:
-  - 未着手。
+  - 実装済み。
 - 目的:
   - top list で料金上げ候補ばかりが見える原因を確認し、下げ推奨が常に上げ推奨より後回しになっていないかを検証する。
 - 背景:
@@ -2905,6 +2905,14 @@
   - 下げ推奨が少ない理由が、入力データ、scoring 条件、priority、sort、表示モードのどれにあるか切り分けられている。
   - priority または sort を変更する場合は、上げ候補の過剰抑制や下げ候補の過剰表示を避ける受け入れ条件がある。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- 実装:
+  - Chrome DevTools Protocol の read-only 確認では、`current_settings` の入力に `raiseInputLike` 133 件、`lowerInputLike` 41 件、宿泊日まで 30 日以内の `lowerInputLikeWithin30` 41 件があった。したがって、下げ候補が見えない主因を入力データの完全な欠損とは扱わない。
+  - 変更前の実画面では、`全て` の初期 10 件と `さらに表示` 後の 50 件がすべて `raise_watch` / `high` で、`下げ注意` 表示モードでは `lower_watch` が表示された。原因は、`raise_watch` が初期 `high`、`lower_watch` が初期 `medium` で、sort が priority を最優先するためである。
+  - `allDeviation < 0` または `transientDeviation < 0` の実下振れ evidence がある `lower_watch` は `high` に上げ、欠損だけで出ている `lower_watch` は `medium` に留める。これにより、実下振れを持つ下げ候補は上げ候補と同じ priority level で比較されるが、根拠不足の下げ候補は過剰に上位表示されない。
+  - `priority` は `reasonFingerprint` に含まれるため、`medium` から `high` へ変わった `lower_watch` は過去の同一 `stayDate x roomGroup x action` の利用者判断と別 fingerprint になる場合がある。これは優先度が変わった候補を再確認できるようにするための挙動である。
+- 確認:
+  - 実装後に build 済み `dist/revenue-assistant-userscript.user.js` を通常 Chrome の Revenue Assistant tab へ Chrome DevTools Protocol で一時注入した。`全て` の初期 10 件は `lower_watch` 9 件、`raise_watch` 1 件で、全件 `high` だった。`さらに表示` 後の 50 件は `lower_watch` 9 件、`raise_watch` 41 件で、全件 `high` だった。`下げ注意` 表示モードでは 10 件中 `high` 9 件、`medium` 1 件だった。したがって、実下振れ evidence がある下げ候補は上げ候補と同じ `high` tier で比較され、欠損由来の下げ候補は `medium` に残ることを確認した。
+  - 実装後の CDP 確認では page error 0 件、console error 0 件、top list 内の金額または percent 表示 0 件だった。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -3448,19 +3456,19 @@
 
 Now:
 
-- `RAU-RR-50` 上げ推奨と下げ推奨のpriority比較を見直す
+- `RAU-RR-47` 料金調整候補上でbooking curve previewを表示する
 
 Next:
 
-- `RAU-RR-47` 料金調整候補上でbooking curve previewを表示する
+- `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
 
 After Next:
 
-- `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
+- `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
 
 Later:
 
-- `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
+- なし。
 
 統合判断:
 
@@ -3502,8 +3510,8 @@ Later:
 - `RAU-RR-38` は 2026-05-28 に実装済みである。top list の `確度` cell で、不足または注意が残る候補に `注意あり` を表示し、同じ確度段階でも追加確認が必要な候補を行本体で見分けられるようにした。既存 diagnostics summary helper の有無を表示に反映するだけで、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-45` は 2026-05-29 に実装済みである。top list の挿入位置を、toolbar 直下から月次カレンダー container の直後へ移した。candidate scoring、priority、confidence、reasonFingerprint、表示モード、表示件数、user decision、resolved 判定、rank order、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-46` は 2026-05-29 に実装済みである。top list に `前回変更` 列を追加し、既存取得済み rank change history と browser-local user decision record から、前回変更日、変更内容、様子見 cooldown 期限切れ、別 `reasonFingerprint`、confidence 表示段階上昇を tooltip で確認できるようにした。cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
-- `RAU-RR-50` を Now に置く理由は、現在の実データ確認で上げ推奨が多く見えており、下げ推奨が入力データ上少ないのか、scoring 条件、priority、sort、表示モードで見えにくくなっているのかを、直接 rank write を設計する前に確認する必要があるためである。
-- `RAU-RR-47` は、Analyze へ遷移せずに判断材料を確認するための次の UI 改善候補である。ただし、booking curve preview は表示密度、既存 top list の横幅、追加 request 範囲に影響するため、上げ推奨と下げ推奨のpriority比較を確認した後に置く。
+- `RAU-RR-50` は 2026-05-29 に実装済みである。Chrome DevTools Protocol の read-only 確認では、下げ候補に近い入力は存在し、表示モードを `下げ注意` に切り替えると `lower_watch` は表示された。一方で `全て` の初期 10 件と展開後 50 件は `raise_watch` / `high` に占められていたため、下げ候補が見えにくい主因は `lower_watch` の初期 `medium` priority と priority-first sort だった。対応として、実下振れ evidence がある `lower_watch` だけを `high` に上げ、欠損由来の `lower_watch` は `medium` に留めた。
+- `RAU-RR-47` を Now に置く理由は、`RAU-RR-45`、`RAU-RR-46`、`RAU-RR-50` により top list の配置、前回変更、上げ/下げの見え方が整ったため、次に Analyze へ遷移せずに判断材料を確認するための booking curve preview を検討できる状態になったためである。ただし、booking curve preview は表示密度、既存 top list の横幅、追加 request 範囲に影響するため、実装前に利用する既存 raw source と追加取得の有無を切り分ける。
 - `RAU-RR-48` と `RAU-RR-49` は write safety と取消可能性に関わるため、booking curve preview より後に置く。実 rank 変更を伴う確認は、対象施設、対象日付、対象 roomGroup、変更前 rank、変更後 rank、戻し方を固定してから行う。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
