@@ -2825,7 +2825,8 @@
 - 実装:
   - 候補 row の操作列に `曲線` button を追加した。押下すると `stayDate x roomGroupId` 単位で preview を開閉し、表示モード切替時は開閉状態を初期化する。
   - preview は既存保存済みの `booking_curve_raw_source:v2` を読む。top list preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やさない。
-  - reference curve は保存済み raw source 内の前年、2年前、3年前の room count から作る preview 用 reference とする。
+  - reference curve は、保存済みの derived reference curve がある場合はそれを使い、ない場合は保存済み `booking_curve_raw_source:v2` から Analyze と同じ直近型または季節型の計算関数で再計算する。preview 表示のために不足している reference source を新規 API request で取得しない。
+  - 直近型 reference curve の保存済み derived record または計算元 raw source がない場合は、季節型と同じ線を代用せず、直近型を欠損として扱う。季節型 reference curve の計算元 raw source がない場合だけ、対象日の raw source に含まれる前年、2年前、3年前の room count から作る historical reference を fallback として使う。
   - raw source がない場合または基準日以前の booking curve point がない場合は chart の代わりに不足 diagnostics を表示する。
   - 2026-05-29 の修正で、preview の rank marker は対象 `stayDate` と同じ `suggest_statuses[].date` の履歴だけを使うようにした。これにより、月表示範囲内の別宿泊日の同じ roomGroup 変更履歴を、対象候補の booking curve 上へ誤って表示しない。
 - 非目標:
@@ -2845,6 +2846,7 @@
   - Chrome拡張 backend 確認: node_repl から Chrome extension browser の `openTabs()` が通ることを確認した。
   - Chrome DevTools Protocol 実ログイン通常 Chrome 確認: 最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10件、`曲線` button 10件、preview 開閉、表示中 preview row、SVG chart 2個、diagnostics 1件、page error 0件、console error 0件、preview text 内の金額・percent・ADR・sales・競合価格・推奨レート表示 0件を確認した。既存画面側で background の `/api/v4/booking_curve` request が継続していたため、CDP 上では click 起因の request だけを完全分離できなかった。ただし実装上の click handler は `queueCalendarSync()`、`loadBookingCurve()`、`getBookingCurve()` を呼ばず、描画済み preview row の `hidden` と button の `aria-expanded` だけを変更する。
   - 2026-05-29 の preview marker 修正確認: Chrome DevTools Protocol で通常 Chrome の Revenue Assistant root tab に最新 `dist/revenue-assistant-userscript.user.js` を一時注入した。表示範囲 `20260601` から `20260630` の `suggest_statuses` は 443 件で、対象行 `20260620 x キャンプ、ツインS` について、修正前ロジック相当の同一 roomGroup 変更履歴は 73 件、修正後の同一 stayDate かつ同一 roomGroup 変更履歴は 3 件だった。preview 表示では SVG 2 件、marker point 6 件、marker hitbox 6 件、page error 0 件、console error 0 件だった。
+  - 2026-05-29 の preview reference curve 修正確認: Chrome DevTools Protocol で通常 Chrome の Revenue Assistant root tab に最新 `dist/revenue-assistant-userscript.user.js` を一時注入した。対象行 `20260620 x キャンプ、ツインS` の preview で SVG 2 件を表示し、全体 panel と個人 panel のどちらも `直近型` と `季節型` の path が同一ではないこと、diagnostics が `不足診断: なし` であること、page error 0 件、console error 0 件であることを確認した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -3577,7 +3579,7 @@ Later:
 - `RAU-RR-45` は 2026-05-29 に実装済みである。top list の挿入位置を、toolbar 直下から月次カレンダー container の直後へ移した。candidate scoring、priority、confidence、reasonFingerprint、表示モード、表示件数、user decision、resolved 判定、rank order、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-46` は 2026-05-29 に実装済みである。top list に `前回変更` 列を追加し、既存取得済み rank change history と browser-local user decision record から、前回変更日、変更内容、様子見 cooldown 期限切れ、別 `reasonFingerprint`、confidence 表示段階上昇を tooltip で確認できるようにした。cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-50` は 2026-05-29 に実装済みである。Chrome DevTools Protocol の read-only 確認では、下げ候補に近い入力は存在し、表示モードを `下げ注意` に切り替えると `lower_watch` は表示された。一方で `全て` の初期 10 件と展開後 50 件は `raise_watch` / `high` に占められていたため、下げ候補が見えにくい主因は `lower_watch` の初期 `medium` priority と priority-first sort だった。対応として、実下振れ evidence がある `lower_watch` だけを `high` に上げ、欠損由来の `lower_watch` は `medium` に留めた。
-- `RAU-RR-47` は 2026-05-29 に実装済みである。top list の候補 row に `曲線` button を追加し、候補 row 直下の追加 row で Analyze 画面と同じ chart component を使った booking curve preview を開閉できるようにした。data source は既存保存済みの `booking_curve_raw_source:v2` に限定し、raw source がない場合は不足 diagnostics を表示する。preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やしていない。
+- `RAU-RR-47` は 2026-05-29 に実装済みである。top list の候補 row に `曲線` button を追加し、候補 row 直下の追加 row で Analyze 画面と同じ chart component を使った booking curve preview を開閉できるようにした。data source は既存保存済みの `booking_curve_raw_source:v2` と derived reference curve cache に限定し、raw source がない場合は不足 diagnostics を表示する。preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やしていない。直近型と季節型の reference curve は同じ historical fallback を共有せず、保存済み derived record または保存済み raw source から Analyze と同じ種類別計算を使う。
 - `RAU-RR-48` は 2026-05-29 に read-only 調査済みである。標準画面の料金ランク一括反映は、site controller ごとに `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を呼び分ける候補があり、payload 候補は `date`、`rmRoomGroupId`、`priceRankCode` と、現在設定に値がある場合の `limitedNumber`、食事条件 field から作られる。標準 UI には送信前の確認ややり直し入口、成功、一部失敗、失敗の通知種別がある。ただし実 POST は実行していないため、server 側 validation、error body、partial failure response schema、同時更新時の挙動、反映後 rollback 可否は未確認である。top list 直接 rank 変更の実装はまだ行わない。
 - `RAU-RR-49` は 2026-05-29 に実装済みである。`様子見` と `対応不要` は押下直後に保存せず、5 秒の in-memory pending state に入れる。pending 中は行内に `n秒後に確定` と `取消` button を表示し、`取消` で decision record を保存せずに戻せる。timer 満了後だけ従来と同じ decision record を保存し、cooldown、dismiss、confidence escalation、reasonFingerprint による lifecycle filter は変更していない。Revenue Assistant write API、rank 直接変更、bulk apply は追加していない。
 - `RAU-RR-51` は、料金調整候補から rank 調整する UI shell の設計 task とする。`RAU-RR-48` の write endpoint 候補と `RAU-RR-49` の pending 操作モデルを前提にするが、実 POST はまだ行わない。

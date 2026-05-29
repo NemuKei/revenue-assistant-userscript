@@ -37,6 +37,7 @@ import {
 import {
     buildReferenceCurveCacheKey,
     getOrComputeReferenceCurve,
+    readReferenceCurveRecord,
     scheduleReferenceCurveRequest
 } from "./referenceCurveStore";
 import { createIntervalRequestScheduler } from "./requestScheduler";
@@ -5318,7 +5319,7 @@ async function readRankRecommendationCurvePreviewInfo(options: {
         return buildMissingRankRecommendationCurvePreviewInfo(["booking_curve_point_missing"]);
     }
 
-    const referenceData = buildRankRecommendationCurvePreviewReferenceData({
+    const referenceData = await buildRankRecommendationCurvePreviewReferenceData({
         candidate: options.candidate,
         facilityId: options.facilityId,
         asOfDate: options.asOfDate,
@@ -5373,14 +5374,14 @@ function buildMissingRankRecommendationCurvePreviewInfo(diagnostics: string[]): 
     };
 }
 
-function buildRankRecommendationCurvePreviewReferenceData(options: {
+async function buildRankRecommendationCurvePreviewReferenceData(options: {
     candidate: RankRecommendationCandidate;
     facilityId: string;
     asOfDate: string;
     response: BookingCurveResponse;
-}): SalesSettingBookingCurveReferenceData {
-    const buildReference = (segment: CurveSegment, curveKind: ReferenceCurveKind): ReferenceCurveResult => (
-        buildRankRecommendationHistoricalReferenceCurveResult({
+}): Promise<SalesSettingBookingCurveReferenceData> {
+    const buildReference = (segment: CurveSegment, curveKind: ReferenceCurveKind): Promise<ReferenceCurveResult | null> => (
+        readRankRecommendationCurvePreviewReferenceResult({
             facilityId: options.facilityId,
             stayDate: options.candidate.stayDate,
             asOfDate: options.asOfDate,
@@ -5390,15 +5391,172 @@ function buildRankRecommendationCurvePreviewReferenceData(options: {
             curveKind
         })
     );
+    const [
+        recentOverall,
+        seasonalOverall,
+        recentIndividual,
+        seasonalIndividual,
+        recentGroup,
+        seasonalGroup
+    ] = await Promise.all([
+        buildReference("all", "recent_weighted_90"),
+        buildReference("all", "seasonal_component"),
+        buildReference("transient", "recent_weighted_90"),
+        buildReference("transient", "seasonal_component"),
+        buildReference("group", "recent_weighted_90"),
+        buildReference("group", "seasonal_component")
+    ]);
 
     return {
-        recentOverall: buildReference("all", "recent_weighted_90"),
-        seasonalOverall: buildReference("all", "seasonal_component"),
-        recentIndividual: buildReference("transient", "recent_weighted_90"),
-        seasonalIndividual: buildReference("transient", "seasonal_component"),
-        recentGroup: buildReference("group", "recent_weighted_90"),
-        seasonalGroup: buildReference("group", "seasonal_component")
+        recentOverall,
+        seasonalOverall,
+        recentIndividual,
+        seasonalIndividual,
+        recentGroup,
+        seasonalGroup
     };
+}
+
+async function readRankRecommendationCurvePreviewReferenceResult(options: {
+    facilityId: string;
+    stayDate: string;
+    asOfDate: string;
+    roomGroupId: string;
+    response: BookingCurveResponse;
+    segment: CurveSegment;
+    curveKind: ReferenceCurveKind;
+}): Promise<ReferenceCurveResult | null> {
+    const normalizedStayDate = normalizeDateKey(options.stayDate);
+    const normalizedAsOfDate = normalizeDateKey(options.asOfDate);
+    const weekday = normalizedStayDate === null ? null : getUtcWeekday(normalizedStayDate);
+    if (normalizedStayDate === null || normalizedAsOfDate === null || weekday === null) {
+        return null;
+    }
+
+    const targetMonth = normalizedStayDate.slice(0, 7);
+    const algorithmVersion = options.curveKind === "recent_weighted_90"
+        ? RECENT_WEIGHTED_90_ALGORITHM_VERSION
+        : SEASONAL_COMPONENT_ALGORITHM_VERSION;
+    const cacheKey = buildReferenceCurveCacheKey({
+        facilityId: options.facilityId,
+        scope: "roomGroup",
+        roomGroupId: options.roomGroupId,
+        ...(options.curveKind === "recent_weighted_90"
+            ? { targetStayDate: normalizedStayDate }
+            : { targetMonth, weekday }),
+        asOfDate: normalizedAsOfDate,
+        segment: options.segment,
+        curveKind: options.curveKind,
+        algorithmVersion
+    });
+    const cachedRecord = await readReferenceCurveRecord(cacheKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation preview reference curve cache`, {
+                stayDate: options.stayDate,
+                asOfDate: options.asOfDate,
+                roomGroupId: options.roomGroupId,
+                segment: options.segment,
+                curveKind: options.curveKind,
+                error
+            });
+            return undefined;
+        });
+    if (cachedRecord !== undefined) {
+        return cachedRecord.result;
+    }
+
+    const candidateStayDates = options.curveKind === "recent_weighted_90"
+        ? getRecentWeighted90CandidateStayDates({
+            targetStayDate: normalizedStayDate,
+            asOfDate: normalizedAsOfDate,
+            ticks: SALES_SETTING_REFERENCE_CURVE_TICKS
+        })
+        : getSeasonalComponentCandidateStayDates({
+            targetMonth,
+            weekday
+        });
+    const sources = await readRankRecommendationCurvePreviewReferenceSources({
+        facilityId: options.facilityId,
+        asOfDate: options.asOfDate,
+        roomGroupId: options.roomGroupId,
+        stayDates: candidateStayDates
+    });
+    if (sources.length > 0) {
+        const input = buildCurveInputFromBookingCurveResponses({
+            facilityId: options.facilityId,
+            asOfDate: normalizedAsOfDate,
+            sources,
+            segments: [options.segment]
+        });
+        return options.curveKind === "recent_weighted_90"
+            ? buildRecentWeighted90ReferenceCurve(input, {
+                scope: "roomGroup",
+                roomGroupId: options.roomGroupId,
+                segment: options.segment,
+                ticks: SALES_SETTING_REFERENCE_CURVE_TICKS,
+                targetStayDate: normalizedStayDate,
+                asOfDate: normalizedAsOfDate
+            })
+            : buildSeasonalComponentReferenceCurve(input, {
+                scope: "roomGroup",
+                roomGroupId: options.roomGroupId,
+                segment: options.segment,
+                ticks: SALES_SETTING_REFERENCE_CURVE_TICKS,
+                targetMonth,
+                weekday,
+                asOfDate: normalizedAsOfDate
+            });
+    }
+
+    return options.curveKind === "seasonal_component"
+        ? buildRankRecommendationHistoricalReferenceCurveResult(options)
+        : null;
+}
+
+async function readRankRecommendationCurvePreviewReferenceSources(options: {
+    facilityId: string;
+    asOfDate: string;
+    roomGroupId: string;
+    stayDates: readonly string[];
+}): Promise<BookingCurveResponseSource[]> {
+    const asOfDateKey = toCompactDateKey(options.asOfDate);
+    if (asOfDateKey === null) {
+        return [];
+    }
+
+    const uniqueStayDates = Array.from(new Set(options.stayDates.flatMap((stayDate) => {
+        const compactStayDate = toCompactDateKey(stayDate);
+        return compactStayDate === null ? [] : [compactStayDate];
+    })));
+    const records = await Promise.all(uniqueStayDates.map(async (stayDate) => {
+        const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+            facilityId: options.facilityId,
+            stayDate,
+            asOfDate: asOfDateKey,
+            scope: "roomGroup",
+            roomGroupId: options.roomGroupId,
+            endpoint: BOOKING_CURVE_ENDPOINT,
+            query: buildBookingCurveQuerySignature(stayDate, options.roomGroupId)
+        });
+        return readBookingCurveRawSourceRecord(rawSourceKey)
+            .catch((error: unknown) => {
+                console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation preview reference source`, {
+                    stayDate,
+                    asOfDate: asOfDateKey,
+                    roomGroupId: options.roomGroupId,
+                    error
+                });
+                return undefined;
+            });
+    }));
+
+    return records
+        .filter((record): record is NonNullable<typeof record> => record !== undefined)
+        .map((record) => ({
+            response: record.response as BookingCurveResponse,
+            scope: "roomGroup",
+            roomGroupId: options.roomGroupId
+        }));
 }
 
 function collectRankRecommendationCurvePreviewDiagnostics(referenceData: SalesSettingBookingCurveReferenceData): string[] {
