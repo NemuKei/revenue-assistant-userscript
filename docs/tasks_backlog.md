@@ -2582,6 +2582,53 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-42 top list の表示件数を段階的に増やす
+
+- 状態:
+  - 2026-05-29 実装済み。
+- 目的:
+  - 料金調整候補 list で、初期 top 10 の外にある active candidates を、上位候補を非表示にしなくても確認できるようにする。
+- 背景:
+  - `RAU-RR-29` で、lifecycle filter 後に top 10 外の active candidates がある場合は `他 n件` を表示するようにした。
+  - ただし `他 n件` だけでは、11 件目以降の候補内容を読む入口がない。利用者は、上位候補を `様子見`、`対応不要`、または `反映済み` で非表示にしない限り、下位候補を確認できない。
+- スコープ:
+  - 初期表示は従来どおり 10 件とする。
+  - active candidates が現在の表示上限を超え、かつ表示上限が 50 件未満の場合、top list meta の下に `さらに表示` を表示する。
+  - `さらに表示` を押すたびに表示上限を 10 件ずつ増やし、最大 50 件まで表示する。
+  - 表示対象は、従来どおり user decision と rank change resolved による lifecycle filter を適用した後の active candidates とする。
+  - 表示順は既存の priority order を維持する。
+- 非目標:
+  - filter UI、sort UI、無制限展開を追加すること。
+  - candidate scoring、priority、confidence、reasonCodes、reasonFingerprint を変更すること。
+  - rank order、manual override、user decision、resolved 判定を変更すること。
+  - API request 範囲、request 件数、request 間隔を変更すること。
+  - forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示すること。
+  - Revenue Assistant write / bulk apply。
+- 受け入れ条件:
+  - active candidates が 11 件以上ある場合、初期表示は 10 件であり、summary に `他 n件` が表示される。
+  - active candidates が 11 件以上あり、表示上限が 50 件未満の場合、`さらに表示` が表示される。
+  - `さらに表示` を 1 回押すと、表示行数が最大 10 件増え、summary の表示件数と `他 n件` が更新される。
+  - active candidates が表示上限以下の場合、または表示上限が 50 件に達している場合は、`さらに表示` を表示しない。
+  - top list に forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で最新 dist 一時注入後の表示件数増加を確認する。
+- 実装内容:
+  - `syncRankRecommendationList()` の表示件数上限を固定 top 10 から session 内 state に変更した。
+  - top list に `さらに表示` button を追加し、click ごとに表示上限を 10 件ずつ増やして calendar sync を再実行するようにした。
+  - `renderRankRecommendationList()` は、hidden active candidates があり、かつ表示上限が 50 件未満の場合だけ `さらに表示` を描画する。
+- verify:
+  - `npm run typecheck`: passed。
+  - `npm run lint`: passed。
+  - `npm run build`: sandbox では esbuild spawn が `EPERM` で停止したため、承認付きで再実行して passed。`dist/revenue-assistant-userscript.user.js` と sourcemap を生成した。
+  - Chrome拡張 backend capability 確認: extension browser 取得、通常 Chrome の `openTabs()`、tab count 3 を確認した。通常 Chrome には Revenue Assistant `https://ra.jalan.net/analyze/2026-09-15`、Tampermonkey dashboard、OneTab が開いていた。
+  - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant `https://ra.jalan.net/analyze/2026-09-15` が開いていることを確認した。
+  - Chrome DevTools Protocol 合成 DOM 確認: 通常 Chrome の CDP endpoint へ接続し、Revenue Assistant origin の合成 calendar と合成 API response に最新 `dist/revenue-assistant-userscript.user.js` を一時注入した。active candidates 25 件の条件で、click 前は row 10 件、meta `優先度順 10件 ... 他 15件`、button `さらに表示 (10件)` を確認した。button click 後は row 20 件、meta `優先度順 20件 ... 他 5件`、button `さらに表示 (5件)` を確認した。金額または percent 0 件、forecast 数値 label なし、sales / ADR 数値 label なし、unexpected request 0 件、page error 0 件、console error 0 件だった。
+  - `git diff --check`: passed。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: during-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。

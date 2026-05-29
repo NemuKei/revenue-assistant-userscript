@@ -154,7 +154,9 @@ const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendati
 const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
 const RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX = "revenue-assistant:rank-recommendation:rank-order-override:";
-const RANK_RECOMMENDATION_DISPLAY_LIMIT = 10;
+const RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT = 10;
+const RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP = 10;
+const RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT = 50;
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
@@ -743,6 +745,7 @@ let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackground
 let pendingCompetitorPriceTabSnapshotRequest: PendingCompetitorPriceTabSnapshotRequest | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
 let rankRecommendationWarmCachePriorityCandidates: RankRecommendationWarmCachePriorityCandidate[] = [];
+let rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
 let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
 let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
 let salesSettingWarmCacheStoredCalendarMarkerStates = new Map<string, SalesSettingWarmCacheStoredMarkerState>();
@@ -870,6 +873,16 @@ function installInteractionHooks(): void {
                 event.preventDefault();
                 event.stopPropagation();
                 void persistRankRecommendationRankOrderFromElement(rankRecommendationOrderButton);
+                return;
+            }
+
+            const rankRecommendationDisplayMoreButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="display-more"]`
+            );
+            if (rankRecommendationDisplayMoreButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                increaseRankRecommendationDisplayLimit();
                 return;
             }
 
@@ -1242,6 +1255,19 @@ function setRankRecommendationOrderControlStatus(element: HTMLElement | null, te
     if (element !== null) {
         element.textContent = text;
     }
+}
+
+function increaseRankRecommendationDisplayLimit(): void {
+    const nextLimit = Math.min(
+        RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
+        rankRecommendationDisplayLimit + RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP
+    );
+    if (nextLimit === rankRecommendationDisplayLimit) {
+        return;
+    }
+
+    rankRecommendationDisplayLimit = nextLimit;
+    queueCalendarSync({ force: true, reason: "rank-recommendation-display-more" });
 }
 
 function parseRankRecommendationRankLadderFromElement(element: HTMLElement): RankRecommendationRankLadderEntry[] {
@@ -4814,7 +4840,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statuses,
         batchDateKey
     );
-    const visibleCandidates = resolvedFilterResult.candidates.slice(0, RANK_RECOMMENDATION_DISPLAY_LIMIT);
+    const visibleCandidates = resolvedFilterResult.candidates.slice(0, rankRecommendationDisplayLimit);
     const hiddenSummary = {
         userDecision: decisionFilterResult.hiddenCount,
         resolvedRankChange: resolvedFilterResult.hiddenCount,
@@ -4833,6 +4859,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             `hidden-user:${hiddenSummary.userDecision}`,
             `hidden-resolved:${hiddenSummary.resolvedRankChange}`,
             `overflow:${hiddenSummary.overflow}`,
+            `display-limit:${rankRecommendationDisplayLimit}`,
             visibleCandidates.map((candidate) => [
                 candidate.reasonFingerprint,
                 candidate.action,
@@ -4848,7 +4875,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         facilityCacheKey,
         rankLadder,
         rankOrder: rankOrderResolution,
-        hiddenSummary
+        hiddenSummary,
+        canShowMore: hiddenSummary.overflow > 0 && rankRecommendationDisplayLimit < RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT
     });
 }
 
@@ -5744,6 +5772,7 @@ function renderRankRecommendationList(
         rankLadder?: readonly RankRecommendationRankLadderEntry[];
         rankOrder?: RankRecommendationRankOrderResolution;
         hiddenSummary?: RankRecommendationHiddenSummary;
+        canShowMore?: boolean;
     }
 ): void {
     const host = resolveRankRecommendationListHost();
@@ -5762,6 +5791,10 @@ function renderRankRecommendationList(
     const metaElement = document.createElement("div");
     metaElement.setAttribute("data-ra-rank-recommendation-meta", "");
     metaElement.textContent = formatRankRecommendationListMeta(candidates, options.statusText, options.hiddenSummary);
+
+    const displayMoreElement = options.canShowMore === true
+        ? createRankRecommendationDisplayMoreControl(options.hiddenSummary?.overflow ?? 0)
+        : null;
 
     const rankOrderControlElement = options.facilityCacheKey !== undefined
         && options.rankLadder !== undefined
@@ -5800,6 +5833,7 @@ function renderRankRecommendationList(
     rootElement.replaceChildren(...[
         titleElement,
         metaElement,
+        ...(displayMoreElement === null ? [] : [displayMoreElement]),
         ...(rankOrderControlElement === null ? [] : [rankOrderControlElement]),
         tableElement
     ]);
@@ -5808,6 +5842,21 @@ function renderRankRecommendationList(
         rootElement.remove();
         host.parentElement.insertBefore(rootElement, host.insertAfterElement.nextSibling);
     }
+}
+
+function createRankRecommendationDisplayMoreControl(remainingCount: number): HTMLElement {
+    const controlElement = document.createElement("div");
+    controlElement.setAttribute("data-ra-rank-recommendation-display-more", "");
+
+    const buttonElement = document.createElement("button");
+    buttonElement.type = "button";
+    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "display-more");
+    buttonElement.textContent = `さらに表示 (${Math.min(RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP, remainingCount)}件)`;
+    buttonElement.title = "表示件数を10件増やす";
+
+    controlElement.append(buttonElement);
+    return controlElement;
 }
 
 function createRankRecommendationOrderControl(options: {
@@ -12164,6 +12213,12 @@ function ensureGroupRoomStyles(): void {
             font-size: 12px;
             font-weight: 700;
             line-height: 1.4;
+        }
+
+        [data-ra-rank-recommendation-display-more] {
+            display: flex;
+            justify-content: flex-start;
+            margin: 0 0 8px;
         }
 
         [${RANK_RECOMMENDATION_ORDER_CONTROL_ATTRIBUTE}] {
