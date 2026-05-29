@@ -160,7 +160,8 @@
   - `git diff --check`: passed
 - GUI 確認:
   - 2026-05-29 の修正前観測では、通常 Chrome の Analyze 日付ページで `body stream already read` が発生することを Chrome DevTools Protocol で確認した。
-  - 修正後の Tampermonkey 正式再読込 GUI 確認は未実施。実行には通常 Chrome 側の userscript 更新または最新 `dist` 注入後の再観測が必要である。
+  - 2026-05-29 に通常 Chrome の Tampermonkey dashboard で Revenue Assistant Userscript を `0.1.0.295` へ更新し、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-09-15` を reload して Chrome DevTools Protocol で 90 秒 + 180 秒観測した。`body stream already read`、`failed to load booking curve`、`consistency check skipped`、page error、console error、console warning は 0 件だった。
+  - 同確認では、indicator detail が `この日 2026-09-15 raw 100%（7/7）`、`同曜日 100%（28/28）`、`参考線 28%（12/42）` まで進行したことを確認した。修正前の Response body 二重読み取りエラーは再発していない。
 
 ### RAU-CP-10 競合価格タブ遷移直後の取得トリガー欠落を修正する
 
@@ -574,6 +575,7 @@
   - `git diff --check`: passed
   - 2026-05-28 の Chrome DevTools Protocol 確認では、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` に build 済み `dist` を一時注入し、indicator detail に `この日 2026-06-17 raw 100%（7/7） 参考線 ... 同曜日 100%（28/28）` が表示されることを確認した。約 30 秒の sampling では、参考線 progress が `16%（7/42）` から `50%（21/42）` まで進んだ。page error と console error は 0 件だった。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の Analyze 表示を確認した。indicator detail は `この日 2026-06-17 raw 100%（7/7） 参考線 59%（25/42） 同曜日 100%（28/28）` を含み、page error と console error は 0 件だった。
+  - 2026-05-29 の Tampermonkey `0.1.0.295` 追加観測では、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-09-15` で 270 秒観測し、開いている stay_date の raw と同曜日は 100%、参考線は 28% まで進行した。270 秒時点では同週 target へ到達していなかったため、同週、同月へ進む直接 request order はこの観測では確認できていない。
 - 未確認:
   - Analyze 日付ページで、その日、同週、同月の順に request が発行されることの直接確認
 
