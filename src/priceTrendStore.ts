@@ -9,6 +9,8 @@ const COMPETITORS_ENDPOINT = "/api/v2/competitors";
 
 export const PRICE_TREND_GUEST_COUNTS = [1, 2, 3, 4] as const;
 export type PriceTrendGuestCount = typeof PRICE_TREND_GUEST_COUNTS[number];
+export const PRICE_TREND_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS", "WASHITSU", "WAYOUSHITSU"] as const;
+export type PriceTrendRoomTypeRequest = typeof PRICE_TREND_ROOM_TYPE_REQUESTS[number];
 
 interface PriceTrendFilterSettingsApiResponse {
     meal_type?: string | null;
@@ -110,8 +112,6 @@ export interface FetchAndPersistPriceTrendResult {
 interface PriceTrendRequestContext {
     facilities: PriceTrendFacility[];
     mealType: string;
-    roomType: string | null;
-    roomTypeLabel: string | null;
     ownYadNo: string;
     competitorYadNos: string[];
 }
@@ -165,32 +165,35 @@ async function fetchAndPersistPriceTrendRecordsInternal(
 
     const fetchedAt = new Date().toISOString();
     const records: PriceTrendRecord[] = [];
-    for (const numGuests of PRICE_TREND_GUEST_COUNTS) {
-        const request = buildPriceTrendRequest(options.stayDate, numGuests, requestContext.mealType, yadNos);
-        const response = await fetch(request.url, {
-            credentials: "include",
-            headers: {
-                "x-requested-with": "XMLHttpRequest"
+    const roomTypeRequests: Array<PriceTrendRoomTypeRequest | null> = [null, ...PRICE_TREND_ROOM_TYPE_REQUESTS];
+    for (const roomType of roomTypeRequests) {
+        for (const numGuests of PRICE_TREND_GUEST_COUNTS) {
+            const request = buildPriceTrendRequest(options.stayDate, numGuests, requestContext.mealType, roomType, yadNos);
+            const response = await fetch(request.url, {
+                credentials: "include",
+                headers: {
+                    "x-requested-with": "XMLHttpRequest"
+                }
+            });
+            if (!response.ok) {
+                throw new Error(`price trends request failed: ${response.status}`);
             }
-        });
-        if (!response.ok) {
-            throw new Error(`price trends request failed: ${response.status}`);
+            const apiResponse = await response.json() as PriceTrendApiResponse;
+            records.push(buildPriceTrendRecord({
+                facilityId: options.facilityId,
+                stayDate: options.stayDate,
+                numGuests,
+                mealType: requestContext.mealType,
+                roomType,
+                roomTypeLabel: formatPriceTrendRoomTypeRequestLabel(roomType),
+                fetchedAt,
+                endpoint: PRICE_TRENDS_ENDPOINT,
+                query: request.query,
+                facilities: requestContext.facilities,
+                scopeYadNos: yadNos,
+                apiResponse
+            }));
         }
-        const apiResponse = await response.json() as PriceTrendApiResponse;
-        records.push(buildPriceTrendRecord({
-            facilityId: options.facilityId,
-            stayDate: options.stayDate,
-            numGuests,
-            mealType: requestContext.mealType,
-            roomType: requestContext.roomType,
-            roomTypeLabel: requestContext.roomTypeLabel,
-            fetchedAt,
-            endpoint: PRICE_TRENDS_ENDPOINT,
-            query: request.query,
-            facilities: requestContext.facilities,
-            scopeYadNos: yadNos,
-            apiResponse
-        }));
     }
 
     const hasAnyYads = records.some((record) => record.payload.yads.length > 0);
@@ -253,8 +256,6 @@ async function buildPriceTrendRequestContext(): Promise<PriceTrendRequestContext
             ...competitorFacilities
         ].filter((facility) => facility.yadNo !== ""),
         mealType: normalizeMealType(filterSettings.meal_type),
-        roomType: null,
-        roomTypeLabel: null,
         ownYadNo,
         competitorYadNos: competitorFacilities.map((facility) => facility.yadNo)
     };
@@ -264,12 +265,16 @@ function buildPriceTrendRequest(
     stayDate: string,
     numGuests: PriceTrendGuestCount,
     mealType: string,
+    roomType: PriceTrendRoomTypeRequest | null,
     yadNos: string[]
 ): { url: string; query: string } {
     const params = new URLSearchParams();
     params.set("stay_date", compactDate(stayDate));
     params.set("num_guests", String(numGuests));
     params.set("meal_type", mealType);
+    if (roomType !== null) {
+        params.append("room_type_options[]", roomType);
+    }
     for (const yadNo of yadNos) {
         params.append("yad_nos[]", yadNo);
     }
@@ -376,6 +381,22 @@ function buildPriceTrendRecordKey(
         `room:${roomType ?? "unspecified"}`,
         fetchedAt
     ].join("|");
+}
+
+function formatPriceTrendRoomTypeRequestLabel(roomType: PriceTrendRoomTypeRequest | null): string | null {
+    if (roomType === null) {
+        return null;
+    }
+    const labels: Record<PriceTrendRoomTypeRequest, string> = {
+        SINGLE: "シングル",
+        DOUBLE: "ダブル",
+        TWIN: "ツイン",
+        TRIPLE: "トリプル",
+        FOUR_BEDS: "フォース",
+        WASHITSU: "和室",
+        WAYOUSHITSU: "和洋室"
+    };
+    return labels[roomType];
 }
 
 async function fetchJson<T>(url: string): Promise<T> {
