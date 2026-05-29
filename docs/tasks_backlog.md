@@ -2527,12 +2527,6 @@
 - verify:
   - `npm run typecheck`: passed。
   - `npm run lint`: passed。
-  - `npm run build`: sandbox 内では `esbuild` の `spawn EPERM` で失敗したため、同じ command を権限付きで再実行して passed。`dist/revenue-assistant-userscript.user.js` を生成した。
-  - `git diff --check`: passed。
-  - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
-  - Chrome DevTools Protocol read-only 確認: build 済み `dist/revenue-assistant-userscript.user.js` に pending UI の識別子 `data-ra-rank-recommendation-pending-decision`、`data-ra-rank-recommendation-pending-decision-key`、`decision-cancel`、`秒後に確定`、`保存を取り消す` が含まれることを確認した。通常 Chrome の Revenue Assistant root では `料金調整候補` list 1 件、候補 row 10 件、page title `レベニューアシスタント` を確認した。
-  - 実ログイン画面での `様子見` / `対応不要` click と `取消` click は実施していない。理由は、旧 Tampermonkey handler が残る document に最新 build を一時注入して click すると、旧 handler が同じ click を拾って即時保存する可能性があり、今回の pending buffer の検証として安全でないためである。Tampermonkey 側を最新 build へ更新し、旧 handler が混在しない状態で GUI 確認する。
-  - `npm run lint`: passed。
   - `npm run build`: sandbox では esbuild spawn が `EPERM` で停止したため、承認付きで再実行して passed。`dist/revenue-assistant-userscript.user.js` と sourcemap を生成した。
   - `git diff --check`: passed。
   - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
@@ -2881,7 +2875,7 @@
   - payload 候補は標準画面の `targetSalesSettings` から作られる配列で、各要素は少なくとも `date`、`rmRoomGroupId`、`priceRankCode` を持つ。現在設定に値がある場合だけ `limitedNumber`、`withoutMeal`、`withOnlyBreakfast`、`withOnlyDinner`、`withBreakfastAndDinner` を同梱し、送信前に decamelize される。
   - 標準 UI には、送信前の modal 内 state、`最初からやり直す`、`閉じる` 時の確認 prompt、`続けて反映する` state、成功、一部失敗、失敗の通知種別がある。
   - 実 POST は実行していない。CSRF、server 側 validation、HTTP status、error body、partial failure の response schema、同時更新時の挙動、反映後 rollback 可否は未確認のままとする。
-  - この結果により、top list から直接 Revenue Assistant へ rank 変更を実行する実装はまだ行わない。次は `RAU-RR-49` で、browser-local の `様子見` と `対応不要` の反映バッファを設計し、将来の rank 変更にも適用できる pending 操作モデルを固定する。
+  - この結果により、top list から直接 Revenue Assistant へ rank 変更を実行する実装はまだ行わない。この後の `RAU-RR-49` で、browser-local の `様子見` と `対応不要` の反映バッファは実装済みである。次は `RAU-RR-51` で、Revenue Assistant write API を呼ばない rank 調整 UI shell を設計する。
 - verify:
   - Chrome拡張 backend / 通常 Chrome tab 確認: `npm run chrome:pages` で Revenue Assistant root tab を確認した。
   - Chrome DevTools Protocol read-only 調査: root 画面の rank UI 文言、標準 bundle の endpoint 候補、payload 候補 field、送信前 confirm prompt、通知種別を確認した。write endpoint は実行していない。
@@ -2918,6 +2912,12 @@
   - Revenue Assistant write API、rank 直接変更、bulk apply は追加していない。
 - verify:
   - `npm run typecheck`: passed。
+  - `npm run lint`: passed。
+  - `npm run build`: sandbox 内では `esbuild` の `spawn EPERM` で失敗したため、同じ command を権限付きで再実行して passed。`dist/revenue-assistant-userscript.user.js` を生成した。
+  - `git diff --check`: passed。
+  - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant root `https://ra.jalan.net/` が開いていることを確認した。
+  - Chrome DevTools Protocol read-only 確認: build 済み `dist/revenue-assistant-userscript.user.js` に pending UI の識別子 `data-ra-rank-recommendation-pending-decision`、`data-ra-rank-recommendation-pending-decision-key`、`decision-cancel`、`秒後に確定`、`保存を取り消す` が含まれることを確認した。通常 Chrome の Revenue Assistant root では `料金調整候補` list 1 件、候補 row 10 件、page title `レベニューアシスタント` を確認した。
+  - 実ログイン画面での `様子見` / `対応不要` click と `取消` click は実施していない。理由は、旧 Tampermonkey handler が残る document に最新 build を一時注入して click すると、旧 handler が同じ click を拾って即時保存する可能性があり、今回の pending buffer の検証として安全でないためである。Tampermonkey 側を最新 build へ更新し、旧 handler が混在しない状態で GUI 確認する。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -3576,7 +3576,7 @@ Later:
 - `RAU-RR-46` は 2026-05-29 に実装済みである。top list に `前回変更` 列を追加し、既存取得済み rank change history と browser-local user decision record から、前回変更日、変更内容、様子見 cooldown 期限切れ、別 `reasonFingerprint`、confidence 表示段階上昇を tooltip で確認できるようにした。cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-50` は 2026-05-29 に実装済みである。Chrome DevTools Protocol の read-only 確認では、下げ候補に近い入力は存在し、表示モードを `下げ注意` に切り替えると `lower_watch` は表示された。一方で `全て` の初期 10 件と展開後 50 件は `raise_watch` / `high` に占められていたため、下げ候補が見えにくい主因は `lower_watch` の初期 `medium` priority と priority-first sort だった。対応として、実下振れ evidence がある `lower_watch` だけを `high` に上げ、欠損由来の `lower_watch` は `medium` に留めた。
 - `RAU-RR-47` は 2026-05-29 に実装済みである。top list の候補 row に `曲線` button を追加し、候補 row 直下の追加 row で Analyze 画面と同じ chart component を使った booking curve preview を開閉できるようにした。data source は既存保存済みの `booking_curve_raw_source:v2` に限定し、raw source がない場合は不足 diagnostics を表示する。preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やしていない。
-- `RAU-RR-48` は 2026-05-29 に read-only 調査済みである。標準画面の料金ランク一括反映は、site controller ごとに `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を呼び分ける候補があり、payload 候補は `date`、`rmRoomGroupId`、`priceRankCode` と、現在設定に値がある場合の `limitedNumber`、食事条件 field から作られる。標準 UI には送信前の確認ややり直し入口、成功、一部失敗、失敗の通知種別がある。ただし実 POST は実行していないため、server 側 validation、error body、partial failure response schema、同時更新時の挙動、反映後 rollback 可否は未確認である。top list 直接 rank 変更の実装はまだ行わず、次は `RAU-RR-49` で取消可能な pending 操作モデルを設計する。
+- `RAU-RR-48` は 2026-05-29 に read-only 調査済みである。標準画面の料金ランク一括反映は、site controller ごとに `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を呼び分ける候補があり、payload 候補は `date`、`rmRoomGroupId`、`priceRankCode` と、現在設定に値がある場合の `limitedNumber`、食事条件 field から作られる。標準 UI には送信前の確認ややり直し入口、成功、一部失敗、失敗の通知種別がある。ただし実 POST は実行していないため、server 側 validation、error body、partial failure response schema、同時更新時の挙動、反映後 rollback 可否は未確認である。top list 直接 rank 変更の実装はまだ行わない。
 - `RAU-RR-49` は 2026-05-29 に実装済みである。`様子見` と `対応不要` は押下直後に保存せず、5 秒の in-memory pending state に入れる。pending 中は行内に `n秒後に確定` と `取消` button を表示し、`取消` で decision record を保存せずに戻せる。timer 満了後だけ従来と同じ decision record を保存し、cooldown、dismiss、confidence escalation、reasonFingerprint による lifecycle filter は変更していない。Revenue Assistant write API、rank 直接変更、bulk apply は追加していない。
 - `RAU-RR-51` は、料金調整候補から rank 調整する UI shell の設計 task とする。`RAU-RR-48` の write endpoint 候補と `RAU-RR-49` の pending 操作モデルを前提にするが、実 POST はまだ行わない。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
