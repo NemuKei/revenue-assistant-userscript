@@ -456,6 +456,7 @@ rank response dataset の first contract:
 トップ画面には、料金調整候補リストを追加する。
 
 - 日付 x 部屋タイプ単位の候補を優先度順に表示する。
+- 料金調整候補リストは、トップ画面のカレンダーより下に配置する。カレンダーの表示範囲を見たあとに、同じ表示範囲内の作業キューとして候補を読むためである。カレンダー上部の期間切替、表示切替、標準操作領域を押し下げる位置には置かない。
 - 最大件数は初期値を持つ。初期候補は top 10 とする。利用者が top 10 の外の active candidates を確認したい場合は、`さらに表示` で表示上限を 10 件ずつ増やせる。表示上限の最大値は 50 件とする。表示上限が初期値を超えている場合は、`10件に戻す` で初期表示へ戻せる。
 - 表示対象は、user decision と rank change resolved による lifecycle filter を適用した後の active candidates から選ぶ。candidate pool を作る段階で先に top 10 へ切ると、上位候補が `様子見`、`対応不要`、または `反映済み` で非表示になった場合に、11 件目以降の有効候補で作業キューを埋め戻せないためである。
 - 表示対象は、表示モードでさらに絞り込める。初期値は `全て` とする。表示モードは `全て`、`上げ検討`、`下げ注意`、`注意あり` とする。`上げ検討` は `action="raise_watch"` の候補だけ、`下げ注意` は `action="lower_watch"` の候補だけ、`注意あり` は不足または注意 diagnostics が残る候補だけを表示する。表示モードは表示専用の条件であり、candidate scoring、priority、confidence、reasonFingerprint、rank order、manual override、user decision、resolved 判定は変更しない。
@@ -482,6 +483,14 @@ rank response dataset の first contract:
 - `Analyzeで確認`。
 - `様子見`。
 - `対応不要`。
+
+後続のトップ画面意思決定支援:
+
+- first wave の後続では、トップ画面の料金調整候補から Analyze 画面へ遷移せずに、該当 roomGroup の booking curve、前回変更日、rank 調整操作、取消可能な反映バッファを確認または操作できるようにする。
+- ただし、Revenue Assistant write API、rank 変更の request shape、安全制約、取消可能時間、partial failure、同時更新時の挙動が未確認の間は、トップ画面からの rank 変更を実装済み仕様として扱わない。
+- `様子見`、`対応不要`、将来の rank 変更操作は、押下直後に即時確定して戻せない挙動にしない。少なくとも短時間の取消入口を持つ反映バッファを設ける。反映バッファの秒数、表示位置、確定条件は、Revenue Assistant 標準の料金変更挙動を確認してから確定する。
+- 前回変更日を top list に表示する場合は、rank change history による resolved 判定、user decision cooldown、候補再表示条件を区別できる表示にする。前回変更日が近い候補に推奨が出る場合は、cooldown が効いていないのか、別 roomGroup、別 reasonFingerprint、confidence 表示段階上昇、または販売状況変化として再表示されているのかを検証できるようにする。
+- booking curve preview は、Analyze 画面と同じ意味の全体 / 個人 / 団体、reference curve、不足 diagnostics を使う。top list 上では作業キューを壊さない短い preview とし、forecast 数値、sales / ADR 数値、競合価格の金額、推奨レート金額を直接出す契約にはしない。
 
 first wave の top list では forecast 数値を直接表示しない。forecast が評価後に scoring 補助として使われる場合でも、top list では priority、confidence、主要根拠、diagnostics に反映する。`予測最終室数` のような数値を top list に出すと、利用者が current、reference curve、forecast、推奨ランク方向を混同しやすいためである。`confidence` は候補の根拠がどれだけ揃っているかを示す補助情報であり、実価格や予測値の精度を保証する値ではない。そのため top list では、内部値を直接出さず、確度の段階表示に留める。summary と確度 tooltip でも forecast 数値、sales / ADR 数値、競合価格の金額または差額、percent は表示しない。
 

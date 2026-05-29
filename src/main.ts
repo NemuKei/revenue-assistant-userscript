@@ -6364,6 +6364,13 @@ function setRankRecommendationDecisionButtonAttributes(
 }
 
 function resolveRankRecommendationListHost(): { parentElement: HTMLElement; insertAfterElement: HTMLElement } | null {
+    const cells = collectMonthlyCalendarCells();
+    const calendarElement = resolveMonthlyCalendarContainerElement(cells);
+    const calendarParentElement = calendarElement?.parentElement ?? null;
+    if (calendarElement instanceof HTMLElement && calendarParentElement instanceof HTMLElement) {
+        return { parentElement: calendarParentElement, insertAfterElement: calendarElement };
+    }
+
     const segmentedControl = document.querySelector<HTMLElement>(`[data-testid="segmented-control"]`);
     const toolbarElement = segmentedControl?.parentElement?.parentElement ?? null;
     const parentElement = toolbarElement?.parentElement ?? null;
@@ -6371,11 +6378,60 @@ function resolveRankRecommendationListHost(): { parentElement: HTMLElement; inse
         return { parentElement, insertAfterElement: toolbarElement };
     }
 
-    const firstCell = collectMonthlyCalendarCells()[0];
+    const firstCell = cells[0];
     const fallbackElement = firstCell?.anchorElement.parentElement ?? null;
     const fallbackParentElement = fallbackElement?.parentElement ?? null;
     if (fallbackElement instanceof HTMLElement && fallbackParentElement instanceof HTMLElement) {
         return { parentElement: fallbackParentElement, insertAfterElement: fallbackElement };
+    }
+
+    return null;
+}
+
+function resolveMonthlyCalendarContainerElement(cells: MonthlyCalendarCell[]): HTMLElement | null {
+    const firstCell = cells[0];
+    if (firstCell === undefined) {
+        return null;
+    }
+
+    let candidate: HTMLElement = firstCell.anchorElement;
+    for (const cell of cells.slice(1)) {
+        const commonAncestor = findLowestCommonElementAncestor(candidate, cell.anchorElement);
+        if (commonAncestor === null) {
+            return candidate;
+        }
+        candidate = commonAncestor;
+    }
+
+    while (candidate.parentElement instanceof HTMLElement && candidate.parentElement !== document.body) {
+        const parentElement = candidate.parentElement;
+        const parentCalendarCellCount = parentElement.querySelectorAll(`[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`).length;
+        const parentHasToolbar = parentElement.querySelector(`[data-testid="segmented-control"]`) !== null;
+        if (parentCalendarCellCount !== cells.length || parentHasToolbar) {
+            break;
+        }
+
+        candidate = parentElement;
+    }
+
+    return candidate;
+}
+
+function findLowestCommonElementAncestor(leftElement: HTMLElement, rightElement: HTMLElement): HTMLElement | null {
+    const leftAncestors = new Set<HTMLElement>();
+    let currentLeft: HTMLElement | null = leftElement;
+    while (currentLeft !== null) {
+        leftAncestors.add(currentLeft);
+        currentLeft = currentLeft.parentElement;
+    }
+
+    let currentRight: HTMLElement | null = rightElement;
+    while (currentRight !== null) {
+        if (leftAncestors.has(currentRight)) {
+            return currentRight;
+        }
+
+        currentRight = currentRight.parentElement;
     }
 
     return null;

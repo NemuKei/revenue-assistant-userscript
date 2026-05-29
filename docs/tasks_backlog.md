@@ -2729,6 +2729,174 @@
   - `spec-checkpoint`: during-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-45 料金調整候補をカレンダー下に配置する
+
+- 状態:
+  - 2026-05-29 実装済み。
+- 目的:
+  - トップ画面でカレンダーの表示範囲を確認したあと、その表示範囲に対する作業キューとして料金調整候補を読めるようにする。
+- 背景:
+  - 利用者から、料金調整候補をカレンダーの下側に配置したいという要望が出た。
+  - 現状の top list は toolbar 直下に挿入されるため、カレンダー本体より前に表示される。
+- スコープ:
+  - 月次カレンダーの DOM container を解決し、その container の直後に料金調整候補 list を挿入する。
+  - カレンダー container が解決できない場合は、既存 fallback と同じく toolbar または最初の calendar cell 付近を使い、list が消えないようにする。
+  - 挿入位置の変更だけを行う。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonFingerprint を変更すること。
+  - 表示モード、表示件数、user decision、resolved 判定、rank order、manual override を変更すること。
+  - API request 範囲、request 件数、request 間隔を変更すること。
+  - booking curve preview、前回変更日、rank 変更操作、取消可能な反映バッファを同時に実装すること。
+- 受け入れ条件:
+  - 通常のトップカレンダーで、料金調整候補 list が月次カレンダー container より下に表示される。
+  - 期間切替、表示切替、Revenue Assistant 標準 toolbar は料金調整候補 list に押し下げられない。
+  - 候補 row、表示モード、`さらに表示`、`10件に戻す` の既存挙動は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で料金調整候補 list がカレンダー下にあることを確認する。
+- 実装内容:
+  - `src/main.ts` の `resolveRankRecommendationListHost()` で月次カレンダー container を先に解決し、その container の直後へ料金調整候補 list を挿入するようにした。
+  - 複数の calendar cell から最小共通 ancestor を求め、親要素に calendar cell が同数含まれ、かつ `data-testid="segmented-control"` を含まない範囲だけ上へ広げる。これにより、カレンダー本体はまとめて扱うが、期間切替、表示切替、Revenue Assistant 標準 toolbar を含む親 container までは上げない。
+  - カレンダー container が解決できない場合は、従来どおり toolbar、または最初の calendar cell 付近へ fallback する。
+  - candidate scoring、priority、confidence、reasonFingerprint、表示モード、表示件数、user decision、resolved 判定、rank order、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過
+  - `git diff --check`: passed
+  - Chrome拡張 backend 確認: node_repl の browser runtime bootstrap 後に extension browser、`openTabs()`、tab count 3 を確認した。
+  - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant `https://ra.jalan.net/analyze/2026-09-15` が開いていることを確認した。
+  - Chrome DevTools Protocol 合成 DOM 確認: 通常 Chrome の CDP endpoint へ接続し、Revenue Assistant origin の合成 page と合成 API response に最新 `dist/revenue-assistant-userscript.user.js` を一時注入した。候補 row 3 件、`raise_watch` 2 件、`lower_watch` 1 件、表示モード 4 件、料金調整候補 list の直前要素が `monthly-calendar`、page error 0 件、console warning / error 0 件を確認した。
+  - Chrome DevTools Protocol 実ログイン通常 Chrome 確認: 読み取りのみの新規 `https://ra.jalan.net/` page で、calendar cell 92 件、料金調整候補 row 10 件、表示モード 4 件、list が calendar cell を含む container の後続にあること、page error 0 件、console error 0 件を確認した。rank 変更、送信、設定変更は行っていない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-46 料金調整候補に前回変更日とcooldown診断を表示する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 直近で調整した部屋タイプに推奨が出ている場合に、前回変更日、cooldown、再表示理由を候補上で確認できるようにする。
+- 背景:
+  - 利用者から、2日前に調整した部屋で販売状況が変わっていないものに推奨が出ており、cooldown が効いているか確認したいという要望が出た。
+- スコープ:
+  - top list に前回 rank 変更日または前回変更からの経過日数を表示する。
+  - user decision cooldown、rank change resolved、reasonFingerprint 変更、confidence 表示段階上昇を区別して、なぜ候補が表示されているかを確認できる diagnostics を表示する。
+  - 表示は非数値の短い説明または tooltip とし、必要なら詳細は tooltip に寄せる。
+- 非目標:
+  - cooldown ルールをこの task だけで変更すること。
+  - Revenue Assistant write / bulk apply。
+  - 推奨レート金額、sales / ADR 数値、競合価格の金額または percent を表示すること。
+- 受け入れ条件:
+  - rank change history がある候補では、前回変更日または経過日数が top list 上で確認できる。
+  - 直近変更済みの候補が表示される場合、resolved 判定外なのか、cooldown 対象外なのか、別 reasonFingerprint なのか、confidence 表示段階上昇なのかを切り分けられる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-47 料金調整候補上でbooking curve previewを表示する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Analyze 画面へ遷移しなくても、候補の該当 roomGroup の booking curve と reference curve の概要を確認できるようにする。
+- 背景:
+  - 利用者から、料金調整候補上で tooltip などにより該当部屋タイプの booking curve を見たいという要望が出た。表示内容は Analyze 画面と同様のものでよい。
+- スコープ:
+  - top list の候補 row から、該当 `stayDate x roomGroup` の booking curve preview を開ける入口を追加する。
+  - preview は Analyze 画面と同じ意味の全体 / 個人 / 団体、reference curve、不足 diagnostics を使う。
+  - top list の読みやすさを壊さないよう、tooltip、popover、details などのうち 1 つの表示形式に絞る。
+- 非目標:
+  - 新しい forecast 数値、sales / ADR 数値、競合価格の金額、推奨レート金額を top list に追加すること。
+  - request 範囲、request 件数、request 間隔を増やすこと。
+  - Analyze 画面側の booking curve 表示仕様を同時に変更すること。
+- 受け入れ条件:
+  - top list の候補から、Analyze 画面へ遷移せずに該当 roomGroup の curve preview を確認できる。
+  - preview に不足 diagnostics が表示される。
+  - preview を開閉しても候補 row、表示モード、表示件数 control の状態が壊れない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-48 料金調整候補からrank調整を行うためのwrite挙動を調査する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Analyze 画面へ遷移せずに料金調整候補から rank 調整するため、Revenue Assistant 標準の料金変更挙動、request shape、取消可能性、安全制約を確認する。
+- 背景:
+  - 利用者から、料金調整候補から Analyze に移動せずにランク調整したいという要望が出た。
+  - 利用者は、必要なら実際にリスクの低い箇所で rank 変更して挙動確認してよいと明示した。ただし、実データ操作であるため、実行前に対象と操作を固定する。
+- スコープ:
+  - Revenue Assistant 標準画面で、rank 変更の UI 操作、反映前確認、取消、request、response、error 時挙動を観測する。
+  - 観測範囲、対象施設、対象日付、対象 roomGroup、変更前 rank、変更後 rank、戻し方を実行前に固定する。
+  - raw trace、request body、response body、credential、個人情報、予約情報、価格や在庫の非公開データは Git 管理へ入れない。
+  - 調査結果から、top list 直接 rank 調整を実装できるか、または `not-now` とするかを判断する。
+- 非目標:
+  - この task で top list から rank 変更を実装すること。
+  - 自動反映、bulk apply、write endpoint の直接実行。
+- 受け入れ条件:
+  - rank 変更に必要な request shape、安全制約、取消可能性、partial failure または error response の扱いが、実装可否判断に足る粒度で整理されている。
+  - 実際に rank 変更を行った場合は、変更後に元へ戻したこと、または戻さない理由が明記されている。
+  - 実データ、credential、raw trace が Git に入っていない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-49 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `様子見`、`対応不要`、将来の rank 変更操作を、押下直後に戻せない操作にせず、短時間の取消入口を持つ操作にする。
+- 背景:
+  - 利用者から、`様子見`、`対応不要` を押したときに反映バッファを設けて処理取消を可能にし、rank 変更も同様にしたいという要望が出た。
+- スコープ:
+  - `様子見` と `対応不要` の browser-local 保存前に、短時間の反映待ち状態と取消入口を設計する。
+  - 将来の rank 変更操作にも同じ考え方を適用できるよう、操作種別、pending record、確定条件、取消条件、表示文言を整理する。
+  - Revenue Assistant 標準の料金変更挙動を参考にし、必要なら `RAU-RR-48` の調査結果を使う。
+- 非目標:
+  - Revenue Assistant write API をこの task で実行すること。
+  - bulk apply。
+- 受け入れ条件:
+  - `様子見`、`対応不要` の押下後、確定前に取消できる UI 契約が定義されている。
+  - rank 変更操作へ拡張するときの pending state と取消条件が定義されている。
+  - 実装 task へ分割できる粒度になっている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-50 上げ推奨と下げ推奨のpriority比較を見直す
+
+- 状態:
+  - 未着手。
+- 目的:
+  - top list で料金上げ候補ばかりが見える原因を確認し、下げ推奨が常に上げ推奨より後回しになっていないかを検証する。
+- 背景:
+  - 利用者から、現状は料金上げばかりが見えており、下げ推奨はどうなっているか、下げより上げが無条件で高 priority なら同じレベルで比較したほうがよいのではないかという指摘が出た。
+- スコープ:
+  - 現在の `raise_watch`、`lower_watch`、`watch` の priority 付与条件と sort 条件を確認する。
+  - 実データまたは合成データで、下げ条件に該当する候補が生成されるか、生成されても priority / sort で見えにくくなっているかを確認する。
+  - 必要なら、上げ候補と下げ候補を同じ priority level で比較できるよう、priority または sort の調整案を設計する。
+- 非目標:
+  - 根拠なしに下げ推奨を増やすこと。
+  - 推奨レート金額や自動反映を追加すること。
+- 受け入れ条件:
+  - 下げ推奨が少ない理由が、入力データ、scoring 条件、priority、sort、表示モードのどれにあるか切り分けられている。
+  - priority または sort を変更する場合は、上げ候補の過剰抑制や下げ候補の過剰表示を避ける受け入れ条件がある。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
@@ -3267,19 +3435,20 @@
 
 Now:
 
-- なし
+- `RAU-RR-46` 料金調整候補に前回変更日とcooldown診断を表示する
 
 Next:
 
-- なし
+- `RAU-RR-50` 上げ推奨と下げ推奨のpriority比較を見直す
 
 After Next:
 
-- なし
+- `RAU-RR-47` 料金調整候補上でbooking curve previewを表示する
 
 Later:
 
-- なし
+- `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
+- `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
 
 統合判断:
 
@@ -3319,6 +3488,11 @@ Later:
 - `RAU-RR-36` は 2026-05-28 に確認済みである。`/api/v1/plan_master/plan_rank_price` は `from=YYYYMMDD` 系 query で 20 件の rank metadata を返すが、実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は確認できなかった。`current_settings` は current rank と capacity / remaining には使えるが、観測範囲では食事条件別価格候補 field が null だった。したがって、rank price table、現在販売中価格、プラン別・人数別・食事条件別価格は、引き続き推奨レート金額の根拠として使わない。
 - `RAU-RR-37` は 2026-05-28 に実装済みである。top list meta に表示中候補の不足または注意の種類別件数を追加し、候補一覧を読む前に判断材料の不足や注意の偏りを確認できるようにした。既存 diagnostics の表示集計だけを使い、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-38` は 2026-05-28 に実装済みである。top list の `確度` cell で、不足または注意が残る候補に `注意あり` を表示し、同じ確度段階でも追加確認が必要な候補を行本体で見分けられるようにした。既存 diagnostics summary helper の有無を表示に反映するだけで、candidate scoring、reasonFingerprint、rank order、API request 範囲、推奨レート金額、Revenue Assistant write / bulk apply は変更していない。
+- `RAU-RR-45` は 2026-05-29 に実装済みである。top list の挿入位置を、toolbar 直下から月次カレンダー container の直後へ移した。candidate scoring、priority、confidence、reasonFingerprint、表示モード、表示件数、user decision、resolved 判定、rank order、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
+- `RAU-RR-46` を Now に置く理由は、利用者が直近変更済みの部屋で販売状況が変わっていないのに推奨が出る事象を挙げており、前回変更日、resolved 判定、user decision cooldown、reasonFingerprint、confidence 表示段階上昇のどれが効いているかを候補上で切り分ける必要があるためである。
+- `RAU-RR-50` を Next に置く理由は、現在の実データ確認で上げ推奨が多く見えており、下げ推奨が入力データ上少ないのか、scoring 条件、priority、sort、表示モードで見えにくくなっているのかを、直接 rank write を設計する前に確認する必要があるためである。
+- `RAU-RR-47` は、Analyze へ遷移せずに判断材料を確認するための次の UI 改善候補である。ただし、既存 top list の密度と request 範囲を壊さない表示形式を決める必要があるため、前回変更日と priority 比較の切り分け後に置く。
+- `RAU-RR-48` と `RAU-RR-49` は write safety と取消可能性に関わるため Later に置く。実 rank 変更を伴う確認は、対象施設、対象日付、対象 roomGroup、変更前 rank、変更後 rank、戻し方を固定してから行う。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。
