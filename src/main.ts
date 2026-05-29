@@ -170,6 +170,7 @@ const RANK_RECOMMENDATION_RANK_CHANGE_TARGET_CODE_ATTRIBUTE = "data-ra-rank-reco
 const RANK_RECOMMENDATION_RANK_CHANGE_TARGET_NAME_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-target-name";
 const RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_CODE_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-current-code";
 const RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_NAME_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-current-name";
+const RANK_RECOMMENDATION_RANK_CHANGE_GENERATED_AT_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-generated-at";
 const RANK_RECOMMENDATION_RANK_CHANGE_DISABLED_REASONS_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-disabled-reasons";
 const RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE = "data-ra-rank-recommendation-pending-rank-change";
 const RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE = "data-ra-rank-recommendation-pending-rank-change-key";
@@ -1599,6 +1600,7 @@ function schedulePendingRankRecommendationRankChangeFromElement(element: HTMLEle
         commitAt: Date.now() + RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS
     });
 
+    renderPendingRankRecommendationRankChangeInline(element, pendingRankRecommendationRankChangeByKey.get(draft.cacheKey) ?? null);
     queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-pending" });
 }
 
@@ -1615,6 +1617,7 @@ function cancelPendingRankRecommendationRankChangeFromElement(element: HTMLEleme
 
     window.clearTimeout(current.timeoutId);
     pendingRankRecommendationRankChangeByKey.delete(cacheKey);
+    removePendingRankRecommendationRankChangeInline(cacheKey);
     queueCalendarSync({ force: true, reason: "rank-recommendation-rank-change-cancel" });
 }
 
@@ -1623,6 +1626,47 @@ function clearPendingRankRecommendationRankChanges(): void {
         window.clearTimeout(pending.timeoutId);
     }
     pendingRankRecommendationRankChangeByKey.clear();
+}
+
+function renderPendingRankRecommendationRankChangeInline(
+    sourceElement: HTMLElement,
+    pending: PendingRankRecommendationRankChange | null
+): void {
+    if (pending === null) {
+        return;
+    }
+
+    const rowElement = findRankRecommendationCandidateRowFromElement(sourceElement);
+    const actionCellElement = rowElement?.lastElementChild;
+    if (!(actionCellElement instanceof HTMLTableCellElement)) {
+        return;
+    }
+
+    removePendingRankRecommendationRankChangeInline(pending.draft.cacheKey);
+    actionCellElement.append(createRankRecommendationPendingRankChangeElement(pending));
+}
+
+function removePendingRankRecommendationRankChangeInline(cacheKey: string): void {
+    document
+        .querySelectorAll<HTMLElement>(
+            `[${RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE}][${RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE}="${cssEscapeAttributeValue(cacheKey)}"]`
+        )
+        .forEach((element) => {
+            element.remove();
+        });
+}
+
+function findRankRecommendationCandidateRowFromElement(element: HTMLElement): HTMLTableRowElement | null {
+    let rowElement = element.closest("tr");
+    while (rowElement !== null) {
+        if (rowElement.hasAttribute(RANK_RECOMMENDATION_ROW_ATTRIBUTE)) {
+            return rowElement;
+        }
+        rowElement = rowElement.previousElementSibling instanceof HTMLTableRowElement
+            ? rowElement.previousElementSibling
+            : null;
+    }
+    return null;
 }
 
 function buildPendingRankRecommendationRankChangeDraftFromElement(
@@ -1637,6 +1681,7 @@ function buildPendingRankRecommendationRankChangeDraftFromElement(
     const currentRankName = element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_NAME_ATTRIBUTE);
     const targetRankCode = element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_CODE_ATTRIBUTE);
     const targetRankName = element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_NAME_ATTRIBUTE);
+    const generatedAt = element.getAttribute(RANK_RECOMMENDATION_RANK_CHANGE_GENERATED_AT_ATTRIBUTE);
     const confidenceLevel = parseRankRecommendationDecisionConfidenceLevel(
         element.getAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE)
     );
@@ -1652,6 +1697,7 @@ function buildPendingRankRecommendationRankChangeDraftFromElement(
         || roomGroupId === null
         || roomGroupName === null
         || reasonFingerprint === null
+        || generatedAt === null
         || confidenceLevel === null
     ) {
         return null;
@@ -1661,6 +1707,7 @@ function buildPendingRankRecommendationRankChangeDraftFromElement(
         facilityId,
         stayDate,
         asOfDate,
+        generatedAt,
         roomGroupId,
         roomGroupName,
         currentRankCode: normalizeRankRecommendationElementText(currentRankCode),
@@ -1805,7 +1852,7 @@ async function preflightRankRecommendationRankChange(
         };
     }
 
-    if (hasRankRecommendationStatusAfter(statuses, proposal, draft.createdAt)) {
+    if (hasRankRecommendationStatusAfter(statuses, proposal, proposal.generatedAt)) {
         return {
             status: "blocked",
             message: "候補表示後に同じ宿泊日と部屋タイプのrank変更履歴があるため送信しません",
@@ -7837,6 +7884,7 @@ function createRankRecommendationRankChangePreviewRow(
     submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, proposal.roomGroupName);
     submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, proposal.reasonFingerprint);
     submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE, proposal.confidenceLevel);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_GENERATED_AT_ATTRIBUTE, proposal.generatedAt);
     if (proposal.currentRankCode !== null) {
         submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_CODE_ATTRIBUTE, proposal.currentRankCode);
     }
@@ -8052,6 +8100,7 @@ function createRankRecommendationPendingRankChangeElement(
 ): HTMLDivElement {
     const wrapperElement = document.createElement("div");
     wrapperElement.setAttribute(RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE, "");
+    wrapperElement.setAttribute(RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE, pendingRankChange.draft.cacheKey);
 
     const labelElement = document.createElement("span");
     const secondsUntilCommit = Math.max(1, Math.ceil((pendingRankChange.commitAt - Date.now()) / 1000));

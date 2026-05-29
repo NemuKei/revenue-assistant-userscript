@@ -222,6 +222,7 @@ RAU の単一行 rank 変更 proposal は少なくとも次を持つ。
 - `facilityId`
 - `stayDate`
 - `asOfDate`
+- `generatedAt`
 - `roomGroupId`
 - `roomGroupName`
 - `currentRankCode`
@@ -247,7 +248,13 @@ UI は最初の `rank調整` 押下で inline preview を開く。preview には
 
 `反映する` 押下後は 5 秒の in-memory pending state に入り、`n秒後に送信` と `取消` を表示する。pending 中に reload、施設切替、batch 切替、script 再実行が起きた場合は送信しない。RAU の pending state は送信前取消であり、送信後 rollback または undo ではない。
 
+`取消` は送信前 safety guard の一部であるため、`反映する` 押下後の pending 表示は候補 list 全体の再同期完了を待たず、押下直後に同じ行へ表示する。再同期が 5 秒以上かかった場合でも、利用者が送信前に取り消せる入口を失わないようにする。
+
 送信直前には、exact `stayDate x roomGroup` の current settings と rank change status を再取得する。current rank が候補表示時から変わっていた場合、または同じ `stayDate x roomGroup` に候補生成後の rank change status がある場合は送信しない。
+
+候補生成後の rank change status 判定には、`rank調整` preview が作られた候補の `generatedAt` を使う。`反映する` を押した時刻や 5 秒 pending を開始した時刻だけを基準にすると、候補表示から送信操作までの間に Revenue Assistant 標準 UI または別端末で行われた rank 変更を見逃すためである。
+
+`/api/v1/lincoln/suggest/reflection_allow?suggest_calc_datetime=...` は read-only 調査で `is_allowed` を返す候補として確認済みである。ただし、2026-05-29 時点では単一行 custom rank 変更の標準 UI 操作でこの endpoint が送信直前 guard として使われること、また `suggest_calc_datetime` にどの値を入れるべきかは未確認である。したがって RAU は `suggest_calc_datetime` を推測して独自の `reflection_allow` guard を作らない。標準 UI の単一行 custom rank 変更で利用が確認できた場合だけ、送信直前 guard に追加する。
 
 POST 成功後は、adapter の HTTP response だけで成功扱いにせず、可能な範囲で `/api/v3/lincoln/suggest/status` または fresh current settings により反映結果を再確認する。成功後は current settings cache と rank status cache を破棄し、再取得結果で row を更新する。
 

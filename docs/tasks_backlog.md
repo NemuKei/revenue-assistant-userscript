@@ -2990,6 +2990,7 @@
   - `rank調整` 押下では POST が発生せず、inline preview だけが開く。
   - `反映する` 押下後は 5 秒 pending に入り、`取消` できる。pending 中に reload、施設切替、batch 切替、script 再実行が起きた場合は送信しない。
   - 送信直前に current rank mismatch または候補生成後の rank change status が見つかった場合は POST しない。
+  - 候補生成後の rank change status 判定は、`反映する` 押下時刻や 5 秒 pending 開始時刻ではなく、候補の `generatedAt` を基準にする。
   - POST 成功後は `/api/v3/lincoln/suggest/status` または fresh current settings で可能な限り反映確認し、cache を破棄して row を更新する。
   - POST 失敗時は HTTP status、失敗分類、発生時刻だけを browser-local に保存し、raw response body は保存しない。
   - 実データ、credential、raw trace、request / response body 全文が Git に入っていない。
@@ -2999,12 +3000,14 @@
   - 反映後、`/api/v3/lincoln/suggest/status` に `reflection_type = CUSTOM`、変更前後 rank、`accepted_at`、`completed_at` が入り、`/api/v1/suggest/output/current_settings` は変更後 rank を返した。
   - 調査中に `シングル` で意図しない rank 変更 `10 -> 14` が発生したが、利用者操作で `14 -> 10` へ戻され、最終確認では `シングル` と `キャンプ、ツインS` の current settings はどちらも rank `10` である。
 - 実装:
-  - `src/rankRecommendation.ts` に単一行 rank 変更 proposal を追加した。proposal は `facilityId`、`stayDate`、`asOfDate`、`roomGroupId`、`roomGroupName`、現在 rank、変更後 rank、`reasonFingerprint`、`confidenceLevel`、`disabledReasons`、`enabled` を持つ。
+  - `src/rankRecommendation.ts` に単一行 rank 変更 proposal を追加した。proposal は `facilityId`、`stayDate`、`asOfDate`、`generatedAt`、`roomGroupId`、`roomGroupName`、現在 rank、変更後 rank、`reasonFingerprint`、`confidenceLevel`、`disabledReasons`、`enabled` を持つ。
   - enabled 条件は、active candidate、`raise_watch` または `lower_watch`、current rank 取得済み、隣接 recommended rank あり、rank order source が `manual_override` または `settings_screen`、confidence が `高` または `中`、小キャパや団体主因抑制なし、観測済み Lincoln custom rank path 対応、に限定した。
   - `src/rankRecommendationWriteAdapter.ts` を追加し、`POST /api/v1/lincoln/suggest` だけを送信する adapter 境界にした。payload は観測済み field の `date`、`rm_room_group_id`、`price_rank_code`、`price_rank_name` だけを送る。
   - `src/main.ts` の top list に `rank調整` button、inline preview、`反映する`、5 秒 pending、`取消`、送信結果要約を追加した。
   - `反映する` 押下後も即時 POST せず、5 秒 pending timer の満了後だけ送信候補にする。pending は memory に限定し、施設切替または batch 切替では破棄する。
-  - 送信直前に exact `stayDate x roomGroup` の current settings と rank change status を再取得し、current rank mismatch または候補生成後の rank change status があれば送信しない。
+  - `取消` button は送信前 safety guard であるため、`反映する` 押下直後に同じ行へ pending 表示を即時挿入し、候補 list 全体の再同期が 5 秒以内に返らない場合でも利用者が取り消せるようにした。
+  - 送信直前に exact `stayDate x roomGroup` の current settings と rank change status を再取得し、current rank mismatch または `generatedAt` 後の rank change status があれば送信しない。
+  - `reflection_allow` は単一行 custom rank 変更で標準 UI が使っていること、および `suggest_calc_datetime` の値が確認できていないため、RAU 側で推測実装しない。標準 UI の read-only 観測で確認できた場合だけ送信直前 guard に追加する。
   - POST 成功後は current settings cache と rank status cache を破棄し、fresh current settings または rank status で反映確認を試みる。反映未確認の場合は成功扱いにせず、要約を表示する。
   - 失敗時は HTTP status、失敗分類、発生時刻、最小識別 key だけを browser-local に保存し、raw response body は保存しない。
 - verify:
@@ -3012,7 +3015,8 @@
   - `npm run lint`: passed。
   - `npm run build`: sandbox 内では `esbuild` の `spawn EPERM` で失敗したため、同じ command を権限付きで再実行して passed。`dist/revenue-assistant-userscript.user.js` を生成した。
   - `git diff --check`: passed。
-  - Chrome DevTools Protocol / 通常 Chrome 非送信確認: Revenue Assistant root `https://ra.jalan.net/` に最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10 件、`rank調整` button 10 件、rank change preview 表示 1 件、`反映する` button 10 件、disabled `反映する` 2 件、`POST /api/v1/lincoln/suggest` 0 件、page error 0 件を確認した。実送信を避けるため `反映する` と `取消` の GUI click は実施していない。
+  - Chrome DevTools Protocol / 通常 Chrome 非送信確認: Revenue Assistant root `https://ra.jalan.net/` に最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10 件、`rank調整` button 10 件、rank change preview 表示 1 件、`反映する` button 10 件、disabled `反映する` 2 件、`POST /api/v1/lincoln/suggest` 0 件、page error 0 件を確認した。
+  - 補完確認では、実POST防止用の fetch guard を入れた状態で `rank調整` preview 表示、`反映する` 押下、pending 表示、`取消` 押下、6.5 秒待機を行った。候補 row 10 件、preview 表示 1 件、visible enabled `反映する` 1 件、pending 表示 1 件、取消後 pending 0 件、preview 後送信試行 0 件、取消後送信試行 0 件、実ネットワーク `POST /api/v1/lincoln/suggest` 0 件、page error 0 件、console error 0 件だった。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl

@@ -70,6 +70,7 @@ export interface RankRecommendationRankChangeProposal {
     facilityId: string;
     stayDate: string;
     asOfDate: string;
+    generatedAt: string;
     roomGroupId: string;
     roomGroupName: string;
     currentRankCode: string | null;
@@ -448,6 +449,7 @@ export function buildRankRecommendationRankChangeProposal(options: {
         facilityId: candidate.facilityId,
         stayDate: candidate.stayDate,
         asOfDate: candidate.asOfDate,
+        generatedAt: candidate.generatedAt,
         roomGroupId: candidate.roomGroupId,
         roomGroupName: candidate.roomGroupName,
         currentRankCode: candidate.currentRankCode,
