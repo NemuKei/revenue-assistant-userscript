@@ -3,20 +3,15 @@ const PRICE_TREND_DB_VERSION = 1;
 const PRICE_TREND_STORE_NAME = "price-trend-records";
 const PRICE_TREND_SCHEMA_VERSION = "price_trend:v1";
 const PRICE_TRENDS_ENDPOINT = "/api/v1/price_trends";
-const PRICE_TRENDS_FILTER_SETTINGS_ENDPOINT = "/api/v1/price_trends/filter_settings";
 const YAD_INFO_ENDPOINT = "/api/v2/yad/info";
 const COMPETITORS_ENDPOINT = "/api/v2/competitors";
 
 export const PRICE_TREND_GUEST_COUNTS = [1, 2, 3, 4] as const;
 export type PriceTrendGuestCount = typeof PRICE_TREND_GUEST_COUNTS[number];
+export const PRICE_TREND_MEAL_TYPE_REQUESTS = ["NONE", "BREAKFAST", "DINNER", "BREAKFAST_DINNER"] as const;
+export type PriceTrendMealTypeRequest = typeof PRICE_TREND_MEAL_TYPE_REQUESTS[number];
 export const PRICE_TREND_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS", "WASHITSU", "WAYOUSHITSU"] as const;
 export type PriceTrendRoomTypeRequest = typeof PRICE_TREND_ROOM_TYPE_REQUESTS[number];
-
-interface PriceTrendFilterSettingsApiResponse {
-    meal_type?: string | null;
-    num_guests?: number | null;
-    room_type_options?: unknown[] | null;
-}
 
 interface PriceTrendYadInfoApiResponse {
     yad_no?: string | number | null;
@@ -111,7 +106,6 @@ export interface FetchAndPersistPriceTrendResult {
 
 interface PriceTrendRequestContext {
     facilities: PriceTrendFacility[];
-    mealType: string;
     ownYadNo: string;
     competitorYadNos: string[];
 }
@@ -165,34 +159,37 @@ async function fetchAndPersistPriceTrendRecordsInternal(
 
     const fetchedAt = new Date().toISOString();
     const records: PriceTrendRecord[] = [];
+    const mealTypeRequests: PriceTrendMealTypeRequest[] = [...PRICE_TREND_MEAL_TYPE_REQUESTS];
     const roomTypeRequests: Array<PriceTrendRoomTypeRequest | null> = [null, ...PRICE_TREND_ROOM_TYPE_REQUESTS];
-    for (const roomType of roomTypeRequests) {
-        for (const numGuests of PRICE_TREND_GUEST_COUNTS) {
-            const request = buildPriceTrendRequest(options.stayDate, numGuests, requestContext.mealType, roomType, yadNos);
-            const response = await fetch(request.url, {
-                credentials: "include",
-                headers: {
-                    "x-requested-with": "XMLHttpRequest"
+    for (const mealType of mealTypeRequests) {
+        for (const roomType of roomTypeRequests) {
+            for (const numGuests of PRICE_TREND_GUEST_COUNTS) {
+                const request = buildPriceTrendRequest(options.stayDate, numGuests, mealType, roomType, yadNos);
+                const response = await fetch(request.url, {
+                    credentials: "include",
+                    headers: {
+                        "x-requested-with": "XMLHttpRequest"
+                    }
+                });
+                if (!response.ok) {
+                    throw new Error(`price trends request failed: ${response.status}`);
                 }
-            });
-            if (!response.ok) {
-                throw new Error(`price trends request failed: ${response.status}`);
+                const apiResponse = await response.json() as PriceTrendApiResponse;
+                records.push(buildPriceTrendRecord({
+                    facilityId: options.facilityId,
+                    stayDate: options.stayDate,
+                    numGuests,
+                    mealType,
+                    roomType,
+                    roomTypeLabel: formatPriceTrendRoomTypeRequestLabel(roomType),
+                    fetchedAt,
+                    endpoint: PRICE_TRENDS_ENDPOINT,
+                    query: request.query,
+                    facilities: requestContext.facilities,
+                    scopeYadNos: yadNos,
+                    apiResponse
+                }));
             }
-            const apiResponse = await response.json() as PriceTrendApiResponse;
-            records.push(buildPriceTrendRecord({
-                facilityId: options.facilityId,
-                stayDate: options.stayDate,
-                numGuests,
-                mealType: requestContext.mealType,
-                roomType,
-                roomTypeLabel: formatPriceTrendRoomTypeRequestLabel(roomType),
-                fetchedAt,
-                endpoint: PRICE_TRENDS_ENDPOINT,
-                query: request.query,
-                facilities: requestContext.facilities,
-                scopeYadNos: yadNos,
-                apiResponse
-            }));
         }
     }
 
@@ -226,8 +223,7 @@ async function fetchAndPersistPriceTrendRecordsInternal(
 }
 
 async function buildPriceTrendRequestContext(): Promise<PriceTrendRequestContext> {
-    const [filterSettings, yadInfo, competitors] = await Promise.all([
-        fetchJson<PriceTrendFilterSettingsApiResponse>(PRICE_TRENDS_FILTER_SETTINGS_ENDPOINT),
+    const [yadInfo, competitors] = await Promise.all([
         fetchJson<PriceTrendYadInfoApiResponse>(YAD_INFO_ENDPOINT),
         fetchJson<PriceTrendCompetitorApiEntry[]>(COMPETITORS_ENDPOINT)
     ]);
@@ -255,7 +251,6 @@ async function buildPriceTrendRequestContext(): Promise<PriceTrendRequestContext
             },
             ...competitorFacilities
         ].filter((facility) => facility.yadNo !== ""),
-        mealType: normalizeMealType(filterSettings.meal_type),
         ownYadNo,
         competitorYadNos: competitorFacilities.map((facility) => facility.yadNo)
     };
@@ -264,7 +259,7 @@ async function buildPriceTrendRequestContext(): Promise<PriceTrendRequestContext
 function buildPriceTrendRequest(
     stayDate: string,
     numGuests: PriceTrendGuestCount,
-    mealType: string,
+    mealType: PriceTrendMealTypeRequest,
     roomType: PriceTrendRoomTypeRequest | null,
     yadNos: string[]
 ): { url: string; query: string } {
@@ -425,11 +420,6 @@ function normalizeFacilityName(value: string | null | undefined, yadNo: string, 
         return trimmed;
     }
     return fallback;
-}
-
-function normalizeMealType(value: string | null | undefined): string {
-    const trimmed = value?.trim() ?? "";
-    return trimmed === "" ? "NONE" : trimmed;
 }
 
 function normalizeNullableString(value: string | null | undefined): string | null {

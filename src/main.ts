@@ -277,7 +277,7 @@ const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
     "#4f7f9f"
 ];
 const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v8";
-const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-filter-v2";
+const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-meal-filter-v3";
 const PRICE_TREND_COMPETITOR_MIN_YAD_NO = "__competitor_min__";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
@@ -12683,7 +12683,7 @@ function renderPriceTrendOverviewAtTarget(
 
         const metaElement = document.createElement("div");
         metaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE, "");
-        metaElement.textContent = formatPriceTrendOverviewMeta(state, filteredRecords);
+        metaElement.textContent = formatPriceTrendOverviewMeta(state, filteredRecords, roomTypeFilter, mealTypeFilter);
 
         if (state.records.length === 0) {
             const emptyElement = document.createElement("div");
@@ -12795,14 +12795,19 @@ interface PriceTrendGuestChartSeries {
     pointsByGuestCount: Map<PriceTrendGuestCount, PriceTrendChartPoint[]>;
 }
 
-function formatPriceTrendOverviewMeta(state: PriceTrendUiState, records: PriceTrendRecord[]): string {
+function formatPriceTrendOverviewMeta(
+    state: PriceTrendUiState,
+    records: PriceTrendRecord[],
+    roomTypeFilter: string | null,
+    mealTypeFilter: string | null
+): string {
     const latestRecord = records
         .slice()
         .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
     const parts = [
         state.stayDate === null ? null : `対象宿泊日 ${formatCompactDateForDisplay(state.stayDate)}`,
-        latestRecord === null ? null : `部屋タイプ ${formatPriceTrendRoomTypeForDisplay(getPriceTrendRecordRoomTypeLabel(latestRecord))}`,
-        latestRecord === null ? null : `食事 ${formatMealTypeForDisplay(latestRecord.mealType)}`,
+        latestRecord === null ? null : `部屋タイプ ${formatPriceTrendRoomTypeForDisplay(roomTypeFilter ?? getPriceTrendRecordRoomTypeLabel(latestRecord))}`,
+        latestRecord === null ? null : `食事 ${mealTypeFilter === null ? "指定なし" : formatMealTypeForDisplay(mealTypeFilter)}`,
         latestRecord === null ? null : `公式更新 ${formatNullableDateTimeForDisplay(latestRecord.payload.latestSourceUpdatedAt)}`,
         latestRecord === null ? null : `保存 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
         `取得元 /api/v1/price_trends`
@@ -12877,19 +12882,21 @@ function formatPriceTrendRoomTypeForDisplay(roomType: string | null): string {
 
 function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTrendGuestChartSeries {
     const leadTimeDaySet = new Set<number>();
-    const pointsByGuestCount = new Map<PriceTrendGuestCount, PriceTrendChartPoint[]>();
+    const minimumPointsByGuestCount = new Map<PriceTrendGuestCount, Map<string, PriceTrendChartPoint>>();
     for (const guestCount of PRICE_TREND_GUEST_COUNTS) {
-        pointsByGuestCount.set(guestCount, []);
+        minimumPointsByGuestCount.set(guestCount, new Map());
     }
 
     const latestRecord = records
         .slice()
         .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
     const facilities = buildPriceTrendFacilities(latestRecord);
+    const facilityRoleByYadNo = new Map(
+        (latestRecord?.facilities ?? []).map((facility) => [facility.yadNo, facility.role])
+    );
 
     for (const record of records) {
-        const points = pointsByGuestCount.get(record.numGuests) ?? [];
-        const competitorMinimumByLeadTime = new Map<number, PriceTrendChartPoint>();
+        const minimumPoints = minimumPointsByGuestCount.get(record.numGuests) ?? new Map<string, PriceTrendChartPoint>();
         const roomType = getPriceTrendRecordRoomTypeLabel(record);
         for (const yad of record.payload.yads) {
             for (const point of yad.points) {
@@ -12906,23 +12913,34 @@ function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTren
                     roomType,
                     status: point.status
                 };
-                points.push(chartPoint);
-
-                const facility = record.facilities.find((candidate) => candidate.yadNo === yad.yadNo);
-                if (facility?.role !== "competitor") {
-                    continue;
-                }
-                const currentMinimum = competitorMinimumByLeadTime.get(point.leadTimeDays);
+                const key = `${chartPoint.yadNo}|${chartPoint.leadTimeDays}`;
+                const currentMinimum = minimumPoints.get(key);
                 if (currentMinimum === undefined || chartPoint.price < currentMinimum.price) {
-                    competitorMinimumByLeadTime.set(point.leadTimeDays, {
-                        ...chartPoint,
-                        yadNo: PRICE_TREND_COMPETITOR_MIN_YAD_NO
-                    });
+                    minimumPoints.set(key, chartPoint);
                 }
             }
         }
+        minimumPointsByGuestCount.set(record.numGuests, minimumPoints);
+    }
+
+    const pointsByGuestCount = new Map<PriceTrendGuestCount, PriceTrendChartPoint[]>();
+    for (const guestCount of PRICE_TREND_GUEST_COUNTS) {
+        const points = Array.from(minimumPointsByGuestCount.get(guestCount)?.values() ?? []);
+        const competitorMinimumByLeadTime = new Map<number, PriceTrendChartPoint>();
+        for (const chartPoint of points) {
+            if (facilityRoleByYadNo.get(chartPoint.yadNo) !== "competitor") {
+                continue;
+            }
+            const currentMinimum = competitorMinimumByLeadTime.get(chartPoint.leadTimeDays);
+            if (currentMinimum === undefined || chartPoint.price < currentMinimum.price) {
+                competitorMinimumByLeadTime.set(chartPoint.leadTimeDays, {
+                    ...chartPoint,
+                    yadNo: PRICE_TREND_COMPETITOR_MIN_YAD_NO
+                });
+            }
+        }
         points.push(...competitorMinimumByLeadTime.values());
-        pointsByGuestCount.set(record.numGuests, points);
+        pointsByGuestCount.set(guestCount, points);
     }
 
     return {
