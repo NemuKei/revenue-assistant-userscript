@@ -368,10 +368,11 @@ Indicator:
 公式 `価格推移` タブへの RAU 追加表示:
 
 - `RAU-CP-11` の 2026-05-29 read-only 調査では、Analyze 画面に `data-testid="tab-priceTrends"` の公式 `価格推移` タブがあり、本文には `data-testid="price-trends-content"`、`price-trends-filter-item`、`price-trends-filter-button`、`price-trends-chart-header`、`price-trends-chart-header-yad-list-item`、`price-trends-content-updated-at` が存在することを確認した。chart は Recharts の wrapper と `svg` として描画されている。調査中に保存したのは DOM 挿入位置、test id、通信 endpoint の発生有無、response shape の field 名や型の範囲に限定し、HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データは repo に保存しない。
-- 同調査で、`価格推移` タブへ切り替えた直後に観測した追加通信は `/api/v1/session/info` と `/api/v4/booking_curve?date=...` であり、専用の `価格推移` endpoint は 2026-05-29 の短時間観測では確定していない。したがって、公式 `価格推移` の内部データを RAU の IndexedDB snapshot store へ混ぜず、専用 endpoint の request / response 契約が確定するまでは保存 schema を追加しない。
+- 2026-05-29 の追加 read-only 調査で、公式 `価格推移` タブは `GET /api/v1/price_trends` を使うことを確認した。query は `stay_date`、`num_guests`、`meal_type`、`yad_nos[]` を持つ。response root は `latest_source_updated_at`、`stay_date`、`yads` を持つ。各 `yads[]` は `yad_no` と `price_trends[]` を持ち、各 `price_trends[]` は `date`、`lead_time_days`、`jalan_min_price`、`jalan_min_price_status` を持つ。89日より先の確認では HTTP 200 だが `yads` は空配列であり、RAU は対象外として表示する。
 - 利用者方針では、公式 `価格推移` は 89 日以内の宿泊日に対して一定の lead time 内で取得できる別データ源である。ただし、89 日より先の宿泊日では取得できず、データ粒度が細かすぎてそのまま意思決定に向くとは限らない。RAU は既存の `競合価格` タブの IndexedDB snapshot グラフを置き換えず、公式 `価格推移` は直近日程の補助情報源として扱う。
-- `RAU-CP-12` の first implementation では、公式 `価格推移` タブの本文にも、既存 `競合価格` タブと同じ `競合価格 最安値推移` グラフを追加する。表示内容は保存済み `competitor-price-snapshots` から作る人数別 1 名から 4 名の最安値推移、部屋タイプ / 食事条件 toggle、tooltip と同じである。公式 `価格推移` の Recharts data は最初の実装では正規化 store に保存せず、既存 snapshot store へも混ぜない。
-- `価格推移` タブを開いた場合も、その宿泊日は料金判断対象である可能性が高いため、`競合価格` タブを開いた場合と同じ現在 stay_date の競合価格 snapshot 保存要求を再試行付きで開始してよい。ただし、取得 source は既存の `competitor-tab` 系の snapshot 保存契約内に留め、公式 `価格推移` endpoint が未確定のまま別 store や別 request 範囲を増やさない。
+- `RAU-CP-12` の更新後は、公式 `価格推移` タブの RAU 追加 graph は既存 `competitor-price-snapshots` を使わない。`価格推移` タブでは、公式 `/api/v1/price_trends` から人数 1 から 4 を個別に取得し、人数別 4 panel の lead time 別 graph を表示する。表示 series は `自社`、`競合最低価格`、競合施設別 series とする。
+- 公式価格推移 data は既存 `competitor-price-snapshots` store へ混ぜず、IndexedDB database `revenue-assistant-price-trends`、store `price-trend-records` に保存する。record は `facilityId`、`stayDate`、`numGuests`、`mealType`、`fetchedAt`、`endpoint`、`query`、`facilities`、`scope`、`payload` を持つ。`payload.yads[].points[]` は `date`、`leadTimeDays`、`priceIncludingTax`、`status` を持つ。
+- `価格推移` タブを開いた場合、RAU は公式価格推移取得だけを開始し、既存 `competitor-tab` source の競合価格 snapshot 保存要求を開始しない。既存 `競合価格` タブでは、従来どおり `competitor-price-tax-included-text` 周辺に保存済み snapshot graph を表示し、IndexedDB snapshot 保存挙動も維持する。
 
 2026-04-30 の Chrome CDP 観測結果:
 

@@ -55,6 +55,13 @@ import {
     type CompetitorPriceSnapshotRecord
 } from "./competitorPriceSnapshotStore";
 import {
+    PRICE_TREND_GUEST_COUNTS,
+    fetchAndPersistPriceTrendRecords,
+    readLatestPriceTrendRecordsForStayDate,
+    type PriceTrendGuestCount,
+    type PriceTrendRecord
+} from "./priceTrendStore";
+import {
     buildRankRecommendationEvidenceKey,
     buildRankRecommendationCandidates,
     buildRankRecommendationRankChangeProposal,
@@ -252,6 +259,8 @@ const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE = "data-ra-sales
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-swatch";
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-tone";
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
+const SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE = "data-ra-sales-setting-price-trend-overview";
+const SALES_SETTING_PRICE_TREND_OVERVIEW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-price-trend-overview-signature";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
 const COMPETITOR_PRICE_OWN_SERIES_COLOR = "#2f6fbb";
 const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
@@ -268,6 +277,8 @@ const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
     "#4f7f9f"
 ];
 const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v7";
+const PRICE_TREND_OVERVIEW_UI_VERSION = "official-price-trend-v1";
+const PRICE_TREND_COMPETITOR_MIN_YAD_NO = "__competitor_min__";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
@@ -443,6 +454,7 @@ interface SalesSettingWarmCacheState {
 }
 
 type CompetitorPriceSnapshotStatus = "idle" | "saving" | "stored" | "skipped" | "error";
+type PriceTrendStatus = "idle" | "loading" | "stored" | "skipped" | "error";
 
 interface CompetitorPriceSnapshotUiState {
     status: CompetitorPriceSnapshotStatus;
@@ -452,6 +464,16 @@ interface CompetitorPriceSnapshotUiState {
     records: CompetitorPriceSnapshotRecord[];
     latestRecord: CompetitorPriceSnapshotRecord | null;
     previousRecord: CompetitorPriceSnapshotRecord | null;
+    reason: string | null;
+    errorMessage: string | null;
+    updatedAt: string | null;
+}
+
+interface PriceTrendUiState {
+    status: PriceTrendStatus;
+    facilityId: string | null;
+    stayDate: string | null;
+    records: PriceTrendRecord[];
     reason: string | null;
     errorMessage: string | null;
     updatedAt: string | null;
@@ -726,6 +748,11 @@ interface PendingCompetitorPriceTabSnapshotRequest {
     timeoutIds: number[];
 }
 
+interface PendingPriceTrendTabRequest {
+    analysisDate: string;
+    timeoutIds: number[];
+}
+
 interface PendingRankRecommendationFocus {
     stayDate: string;
     roomGroupId: string;
@@ -902,6 +929,7 @@ let competitorPriceSnapshotBackgroundTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundRunning = false;
 let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
 let pendingCompetitorPriceTabSnapshotRequest: PendingCompetitorPriceTabSnapshotRequest | null = null;
+let pendingPriceTrendTabRequest: PendingPriceTrendTabRequest | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
 let rankRecommendationWarmCachePriorityCandidates: RankRecommendationWarmCachePriorityCandidate[] = [];
 let rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
@@ -910,6 +938,7 @@ let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
 let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
 let salesSettingWarmCacheStoredCalendarMarkerStates = new Map<string, SalesSettingWarmCacheStoredMarkerState>();
 let competitorPriceSnapshotUiState: CompetitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+let priceTrendUiState: PriceTrendUiState = createInitialPriceTrendUiState();
 let competitorPriceRoomTypeFilter: string | null = null;
 let competitorPriceMealTypeFilter: string | null = null;
 let salesSettingWarmCacheIndicatorMinimized = false;
@@ -1003,6 +1032,9 @@ function installInteractionHooks(): void {
         if (target instanceof Element) {
             if (isCompetitorPriceTabTrigger(target)) {
                 scheduleActiveCompetitorPriceSnapshotFromTab();
+            }
+            if (isPriceTrendTabTrigger(target)) {
+                scheduleActivePriceTrendFromTab();
             }
 
             const rankRecommendationAnalyzeLink = target.closest<HTMLElement>(
@@ -1255,8 +1287,14 @@ function isCompetitorPriceTabTrigger(target: Element): boolean {
     const testId = tabElement?.getAttribute("data-testid") ?? "";
     const text = tabElement?.textContent?.replace(/\s+/g, "") ?? "";
     return testId === "tab-competitorPrice"
-        || testId === "tab-priceTrends"
-        || text.includes("競合価格")
+        || text.includes("競合価格");
+}
+
+function isPriceTrendTabTrigger(target: Element): boolean {
+    const tabElement = target.closest<HTMLElement>("button, a, [role='tab'], [data-testid]");
+    const testId = tabElement?.getAttribute("data-testid") ?? "";
+    const text = tabElement?.textContent?.replace(/\s+/g, "") ?? "";
+    return testId === "tab-priceTrends"
         || text.includes("価格推移");
 }
 
@@ -1270,6 +1308,16 @@ function scheduleActiveCompetitorPriceSnapshotFromTab(): void {
     queueCalendarSync({ reason: "competitor-price-tab" });
 }
 
+function scheduleActivePriceTrendFromTab(): void {
+    const analysisDate = getAnalyzeDate(window.location.pathname) ?? activeAnalyzeDate;
+    if (analysisDate === null) {
+        return;
+    }
+
+    requestPriceTrendFromTabWhenContextReady(analysisDate);
+    queueCalendarSync({ reason: "price-trends-tab" });
+}
+
 function clearPendingCompetitorPriceTabSnapshotRequest(): void {
     const request = pendingCompetitorPriceTabSnapshotRequest;
     if (request === null) {
@@ -1280,6 +1328,18 @@ function clearPendingCompetitorPriceTabSnapshotRequest(): void {
         window.clearTimeout(timeoutId);
     }
     pendingCompetitorPriceTabSnapshotRequest = null;
+}
+
+function clearPendingPriceTrendTabRequest(): void {
+    const request = pendingPriceTrendTabRequest;
+    if (request === null) {
+        return;
+    }
+
+    for (const timeoutId of request.timeoutIds) {
+        window.clearTimeout(timeoutId);
+    }
+    pendingPriceTrendTabRequest = null;
 }
 
 function requestCompetitorPriceSnapshotFromTabWhenContextReady(analysisDate: string): void {
@@ -1303,6 +1363,27 @@ function requestCompetitorPriceSnapshotFromTabWhenContextReady(analysisDate: str
     }
 }
 
+function requestPriceTrendFromTabWhenContextReady(analysisDate: string): void {
+    clearPendingPriceTrendTabRequest();
+    const request: PendingPriceTrendTabRequest = {
+        analysisDate,
+        timeoutIds: []
+    };
+    pendingPriceTrendTabRequest = request;
+
+    trySchedulePendingPriceTrendTabRequest();
+    if (pendingPriceTrendTabRequest !== request) {
+        return;
+    }
+
+    for (const delay of [120, 300, 700, 1500, 3000]) {
+        const timeoutId = window.setTimeout(() => {
+            trySchedulePendingPriceTrendTabRequest();
+        }, delay);
+        request.timeoutIds.push(timeoutId);
+    }
+}
+
 function ensureCompetitorPriceSnapshotUiContext(facilityCacheKey: string, analysisDate: string): void {
     if (
         competitorPriceSnapshotUiState.facilityId === facilityCacheKey
@@ -1316,6 +1397,22 @@ function ensureCompetitorPriceSnapshotUiContext(facilityCacheKey: string, analys
         facilityId: facilityCacheKey,
         stayDate: analysisDate,
         source: "competitor-tab",
+        updatedAt: new Date().toISOString()
+    };
+}
+
+function ensurePriceTrendUiContext(facilityCacheKey: string, analysisDate: string): void {
+    if (
+        priceTrendUiState.facilityId === facilityCacheKey
+        && priceTrendUiState.stayDate === analysisDate
+    ) {
+        return;
+    }
+
+    priceTrendUiState = {
+        ...createInitialPriceTrendUiState(),
+        facilityId: facilityCacheKey,
+        stayDate: analysisDate,
         updatedAt: new Date().toISOString()
     };
 }
@@ -1340,6 +1437,27 @@ function trySchedulePendingCompetitorPriceTabSnapshotRequest(): boolean {
     scheduleCompetitorPriceSnapshot(request.analysisDate, batchDateKey, facilityCacheKey, "competitor-tab");
     scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey, request.analysisDate);
     clearPendingCompetitorPriceTabSnapshotRequest();
+    return true;
+}
+
+function trySchedulePendingPriceTrendTabRequest(): boolean {
+    const request = pendingPriceTrendTabRequest;
+    if (request === null) {
+        return false;
+    }
+
+    const facilityCacheKey = activeFacilityCacheKey;
+    if (
+        activeAnalyzeDate !== request.analysisDate
+        || facilityCacheKey === null
+    ) {
+        return false;
+    }
+
+    ensurePriceTrendUiContext(facilityCacheKey, request.analysisDate);
+    void runPriceTrendFetch(request.analysisDate, facilityCacheKey);
+    schedulePriceTrendOverviewRenderRetries(facilityCacheKey, request.analysisDate);
+    clearPendingPriceTrendTabRequest();
     return true;
 }
 
@@ -2486,6 +2604,30 @@ function scheduleCompetitorPriceOverviewRenderRetries(facilityCacheKey: string, 
     }
 }
 
+function schedulePriceTrendOverviewRenderRetries(facilityCacheKey: string, analysisDate: string): void {
+    void refreshPriceTrendRecords(facilityCacheKey, analysisDate);
+    for (const delay of [120, 300, 700, 1500, 3000]) {
+        window.setTimeout(() => {
+            if (activeAnalyzeDate !== analysisDate || activeFacilityCacheKey !== facilityCacheKey) {
+                return;
+            }
+            renderPriceTrendOverviewFromState();
+        }, delay);
+    }
+}
+
+function maybeScheduleVisiblePriceTrendFetch(): void {
+    if (
+        activeAnalyzeDate === null
+        || resolvePriceTrendTabSectionTarget() === null
+        || priceTrendUiState.status !== "idle"
+    ) {
+        return;
+    }
+
+    scheduleActivePriceTrendFromTab();
+}
+
 function scheduleCompetitorPriceOverviewPlacementRepair(): void {
     if (activeAnalyzeDate === null) {
         return;
@@ -2498,6 +2640,8 @@ function scheduleCompetitorPriceOverviewPlacementRepair(): void {
             }
 
             renderCompetitorPriceOverviewFromState();
+            renderPriceTrendOverviewFromState();
+            maybeScheduleVisiblePriceTrendFetch();
         }, delay);
     }
 }
@@ -2510,6 +2654,7 @@ function syncPage(): void {
     const previousMonthlyProgressYearMonth = activeMonthlyProgressYearMonth;
     const previousMonthlyProgressBatchDateKey = activeMonthlyProgressBatchDateKey;
     const pendingCompetitorPriceTabAnalysisDate = pendingCompetitorPriceTabSnapshotRequest?.analysisDate ?? null;
+    const pendingPriceTrendTabAnalysisDate = pendingPriceTrendTabRequest?.analysisDate ?? null;
     const returnedToCalendarTop = previousAnalyzeDate !== null && selectedDate === null;
 
     activeAnalyzeDate = selectedDate;
@@ -2532,11 +2677,16 @@ function syncPage(): void {
     if (selectedDate !== null && (nextHref !== activeHref || selectedDate !== previousAnalyzeDate)) {
         salesSettingBookingCurveOpenState.clear();
         competitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+        priceTrendUiState = createInitialPriceTrendUiState();
         if (pendingCompetitorPriceTabAnalysisDate !== selectedDate) {
             clearPendingCompetitorPriceTabSnapshotRequest();
         }
+        if (pendingPriceTrendTabAnalysisDate !== selectedDate) {
+            clearPendingPriceTrendTabRequest();
+        }
         resetCompetitorPriceSnapshotBackgroundProgress();
         cleanupCompetitorPriceOverview();
+        cleanupPriceTrendOverview();
     }
 
     ensureCalendarObserver();
@@ -2544,9 +2694,12 @@ function syncPage(): void {
 
     if (selectedDate === null) {
         competitorPriceSnapshotUiState = createInitialCompetitorPriceSnapshotUiState();
+        priceTrendUiState = createInitialPriceTrendUiState();
         clearPendingCompetitorPriceTabSnapshotRequest();
+        clearPendingPriceTrendTabRequest();
         resetCompetitorPriceSnapshotBackgroundProgress();
         cleanupCompetitorPriceOverview();
+        cleanupPriceTrendOverview();
         renderSalesSettingWarmCacheIndicator();
         clearInteractionSyncTimeouts();
         clearConsistencyCheckTimeout();
@@ -2623,6 +2776,7 @@ function suspendCalendarFeatures(): void {
     cleanupSalesSettingOverallSummary();
     cleanupSalesSettingRankOverview();
     cleanupCompetitorPriceOverview();
+    cleanupPriceTrendOverview();
     cleanupSalesSettingRankDetails();
     cleanupSalesSettingGroupRooms();
     cleanupSalesSettingBookingCurveCards();
@@ -2980,6 +3134,18 @@ function createInitialCompetitorPriceSnapshotUiState(): CompetitorPriceSnapshotU
         records: [],
         latestRecord: null,
         previousRecord: null,
+        reason: null,
+        errorMessage: null,
+        updatedAt: null
+    };
+}
+
+function createInitialPriceTrendUiState(): PriceTrendUiState {
+    return {
+        status: "idle",
+        facilityId: null,
+        stayDate: null,
+        records: [],
         reason: null,
         errorMessage: null,
         updatedAt: null
@@ -4612,6 +4778,9 @@ function ensureCalendarObserver(): void {
     }
 
     const root = document.querySelector("#root") ?? document.body;
+    if (root === null) {
+        return;
+    }
     calendarObserver = new MutationObserver((mutations) => {
         if (mutations.every((mutation) => isRevenueAssistantManagedMutation(mutation))) {
             return;
@@ -5236,6 +5405,124 @@ async function runCompetitorPriceSnapshotSave(
         });
         return false;
     }
+}
+
+async function runPriceTrendFetch(
+    analysisDate: string,
+    facilityCacheKey: string
+): Promise<boolean> {
+    priceTrendUiState = {
+        ...priceTrendUiState,
+        status: "loading",
+        facilityId: facilityCacheKey,
+        stayDate: analysisDate,
+        reason: null,
+        errorMessage: null,
+        updatedAt: new Date().toISOString()
+    };
+    renderPriceTrendOverviewFromState();
+    void refreshPriceTrendRecords(facilityCacheKey, analysisDate);
+
+    try {
+        const result = await fetchAndPersistPriceTrendRecords({
+            facilityId: facilityCacheKey,
+            stayDate: analysisDate
+        });
+        if (!result.stored) {
+            priceTrendUiState = {
+                ...priceTrendUiState,
+                status: "skipped",
+                facilityId: facilityCacheKey,
+                stayDate: analysisDate,
+                records: result.records,
+                reason: result.reason ?? "unknown",
+                errorMessage: null,
+                updatedAt: new Date().toISOString()
+            };
+            renderPriceTrendOverviewFromState();
+            console.info(`[${SCRIPT_NAME}] price trend fetch skipped`, {
+                analysisDate,
+                facilityCacheKey,
+                reason: result.reason
+            });
+            return false;
+        }
+
+        priceTrendUiState = {
+            ...priceTrendUiState,
+            status: "stored",
+            facilityId: facilityCacheKey,
+            stayDate: analysisDate,
+            records: result.records,
+            reason: null,
+            errorMessage: null,
+            updatedAt: new Date().toISOString()
+        };
+        renderPriceTrendOverviewFromState();
+        console.info(`[${SCRIPT_NAME}] price trend records stored`, {
+            analysisDate,
+            facilityCacheKey,
+            storedCount: result.records.length
+        });
+        return true;
+    } catch (error: unknown) {
+        priceTrendUiState = {
+            ...priceTrendUiState,
+            status: "error",
+            facilityId: facilityCacheKey,
+            stayDate: analysisDate,
+            reason: null,
+            errorMessage: getErrorMessage(error),
+            updatedAt: new Date().toISOString()
+        };
+        renderPriceTrendOverviewFromState();
+        console.warn(`[${SCRIPT_NAME}] failed to fetch price trend records`, {
+            analysisDate,
+            facilityCacheKey,
+            error
+        });
+        return false;
+    }
+}
+
+async function refreshPriceTrendRecords(facilityCacheKey: string, analysisDate: string): Promise<void> {
+    if (
+        priceTrendUiState.facilityId !== facilityCacheKey
+        || priceTrendUiState.stayDate !== analysisDate
+    ) {
+        priceTrendUiState = {
+            ...priceTrendUiState,
+            facilityId: facilityCacheKey,
+            stayDate: analysisDate
+        };
+    }
+
+    const records = await readLatestPriceTrendRecordsForStayDate(facilityCacheKey, analysisDate)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read price trend records`, {
+                analysisDate,
+                facilityCacheKey,
+                error
+            });
+            return [];
+        });
+    if (
+        activeAnalyzeDate !== analysisDate
+        || activeFacilityCacheKey !== facilityCacheKey
+        || records.length === 0
+    ) {
+        return;
+    }
+
+    priceTrendUiState = {
+        ...priceTrendUiState,
+        status: priceTrendUiState.status === "idle" ? "stored" : priceTrendUiState.status,
+        records,
+        reason: null,
+        errorMessage: null,
+        updatedAt: new Date().toISOString()
+    };
+    renderPriceTrendOverviewFromState();
 }
 
 function scheduleCompetitorPriceSnapshotBackgroundQueue(
@@ -8998,6 +9285,7 @@ function rerenderSalesSettingBookingCurveSurfacesFromLatestSnapshot(): void {
         }
     }
     renderCompetitorPriceOverviewFromState();
+    renderPriceTrendOverviewFromState();
 }
 
 function renderSalesSettingGroupRoomsFromPreparedData(
@@ -9620,12 +9908,14 @@ function restoreCurrentUiSalesSettingSupplements(cards: SalesSettingCard[]): voi
             preparedData
         );
         renderCompetitorPriceOverviewFromState();
+        renderPriceTrendOverviewFromState();
         return;
     }
 
     cleanupSalesSettingRankOverview();
     cleanupSalesSettingRankDetails();
     renderCompetitorPriceOverviewFromState();
+    renderPriceTrendOverviewFromState();
 }
 
 function scheduleSalesSettingSupplementCleanup(): void {
@@ -10397,7 +10687,7 @@ async function loadLincolnSuggestStatusesForRange(fromDateKey: string, toDateKey
 }
 
 function getCurrentBatchDateKey(): string {
-    const text = document.body.innerText;
+    const text = document.body?.innerText ?? "";
     const match = /最終データ更新[:：]\s*(\d{4})年(\d{1,2})月(\d{1,2})日/.exec(text);
 
     if (match !== null) {
@@ -12005,6 +12295,12 @@ function cleanupCompetitorPriceOverview(): void {
     }
 }
 
+function cleanupPriceTrendOverview(): void {
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE}]`))) {
+        element.remove();
+    }
+}
+
 function cleanupSalesSettingRankDetails(): void {
     for (const detailElement of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}]`))) {
         detailElement.remove();
@@ -12329,6 +12625,86 @@ function renderCompetitorPriceOverviewAtTarget(
     }
 }
 
+function renderPriceTrendOverviewFromState(): void {
+    const target = resolvePriceTrendTabSectionTarget();
+    if (target === null) {
+        cleanupPriceTrendOverview();
+        return;
+    }
+
+    if (priceTrendUiState.records.length === 0 && priceTrendUiState.status === "idle") {
+        cleanupPriceTrendOverview();
+        return;
+    }
+
+    renderPriceTrendOverviewAtTarget(target, priceTrendUiState);
+}
+
+function renderPriceTrendOverviewAtTarget(
+    sectionContainer: HTMLElement,
+    state: PriceTrendUiState
+): void {
+    const signature = [
+        PRICE_TREND_OVERVIEW_UI_VERSION,
+        state.status,
+        state.reason ?? "reason:none",
+        state.errorMessage ?? "error:none",
+        state.records.map((record) => record.recordKey).join("|")
+    ].join("::");
+    const existingContainer = findDirectChildByAttribute(sectionContainer, SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE);
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE}]`))) {
+        if (element !== existingContainer) {
+            element.remove();
+        }
+    }
+    const containerElement = existingContainer ?? document.createElement("section");
+
+    if (existingContainer?.getAttribute(SALES_SETTING_PRICE_TREND_OVERVIEW_SIGNATURE_ATTRIBUTE) !== signature) {
+        containerElement.setAttribute(SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE, "");
+        containerElement.setAttribute(SALES_SETTING_PRICE_TREND_OVERVIEW_SIGNATURE_ATTRIBUTE, signature);
+
+        const titleElement = document.createElement("div");
+        titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_TITLE_ATTRIBUTE, "");
+        titleElement.textContent = "公式価格推移 最安値推移";
+
+        const metaElement = document.createElement("div");
+        metaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE, "");
+        metaElement.textContent = formatPriceTrendOverviewMeta(state);
+
+        if (state.records.length === 0) {
+            const emptyElement = document.createElement("div");
+            emptyElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE, "");
+            emptyElement.textContent = formatPriceTrendEmptyText(state);
+            containerElement.replaceChildren(titleElement, metaElement, emptyElement);
+        } else {
+            const chartSeries = buildPriceTrendGuestChartSeries(state.records);
+            const legendElement = createCompetitorPriceLegend(chartSeries.facilities);
+            const chartGridElement = document.createElement("div");
+            chartGridElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE, "");
+            for (const guestCount of PRICE_TREND_GUEST_COUNTS) {
+                chartGridElement.append(createPriceTrendChartPanel(guestCount, chartSeries));
+            }
+            containerElement.replaceChildren(titleElement, metaElement, legendElement, chartGridElement);
+        }
+    }
+
+    if (containerElement.parentElement !== sectionContainer || sectionContainer.lastElementChild !== containerElement) {
+        sectionContainer.append(containerElement);
+    }
+}
+
+function resolvePriceTrendTabSectionTarget(): HTMLElement | null {
+    const priceTrendsContentElement = document.querySelector<HTMLElement>(`[data-testid="price-trends-content"]`);
+    if (
+        priceTrendsContentElement instanceof HTMLElement
+        && isElementVisiblyRendered(priceTrendsContentElement)
+    ) {
+        return priceTrendsContentElement;
+    }
+
+    return null;
+}
+
 function resolveCompetitorPriceTabSectionTarget(): { sectionContainer: HTMLElement; insertionAnchor: HTMLElement | null } | null {
     const taxIncludedTextElement = document.querySelector<HTMLElement>(`[data-testid="competitor-price-tax-included-text"]`);
     if (
@@ -12337,17 +12713,6 @@ function resolveCompetitorPriceTabSectionTarget(): { sectionContainer: HTMLEleme
     ) {
         return {
             sectionContainer: taxIncludedTextElement.parentElement,
-            insertionAnchor: null
-        };
-    }
-
-    const priceTrendsContentElement = document.querySelector<HTMLElement>(`[data-testid="price-trends-content"]`);
-    if (
-        priceTrendsContentElement instanceof HTMLElement
-        && isElementVisiblyRendered(priceTrendsContentElement)
-    ) {
-        return {
-            sectionContainer: priceTrendsContentElement,
             insertionAnchor: null
         };
     }
@@ -12391,6 +12756,164 @@ interface CompetitorPriceChartLayout {
     plotWidth: number;
     activeLeft: number;
     activeWidth: number;
+}
+
+interface PriceTrendChartPoint {
+    leadTimeDays: number;
+    observedDate: string | null;
+    yadNo: string;
+    price: number;
+    status: string | null;
+}
+
+interface PriceTrendGuestChartSeries {
+    leadTimeDays: number[];
+    facilities: CompetitorPriceFacilitySeries[];
+    pointsByGuestCount: Map<PriceTrendGuestCount, PriceTrendChartPoint[]>;
+}
+
+function formatPriceTrendOverviewMeta(state: PriceTrendUiState): string {
+    const latestRecord = state.records
+        .slice()
+        .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
+    const parts = [
+        state.stayDate === null ? null : `対象宿泊日 ${formatCompactDateForDisplay(state.stayDate)}`,
+        latestRecord === null ? null : `食事 ${formatMealTypeForDisplay(latestRecord.mealType)}`,
+        latestRecord === null ? null : `公式更新 ${formatNullableDateTimeForDisplay(latestRecord.payload.latestSourceUpdatedAt)}`,
+        latestRecord === null ? null : `保存 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
+        `取得元 /api/v1/price_trends`
+    ].filter((part): part is string => part !== null);
+    return parts.join(" / ");
+}
+
+function formatPriceTrendEmptyText(state: PriceTrendUiState): string {
+    if (state.status === "loading") {
+        return "公式価格推移データを取得中です。";
+    }
+    if (state.status === "error") {
+        return `公式価格推移データを取得できませんでした${state.errorMessage === null ? "" : `: ${state.errorMessage}`}`;
+    }
+    if (state.reason === "unsupported-stay-date") {
+        return "公式価格推移データなし。89日より先、または公式側に対象データがない宿泊日として扱います。";
+    }
+    if (state.reason === "indexeddb-unavailable") {
+        return "公式価格推移データは取得できましたが、IndexedDB に保存できませんでした。";
+    }
+    return "公式価格推移データなし。";
+}
+
+function formatNullableDateTimeForDisplay(value: string | null): string {
+    return value === null ? "不明" : formatDateTimeForDisplay(value);
+}
+
+function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTrendGuestChartSeries {
+    const leadTimeDaySet = new Set<number>();
+    const pointsByGuestCount = new Map<PriceTrendGuestCount, PriceTrendChartPoint[]>();
+    for (const guestCount of PRICE_TREND_GUEST_COUNTS) {
+        pointsByGuestCount.set(guestCount, []);
+    }
+
+    const latestRecord = records
+        .slice()
+        .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
+    const facilities = buildPriceTrendFacilities(latestRecord);
+
+    for (const record of records) {
+        const points = pointsByGuestCount.get(record.numGuests) ?? [];
+        const competitorMinimumByLeadTime = new Map<number, PriceTrendChartPoint>();
+        for (const yad of record.payload.yads) {
+            for (const point of yad.points) {
+                leadTimeDaySet.add(point.leadTimeDays);
+                if (point.priceIncludingTax === null) {
+                    continue;
+                }
+
+                const chartPoint: PriceTrendChartPoint = {
+                    leadTimeDays: point.leadTimeDays,
+                    observedDate: point.date,
+                    yadNo: yad.yadNo,
+                    price: point.priceIncludingTax,
+                    status: point.status
+                };
+                points.push(chartPoint);
+
+                const facility = record.facilities.find((candidate) => candidate.yadNo === yad.yadNo);
+                if (facility?.role !== "competitor") {
+                    continue;
+                }
+                const currentMinimum = competitorMinimumByLeadTime.get(point.leadTimeDays);
+                if (currentMinimum === undefined || chartPoint.price < currentMinimum.price) {
+                    competitorMinimumByLeadTime.set(point.leadTimeDays, {
+                        ...chartPoint,
+                        yadNo: PRICE_TREND_COMPETITOR_MIN_YAD_NO
+                    });
+                }
+            }
+        }
+        points.push(...competitorMinimumByLeadTime.values());
+        pointsByGuestCount.set(record.numGuests, points);
+    }
+
+    return {
+        leadTimeDays: Array.from(leadTimeDaySet).sort((left, right) => right - left),
+        facilities,
+        pointsByGuestCount
+    };
+}
+
+function buildPriceTrendFacilities(record: PriceTrendRecord | null): CompetitorPriceFacilitySeries[] {
+    if (record === null) {
+        return [];
+    }
+
+    const ownFacility = record.facilities.find((facility) => facility.role === "own");
+    const competitorFacilities = record.facilities.filter((facility) => facility.role === "competitor");
+    return [
+        ...(ownFacility === undefined
+            ? []
+            : [{
+                yadNo: ownFacility.yadNo,
+                name: "自社",
+                color: COMPETITOR_PRICE_OWN_SERIES_COLOR
+            }]),
+        {
+            yadNo: PRICE_TREND_COMPETITOR_MIN_YAD_NO,
+            name: "競合最低価格",
+            color: "#1f2937"
+        },
+        ...competitorFacilities.map((facility, index) => ({
+            yadNo: facility.yadNo,
+            name: facility.name,
+            color: COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS[index % COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS.length] ?? "#50627a"
+        }))
+    ];
+}
+
+function createPriceTrendChartPanel(
+    guestCount: PriceTrendGuestCount,
+    chartSeries: PriceTrendGuestChartSeries
+): HTMLElement {
+    const panelElement = document.createElement("section");
+    panelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE, "");
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE, "");
+    titleElement.textContent = `${guestCount}名 公式価格推移`;
+    const points = chartSeries.pointsByGuestCount.get(guestCount) ?? [];
+    if (points.length === 0) {
+        const emptyElement = document.createElement("div");
+        emptyElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE, "");
+        emptyElement.textContent = "対象データなし";
+        panelElement.replaceChildren(titleElement, emptyElement);
+        return panelElement;
+    }
+
+    const tooltipElement = createCompetitorPriceTooltip();
+    panelElement.replaceChildren(
+        titleElement,
+        tooltipElement,
+        createPriceTrendChartSvg(chartSeries.leadTimeDays, chartSeries.facilities, points, guestCount, tooltipElement)
+    );
+    return panelElement;
 }
 
 function mergeCompetitorPriceSnapshotRecordList(
@@ -12768,6 +13291,150 @@ function createCompetitorPriceChartSvg(
     return svgElement;
 }
 
+function createPriceTrendChartSvg(
+    leadTimeDays: number[],
+    facilities: CompetitorPriceFacilitySeries[],
+    points: PriceTrendChartPoint[],
+    guestCount: PriceTrendGuestCount,
+    tooltipElement: HTMLElement
+): SVGSVGElement {
+    const svgNamespace = "http://www.w3.org/2000/svg";
+    const width = 760;
+    const height = 220;
+    const paddingLeft = 54;
+    const paddingRight = 24;
+    const paddingTop = 18;
+    const paddingBottom = 34;
+    const plotWidth = width - paddingLeft - paddingRight;
+    const plotHeight = height - paddingTop - paddingBottom;
+    const layout = getCompetitorPriceChartLayout(leadTimeDays.length, paddingLeft, plotWidth);
+    const prices = points.map((point) => point.price);
+    const minPrice = Math.min(...prices);
+    const maxPrice = Math.max(...prices);
+    const yMin = minPrice === maxPrice ? Math.max(0, minPrice - 1000) : minPrice;
+    const yMax = minPrice === maxPrice ? maxPrice + 1000 : maxPrice;
+    const yAxisTicks = buildCompetitorPriceYAxisTicks(yMin, yMax);
+
+    const svgElement = document.createElementNS(svgNamespace, "svg");
+    svgElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE, "");
+    svgElement.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    svgElement.setAttribute("role", "img");
+    svgElement.setAttribute("aria-label", `${guestCount}名の公式価格推移`);
+
+    for (const [index, tick] of yAxisTicks.entries()) {
+        const y = getCompetitorPriceChartY(tick, yMin, yMax, paddingTop, plotHeight);
+        const textElement = document.createElementNS(svgNamespace, "text");
+        textElement.setAttribute("x", "4");
+        textElement.setAttribute("y", String(y + 4));
+        textElement.textContent = formatPriceForDisplay(tick).replace("円", "");
+        svgElement.append(textElement);
+
+        const lineElement = document.createElementNS(svgNamespace, "line");
+        lineElement.setAttribute("x1", layout.plotLeft.toFixed(2));
+        lineElement.setAttribute("x2", (layout.plotLeft + layout.plotWidth).toFixed(2));
+        lineElement.setAttribute("y1", y.toFixed(2));
+        lineElement.setAttribute("y2", y.toFixed(2));
+        if (index > 0 && index < yAxisTicks.length - 1) {
+            lineElement.setAttribute("stroke-dasharray", "2 4");
+            lineElement.setAttribute("opacity", "0.75");
+        }
+        svgElement.append(lineElement);
+    }
+
+    for (const [leadTimeIndex, leadTimeDaysValue] of leadTimeDays.entries()) {
+        if (!shouldShowPriceTrendLeadTimeTick(leadTimeDaysValue)) {
+            continue;
+        }
+        const x = getCompetitorPriceChartX(leadTimeIndex, leadTimeDays.length, layout);
+        const textElement = document.createElementNS(svgNamespace, "text");
+        textElement.setAttribute("x", x.toFixed(2));
+        textElement.setAttribute("y", String(height - 8));
+        textElement.setAttribute("text-anchor", "middle");
+        textElement.textContent = String(leadTimeDaysValue);
+        svgElement.append(textElement);
+    }
+
+    const axisLabelElement = document.createElementNS(svgNamespace, "text");
+    axisLabelElement.setAttribute("x", String(width - 4));
+    axisLabelElement.setAttribute("y", String(height - 8));
+    axisLabelElement.setAttribute("text-anchor", "end");
+    axisLabelElement.textContent = "(日前)";
+    svgElement.append(axisLabelElement);
+
+    const guideLineElement = document.createElementNS(svgNamespace, "line");
+    guideLineElement.setAttribute("x1", String(paddingLeft));
+    guideLineElement.setAttribute("x2", String(paddingLeft));
+    guideLineElement.setAttribute("y1", String(paddingTop));
+    guideLineElement.setAttribute("y2", String(height - paddingBottom));
+    guideLineElement.setAttribute("visibility", "hidden");
+    guideLineElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_GUIDE_LINE_ATTRIBUTE, "");
+    guideLineElement.setAttribute("stroke", "#8fa1b8");
+    guideLineElement.setAttribute("stroke-dasharray", "3 3");
+    svgElement.append(guideLineElement);
+
+    for (const facility of facilities) {
+        const facilityPoints = points
+            .filter((point) => point.yadNo === facility.yadNo)
+            .sort((left, right) => leadTimeDays.indexOf(left.leadTimeDays) - leadTimeDays.indexOf(right.leadTimeDays));
+        if (facilityPoints.length === 0) {
+            continue;
+        }
+
+        const pathData = facilityPoints
+            .map((point, index) => {
+                const x = getCompetitorPriceChartX(leadTimeDays.indexOf(point.leadTimeDays), leadTimeDays.length, layout);
+                const y = getCompetitorPriceChartY(point.price, yMin, yMax, paddingTop, plotHeight);
+                return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
+            })
+            .join(" ");
+        const pathElement = document.createElementNS(svgNamespace, "path");
+        pathElement.setAttribute("d", pathData);
+        pathElement.setAttribute("fill", "none");
+        pathElement.setAttribute("stroke", facility.color);
+        pathElement.setAttribute("stroke-width", facility.yadNo === PRICE_TREND_COMPETITOR_MIN_YAD_NO ? "2.5" : "2");
+        if (facility.yadNo === PRICE_TREND_COMPETITOR_MIN_YAD_NO) {
+            pathElement.setAttribute("stroke-dasharray", "5 4");
+        }
+        svgElement.append(pathElement);
+    }
+
+    const hitboxElements: SVGRectElement[] = [];
+    for (const [leadTimeIndex, leadTimeDaysValue] of leadTimeDays.entries()) {
+        const x = getCompetitorPriceChartX(leadTimeIndex, leadTimeDays.length, layout);
+        const hitboxElement = document.createElementNS(svgNamespace, "rect");
+        hitboxElement.setAttribute("x", getCompetitorPriceChartHitboxX(leadTimeIndex, leadTimeDays.length, layout).toFixed(2));
+        hitboxElement.setAttribute("y", String(paddingTop));
+        hitboxElement.setAttribute("width", getCompetitorPriceChartHitboxWidth(leadTimeDays.length, layout).toFixed(2));
+        hitboxElement.setAttribute("height", String(plotHeight));
+        hitboxElement.setAttribute("fill", "transparent");
+        hitboxElement.setAttribute("tabindex", "0");
+        hitboxElements.push(hitboxElement);
+        hitboxElement.addEventListener("mouseenter", (event) => {
+            setActiveCompetitorPriceChartHitbox(hitboxElements, hitboxElement);
+            showPriceTrendTooltip(tooltipElement, guideLineElement, x, width, leadTimeDaysValue, facilities, points, event.clientX);
+        });
+        hitboxElement.addEventListener("focus", () => {
+            setActiveCompetitorPriceChartHitbox(hitboxElements, hitboxElement);
+            showPriceTrendTooltip(tooltipElement, guideLineElement, x, width, leadTimeDaysValue, facilities, points);
+        });
+        hitboxElement.addEventListener("mouseleave", () => {
+            hideCompetitorPriceTooltip(tooltipElement, guideLineElement);
+            clearActiveCompetitorPriceChartHitboxes(hitboxElements);
+        });
+        hitboxElement.addEventListener("blur", () => {
+            hideCompetitorPriceTooltip(tooltipElement, guideLineElement);
+            clearActiveCompetitorPriceChartHitboxes(hitboxElements);
+        });
+        svgElement.append(hitboxElement);
+    }
+
+    return svgElement;
+}
+
+function shouldShowPriceTrendLeadTimeTick(leadTimeDays: number): boolean {
+    return leadTimeDays === 0 || leadTimeDays === 84 || leadTimeDays % 7 === 0;
+}
+
 function setActiveCompetitorPriceChartHitbox(hitboxElements: SVGRectElement[], activeHitboxElement: SVGRectElement): void {
     for (const hitboxElement of hitboxElements) {
         hitboxElement.setAttribute(
@@ -12867,6 +13534,92 @@ function showCompetitorPriceTooltip(
 
     tooltipElement.replaceChildren(titleElement, valueElement, detailElement);
     positionCompetitorPriceTooltip(tooltipElement, x, width, cursorClientX);
+}
+
+function showPriceTrendTooltip(
+    tooltipElement: HTMLElement,
+    guideLineElement: SVGLineElement,
+    x: number,
+    width: number,
+    leadTimeDays: number,
+    facilities: CompetitorPriceFacilitySeries[],
+    points: PriceTrendChartPoint[],
+    cursorClientX: number | null = null
+): void {
+    tooltipElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_ACTIVE_ATTRIBUTE, "true");
+    guideLineElement.setAttribute("visibility", "visible");
+    guideLineElement.setAttribute("x1", x.toFixed(2));
+    guideLineElement.setAttribute("x2", x.toFixed(2));
+
+    const ownFacility = facilities.find((facility) => facility.name === "自社");
+    const ownPoint = ownFacility === undefined
+        ? undefined
+        : points.find((point) => point.leadTimeDays === leadTimeDays && point.yadNo === ownFacility.yadNo);
+    const rows = facilities
+        .map((facility) => {
+            const point = points.find((candidate) => candidate.leadTimeDays === leadTimeDays && candidate.yadNo === facility.yadNo);
+            if (point === undefined) {
+                return null;
+            }
+            const delta = ownPoint === undefined || facility.name === "自社" ? null : point.price - ownPoint.price;
+            return { facility, point, delta };
+        })
+        .filter((row): row is { facility: CompetitorPriceFacilitySeries; point: PriceTrendChartPoint; delta: number | null } => row !== null);
+
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE, "");
+    titleElement.textContent = `${leadTimeDays}日前`;
+
+    const valueElement = document.createElement("div");
+    valueElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_VALUE_ATTRIBUTE, "");
+    valueElement.textContent = rows[0]?.point.observedDate === null || rows[0]?.point.observedDate === undefined
+        ? "税込最安値"
+        : `税込最安値 / 取得対象日 ${formatCompactDateForDisplay(rows[0].point.observedDate)}`;
+
+    const detailElement = document.createElement("div");
+    detailElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_DETAIL_ATTRIBUTE, "");
+    const tableElement = document.createElement("table");
+    const headElement = document.createElement("thead");
+    const headRowElement = document.createElement("tr");
+    for (const label of ["施設", "価格", "自社との差", "状態"]) {
+        const cellElement = document.createElement("th");
+        cellElement.scope = "col";
+        cellElement.textContent = label;
+        headRowElement.append(cellElement);
+    }
+    headElement.append(headRowElement);
+
+    const bodyElement = document.createElement("tbody");
+    for (const row of rows) {
+        const rowElement = document.createElement("tr");
+        const facilityElement = document.createElement("td");
+        const facilityLabelElement = document.createElement("span");
+        facilityLabelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE, "");
+        const swatchElement = document.createElement("span");
+        swatchElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE, "");
+        swatchElement.style.backgroundColor = row.facility.color;
+        facilityLabelElement.append(swatchElement, document.createTextNode(row.facility.name));
+        facilityElement.append(facilityLabelElement);
+        const priceElement = document.createElement("td");
+        priceElement.textContent = formatPriceForDisplay(row.point.price);
+        const deltaElement = document.createElement("td");
+        deltaElement.textContent = row.delta === null ? "-" : formatSignedPriceForDisplay(row.delta);
+        deltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.delta));
+        const statusElement = document.createElement("td");
+        statusElement.textContent = formatPriceTrendPointStatus(row.point.status);
+        rowElement.append(facilityElement, priceElement, deltaElement, statusElement);
+        bodyElement.append(rowElement);
+    }
+    tableElement.append(headElement, bodyElement);
+    detailElement.append(tableElement);
+
+    tooltipElement.replaceChildren(titleElement, valueElement, detailElement);
+    positionCompetitorPriceTooltip(tooltipElement, x, width, cursorClientX);
+}
+
+function formatPriceTrendPointStatus(status: string | null): string {
+    const trimmed = status?.trim() ?? "";
+    return trimmed === "" ? "-" : trimmed;
 }
 
 function positionCompetitorPriceTooltip(
@@ -14520,7 +15273,8 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
-        [${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}] {
+        [${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}],
+        [${SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE}] {
             display: flex;
             flex-direction: column;
             gap: 8px;

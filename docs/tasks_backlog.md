@@ -90,7 +90,8 @@
   - 公式 Analyze `価格推移` タブへ RAU 表示を追加できるか、DOM 挿入位置と通信発生状況を確認する。
 - 調査結果:
   - `data-testid="tab-priceTrends"`、`price-trends-content`、`price-trends-filter-item`、`price-trends-filter-button`、`price-trends-chart-header`、`price-trends-chart-header-yad-list-item`、`price-trends-content-updated-at` を確認した。
-  - 切り替え直後の短時間観測では、追加通信は `/api/v1/session/info` と `/api/v4/booking_curve?date=...` であり、専用の `価格推移` endpoint は確定していない。
+  - 初回の短時間観測では専用の `価格推移` endpoint は確定していなかったが、追加調査で `/api/v1/price_trends` を確認した。
+  - 2026-05-29 の追加 read-only 調査で、公式 `価格推移` タブは `GET /api/v1/price_trends` を使うことを確認した。query は `stay_date`、`num_guests`、`meal_type`、`yad_nos[]` を持つ。response root は `latest_source_updated_at`、`stay_date`、`yads` を持ち、各 `yads[]` は `yad_no` と `price_trends[]` を持つ。各 `price_trends[]` は `date`、`lead_time_days`、`jalan_min_price`、`jalan_min_price_status` を持つ。89日より先の確認では HTTP 200 だが `yads` が空配列だった。
 - GUI 確認:
   - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページを read-only 観測した。HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データは repo に保存していない。
 - 非目標:
@@ -100,29 +101,56 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
-### RAU-CP-12 価格推移タブにも競合価格 snapshot グラフを表示する
+### RAU-CP-12 価格推移タブに公式価格推移データ由来のグラフを表示する
 
 - 目的:
-  - 公式 `価格推移` タブでも、既存の競合価格 snapshot 推移を同じ見た目で確認できるようにする。
+  - 公式 `価格推移` タブで、既存の競合価格 snapshot ではなく、公式 `価格推移` API から取得した同一宿泊日、同一競合施設、同一食事条件の lead time 別データを確認できるようにする。
 - スコープ:
-  - `price-trends-content` が表示されている場合、既存の `競合価格 最安値推移` セクションを同じ親要素内に描画する。
-  - 既存 `競合価格` タブの IndexedDB snapshot グラフ、人数別 panel、tooltip、部屋タイプ / 食事条件 toggle を流用する。
-  - `価格推移` タブを開いた場合も、現在 stay_date の競合価格 snapshot 保存要求を開始できる。
+  - `price-trends-content` が表示されている場合、`公式価格推移 最安値推移` セクションを同じ親要素内に描画する。
+  - 公式 `価格推移` API を人数 1 から 4 まで取得し、人数別の 4 panel を既定表示する。
+  - `yad_nos[]` は自社と競合施設を含め、表示 series は `自社`、`競合最低価格`、競合施設別 series とする。
+  - 公式価格推移データは、既存 `competitor-price-snapshots` とは別の IndexedDB database / store に永続保存する。
 - 非目標:
   - 既存 `競合価格` タブの snapshot グラフを削除または置換すること。
-  - 公式 `価格推移` data を既存 snapshot store へ混ぜること。
-  - 未確認の公式 `価格推移` endpoint を推測で実装すること。
+  - 公式 `価格推移` data を既存 `competitor-price-snapshots` store へ混ぜること。
+  - 公式価格推移データを料金調整候補の scoring 補正へ接続すること。
 - 受け入れ条件:
-  - `価格推移` タブ本文が表示されている場合、保存済み snapshot があれば同じ RAU graph が表示される。
+  - `価格推移` タブ本文が表示されている場合、公式価格推移データがあれば人数 1 から 4 の graph が表示される。
+  - 89日より先、または公式側に対象データがない宿泊日は、空 graph ではなく対象外理由を表示する。
   - 販売設定タブや非表示タブには RAU の競合価格 graph が割り込まない。
   - `競合価格` タブの既存表示と IndexedDB snapshot 保存挙動を壊さない。
 - 実装内容:
-  - click hook の対象に `data-testid="tab-priceTrends"` と表示 text `価格推移` を追加した。
-  - `price-trends-content` が visible の場合、既存の競合価格 overview と同じ renderer を、その content 内に 1 セクションだけ描画する。
-  - 既存の `競合価格` タブでは、従来どおり `competitor-price-tax-included-text` 周辺を挿入位置として使う。
+  - `price-trends-content` が visible の場合、`/api/v1/price_trends` の取得結果から作った overview を、その content 内に 1 セクションだけ描画する。
+  - `価格推移` タブ click は公式価格推移取得だけを開始し、既存 `competitor-tab` source の競合価格 snapshot 保存要求を開始しない。
+  - 既存の `競合価格` タブでは、従来どおり `competitor-price-tax-included-text` 周辺を挿入位置として使い、既存 snapshot graph を維持する。
 - GUI 確認:
-  - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-05` へ最新 `dist` を一時注入して確認した。`価格推移` タブでは `price-trends-content` 直下の RAU overview 1 件、visible overview 1 件、panel 4 件、SVG 4 件、empty 表示 0 件だった。
-  - 同じ確認で、`競合価格` タブでは従来挿入位置の RAU overview 1 件、visible overview 1 件、panel 4 件、SVG 4 件、empty 表示 0 件だった。販売設定タブでは競合価格 graph は active 表示にならず、page error と console error は 0 件だった。
+  - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-05` へ最新 `dist` を一時注入して確認した。`価格推移` タブでは `price-trends-content` 直下の RAU overview 1 件、panel 4 件、SVG 4 件、empty 表示 0 件、別 store record 4 件だった。
+  - 同じ確認で、`価格推移` タブでは既存 `競合価格` snapshot overview は 0 件だった。`競合価格` タブへ切り替えると価格推移 overview は 0 件、競合価格 overview は 1 件だった。page error と console error は 0 件だった。
+  - 89日超過候補の `2026-09-01` と `2026-09-30` は公式側の `price-trends-content` が表示されず、RAU の対象外表示は今回の GUI では確認できなかった。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-CP-13 公式価格推移データを既存競合価格 snapshot と別 store に保存する
+
+- 目的:
+  - 公式 `価格推移` API のデータを後続の比較や再表示に使えるよう、既存 `competitor-price-snapshots` と混ざらない永続 store に保存する。
+- スコープ:
+  - IndexedDB database は `revenue-assistant-price-trends`、store は `price-trend-records` とする。
+  - record は `facilityId`、`stayDate`、`numGuests`、`mealType`、`fetchedAt`、`endpoint`、`query`、`facilities`、`scope`、`payload` を持つ。
+  - `payload.yads[].points[]` は `date`、`leadTimeDays`、`priceIncludingTax`、`status` を持つ。
+- 非目標:
+  - 既存 `competitor-price-snapshots` の schema migration。
+  - 料金調整候補 scoring への接続。
+  - API response body 全文、HAR、raw trace、Cookie、token、credential を docs や Git 管理へ保存すること。
+- 受け入れ条件:
+  - `価格推移` タブを開いたとき、人数 1 から 4 の公式価格推移 record が別 store に保存される。
+  - 同じ stay_date の表示では、保存済み record のうち人数、食事条件ごとの最新取得分を使う。
+  - 89日より先で `yads` が空の場合は保存対象外として扱い、対象外理由を UI に表示する。
+- GUI 確認:
+  - 2026-05-29 に Chrome DevTools Protocol で最新 `dist` を一時注入し、`2026-06-05` の `価格推移` タブで IndexedDB `revenue-assistant-price-trends` / `price-trend-records` の record 4 件を確認した。人数は 1、2、3、4 で、各 record の `payload.yads` は 6 件だった。
+  - 89日超過候補では公式側の `price-trends-content` が表示されなかったため、対象外表示の GUI 確認は未実施である。ただし read-only API 調査では `/api/v1/price_trends` が HTTP 200 かつ `yads` 空配列を返すことを確認している。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
