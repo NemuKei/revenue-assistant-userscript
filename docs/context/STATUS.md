@@ -241,6 +241,7 @@
 - `RAU-WC-03` では、indicator に対象月または対象範囲と、Analyze 日付の `raw / 参考線 / 同曜日` 取得率を表示する。`dist/*.user.js` は `npm run build` で再生成済み。2026-05-28 に通常 Chrome の page reload だけで Tampermonkey 経由の Analyze indicator 表示を確認済みである。
 - `RAU-WC-04` はコード実装済み。request 間隔を 1.0 秒、1 回の自動稼働を 10 分、クールダウンを 3 分へ緩和した。IndexedDB raw source が既存で skip できる task は API request を発行しないため即時に次 task へ進める。
 - `RAU-AF-10` はコード実装済み、GUI 確認済み。reference curve の `0日前` は core logic と IndexedDB derived cache では推測補完せず、表示層だけで `1日前` と `ACT` の線形補間値を使う。初期実装では `round(1日前 + (ACT - 1日前) * 0.5)` とし、整数室数に丸める。2026-05-29 に通常 Chrome の Analyze 日付ページで、`0日前` Tooltip に `直近型 ...（補間）` と `季節型 ...（補間）` が表示されることを Chrome DevTools Protocol で確認した。
+- `RAU-WC-11` はコード実装済み。`loadBookingCurve()` は scheduler で `Response` を共有せず、`response.json()` と `compactBookingCurveResponse()` まで終えた `BookingCurveResponse` を共有する。これにより、同じ `/api/v4/booking_curve` request key を同時に必要とする consistency check、raw source 保存、roomGroup count 取得が、同じ response body を複数回読んで `body stream already read` になる経路をなくした。
 - `RAU-WC-05` はコード実装済み。warm cache indicator は対象日数だけでなく対象日付範囲を表示し、完了前でも一部取得済みの日付数を `進行 n日` として表示する。トップカレンダーの日付セル下端に、一部取得済み、完了、エラーの line を表示する。
 - `RAU-WC-06` はコード実装済み。warm cache の通常対象を `as_of_date - 1日` から `as_of_date + 3か月` までへ広げ、failed task の最大 2 回 retry、Analyze 日付ページを開いたときの優先 queue 再開を追加した。
 - `RAU-WC-08` は GUI 確認済み。トップカレンダーの一部取得済み line は固定幅ではなく、現在 queue の `raw / reference / sameWeekday` 合計進捗に応じた幅で表示する。完了は緑の全幅、エラーは赤の全幅とする。Tampermonkey 再読込後、Chrome CDP で `calendar-date-2026-05-01` の marker state、title、progress custom property を確認した。
@@ -397,6 +398,15 @@
   - 2026-05-28 の Chrome DevTools Protocol 確認では、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` に build 済み `dist` を一時注入し、indicator detail に `この日 2026-06-17 raw 100%（7/7） 参考線 ... 同曜日 100%（28/28）` が表示されることを確認した。約 30 秒の sampling では、参考線 progress が `16%（7/42）` から `50%（21/42）` まで進んだ。page error と console error は 0 件だった。
   - 2026-05-28 の Chrome DevTools Protocol 確認では、`addScriptTag` を使わず通常 Chrome の page reload だけで Tampermonkey 経由の Analyze 表示を確認した。indicator detail は `この日 2026-06-17 raw 100%（7/7） 参考線 59%（25/42） 同曜日 100%（28/28）` を含み、page error と console error は 0 件だった。
   - Analyze 日付ページで、その日、同週、同月の順に request が発行されることの直接確認: 未実施
+- 2026-05-29 の `RAU-WC-11` コード実装 verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過
+  - `git diff --check`: passed
+  - 修正前の Chrome DevTools Protocol 観測では、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-09-15` で、`consistency check skipped` と `failed to load booking curve` が発生し、原因 message は `TypeError: Failed to execute 'json' on 'Response': body stream already read` だった。
+  - root cause は、`bookingCurveRequestScheduler.schedule()` が同じ request key の実行中 Promise を共有し、共有された `Response` を複数の呼び出し元がそれぞれ `response.json()` していたことである。
+  - 修正後は、scheduler callback 内で `fetch()`、HTTP status 確認、`response.json()`、`compactBookingCurveResponse()` まで実行し、scheduler は parse 済みの `BookingCurveResponse` を共有する。
+  - 修正後の Tampermonkey 正式再読込 GUI 確認は未実施。実行には通常 Chrome 側の userscript 更新または最新 `dist` 注入後の再観測が必要である。
 - 2026-04-29 の `RAU-WC-04` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
@@ -414,7 +424,7 @@
   - `npm run build`: passed
   - `git diff --check`: passed
   - Tampermonkey 再読込 GUI 確認: 未実施
-  - 実データで `0日前` Tooltip に `（補間）` が表示されること: 未実施
+  - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-17` を確認し、`0日前` Tooltip に `直近型 ...（補間）` と `季節型 ...（補間）` が表示されることを確認済み
 - 2026-04-29 の `RAU-WC-05` コード実装 verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed

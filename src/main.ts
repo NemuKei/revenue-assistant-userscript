@@ -3321,21 +3321,23 @@ async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promi
         url.searchParams.set("rm_room_group_id", rmRoomGroupId);
     }
 
-    const response = await bookingCurveRequestScheduler.schedule(
+    return bookingCurveRequestScheduler.schedule(
         url.search,
-        () => fetch(url.toString(), {
-            credentials: "include",
-            headers: {
-                "X-Requested-With": "XMLHttpRequest"
+        async () => {
+            const response = await fetch(url.toString(), {
+                credentials: "include",
+                headers: {
+                    "X-Requested-With": "XMLHttpRequest"
+                }
+            });
+
+            if (!response.ok) {
+                throw new Error(`booking curve request failed: ${response.status}`);
             }
-        })
+
+            return compactBookingCurveResponse((await response.json()) as BookingCurveResponse);
+        }
     );
-
-    if (!response.ok) {
-        throw new Error(`booking curve request failed: ${response.status}`);
-    }
-
-    return compactBookingCurveResponse((await response.json()) as BookingCurveResponse);
 }
 
 function compactBookingCurveScopeCounts(counts: BookingCurveScopeCounts | undefined): BookingCurveScopeCounts | undefined {

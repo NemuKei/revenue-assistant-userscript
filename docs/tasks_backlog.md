@@ -126,6 +126,42 @@
 
 ## Completed / Recent Stabilization
 
+### RAU-WC-11 booking_curve scheduler で Response body の二重読み取りを起こさない
+
+- 目的:
+  - Analyze 日付ページで、同じ `/api/v4/booking_curve` request key を複数処理が同時に必要とした場合でも、`Response` body の二重読み取りで booking curve 取得が失敗しないようにする。
+- 背景:
+  - 2026-05-29 の `RAU-WC-03` 直接確認中、Analyze 日付ページ `https://ra.jalan.net/analyze/2026-09-15` で、`consistency check skipped` と `failed to load booking curve` の console message が発生した。
+  - console message には `TypeError: Failed to execute 'json' on 'Response': body stream already read` が含まれていた。
+  - 原因は、`bookingCurveRequestScheduler.schedule()` が同じ request key の実行中 Promise を共有し、共有された `Response` を複数の呼び出し元がそれぞれ `response.json()` していたことである。
+- スコープ:
+  - `loadBookingCurve()` では、scheduler が共有する値を `Response` ではなく、`response.json()` を 1 回だけ実行して `compactBookingCurveResponse()` した `BookingCurveResponse` に変更する。
+  - 同じ request key の in-flight dedupe と request 間隔制御は維持する。
+- 非目標:
+  - `/api/v4/booking_curve` の request 範囲を増やすこと。
+  - request 間隔、cooldown、hidden pause、連続エラー停止の仕様を変更すること。
+  - IndexedDB schema、raw source 保存単位、reference curve 仕様、Analyze 表示仕様を変更すること。
+  - Revenue Assistant への write API、自動反映、推奨レート金額表示を追加すること。
+- 受け入れ条件:
+  - 同じ booking curve request key が同時に必要になっても、共有された `Response` body を複数回 `json()` しない。
+  - `loadBookingCurve()` の呼び出し元は従来どおり `BookingCurveResponse` を受け取る。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+- 実装内容:
+  - `loadBookingCurve()` の `bookingCurveRequestScheduler.schedule()` callback 内で `fetch()`、HTTP status 確認、`response.json()`、`compactBookingCurveResponse()` まで実行するようにした。
+  - scheduler は parse 済みの `BookingCurveResponse` を共有するため、同じ `Response` stream を複数の処理が読む経路をなくした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過
+  - `git diff --check`: passed
+- GUI 確認:
+  - 2026-05-29 の修正前観測では、通常 Chrome の Analyze 日付ページで `body stream already read` が発生することを Chrome DevTools Protocol で確認した。
+  - 修正後の Tampermonkey 正式再読込 GUI 確認は未実施。実行には通常 Chrome 側の userscript 更新または最新 `dist` 注入後の再観測が必要である。
+
 ### RAU-CP-10 競合価格タブ遷移直後の取得トリガー欠落を修正する
 
 - 目的:
