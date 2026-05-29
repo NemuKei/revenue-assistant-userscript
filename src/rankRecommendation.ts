@@ -6,6 +6,8 @@ export type RankRecommendationForecastSignal = "high_occupancy" | "low_occupancy
 export type RankRecommendationSalesAdrHealthSignal = "adr_down" | "sales_down" | "adr_and_sales_down" | "neutral";
 export type RankRecommendationWeekdayContextSignal = "weekday_reference_supports_raise" | "weekday_reference_supports_lower" | "weekday_reference_neutral";
 export type RankRecommendationOwnPricePositionSignal = "own_price_low_against_competitors" | "own_price_near_competitors" | "own_price_high_against_competitors";
+export type RankRecommendationOwnPricePositionSource = "competitor_price_snapshot";
+export type RankRecommendationOwnPricePositionScope = "facility_unmapped_room_type";
 export type RankRecommendationRankOrderSource = "numeric_rank_name" | "settings_screen" | "manual_override" | "unresolved";
 export type RankRecommendationRankChangeProvider = "lincoln_custom_suggest" | "unsupported";
 export type RankRecommendationRankChangeDisabledReason =
@@ -94,6 +96,9 @@ export interface RankRecommendationCurveEvidence {
     salesAdrHealthSignal: RankRecommendationSalesAdrHealthSignal | null;
     weekdayContextSignal: RankRecommendationWeekdayContextSignal | null;
     ownPricePositionSignal: RankRecommendationOwnPricePositionSignal | null;
+    ownPricePositionComparableGuestCount: number;
+    ownPricePositionSource: RankRecommendationOwnPricePositionSource | null;
+    ownPricePositionScope: RankRecommendationOwnPricePositionScope | null;
     diagnostics: string[];
 }
 
@@ -193,6 +198,7 @@ function buildRankRecommendationCandidate(options: {
     const salesAdrHealthSignal = curveEvidence?.salesAdrHealthSignal ?? null;
     const weekdayContextSignal = curveEvidence?.weekdayContextSignal ?? null;
     const ownPricePositionSignal = curveEvidence?.ownPricePositionSignal ?? null;
+    const ownPricePositionComparableGuestCount = curveEvidence?.ownPricePositionComparableGuestCount ?? 0;
 
     let action: RankRecommendationAction;
     let priority: RankRecommendationPriority;
@@ -323,6 +329,31 @@ function buildRankRecommendationCandidate(options: {
 
     if (action !== "not_eligible" && ownPricePositionSignal !== null) {
         diagnostics.push("competitor_price_room_group_scope_unconfirmed");
+        diagnostics.push(`competitor_price_comparable_guest_count_${ownPricePositionComparableGuestCount}`);
+        if (
+            daysToStay !== null
+            && daysToStay >= 0
+            && daysToStay <= 30
+            && ownPricePositionComparableGuestCount >= 2
+        ) {
+            if (ownPricePositionSignal === "own_price_low_against_competitors") {
+                reasonCodes.push("相場より安め");
+                if (action === "raise_watch") {
+                    confidence = increaseConfidence(confidence, 0.04);
+                } else if (action === "lower_watch") {
+                    priority = minPriority(priority, "medium");
+                    confidence = decreaseConfidence(confidence, 0.04);
+                }
+            } else if (ownPricePositionSignal === "own_price_high_against_competitors") {
+                reasonCodes.push("相場より高め");
+                if (action === "lower_watch") {
+                    confidence = increaseConfidence(confidence, 0.04);
+                } else if (action === "raise_watch") {
+                    priority = minPriority(priority, "medium");
+                    confidence = decreaseConfidence(confidence, 0.04);
+                }
+            }
+        }
     }
 
     if (curveEvidence === null) {

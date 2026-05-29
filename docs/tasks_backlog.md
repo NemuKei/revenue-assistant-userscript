@@ -1,6 +1,143 @@
 # tasks_backlog
 
-## Completed / Recent GUI Confirmed
+## Recently Implemented / GUI Confirmed
+
+### RAU-AF-11 booking curve の個人 / 団体切り替え直後に描画を維持する
+
+- 目的:
+  - Analyze 画面と料金調整候補 preview の booking curve で、`個人 / 団体` を切り替えた直後に chart 表示が消えないようにする。
+- スコープ:
+  - 切り替え直後に、保持済みの最新 `SalesSettingPreparedData` と rank status snapshot から Analyze 側の booking curve surface を再描画する。
+  - その後に通常の calendar sync を強制実行し、保存済み raw source と current UI の整合を取り直す。
+  - 料金調整候補 preview は既存の保存済み `booking_curve_raw_source:v2` から作った preview 用 snapshot で即時再描画し、その後に通常の calendar sync で再同期する。
+- 非目標:
+  - `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔を増やすこと。
+  - reference curve、same weekday、rank marker の計算契約を変更すること。
+- 受け入れ条件:
+  - `個人 / 団体` を切り替えても、Analyze 画面の全体表示、室タイプ別 card、料金調整候補 preview の booking curve が空表示のまま残らない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- 実装内容:
+  - Analyze 側は、`個人 / 団体` 切り替え直後に保持済みの最新 `SalesSettingPreparedData` と rank status snapshot から、全体 summary、室タイプ別 card、rank overview、競合価格 graph の位置を再描画する。
+  - 料金調整候補 preview は、preview 用の `booking_curve_raw_source:v2` 読み取り結果を latest snapshot として保持し、`個人 / 団体` 切り替え直後に開いている preview row を再描画する。
+  - 料金調整候補 preview 内の booking curve section は、Analyze sales setting card 用の cleanup 対象から除外する。これにより、通常 calendar sync の開始時に preview 内の chart だけが削除される状態を避ける。
+- GUI 確認:
+  - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-05` へ build 済み `dist/revenue-assistant-userscript.user.js` を一時注入して確認した。販売設定タブの全体 booking curve は、切り替え前、切り替え直後、再同期後のいずれも section 1 件、panel 2 件、SVG 2 件を維持し、active segment は `個人` から `団体` へ変わった。page error と console error は 0 件だった。
+  - 料金調整候補 preview は、通常 Chrome の Cookie だけを使う拡張なし一時 context に最新 `dist` だけを一時注入して確認した。検証用に候補 10 件分の read-only `/api/v4/booking_curve` を同じ一時 context の IndexedDB へ入れ、raw response body は出力せず repo にも保存していない。開いた preview は、切り替え前、切り替え直後、再同期後のいずれも visible preview section 1 件、visible SVG 2 件を維持し、active segment は `個人` から `団体` へ変わった。page error と console error は 0 件だった。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-52 現ランク tooltip で他部屋タイプのランク差を表示する
+
+- 目的:
+  - 料金調整候補の一覧画面から離れずに、同一宿泊日の他部屋タイプと対象候補の rank 差を確認できるようにする。
+- スコープ:
+  - `現ランク` cell に hover / focus tooltip を追加する。
+  - tooltip の列は `部屋タイプ`、`現ランク`、`対象候補との差`、`備考` とする。
+  - rank order が確認できる場合だけ差分を表示し、確認できない場合は `順序未確認` と表示する。
+- 非目標:
+  - rank gap を価格計算、候補方向、priority、confidence、reasonFingerprint に使うこと。
+  - Revenue Assistant の rank 設定を変更すること。
+- 受け入れ条件:
+  - `現ランク` tooltip に、同じ宿泊日の全部屋タイプの rank が表示される。
+  - rank order が `unresolved` または対象 rank が解決できない場合、差分は出さず `順序未確認` と表示される。
+  - tooltip が通常の候補操作、`Analyzeで確認`、`曲線`、`rank調整`、`様子見`、`対応不要` を妨げない。
+- 実装内容:
+  - `RankRecommendation` の表示情報に `rankGapContext` を追加し、同一宿泊日、同一候補 roomGroup に対する全部屋タイプの current rank 一覧を UI 表示用に持たせた。
+  - rank order source が `unresolved` の場合、または対象候補か比較対象の rank が rank ladder 上で解決できない場合は、差分を計算せず `順序未確認` と表示する。
+  - tooltip trigger は click propagation を止めるため、候補行の他操作や calendar sync の click hook を誤発火させない。
+- GUI 確認:
+  - 2026-05-29 に Chrome DevTools Protocol の拡張なし一時 context へ最新 `dist` だけを一時注入して確認した。top list は 10 行、`現ランク` trigger 10 件、tooltip 10 件、tooltip header は `部屋タイプ`、`現ランク`、`対象候補との差`、`備考`、focus 時の tooltip display は `block`、target row は 10 件だった。top list 内の金額または percent 表示は 0 件、page error と console error は 0 件だった。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-53 競合価格との相場乖離を候補評価の小補正に使う
+
+- 目的:
+  - 直近日程の料金調整候補で、競合価格との相場感の大きな乖離を候補評価の補助として使う。
+- スコープ:
+  - 宿泊日まで 30 日以内を対象にする。
+  - 人数 1 から 4 のうち比較可能な人数が 2 つ以上ある場合だけ有効にする。
+  - 自施設最安値が競合中央値の 95% 以下なら `相場より安め`、105% 以上なら `相場より高め` とする。
+  - confidence 補正は `+0.04 / -0.04` を上限にする。
+- 非目標:
+  - 競合価格だけで `raise_watch` と `lower_watch` を反転させること。
+  - 競合価格だけで新規候補を作ること。
+  - 料金調整候補一覧に金額、差額、比率を直接表示すること。
+  - `roomGroup` と `jalan_facility_room_type` の未確認対応を確定済みとして扱うこと。
+- 受け入れ条件:
+  - 比較可能人数が 2 つ未満の場合は補正しない。
+  - 30 日より先の宿泊日は補正しない。
+  - 補正理由は非数値の reason として表示できるが、金額や差額率は top list に直接出さない。
+- 実装内容:
+  - 保存済み `competitor-price-snapshots` の最新 snapshot から、人数 1 から 4 の自施設最安値と競合施設ごとの最安値中央値を比較する。
+  - 比較可能人数が 2 つ未満の場合は `competitor_price_comparable_guest_count_low` として扱い、scoring 補正を行わない。
+  - 有効な signal でも、`competitor_price_room_group_scope_unconfirmed` と比較可能人数 diagnostics を残し、roomGroup と `jalan` 側部屋タイプの対応が未確定であることを隠さない。
+  - 30 日以内で候補方向と相場乖離が整合する場合だけ confidence を最大 `+0.04`、逆方向の場合は最大 `-0.04` とし priority を最大 `medium` に抑える。action の反転と新規候補生成は行わない。
+- GUI 確認:
+  - 2026-05-29 の Chrome DevTools Protocol 確認では、top list 内の金額または percent 表示は 0 件だった。候補 meta では `競合価格の部屋タイプ対応未確認` が diagnostics として表示され、競合価格を金額表示として直接出していないことを確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-CP-11 公式 Analyze の価格推移タブを read-only で調査する
+
+- 目的:
+  - 公式 Analyze `価格推移` タブへ RAU 表示を追加できるか、DOM 挿入位置と通信発生状況を確認する。
+- 調査結果:
+  - `data-testid="tab-priceTrends"`、`price-trends-content`、`price-trends-filter-item`、`price-trends-filter-button`、`price-trends-chart-header`、`price-trends-chart-header-yad-list-item`、`price-trends-content-updated-at` を確認した。
+  - 切り替え直後の短時間観測では、追加通信は `/api/v1/session/info` と `/api/v4/booking_curve?date=...` であり、専用の `価格推移` endpoint は確定していない。
+- GUI 確認:
+  - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページを read-only 観測した。HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データは repo に保存していない。
+- 非目標:
+  - HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データを repo に保存すること。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-CP-12 価格推移タブにも競合価格 snapshot グラフを表示する
+
+- 目的:
+  - 公式 `価格推移` タブでも、既存の競合価格 snapshot 推移を同じ見た目で確認できるようにする。
+- スコープ:
+  - `price-trends-content` が表示されている場合、既存の `競合価格 最安値推移` セクションを同じ親要素内に描画する。
+  - 既存 `競合価格` タブの IndexedDB snapshot グラフ、人数別 panel、tooltip、部屋タイプ / 食事条件 toggle を流用する。
+  - `価格推移` タブを開いた場合も、現在 stay_date の競合価格 snapshot 保存要求を開始できる。
+- 非目標:
+  - 既存 `競合価格` タブの snapshot グラフを削除または置換すること。
+  - 公式 `価格推移` data を既存 snapshot store へ混ぜること。
+  - 未確認の公式 `価格推移` endpoint を推測で実装すること。
+- 受け入れ条件:
+  - `価格推移` タブ本文が表示されている場合、保存済み snapshot があれば同じ RAU graph が表示される。
+  - 販売設定タブや非表示タブには RAU の競合価格 graph が割り込まない。
+  - `競合価格` タブの既存表示と IndexedDB snapshot 保存挙動を壊さない。
+- 実装内容:
+  - click hook の対象に `data-testid="tab-priceTrends"` と表示 text `価格推移` を追加した。
+  - `price-trends-content` が visible の場合、既存の競合価格 overview と同じ renderer を、その content 内に 1 セクションだけ描画する。
+  - 既存の `競合価格` タブでは、従来どおり `competitor-price-tax-included-text` 周辺を挿入位置として使う。
+- GUI 確認:
+  - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-05` へ最新 `dist` を一時注入して確認した。`価格推移` タブでは `price-trends-content` 直下の RAU overview 1 件、visible overview 1 件、panel 4 件、SVG 4 件、empty 表示 0 件だった。
+  - 同じ確認で、`競合価格` タブでは従来挿入位置の RAU overview 1 件、visible overview 1 件、panel 4 件、SVG 4 件、empty 表示 0 件だった。販売設定タブでは競合価格 graph は active 表示にならず、page error と console error は 0 件だった。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### Bundle verify for RAU-AF-11 / RAU-RR-52 / RAU-RR-53 / RAU-CP-11 / RAU-CP-12
+
+- 2026-05-29:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内では esbuild service process の spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過した。
+  - `git diff --check`: passed
+  - `git status --short --untracked-files=all`: `.o11y/`、HAR、raw trace、認証情報、実データ response body の Git 管理対象追加なし
+
+## Completed / Earlier GUI Confirmed
 
 ### RAU-CP-04 競合価格グラフを標準表より下に固定する
 

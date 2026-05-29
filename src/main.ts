@@ -69,6 +69,8 @@ import {
     type RankRecommendationRankOrderOverride,
     type RankRecommendationRankOrderResolution,
     type RankRecommendationOwnPricePositionSignal,
+    type RankRecommendationOwnPricePositionScope,
+    type RankRecommendationOwnPricePositionSource,
     type RankRecommendationRankChangeDisabledReason,
     type RankRecommendationRankChangeProposal,
     type RankRecommendationSalesAdrHealthSignal,
@@ -150,6 +152,9 @@ const RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE = "data-ra-rank-recommendation-prio
 const RANK_RECOMMENDATION_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-action";
 const RANK_RECOMMENDATION_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-status";
 const RANK_RECOMMENDATION_HISTORY_ATTRIBUTE = "data-ra-rank-recommendation-history";
+const RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap";
+const RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap-trigger";
+const RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap-tooltip";
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
 const RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-button-action";
 const RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE = "data-ra-rank-recommendation-stay-date";
@@ -176,6 +181,7 @@ const RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE = "data-ra-rank-recommen
 const RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE = "data-ra-rank-recommendation-pending-rank-change-key";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-row";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-cell";
+const RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-key";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-diagnostics";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
@@ -261,7 +267,7 @@ const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
     "#9a4fb3",
     "#4f7f9f"
 ];
-const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v6";
+const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v7";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
@@ -798,6 +804,24 @@ interface RankRecommendationLatestRankChange {
 interface RankRecommendationDisplayInfo {
     latestRankChange: RankRecommendationLatestRankChange | null;
     visibilityDiagnostics: string[];
+    rankGapContext: RankRecommendationRankGapContext | null;
+    signature: string;
+}
+
+interface RankRecommendationRankGapEntry {
+    roomGroupId: string;
+    roomGroupName: string;
+    currentRankName: string | null;
+    rankOrderIndex: number | null;
+    relativeStep: number | null;
+    isTarget: boolean;
+    diagnostics: string[];
+}
+
+interface RankRecommendationRankGapContext {
+    entries: RankRecommendationRankGapEntry[];
+    rankOrderSource: RankRecommendationRankOrderResolution["source"];
+    targetRankOrderIndex: number | null;
     signature: string;
 }
 
@@ -806,7 +830,15 @@ interface RankRecommendationCurvePreviewInfo {
     maxValue: number | null;
     currentOverallRoomCount: number | null;
     currentSecondaryRoomCount: number | null;
+    segmentVariants: Partial<Record<SalesSettingBookingCurveSecondarySegment, RankRecommendationCurvePreviewSegmentVariant>>;
     diagnostics: string[];
+    signature: string;
+}
+
+interface RankRecommendationCurvePreviewSegmentVariant {
+    curveData: SalesSettingBookingCurveRenderData;
+    maxValue: number;
+    currentSecondaryRoomCount: number | null;
     signature: string;
 }
 
@@ -819,6 +851,9 @@ interface RankRecommendationRankOrderOverrideRecord {
 
 type RankRecommendationOwnPricePositionEvidence = {
     signal: RankRecommendationOwnPricePositionSignal | null;
+    comparableGuestCount: number;
+    source: RankRecommendationOwnPricePositionSource | null;
+    scope: RankRecommendationOwnPricePositionScope | null;
     diagnostics: string[];
 };
 
@@ -856,6 +891,10 @@ let latestSalesSettingRankStatusesSnapshot: {
     analysisDate: string;
     statuses: LincolnSuggestStatus[];
 } | null = null;
+const latestRankRecommendationCurvePreviewSnapshotByKey = new Map<string, {
+    candidate: RankRecommendationCandidate;
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo;
+}>();
 const salesSettingCurrentSettingsPromiseCache = new Map<string, Promise<SalesSettingCurrentSettingsResponse>>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let salesSettingWarmCacheTimeoutId: number | null = null;
@@ -1113,6 +1152,8 @@ function installInteractionHooks(): void {
                 );
                 if (segment !== null && segment !== getSalesSettingBookingCurveSecondarySegment()) {
                     setSalesSettingBookingCurveSecondarySegment(segment);
+                    rerenderSalesSettingBookingCurveSurfacesFromLatestSnapshot();
+                    rerenderRankRecommendationCurvePreviewSurfacesFromLatestSnapshot();
                     requestCalendarScrollRestore();
                     queueCalendarSync({ force: true, reason: "booking-curve-segment-toggle" });
                 }
@@ -1211,8 +1252,12 @@ function clearInteractionSyncTimeouts(): void {
 
 function isCompetitorPriceTabTrigger(target: Element): boolean {
     const tabElement = target.closest<HTMLElement>("button, a, [role='tab'], [data-testid]");
+    const testId = tabElement?.getAttribute("data-testid") ?? "";
     const text = tabElement?.textContent?.replace(/\s+/g, "") ?? "";
-    return text.includes("競合価格");
+    return testId === "tab-competitorPrice"
+        || testId === "tab-priceTrends"
+        || text.includes("競合価格")
+        || text.includes("価格推移");
 }
 
 function scheduleActiveCompetitorPriceSnapshotFromTab(): void {
@@ -5662,6 +5707,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         rankLadder,
         override: rankOrderOverride
     });
+    const rankGapContextByScope = buildRankRecommendationRankGapContextByScope(response, rankOrderResolution);
     const candidates = buildRankRecommendationCandidates({
         response,
         facilityId: facilityCacheKey,
@@ -5698,13 +5744,15 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         visibleCandidates,
         decisionRecords,
         statuses,
-        batchDateKey
+        batchDateKey,
+        rankGapContextByScope
     );
     const curvePreviewInfoByKey = await buildRankRecommendationCurvePreviewInfoByKey(visibleCandidates, {
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
         statuses
     });
+    rememberRankRecommendationCurvePreviewSnapshot(visibleCandidates, curvePreviewInfoByKey);
     const hiddenSummary = {
         userDecision: decisionFilterResult.hiddenCount,
         resolvedRankChange: resolvedFilterResult.hiddenCount,
@@ -5949,39 +5997,58 @@ async function readRankRecommendationCurvePreviewInfo(options: {
         asOfDate: options.asOfDate,
         response
     });
-    const secondarySegment = getSalesSettingBookingCurveSecondarySegment();
-    const curveData = buildSalesSettingBookingCurveRenderData(
-        response,
-        referenceData,
-        [],
-        options.candidate.stayDate,
-        options.asOfDate,
-        options.rankHistory,
-        secondarySegment
-    );
-    const maxValue = resolveRankRecommendationCurvePreviewMaxValue(response, curveData);
     const currentOverallRoomCount = normalizeBookingCurveRoomCount(point.all?.this_year_room_sum);
-    const currentSecondaryRoomCount = normalizeBookingCurveRoomCount(
-        secondarySegment === "group"
-            ? point.group?.this_year_room_sum
-            : point.transient?.this_year_room_sum
-    );
     const diagnostics = collectRankRecommendationCurvePreviewDiagnostics(referenceData);
+    const buildSegmentVariant = (secondarySegment: SalesSettingBookingCurveSecondarySegment): RankRecommendationCurvePreviewSegmentVariant => {
+        const curveData = buildSalesSettingBookingCurveRenderData(
+            response,
+            referenceData,
+            [],
+            options.candidate.stayDate,
+            options.asOfDate,
+            options.rankHistory,
+            secondarySegment
+        );
+        const maxValue = resolveRankRecommendationCurvePreviewMaxValue(response, curveData);
+        const currentSecondaryRoomCount = normalizeBookingCurveRoomCount(
+            secondarySegment === "group"
+                ? point.group?.this_year_room_sum
+                : point.transient?.this_year_room_sum
+        );
+        return {
+            curveData,
+            maxValue,
+            currentSecondaryRoomCount,
+            signature: [
+                `segment:${curveData.secondarySegment}`,
+                `max:${maxValue}`,
+                `current:${currentSecondaryRoomCount ?? "-"}`,
+                `secondary:${curveData.secondary.signature}`,
+                `rank:${curveData.rankSignature}`
+            ].join("|")
+        };
+    };
+    const segmentVariants: Record<SalesSettingBookingCurveSecondarySegment, RankRecommendationCurvePreviewSegmentVariant> = {
+        individual: buildSegmentVariant("individual"),
+        group: buildSegmentVariant("group")
+    };
+    const secondarySegment = getSalesSettingBookingCurveSecondarySegment();
+    const activeVariant = segmentVariants[secondarySegment];
 
     return {
-        curveData,
-        maxValue,
+        curveData: activeVariant.curveData,
+        maxValue: activeVariant.maxValue,
         currentOverallRoomCount,
-        currentSecondaryRoomCount,
+        currentSecondaryRoomCount: activeVariant.currentSecondaryRoomCount,
+        segmentVariants,
         diagnostics,
         signature: [
             "available",
-            `max:${maxValue}`,
-            `current:${currentOverallRoomCount ?? "-"}:${currentSecondaryRoomCount ?? "-"}`,
-            `segment:${curveData.secondarySegment}`,
-            `overall:${curveData.overall.signature}`,
-            `secondary:${curveData.secondary.signature}`,
-            `rank:${curveData.rankSignature}`,
+            `active:${secondarySegment}`,
+            `current-overall:${currentOverallRoomCount ?? "-"}`,
+            `overall:${activeVariant.curveData.overall.signature}`,
+            `individual:${segmentVariants.individual.signature}`,
+            `group:${segmentVariants.group.signature}`,
             `diagnostics:${diagnostics.join("/")}`
         ].join("|")
     };
@@ -5993,6 +6060,7 @@ function buildMissingRankRecommendationCurvePreviewInfo(diagnostics: string[]): 
         maxValue: null,
         currentOverallRoomCount: null,
         currentSecondaryRoomCount: null,
+        segmentVariants: {},
         diagnostics,
         signature: `missing:${diagnostics.join("/")}`
     };
@@ -6262,6 +6330,9 @@ async function readRankRecommendationCurveEvidence(options: {
             salesAdrHealthSignal: null,
             weekdayContextSignal: null,
             ownPricePositionSignal: ownPricePositionEvidence.signal,
+            ownPricePositionComparableGuestCount: ownPricePositionEvidence.comparableGuestCount,
+            ownPricePositionSource: ownPricePositionEvidence.source,
+            ownPricePositionScope: ownPricePositionEvidence.scope,
             diagnostics: [
                 "booking_curve_source_missing",
                 ...ownPricePositionEvidence.diagnostics
@@ -6283,6 +6354,9 @@ async function readRankRecommendationCurveEvidence(options: {
             salesAdrHealthSignal: null,
             weekdayContextSignal: null,
             ownPricePositionSignal: ownPricePositionEvidence.signal,
+            ownPricePositionComparableGuestCount: ownPricePositionEvidence.comparableGuestCount,
+            ownPricePositionSource: ownPricePositionEvidence.source,
+            ownPricePositionScope: ownPricePositionEvidence.scope,
             diagnostics: [
                 "booking_curve_point_missing",
                 ...ownPricePositionEvidence.diagnostics
@@ -6349,6 +6423,9 @@ async function readRankRecommendationCurveEvidence(options: {
         salesAdrHealthSignal: salesAdrHealthEvidence.signal,
         weekdayContextSignal: weekdayContextEvidence.signal,
         ownPricePositionSignal: ownPricePositionEvidence.signal,
+        ownPricePositionComparableGuestCount: ownPricePositionEvidence.comparableGuestCount,
+        ownPricePositionSource: ownPricePositionEvidence.source,
+        ownPricePositionScope: ownPricePositionEvidence.scope,
         diagnostics: [
             ...forecastEvidence.diagnostics,
             ...salesAdrHealthEvidence.diagnostics,
@@ -6596,7 +6673,7 @@ function getRankRecommendationSameWeekdayStayDates(stayDate: string): string[] {
 async function buildRankRecommendationOwnPricePositionEvidence(options: {
     facilityId: string;
     stayDate: string;
-}): Promise<{ signal: RankRecommendationOwnPricePositionSignal | null; diagnostics: string[] }> {
+}): Promise<RankRecommendationOwnPricePositionEvidence> {
     const diagnostics: string[] = [];
     const series = await readCompetitorPriceSnapshotSeriesForStayDate(options.facilityId, options.stayDate)
         .catch((error: unknown) => {
@@ -6610,14 +6687,22 @@ async function buildRankRecommendationOwnPricePositionEvidence(options: {
     if (record === null) {
         return {
             signal: null,
+            comparableGuestCount: 0,
+            source: null,
+            scope: null,
             diagnostics: ["competitor_price_snapshot_missing"]
         };
     }
 
+    const source: RankRecommendationOwnPricePositionSource = "competitor_price_snapshot";
+    const scope: RankRecommendationOwnPricePositionScope = "facility_unmapped_room_type";
     const ownYadNo = record.payload.own?.yadNo ?? null;
     if (ownYadNo === null) {
         return {
             signal: null,
+            comparableGuestCount: 0,
+            source,
+            scope,
             diagnostics: ["competitor_price_own_missing"]
         };
     }
@@ -6626,7 +6711,6 @@ async function buildRankRecommendationOwnPricePositionEvidence(options: {
     }
 
     let lowCount = 0;
-    let nearCount = 0;
     let highCount = 0;
     let comparableCount = 0;
 
@@ -6656,8 +6740,6 @@ async function buildRankRecommendationOwnPricePositionEvidence(options: {
             lowCount += 1;
         } else if (ratio >= 1.05) {
             highCount += 1;
-        } else {
-            nearCount += 1;
         }
     }
 
@@ -6665,20 +6747,36 @@ async function buildRankRecommendationOwnPricePositionEvidence(options: {
         diagnostics.push("competitor_price_comparable_plan_missing");
         return {
             signal: null,
+            comparableGuestCount: comparableCount,
+            source,
+            scope,
+            diagnostics: Array.from(new Set(diagnostics))
+        };
+    }
+    if (comparableCount < 2) {
+        diagnostics.push("competitor_price_comparable_guest_count_low");
+        return {
+            signal: null,
+            comparableGuestCount: comparableCount,
+            source,
+            scope,
             diagnostics: Array.from(new Set(diagnostics))
         };
     }
 
     let signal: RankRecommendationOwnPricePositionSignal = "own_price_near_competitors";
-    if (lowCount > highCount && lowCount >= nearCount) {
+    if (lowCount >= 2 && highCount === 0) {
         signal = "own_price_low_against_competitors";
-    } else if (highCount > lowCount && highCount >= nearCount) {
+    } else if (highCount >= 2 && lowCount === 0) {
         signal = "own_price_high_against_competitors";
     }
 
     diagnostics.push(`competitor_price_signal_${signal}`);
     return {
         signal,
+        comparableGuestCount: comparableCount,
+        source,
+        scope,
         diagnostics: Array.from(new Set(diagnostics))
     };
 }
@@ -7026,11 +7124,116 @@ function applyResolvedRankRecommendationFilter(
     };
 }
 
+function buildRankRecommendationRankGapContextByScope(
+    response: RankRecommendationCurrentSettingsResponse,
+    rankOrder: RankRecommendationRankOrderResolution
+): Map<string, RankRecommendationRankGapContext> {
+    const contextByScope = new Map<string, RankRecommendationRankGapContext>();
+
+    for (const currentSetting of response.suggest_output_current_settings ?? []) {
+        const stayDate = toCompactDateKey(currentSetting.stay_date ?? "");
+        if (stayDate === null) {
+            continue;
+        }
+
+        const roomGroups = (currentSetting.rm_room_groups ?? []).flatMap((roomGroup) => {
+            const roomGroupId = roomGroup.rm_room_group_id?.trim() ?? "";
+            const roomGroupName = roomGroup.rm_room_group_name?.trim() ?? "";
+            if (roomGroupId === "" || roomGroupName === "") {
+                return [];
+            }
+
+            const currentRankCode = normalizeRankRecommendationElementText(roomGroup.latest_current?.price_rank_code ?? null);
+            const currentRankName = normalizeRankRecommendationElementText(roomGroup.latest_current?.price_rank_name ?? null);
+            const rankOrderIndex = resolveRankRecommendationRankOrderIndex(rankOrder, currentRankCode, currentRankName);
+            return [{
+                roomGroupId,
+                roomGroupName,
+                currentRankName,
+                rankOrderIndex
+            }];
+        });
+
+        for (const targetRoomGroup of roomGroups) {
+            const targetRankOrderIndex = targetRoomGroup.rankOrderIndex;
+            const entries = roomGroups.map((roomGroup): RankRecommendationRankGapEntry => {
+                const diagnostics: string[] = [];
+                if (roomGroup.currentRankName === null) {
+                    diagnostics.push("current_rank_missing");
+                }
+                if (rankOrder.source === "unresolved") {
+                    diagnostics.push("rank_order_unresolved");
+                }
+                if (roomGroup.rankOrderIndex === null) {
+                    diagnostics.push("rank_order_index_missing");
+                }
+                if (targetRankOrderIndex === null) {
+                    diagnostics.push("target_rank_order_missing");
+                }
+
+                return {
+                    roomGroupId: roomGroup.roomGroupId,
+                    roomGroupName: roomGroup.roomGroupName,
+                    currentRankName: roomGroup.currentRankName,
+                    rankOrderIndex: roomGroup.rankOrderIndex,
+                    relativeStep: rankOrder.source === "unresolved" || roomGroup.rankOrderIndex === null || targetRankOrderIndex === null
+                        ? null
+                        : roomGroup.rankOrderIndex - targetRankOrderIndex,
+                    isTarget: roomGroup.roomGroupId === targetRoomGroup.roomGroupId,
+                    diagnostics
+                };
+            });
+
+            contextByScope.set(buildRankRecommendationRankGapContextScopeKey(stayDate, targetRoomGroup.roomGroupId), {
+                entries,
+                rankOrderSource: rankOrder.source,
+                targetRankOrderIndex,
+                signature: [
+                    `source:${rankOrder.source}`,
+                    `target:${targetRoomGroup.roomGroupId}:${targetRankOrderIndex ?? "-"}`,
+                    entries.map((entry) => [
+                        entry.roomGroupId,
+                        entry.roomGroupName,
+                        entry.currentRankName ?? "-",
+                        entry.rankOrderIndex ?? "-",
+                        entry.relativeStep ?? "-",
+                        entry.isTarget ? "target" : "other",
+                        entry.diagnostics.join("/")
+                    ].join(",")).join("|")
+                ].join(":")
+            });
+        }
+    }
+
+    return contextByScope;
+}
+
+function buildRankRecommendationRankGapContextScopeKey(stayDate: string, roomGroupId: string): string {
+    return `${stayDate}:${roomGroupId}`;
+}
+
+function resolveRankRecommendationRankOrderIndex(
+    rankOrder: RankRecommendationRankOrderResolution,
+    currentRankCode: string | null,
+    currentRankName: string | null
+): number | null {
+    if (rankOrder.source === "unresolved") {
+        return null;
+    }
+
+    const index = rankOrder.ranksHighToLow.findIndex((rank) => (
+        (currentRankCode !== null && rank.code === currentRankCode)
+        || (currentRankName !== null && rank.name === currentRankName)
+    ));
+    return index < 0 ? null : index;
+}
+
 function buildRankRecommendationDisplayInfoByKey(
     candidates: readonly RankRecommendationCandidate[],
     decisionRecords: readonly RankRecommendationDecisionRecord[],
     statuses: readonly LincolnSuggestStatus[],
-    asOfDate: string
+    asOfDate: string,
+    rankGapContextByScope: ReadonlyMap<string, RankRecommendationRankGapContext>
 ): Map<string, RankRecommendationDisplayInfo> {
     const latestRankChangeByScope = buildLatestRankRecommendationRankChangeByScope(statuses);
     const decisionByExactKey = new Map(decisionRecords.map((record) => [record.cacheKey, record]));
@@ -7042,6 +7245,7 @@ function buildRankRecommendationDisplayInfoByKey(
         const latestRankChange = latestRankChangeByScope.get(buildRankRecommendationCandidateHistoryScopeKey(candidate)) ?? null;
         const exactDecision = decisionByExactKey.get(key) ?? null;
         const relatedDecision = latestDecisionByScope.get(buildRankRecommendationCandidateDecisionScopeKey(candidate)) ?? null;
+        const rankGapContext = rankGapContextByScope.get(buildRankRecommendationRankGapContextScopeKey(candidate.stayDate, candidate.roomGroupId)) ?? null;
         const visibilityDiagnostics = buildRankRecommendationVisibilityDiagnostics({
             candidate,
             exactDecision,
@@ -7052,7 +7256,8 @@ function buildRankRecommendationDisplayInfoByKey(
         displayInfoByKey.set(key, {
             latestRankChange,
             visibilityDiagnostics,
-            signature: formatRankRecommendationDisplayInfoSignature(latestRankChange, visibilityDiagnostics)
+            rankGapContext,
+            signature: formatRankRecommendationDisplayInfoSignature(latestRankChange, visibilityDiagnostics, rankGapContext)
         });
     }
 
@@ -7235,11 +7440,13 @@ function getRankRecommendationDecisionSortValue(record: RankRecommendationDecisi
 
 function formatRankRecommendationDisplayInfoSignature(
     latestRankChange: RankRecommendationLatestRankChange | null,
-    visibilityDiagnostics: readonly string[]
+    visibilityDiagnostics: readonly string[],
+    rankGapContext: RankRecommendationRankGapContext | null
 ): string {
     return [
         latestRankChange?.signature ?? "no-rank-change",
-        visibilityDiagnostics.join("/")
+        visibilityDiagnostics.join("/"),
+        rankGapContext?.signature ?? "no-rank-gap"
     ].join("|");
 }
 
@@ -7683,7 +7890,10 @@ function createRankRecommendationRows(
         provider: "lincoln_custom_suggest"
     });
 
-    const cells: Array<{ value: string; title?: string; attribute?: string }> = [
+    const cells: Array<
+        | { value: string; title?: string; attribute?: string }
+        | { kind: "rankGap" }
+    > = [
         { value: formatRankRecommendationPriority(candidate.priority) },
         {
             value: formatRankRecommendationConfidenceCellText(candidate, cautionText),
@@ -7697,7 +7907,7 @@ function createRankRecommendationRows(
             attribute: RANK_RECOMMENDATION_HISTORY_ATTRIBUTE
         },
         { value: candidate.roomGroupName },
-        { value: candidate.currentRankName ?? "-" },
+        { kind: "rankGap" },
         { value: actionLabel },
         {
             value: reasonText,
@@ -7707,12 +7917,17 @@ function createRankRecommendationRows(
     ];
     for (const cell of cells) {
         const cellElement = document.createElement("td");
-        cellElement.textContent = cell.value;
-        if (cell.title !== undefined) {
-            cellElement.title = cell.title;
-        }
-        if (cell.attribute !== undefined) {
-            cellElement.setAttribute(cell.attribute, "");
+        if ("kind" in cell) {
+            cellElement.append(createRankRecommendationRankGapCellContent(candidate, displayInfo?.rankGapContext ?? null));
+            cellElement.setAttribute(RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE, "");
+        } else {
+            cellElement.textContent = cell.value;
+            if (cell.title !== undefined) {
+                cellElement.title = cell.title;
+            }
+            if (cell.attribute !== undefined) {
+                cellElement.setAttribute(cell.attribute, "");
+            }
         }
         rowElement.append(cellElement);
     }
@@ -7803,6 +8018,101 @@ function createRankRecommendationRows(
     ];
 }
 
+function createRankRecommendationRankGapCellContent(
+    candidate: RankRecommendationCandidate,
+    context: RankRecommendationRankGapContext | null
+): HTMLElement {
+    const wrapperElement = document.createElement("span");
+    wrapperElement.setAttribute(RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE, "");
+
+    if (context === null || context.entries.length === 0) {
+        wrapperElement.textContent = candidate.currentRankName ?? "-";
+        wrapperElement.title = "同一宿泊日の全部屋タイプの現ランクを取得できませんでした";
+        return wrapperElement;
+    }
+
+    const triggerElement = document.createElement("button");
+    triggerElement.type = "button";
+    triggerElement.setAttribute(RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE, "");
+    triggerElement.textContent = candidate.currentRankName ?? "-";
+    triggerElement.title = "同一宿泊日の全部屋タイプの現ランクを表示";
+    triggerElement.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+    });
+
+    const tooltipElement = document.createElement("div");
+    tooltipElement.setAttribute(RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE, "");
+
+    const tableElement = document.createElement("table");
+    const headElement = document.createElement("thead");
+    const headRowElement = document.createElement("tr");
+    for (const label of ["部屋タイプ", "現ランク", "対象候補との差", "備考"]) {
+        const cellElement = document.createElement("th");
+        cellElement.scope = "col";
+        cellElement.textContent = label;
+        headRowElement.append(cellElement);
+    }
+    headElement.append(headRowElement);
+
+    const bodyElement = document.createElement("tbody");
+    for (const entry of context.entries) {
+        const rowElement = document.createElement("tr");
+        if (entry.isTarget) {
+            rowElement.setAttribute("data-ra-rank-recommendation-rank-gap-target", "true");
+        }
+
+        for (const value of [
+            entry.roomGroupName,
+            entry.currentRankName ?? "-",
+            formatRankRecommendationRankGapRelativeStep(entry),
+            formatRankRecommendationRankGapNote(entry, context)
+        ]) {
+            const cellElement = document.createElement("td");
+            cellElement.textContent = value;
+            rowElement.append(cellElement);
+        }
+        bodyElement.append(rowElement);
+    }
+
+    tableElement.replaceChildren(headElement, bodyElement);
+    tooltipElement.replaceChildren(tableElement);
+    wrapperElement.replaceChildren(triggerElement, tooltipElement);
+    return wrapperElement;
+}
+
+function formatRankRecommendationRankGapRelativeStep(entry: RankRecommendationRankGapEntry): string {
+    if (entry.relativeStep === null) {
+        return "順序未確認";
+    }
+    if (entry.relativeStep === 0) {
+        return "同ランク";
+    }
+
+    const absoluteStep = Math.abs(entry.relativeStep);
+    return entry.relativeStep < 0
+        ? `対象より${absoluteStep}ランク高い`
+        : `対象より${absoluteStep}ランク低い`;
+}
+
+function formatRankRecommendationRankGapNote(
+    entry: RankRecommendationRankGapEntry,
+    context: RankRecommendationRankGapContext
+): string {
+    const notes: string[] = [];
+    if (entry.isTarget) {
+        notes.push("対象候補");
+    }
+    if (entry.diagnostics.includes("current_rank_missing")) {
+        notes.push("現ランク未取得");
+    }
+    if (context.rankOrderSource === "unresolved" || entry.relativeStep === null) {
+        notes.push("順序未確認");
+    }
+
+    return notes.length === 0 ? "-" : Array.from(new Set(notes)).join(" / ");
+}
+
 function createRankRecommendationCurvePreviewRow(
     candidate: RankRecommendationCandidate,
     curvePreviewInfo: RankRecommendationCurvePreviewInfo | null,
@@ -7810,24 +8120,40 @@ function createRankRecommendationCurvePreviewRow(
 ): HTMLTableRowElement {
     const rowElement = document.createElement("tr");
     rowElement.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE, "");
+    rowElement.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE, buildRankRecommendationCurvePreviewKey(candidate));
     rowElement.hidden = !isOpen;
     const cellElement = document.createElement("td");
     cellElement.colSpan = 11;
     cellElement.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE, "");
-
-    if (curvePreviewInfo === null || curvePreviewInfo.curveData === null || curvePreviewInfo.maxValue === null) {
-        cellElement.append(createRankRecommendationCurvePreviewDiagnostics([
-            ...(curvePreviewInfo?.diagnostics ?? ["booking_curve_source_missing"])
-        ]));
-    } else {
-        cellElement.append(
-            createRankRecommendationCurvePreviewSection(candidate, curvePreviewInfo),
-            createRankRecommendationCurvePreviewDiagnostics(curvePreviewInfo.diagnostics)
-        );
-    }
+    cellElement.replaceChildren(...createRankRecommendationCurvePreviewCellChildren(candidate, curvePreviewInfo));
 
     rowElement.append(cellElement);
     return rowElement;
+}
+
+function createRankRecommendationCurvePreviewCellChildren(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null
+): Node[] {
+    const activeVariant = curvePreviewInfo === null
+        ? null
+        : resolveRankRecommendationCurvePreviewActiveVariant(curvePreviewInfo);
+    if (curvePreviewInfo === null || curvePreviewInfo.curveData === null || curvePreviewInfo.maxValue === null) {
+        return [createRankRecommendationCurvePreviewDiagnostics([
+            ...(curvePreviewInfo?.diagnostics ?? ["booking_curve_source_missing"])
+        ])];
+    }
+    if (activeVariant === null) {
+        return [createRankRecommendationCurvePreviewDiagnostics([
+            ...curvePreviewInfo.diagnostics,
+            "booking_curve_segment_missing"
+        ])];
+    }
+
+    return [
+        createRankRecommendationCurvePreviewSection(candidate, curvePreviewInfo, activeVariant),
+        createRankRecommendationCurvePreviewDiagnostics(curvePreviewInfo.diagnostics)
+    ];
 }
 
 function createRankRecommendationRankChangePreviewRow(
@@ -7931,13 +8257,11 @@ function appendRankRecommendationRankChangePreviewItem(
 
 function createRankRecommendationCurvePreviewSection(
     candidate: RankRecommendationCandidate,
-    curvePreviewInfo: RankRecommendationCurvePreviewInfo
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo,
+    activeVariant: RankRecommendationCurvePreviewSegmentVariant
 ): HTMLElement {
-    const curveData = curvePreviewInfo.curveData;
-    const maxValue = curvePreviewInfo.maxValue;
-    if (curveData === null || maxValue === null) {
-        return createRankRecommendationCurvePreviewDiagnostics(curvePreviewInfo.diagnostics);
-    }
+    const curveData = activeVariant.curveData;
+    const maxValue = activeVariant.maxValue;
 
     const sectionElement = document.createElement("section");
     sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE, "");
@@ -7974,7 +8298,7 @@ function createRankRecommendationCurvePreviewSection(
         createSalesSettingBookingCurvePanel(
             getSalesSettingBookingCurveSecondarySegmentLabel(curveData.secondarySegment),
             maxValue,
-            curvePreviewInfo.currentSecondaryRoomCount,
+            activeVariant.currentSecondaryRoomCount,
             curveData.secondary,
             curveData.secondaryRankMarkers,
             curveData.secondarySegment
@@ -7983,6 +8307,12 @@ function createRankRecommendationCurvePreviewSection(
 
     sectionElement.replaceChildren(headerElement, createSalesSettingBookingCurveLegend(curveData), gridElement);
     return sectionElement;
+}
+
+function resolveRankRecommendationCurvePreviewActiveVariant(
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo
+): RankRecommendationCurvePreviewSegmentVariant | null {
+    return curvePreviewInfo.segmentVariants[getSalesSettingBookingCurveSecondarySegment()] ?? null;
 }
 
 function createRankRecommendationCurvePreviewDiagnostics(diagnostics: readonly string[]): HTMLElement {
@@ -8000,6 +8330,8 @@ function formatRankRecommendationCurvePreviewDiagnostic(diagnostic: string): str
             return "booking_curve raw source が未保存のため表示できません";
         case "booking_curve_point_missing":
             return "基準日以前の booking_curve 点がありません";
+        case "booking_curve_segment_missing":
+            return "選択中の個人 / 団体区分の preview データを取得できません";
         case "raw_history_reference_missing":
             return "前年実績から作る reference curve が不足しています";
         default:
@@ -8016,6 +8348,42 @@ function buildRankRecommendationCurvePreviewKey(parts: {
     roomGroupId: string;
 }): string {
     return `${parts.stayDate}:${parts.roomGroupId}`;
+}
+
+function rememberRankRecommendationCurvePreviewSnapshot(
+    candidates: readonly RankRecommendationCandidate[],
+    curvePreviewInfoByKey: ReadonlyMap<string, RankRecommendationCurvePreviewInfo>
+): void {
+    latestRankRecommendationCurvePreviewSnapshotByKey.clear();
+    for (const candidate of candidates) {
+        const curvePreviewInfo = curvePreviewInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate));
+        if (curvePreviewInfo === undefined) {
+            continue;
+        }
+        latestRankRecommendationCurvePreviewSnapshotByKey.set(buildRankRecommendationCurvePreviewKey(candidate), {
+            candidate,
+            curvePreviewInfo
+        });
+    }
+}
+
+function rerenderRankRecommendationCurvePreviewSurfacesFromLatestSnapshot(): void {
+    for (const rowElement of Array.from(document.querySelectorAll<HTMLTableRowElement>(`[${RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE}]`))) {
+        const previewKey = rowElement.getAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE);
+        const snapshot = previewKey === null
+            ? undefined
+            : latestRankRecommendationCurvePreviewSnapshotByKey.get(previewKey);
+        const cellElement = rowElement.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}]`);
+        if (snapshot === undefined || cellElement === null) {
+            continue;
+        }
+
+        rowElement.hidden = !isRankRecommendationCurvePreviewOpen(snapshot.candidate);
+        cellElement.replaceChildren(...createRankRecommendationCurvePreviewCellChildren(
+            snapshot.candidate,
+            snapshot.curvePreviewInfo
+        ));
+    }
 }
 
 function setRankRecommendationDecisionButtonAttributes(
@@ -8230,6 +8598,7 @@ function findLowestCommonElementAncestor(leftElement: HTMLElement, rightElement:
 }
 
 function cleanupRankRecommendationList(): void {
+    latestRankRecommendationCurvePreviewSnapshotByKey.clear();
     document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`)?.remove();
 }
 
@@ -8573,6 +8942,72 @@ async function syncSalesSettingGroupRooms(
         statuses
     };
 
+    const renderResult = renderSalesSettingGroupRoomsFromPreparedData(preparedData, analysisDate, batchDateKey, statuses);
+    if (!renderResult.ok) {
+        return;
+    }
+
+    hydrateOpenSalesSettingRoomReferenceCurves(
+        preparedData,
+        analysisDate,
+        batchDateKey,
+        syncContext,
+        renderResult.rankHistoryByRoomGroupName
+    );
+
+    if (hasCurrentSalesSettingUi()) {
+        const latestCards = collectSalesSettingCards();
+        const firstCard = latestCards[0];
+        if (firstCard !== undefined && firstCard.cardElement.isConnected) {
+            renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
+            renderSalesSettingRankInsightsFromStatuses(latestCards, statuses, firstCard, preparedData);
+        }
+    }
+}
+
+function rerenderSalesSettingBookingCurveSurfacesFromLatestSnapshot(): void {
+    const analysisDate = activeAnalyzeDate;
+    const batchDateKey = activeBatchDateKey;
+    if (analysisDate === null || batchDateKey === null) {
+        return;
+    }
+    if (
+        latestSalesSettingPreparedSnapshot === null
+        || latestSalesSettingPreparedSnapshot.analysisDate !== analysisDate
+        || latestSalesSettingPreparedSnapshot.batchDateKey !== batchDateKey
+    ) {
+        return;
+    }
+
+    const preparedData = latestSalesSettingPreparedSnapshot.preparedData;
+    const statuses = latestSalesSettingRankStatusesSnapshot !== null
+        && latestSalesSettingRankStatusesSnapshot.analysisDate === analysisDate
+        ? latestSalesSettingRankStatusesSnapshot.statuses
+        : [];
+    const renderResult = renderSalesSettingGroupRoomsFromPreparedData(preparedData, analysisDate, batchDateKey, statuses);
+    if (!renderResult.ok) {
+        return;
+    }
+
+    if (hasCurrentSalesSettingUi()) {
+        const latestCards = collectSalesSettingCards();
+        const firstCard = latestCards[0] ?? preparedData.cards[0];
+        if (firstCard !== undefined && firstCard.cardElement.isConnected) {
+            renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
+            renderSalesSettingRankInsightsFromStatuses(latestCards, statuses, firstCard, preparedData);
+        }
+    }
+    renderCompetitorPriceOverviewFromState();
+}
+
+function renderSalesSettingGroupRoomsFromPreparedData(
+    preparedData: SalesSettingPreparedData,
+    analysisDate: string,
+    batchDateKey: string,
+    statuses: LincolnSuggestStatus[]
+): { ok: true; rankHistoryByRoomGroupName: Map<string, SalesSettingRankHistoryEvent[]> } | { ok: false } {
+    ensureGroupRoomStyles();
+
     const rankHistoryByRoomGroupName = buildSalesSettingRankHistoryByRoomGroup(statuses, analysisDate);
     const inconsistentRoomGroupNames = getInconsistentSalesSettingGroupNames(
         preparedData.cardMetrics.map((metric) => ({
@@ -8589,7 +9024,7 @@ async function syncSalesSettingGroupRooms(
             inconsistentRoomGroupNames
         });
         cleanupSalesSettingGroupRooms();
-        return;
+        return { ok: false };
     }
 
     const currentCardsByRoomGroupName = new Map(
@@ -8629,27 +9064,12 @@ async function syncSalesSettingGroupRooms(
                     metric.metrics.sameWeekdayCurveData,
                     analysisDate,
                     batchDateKey,
-                    rankHistoryByRoomGroupName.get(metric.card.roomGroupName) ?? []
+                    rankHistoryByRoomGroupName.get(metric.roomGroupName) ?? []
                 )
         );
     }
 
-    hydrateOpenSalesSettingRoomReferenceCurves(
-        preparedData,
-        analysisDate,
-        batchDateKey,
-        syncContext,
-        rankHistoryByRoomGroupName
-    );
-
-    if (hasCurrentSalesSettingUi()) {
-        const latestCards = collectSalesSettingCards();
-        const firstCard = latestCards[0];
-        if (firstCard !== undefined && firstCard.cardElement.isConnected) {
-            renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
-            renderSalesSettingRankInsightsFromStatuses(latestCards, statuses, firstCard, preparedData);
-        }
-    }
+    return { ok: true, rankHistoryByRoomGroupName };
 }
 
 function hydrateOpenSalesSettingRoomReferenceCurves(
@@ -11921,6 +12341,17 @@ function resolveCompetitorPriceTabSectionTarget(): { sectionContainer: HTMLEleme
         };
     }
 
+    const priceTrendsContentElement = document.querySelector<HTMLElement>(`[data-testid="price-trends-content"]`);
+    if (
+        priceTrendsContentElement instanceof HTMLElement
+        && isElementVisiblyRendered(priceTrendsContentElement)
+    ) {
+        return {
+            sectionContainer: priceTrendsContentElement,
+            insertionAnchor: null
+        };
+    }
+
     return null;
 }
 
@@ -13335,6 +13766,9 @@ function cleanupSalesSettingGroupRooms(): void {
 
 function cleanupSalesSettingBookingCurveCards(): void {
     for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}], [${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}]`))) {
+        if (element.closest(`[${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}]`) !== null) {
+            continue;
+        }
         element.remove();
     }
 }
@@ -14456,6 +14890,83 @@ function ensureGroupRoomStyles(): void {
 
         [${RANK_RECOMMENDATION_HISTORY_ATTRIBUTE}] {
             color: #50627a;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE}] {
+            position: relative;
+        }
+
+        span[${RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE}] {
+            display: inline-flex;
+            max-width: 100%;
+            align-items: center;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE}] {
+            max-width: 180px;
+            overflow: hidden;
+            padding: 0;
+            border: 0;
+            background: transparent;
+            color: #243245;
+            cursor: help;
+            font: inherit;
+            font-weight: 800;
+            line-height: inherit;
+            text-align: left;
+            text-decoration: underline dotted #7c8da1;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE}] {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            z-index: 6;
+            display: none;
+            max-width: min(560px, calc(100vw - 32px));
+            overflow-x: auto;
+            padding: 8px;
+            border: 1px solid #cdd8e6;
+            border-radius: 6px;
+            background: rgba(255, 255, 255, 0.99);
+            box-shadow: 0 10px 28px rgba(32, 50, 76, 0.16);
+            color: #243245;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.4;
+            white-space: normal;
+        }
+
+        span[${RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE}]:hover [${RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE}],
+        span[${RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE}]:focus-within [${RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE}] {
+            display: block;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE}] table {
+            min-width: 430px;
+            border-collapse: collapse;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE}] th,
+        [${RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE}] td {
+            padding: 3px 8px;
+            border-bottom: 1px solid #e3e9f1;
+            text-align: left;
+            vertical-align: top;
+            white-space: nowrap;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE}] th {
+            color: #50627a;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE}] tr[data-ra-rank-recommendation-rank-gap-target="true"] td {
+            background: #eef5ff;
+            color: #1f4f83;
             font-weight: 800;
         }
 

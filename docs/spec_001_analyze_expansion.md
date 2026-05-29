@@ -184,6 +184,7 @@ BCL-tuned first wave の定義:
 - 描画する rooms 系列は、常時表示の `全体` panel と、`個人 / 団体` toggle で切り替える second panel で構成する。
 - `個人 / 団体` toggle の既定は `個人` とする。`団体` 選択時は、current、`直近型カーブ`、`季節型カーブ`、rank marker tooltip の対象 segment を `group` に切り替える。`全体` panel は常時表示のまま維持する。
 - `個人 / 団体` toggle 状態は、初期実装では画面内 memory に保持する。Revenue Assistant 側の再描画や本 userscript の再同期では維持するが、ページ再読み込みや別タブをまたぐ永続化は必須要件にしない。
+- `RAU-AF-11` 以降、`個人 / 団体` toggle の切り替え直後は、保持済みの最新 `SalesSettingPreparedData` と rank status snapshot から Analyze 側の booking curve 表示を即時再描画し、その後に通常の calendar sync を強制実行する。これにより、切り替え直後から通常再同期完了までの間に、全体 panel または室タイプ別 panel が空表示のまま残らないようにする。
 - reference curve の表示範囲は、current の booking curve と同じ LT 軸に揃える。標準の横軸は `0〜360日前` と `ACT` を対象にし、表示ラベルは既存の間引きルールを使う。
 - request 数が問題になる場合でも、仕様上の目標表示範囲は `0〜360日前` と `ACT` のままとする。短期の性能対策で一時的に取得範囲を狭める場合は、取得中、未取得、算出不能を区別して表示する。
 - 初期表示では `現在 / 直近型 / 季節型` を比較できる状態にする。ただし表示密度が上がるため、`直近型カーブ` と `季節型カーブ` は個別に表示切替できるようにする。
@@ -363,6 +364,14 @@ Indicator:
   - Revenue Assistant 画面に保存されている検索条件が request にどう反映されるか。
 - 絞り込みなし response が十分な条件情報を含む場合は、広めの raw snapshot を保存し、RAU 側で後から絞り込む方式を候補にする。response が画面条件に強く依存する場合は、検索条件 signature ごとに別系列として保存する。
 - 初期表示は、snapshot が少ない段階でも人数別の最安値グラフを優先する。snapshot が 1 日分だけの場合は線ではなく点として表示し、蓄積後に自然に推移グラフとして読める形にする。
+
+公式 `価格推移` タブへの RAU 追加表示:
+
+- `RAU-CP-11` の 2026-05-29 read-only 調査では、Analyze 画面に `data-testid="tab-priceTrends"` の公式 `価格推移` タブがあり、本文には `data-testid="price-trends-content"`、`price-trends-filter-item`、`price-trends-filter-button`、`price-trends-chart-header`、`price-trends-chart-header-yad-list-item`、`price-trends-content-updated-at` が存在することを確認した。chart は Recharts の wrapper と `svg` として描画されている。調査中に保存したのは DOM 挿入位置、test id、通信 endpoint の発生有無、response shape の field 名や型の範囲に限定し、HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データは repo に保存しない。
+- 同調査で、`価格推移` タブへ切り替えた直後に観測した追加通信は `/api/v1/session/info` と `/api/v4/booking_curve?date=...` であり、専用の `価格推移` endpoint は 2026-05-29 の短時間観測では確定していない。したがって、公式 `価格推移` の内部データを RAU の IndexedDB snapshot store へ混ぜず、専用 endpoint の request / response 契約が確定するまでは保存 schema を追加しない。
+- 利用者方針では、公式 `価格推移` は 89 日以内の宿泊日に対して一定の lead time 内で取得できる別データ源である。ただし、89 日より先の宿泊日では取得できず、データ粒度が細かすぎてそのまま意思決定に向くとは限らない。RAU は既存の `競合価格` タブの IndexedDB snapshot グラフを置き換えず、公式 `価格推移` は直近日程の補助情報源として扱う。
+- `RAU-CP-12` の first implementation では、公式 `価格推移` タブの本文にも、既存 `競合価格` タブと同じ `競合価格 最安値推移` グラフを追加する。表示内容は保存済み `competitor-price-snapshots` から作る人数別 1 名から 4 名の最安値推移、部屋タイプ / 食事条件 toggle、tooltip と同じである。公式 `価格推移` の Recharts data は最初の実装では正規化 store に保存せず、既存 snapshot store へも混ぜない。
+- `価格推移` タブを開いた場合も、その宿泊日は料金判断対象である可能性が高いため、`競合価格` タブを開いた場合と同じ現在 stay_date の競合価格 snapshot 保存要求を再試行付きで開始してよい。ただし、取得 source は既存の `competitor-tab` 系の snapshot 保存契約内に留め、公式 `価格推移` endpoint が未確定のまま別 store や別 request 範囲を増やさない。
 
 2026-04-30 の Chrome CDP 観測結果:
 
