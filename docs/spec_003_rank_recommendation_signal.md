@@ -499,6 +499,9 @@ rank response dataset の first contract:
 - ただし、Revenue Assistant write API、rank 変更の request shape、安全制約、取消可能時間、partial failure、同時更新時の挙動が未確認の間は、トップ画面からの rank 変更を実装済み仕様として扱わない。
 - `RAU-RR-48` の read-only 確認により、標準の料金ランク一括反映 UI には送信前の modal state、`最初からやり直す`、`閉じる` 時の確認 prompt、`続けて反映する` state があることを確認した。一方で、送信後の rollback または短時間 undo は未確認である。
 - `様子見`、`対応不要`、将来の rank 変更操作は、押下直後に即時確定して戻せない挙動にしない。少なくとも短時間の取消入口を持つ反映バッファを設ける。browser-local の `様子見` と `対応不要` は RAU 内で確定前に取り消せる設計にする。将来の Revenue Assistant rank 変更では、RAU 内の pending state は送信前の取消に限定し、送信後 undo を実装済みとして扱わない。
+- `RAU-RR-49` では、`様子見` と `対応不要` を押した直後に IndexedDB へ保存せず、5 秒の in-memory pending state に入れる。pending 中は対象候補 row の `様子見` と `対応不要` button を disabled にし、行内に `n秒後に確定` と `取消` button を表示する。`取消` を押すと timer を破棄し、decision record を保存しない。
+- pending timer が満了した場合だけ、従来と同じ `rank-recommendation-decisions` record を保存する。保存後の cooldown、dismiss、confidence escalation、reasonFingerprint による lifecycle filter は既存契約を維持する。
+- pending state は browser memory 上だけに置く。画面 reload、別施設または別 batch への切替、script 再実行で pending state が失われた場合は保存しない。これは未確定の利用者判断を、意図せず後から確定させないためである。
 - 前回変更日は top list の `前回変更` 列に表示する。rank change history による resolved 判定、user decision cooldown、候補再表示条件を区別できる表示にする。前回変更日が近い候補に推奨が出る場合は、cooldown が効いていないのか、別 roomGroup、別 reasonFingerprint、confidence 表示段階上昇、または販売状況変化として再表示されているのかを検証できるようにする。
 - booking curve preview は、Analyze 画面と同じ意味の全体 / 個人 / 団体、reference curve、不足 diagnostics を使う。top list 上では tooltip ではなく候補 row 直下の追加 row として表示し、候補一覧の作業順を保ったまま開閉できるようにする。preview の data source は既存保存済みの `booking_curve_raw_source:v2` とし、top list preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔を増やさない。raw source がない場合または基準日以前の booking curve point がない場合は、chart の代わりに不足 diagnostics を表示する。reference curve は保存済み raw source 内の前年、2年前、3年前の room count から作る preview 用 reference とする。top list preview では forecast 数値、sales / ADR 数値、競合価格の金額、推奨レート金額を直接出す契約にはしない。
 

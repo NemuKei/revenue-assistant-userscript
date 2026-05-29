@@ -153,6 +153,8 @@ const RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE = "data-ra-rank-reco
 const RANK_RECOMMENDATION_BUTTON_ACTION_LABEL_ATTRIBUTE = "data-ra-rank-recommendation-action-label";
 const RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE = "data-ra-rank-recommendation-reason-text";
 const RANK_RECOMMENDATION_BUTTON_CAUTION_TEXT_ATTRIBUTE = "data-ra-rank-recommendation-caution-text";
+const RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE = "data-ra-rank-recommendation-pending-decision";
+const RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE = "data-ra-rank-recommendation-pending-decision-key";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-row";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-cell";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-diagnostics";
@@ -160,6 +162,7 @@ const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendati
 const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
 const RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX = "revenue-assistant:rank-recommendation:rank-order-override:";
+const RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS = 5000;
 const RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT = 10;
 const RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP = 10;
 const RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT = 50;
@@ -707,6 +710,28 @@ interface PendingRankRecommendationFocus {
     createdAt: string;
 }
 
+interface PendingRankRecommendationDecisionDraft {
+    cacheKey: string;
+    keyParts: {
+        facilityId: string;
+        stayDate: string;
+        roomGroupId: string;
+        action: RankRecommendationAction;
+        reasonFingerprint: string;
+    };
+    roomGroupName: string;
+    decisionType: RankRecommendationDecisionType;
+    asOfDate: string;
+    cooldownUntilAsOfDate: string | null;
+    confidenceLevel: RankRecommendationDecisionConfidenceLevel;
+}
+
+interface PendingRankRecommendationDecision {
+    draft: PendingRankRecommendationDecisionDraft;
+    timeoutId: number;
+    commitAt: number;
+}
+
 interface RankRecommendationWarmCachePriorityCandidate {
     stayDate: string;
     roomGroupId: string;
@@ -768,6 +793,7 @@ const competitorPriceSnapshotBackgroundQueue: CompetitorPriceSnapshotBackgroundT
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
 const salesSettingBookingCurveReferenceVisibilityState = new Map<SalesSettingBookingCurveReferenceKind, boolean>();
 const rankRecommendationCurvePreviewOpenState = new Map<string, boolean>();
+const pendingRankRecommendationDecisionByKey = new Map<string, PendingRankRecommendationDecision>();
 let salesSettingBookingCurveSameWeekdayVisible = false;
 let salesSettingBookingCurveSecondarySegment: SalesSettingBookingCurveSecondarySegment = "individual";
 let latestSalesSettingPreparedSnapshot: {
@@ -907,6 +933,16 @@ function installInteractionHooks(): void {
                 return;
             }
 
+            const rankRecommendationDecisionCancelButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="decision-cancel"]`
+            );
+            if (rankRecommendationDecisionCancelButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                cancelPendingRankRecommendationDecisionFromElement(rankRecommendationDecisionCancelButton);
+                return;
+            }
+
             const rankRecommendationDecisionButton = target.closest<HTMLButtonElement>(
                 `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="snooze"],`
                 + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="dismiss"]`
@@ -914,7 +950,7 @@ function installInteractionHooks(): void {
             if (rankRecommendationDecisionButton !== null) {
                 event.preventDefault();
                 event.stopPropagation();
-                void persistRankRecommendationDecisionFromElement(rankRecommendationDecisionButton);
+                schedulePendingRankRecommendationDecisionFromElement(rankRecommendationDecisionButton);
                 return;
             }
 
@@ -1212,7 +1248,85 @@ function persistPendingRankRecommendationFocusFromElement(element: HTMLElement):
     }
 }
 
-async function persistRankRecommendationDecisionFromElement(element: HTMLElement): Promise<void> {
+function schedulePendingRankRecommendationDecisionFromElement(element: HTMLElement): void {
+    const draft = buildPendingRankRecommendationDecisionDraftFromElement(element);
+    if (draft === null) {
+        return;
+    }
+
+    const current = pendingRankRecommendationDecisionByKey.get(draft.cacheKey);
+    if (current !== undefined) {
+        window.clearTimeout(current.timeoutId);
+    }
+
+    const timeoutId = window.setTimeout(() => {
+        void commitPendingRankRecommendationDecision(draft.cacheKey);
+    }, RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS);
+
+    pendingRankRecommendationDecisionByKey.set(draft.cacheKey, {
+        draft,
+        timeoutId,
+        commitAt: Date.now() + RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS
+    });
+
+    queueCalendarSync({ force: true, reason: `rank-recommendation-pending-${draft.decisionType}` });
+}
+
+function cancelPendingRankRecommendationDecisionFromElement(element: HTMLElement): void {
+    const cacheKey = element.getAttribute(RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE);
+    if (cacheKey === null) {
+        return;
+    }
+
+    const current = pendingRankRecommendationDecisionByKey.get(cacheKey);
+    if (current === undefined) {
+        return;
+    }
+
+    window.clearTimeout(current.timeoutId);
+    pendingRankRecommendationDecisionByKey.delete(cacheKey);
+    queueCalendarSync({ force: true, reason: `rank-recommendation-pending-cancel-${current.draft.decisionType}` });
+}
+
+function clearPendingRankRecommendationDecisions(): void {
+    for (const pending of pendingRankRecommendationDecisionByKey.values()) {
+        window.clearTimeout(pending.timeoutId);
+    }
+    pendingRankRecommendationDecisionByKey.clear();
+}
+
+async function commitPendingRankRecommendationDecision(cacheKey: string): Promise<void> {
+    const pending = pendingRankRecommendationDecisionByKey.get(cacheKey);
+    if (pending === undefined) {
+        return;
+    }
+
+    pendingRankRecommendationDecisionByKey.delete(cacheKey);
+    const record = buildRankRecommendationDecisionRecord({
+        keyParts: pending.draft.keyParts,
+        roomGroupName: pending.draft.roomGroupName,
+        decisionType: pending.draft.decisionType,
+        asOfDate: pending.draft.asOfDate,
+        cooldownUntilAsOfDate: pending.draft.cooldownUntilAsOfDate,
+        confidenceLevel: pending.draft.confidenceLevel
+    });
+
+    await writeRankRecommendationDecisionRecord(record).catch((error: unknown) => {
+        console.warn(`[${SCRIPT_NAME}] failed to write rank recommendation decision`, {
+            decisionType: pending.draft.decisionType,
+            stayDate: pending.draft.keyParts.stayDate,
+            roomGroupId: pending.draft.keyParts.roomGroupId,
+            action: pending.draft.keyParts.action,
+            error
+        });
+    });
+
+    queueCalendarSync({ force: true, reason: `rank-recommendation-${pending.draft.decisionType}` });
+}
+
+function buildPendingRankRecommendationDecisionDraftFromElement(
+    element: HTMLElement
+): PendingRankRecommendationDecisionDraft | null {
     const decisionType = parseRankRecommendationDecisionType(element.getAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE));
     const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
     const asOfDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE);
@@ -1236,37 +1350,30 @@ async function persistRankRecommendationDecisionFromElement(element: HTMLElement
         || confidenceLevel === null
         || facilityId === null
     ) {
-        return;
+        return null;
     }
 
     const cooldownUntilAsOfDate = decisionType === "snooze"
         ? getRankRecommendationSnoozeCooldownUntilAsOfDate(stayDate, asOfDate)
         : null;
 
-    await writeRankRecommendationDecisionRecord(buildRankRecommendationDecisionRecord({
-        keyParts: {
-            facilityId,
-            stayDate,
-            roomGroupId,
-            action,
-            reasonFingerprint
-        },
+    const keyParts = {
+        facilityId,
+        stayDate,
+        roomGroupId,
+        action,
+        reasonFingerprint
+    };
+
+    return {
+        cacheKey: buildRankRecommendationDecisionCacheKey(keyParts),
+        keyParts,
         roomGroupName,
         decisionType,
         asOfDate,
         cooldownUntilAsOfDate,
         confidenceLevel
-    })).catch((error: unknown) => {
-        console.warn(`[${SCRIPT_NAME}] failed to write rank recommendation decision`, {
-            decisionType,
-            stayDate,
-            roomGroupId,
-            action,
-            error
-        });
-    });
-
-    queueCalendarSync({ force: true, reason: `rank-recommendation-${decisionType}` });
+    };
 }
 
 async function persistRankRecommendationRankOrderFromElement(element: HTMLElement): Promise<void> {
@@ -6856,6 +6963,8 @@ function createRankRecommendationRows(
         toggleRankRecommendationCurvePreviewFromElement(curvePreviewButtonElement);
     });
 
+    const pendingDecision = getPendingRankRecommendationDecision(candidate);
+    const hasPendingDecision = pendingDecision !== null;
     const snoozeButtonElement = document.createElement("button");
     snoozeButtonElement.type = "button";
     snoozeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
@@ -6863,6 +6972,7 @@ function createRankRecommendationRows(
     setRankRecommendationDecisionButtonAttributes(snoozeButtonElement, candidate);
     snoozeButtonElement.title = "同じ候補を一時的に非表示にする";
     snoozeButtonElement.textContent = "様子見";
+    snoozeButtonElement.disabled = hasPendingDecision;
 
     const dismissButtonElement = document.createElement("button");
     dismissButtonElement.type = "button";
@@ -6871,8 +6981,12 @@ function createRankRecommendationRows(
     setRankRecommendationDecisionButtonAttributes(dismissButtonElement, candidate);
     dismissButtonElement.title = "同じ根拠の候補を非表示にする";
     dismissButtonElement.textContent = "対応不要";
+    dismissButtonElement.disabled = hasPendingDecision;
 
     actionCellElement.append(analyzeLinkElement, curvePreviewButtonElement, snoozeButtonElement, dismissButtonElement);
+    if (pendingDecision !== null) {
+        actionCellElement.append(createRankRecommendationPendingDecisionElement(pendingDecision));
+    }
     rowElement.append(actionCellElement);
     return [
         rowElement,
@@ -7007,6 +7121,46 @@ function setRankRecommendationDecisionButtonAttributes(
     buttonElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
     buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, candidate.reasonFingerprint);
     buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE, getRankRecommendationConfidenceLevel(candidate.confidence));
+}
+
+function getPendingRankRecommendationDecision(
+    candidate: RankRecommendationCandidate
+): PendingRankRecommendationDecision | null {
+    const facilityId = activeFacilityCacheKey;
+    if (facilityId === null) {
+        return null;
+    }
+
+    const cacheKey = buildRankRecommendationDecisionCacheKey({
+        facilityId,
+        stayDate: candidate.stayDate,
+        roomGroupId: candidate.roomGroupId,
+        action: candidate.action,
+        reasonFingerprint: candidate.reasonFingerprint
+    });
+    return pendingRankRecommendationDecisionByKey.get(cacheKey) ?? null;
+}
+
+function createRankRecommendationPendingDecisionElement(
+    pendingDecision: PendingRankRecommendationDecision
+): HTMLDivElement {
+    const wrapperElement = document.createElement("div");
+    wrapperElement.setAttribute(RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE, "");
+
+    const labelElement = document.createElement("span");
+    const secondsUntilCommit = Math.max(1, Math.ceil((pendingDecision.commitAt - Date.now()) / 1000));
+    labelElement.textContent = `${formatRankRecommendationDecisionType(pendingDecision.draft.decisionType)}を${secondsUntilCommit}秒後に確定`;
+
+    const cancelButtonElement = document.createElement("button");
+    cancelButtonElement.type = "button";
+    cancelButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    cancelButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "decision-cancel");
+    cancelButtonElement.setAttribute(RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE, pendingDecision.draft.cacheKey);
+    cancelButtonElement.title = `${formatRankRecommendationDecisionType(pendingDecision.draft.decisionType)}の保存を取り消す`;
+    cancelButtonElement.textContent = "取消";
+
+    wrapperElement.append(labelElement, cancelButtonElement);
+    return wrapperElement;
 }
 
 function resolveRankRecommendationListHost(): { parentElement: HTMLElement; insertAfterElement: HTMLElement } | null {
@@ -8813,6 +8967,7 @@ function syncCacheBatch(batchDateKey: string, facilityCacheKey: string): void {
 
     activeBatchDateKey = batchDateKey;
     activeFacilityCacheKey = facilityCacheKey;
+    clearPendingRankRecommendationDecisions();
     salesSettingPrefetchKeys.clear();
     groupRoomCache.clear();
     bookingCurveCache.clear();
@@ -13319,6 +13474,32 @@ function ensureGroupRoomStyles(): void {
             color: #8a98a8;
             cursor: not-allowed;
             opacity: 0.75;
+        }
+
+        [${RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            margin-top: 6px;
+            padding: 4px 6px;
+            border: 1px solid #d8b247;
+            border-radius: 5px;
+            background: #fff7df;
+            color: #5c4300;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.3;
+            white-space: nowrap;
+        }
+
+        [${RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE}] [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}] {
+            min-height: 22px;
+            margin-right: 0;
+            padding: 2px 6px;
+            border-color: #b58a19;
+            background: #ffffff;
+            color: #5c4300;
+            font-size: 11px;
         }
 
         [${RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE}] {

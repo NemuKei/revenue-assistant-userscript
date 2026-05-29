@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-48` まで、および `RAU-RR-50` が完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `RAU-RR-49`。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-50` まで完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `RAU-RR-51`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -54,6 +54,7 @@
   - `RAU-RR-46` 料金調整候補に前回変更日とcooldown診断を表示する
   - `RAU-RR-47` 料金調整候補上でbooking curve previewを表示する
   - `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
+  - `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
   - `RAU-RR-50` 上げ推奨と下げ推奨のpriority比較を見直す
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
@@ -78,8 +79,8 @@
   - `docs/spec_002_curve_core.md`
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
-  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日とcooldown診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直しまで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-49` とする。次に進める場合は、`様子見`、`対応不要`、将来の rank 変更に適用できる取消可能な pending 操作モデルを設計する。
+  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日とcooldown診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer まで完了済みとして扱う。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-51` とする。次に進める場合は、料金調整候補から rank 調整する UI shell を設計する。`RAU-RR-51` では Revenue Assistant write API を実行しない。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -92,6 +93,7 @@
   - `RAU-RR-15` では、rank order source を `numeric_rank_name`、`settings_screen`、`manual_override`、`unresolved` として扱う。top list に現在 source と高ランクから低ランクへの順序を表示し、利用者が high-to-low の rank 順序を browser-local に保存できる manual override と reset を追加済みである。
   - `RAU-RR-16` では、設定画面 `設定 > 表示 > 料金ランクの並び順` の route が `/settings/price-rank-sequence` であり、`GET /api/v1/rank_sequences` の配列順が設定画面のドラッグリスト順序として表示されることを Chrome DevTools Protocol read-only で確認した。大国町では表示順が `1` から `20` であり、利用者確認どおり高ランクから低ランクの順である。RAU は manual override がない場合、この配列順を source `settings_screen` として使う。rank 名は企業や施設により数字系、ローマ字または英字系、記号混在系のいずれもあり得て、同じ表記系でも上下関係が逆になる運用があるため、名前パターン推定を確認済み source と同等に扱わない。
   - `RAU-RR-48` では、Chrome拡張で通常 Chrome の Revenue Assistant tab が存在することを確認し、Chrome DevTools Protocol で root 画面と配信 JavaScript bundle を read-only 調査した。標準画面の料金ランク一括反映は、site controller ごとに `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を呼び分ける候補がある。payload 候補は `date`、`rmRoomGroupId`、`priceRankCode` と、現在設定に値がある場合の `limitedNumber`、`withoutMeal`、`withOnlyBreakfast`、`withOnlyDinner`、`withBreakfastAndDinner` から作られる。標準 UI には送信前の modal state、`最初からやり直す`、`閉じる` 時の確認 prompt、`続けて反映する` state、成功、一部失敗、失敗の通知種別がある。ただし実 POST は実行していないため、server 側 validation、CSRF、error body、partial failure response schema、同時更新時の挙動、反映後 rollback 可否は未確認である。top list 直接 rank 変更の実装はまだ行わない。
+  - `RAU-RR-49` では、`様子見` と `対応不要` の browser-local decision を押下直後に IndexedDB へ保存せず、5 秒の in-memory pending state に入れてから保存するようにした。pending 中は対象候補 row の `様子見` と `対応不要` button を disabled にし、行内に `n秒後に確定` と `取消` button を表示する。`取消` を押すと timer を破棄し、IndexedDB には何も保存しない。5 秒経過後に従来と同じ `rank-recommendation-decisions` record を保存し、既存の cooldown、dismiss、confidence escalation、reasonFingerprint による lifecycle filter をそのまま使う。Revenue Assistant write API、rank 直接変更、bulk apply は追加していない。
   - `RAU-RR-17` では、曜日別関係と競合価格内の自社料金位置を rank order source ではなく、priority / confidence / reasonCodes / diagnostics の補助 input として採用すると判断した。rank rule は企業またはホテルごとに異なり、rank 名は数字系、ローマ字または英字系、記号混在系のいずれもあり得るため、名前パターン、曜日別販売傾向、競合価格内自社料金位置だけで上下関係を断定しない。大国町では Revenue Assistant 設定画面の `料金ランクの並び順` が高ランクから低ランクへ `1` から `20` の順に並んでいるため、`1` を最高ランク、`20` を最低ランクとして扱う。曜日別関係と競合価格内自社料金位置は追加 request なしで既存保存済み evidence から作り、既存 action を単独で変えない小さな補助として扱う。
   - 2026-05-29 の利用者補足により、rank rule は企業またはホテルごとに異なり、数字系、ローマ字または英字系、記号混在系があり、同じ表記系でも上下関係が逆になる運用がある前提を再確認した。RAU は今後も、rank order を `manual_override`、`settings_screen`、`numeric_rank_name` fallback、`unresolved` の順で扱い、曜日別関係や競合価格内の自社料金位置は上下関係の確定 source ではなく scoring 補助 input として扱う。詳細判断は `D-20260529-001` を参照する。
   - `RAU-RR-18` では、weekday context signal と competitor own price position signal を `src/rankRecommendation.ts` の pure scoring contract へ追加した。`src/main.ts` では、weekday context を保存済み `booking_curve_raw_source:v2` の同曜日候補から作り、競合価格内自社料金位置を保存済み `competitor-price-snapshots` の最新 snapshot から作る。追加 API request は行わない。Chrome拡張 backend では通常 Chrome の Revenue Assistant tab が 1 件あることを確認し、Chrome DevTools Protocol で最新 dist を一時注入した確認では、候補 list 10 行、page error 0 件、console error 0 件、`自社安め` 7 行、weekday reason 0 行、金額・差額・比率の直接表示 0 行だった。
@@ -301,8 +303,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-49` であることを確認する。
-2. `RAU-RR-49` では、`様子見`、`対応不要`、将来の rank 変更操作を対象に、確定前に取り消せる pending 操作モデルを設計する。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-51` であることを確認する。
+2. `RAU-RR-51` では、料金調整候補から rank 調整する UI shell を設計する。Revenue Assistant write API、rank 直接変更、bulk apply は実行しない。
 3. Rank Recommendation Bundle を進める場合は、forecast 数値、sales / ADR 数値、競合価格の金額または差額を top list へ直接表示しない契約と、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
 
 変更しない契約:
