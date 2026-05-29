@@ -135,6 +135,8 @@ const RANK_RECOMMENDATION_ORDER_CONTROL_ATTRIBUTE = "data-ra-rank-recommendation
 const RANK_RECOMMENDATION_ORDER_SOURCE_ATTRIBUTE = "data-ra-rank-recommendation-order-source";
 const RANK_RECOMMENDATION_ORDER_INPUT_ATTRIBUTE = "data-ra-rank-recommendation-order-input";
 const RANK_RECOMMENDATION_ORDER_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-order-status";
+const RANK_RECOMMENDATION_VIEW_MODE_CONTROL_ATTRIBUTE = "data-ra-rank-recommendation-view-mode-control";
+const RANK_RECOMMENDATION_VIEW_MODE_ATTRIBUTE = "data-ra-rank-recommendation-view-mode";
 const RANK_RECOMMENDATION_ROW_ATTRIBUTE = "data-ra-rank-recommendation-row";
 const RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE = "data-ra-rank-recommendation-priority";
 const RANK_RECOMMENDATION_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-action";
@@ -157,6 +159,17 @@ const RANK_RECOMMENDATION_ORDER_OVERRIDE_STORAGE_PREFIX = "revenue-assistant:ran
 const RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT = 10;
 const RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP = 10;
 const RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT = 50;
+type RankRecommendationViewMode = "all" | "raise" | "lower" | "caution";
+const RANK_RECOMMENDATION_VIEW_MODE_OPTIONS: readonly {
+    mode: RankRecommendationViewMode;
+    label: string;
+    title: string;
+}[] = [
+    { mode: "all", label: "全て", title: "表示条件をかけず、優先度順に表示する" },
+    { mode: "raise", label: "上げ検討", title: "上げ検討の候補だけを表示する" },
+    { mode: "lower", label: "下げ注意", title: "下げ注意の候補だけを表示する" },
+    { mode: "caution", label: "注意あり", title: "不足または注意が残る候補だけを表示する" }
+];
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
 const SALES_SETTING_GROUP_ROOM_TONE_ATTRIBUTE = "data-ra-sales-setting-group-room-tone";
@@ -746,6 +759,7 @@ let pendingCompetitorPriceTabSnapshotRequest: PendingCompetitorPriceTabSnapshotR
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
 let rankRecommendationWarmCachePriorityCandidates: RankRecommendationWarmCachePriorityCandidate[] = [];
 let rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+let rankRecommendationViewMode: RankRecommendationViewMode = "all";
 let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
 let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
 let salesSettingWarmCacheStoredCalendarMarkerStates = new Map<string, SalesSettingWarmCacheStoredMarkerState>();
@@ -873,6 +887,16 @@ function installInteractionHooks(): void {
                 event.preventDefault();
                 event.stopPropagation();
                 void persistRankRecommendationRankOrderFromElement(rankRecommendationOrderButton);
+                return;
+            }
+
+            const rankRecommendationViewModeButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="view-mode"]`
+            );
+            if (rankRecommendationViewModeButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                setRankRecommendationViewModeFromElement(rankRecommendationViewModeButton);
                 return;
             }
 
@@ -1283,6 +1307,23 @@ function resetRankRecommendationDisplayLimit(): void {
 
     rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
     queueCalendarSync({ force: true, reason: "rank-recommendation-display-reset" });
+}
+
+function setRankRecommendationViewModeFromElement(element: HTMLElement): void {
+    const viewMode = parseRankRecommendationViewMode(element.getAttribute(RANK_RECOMMENDATION_VIEW_MODE_ATTRIBUTE));
+    if (viewMode === null || viewMode === rankRecommendationViewMode) {
+        return;
+    }
+
+    rankRecommendationViewMode = viewMode;
+    rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+    queueCalendarSync({ force: true, reason: "rank-recommendation-view-mode" });
+}
+
+function parseRankRecommendationViewMode(value: string | null): RankRecommendationViewMode | null {
+    return RANK_RECOMMENDATION_VIEW_MODE_OPTIONS.some((option) => option.mode === value)
+        ? value as RankRecommendationViewMode
+        : null;
 }
 
 function parseRankRecommendationRankLadderFromElement(element: HTMLElement): RankRecommendationRankLadderEntry[] {
@@ -4855,11 +4896,13 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statuses,
         batchDateKey
     );
-    const visibleCandidates = resolvedFilterResult.candidates.slice(0, rankRecommendationDisplayLimit);
+    const viewModeFilterResult = applyRankRecommendationViewModeFilter(resolvedFilterResult.candidates, rankRecommendationViewMode);
+    const visibleCandidates = viewModeFilterResult.candidates.slice(0, rankRecommendationDisplayLimit);
     const hiddenSummary = {
         userDecision: decisionFilterResult.hiddenCount,
         resolvedRankChange: resolvedFilterResult.hiddenCount,
-        overflow: Math.max(0, resolvedFilterResult.candidates.length - visibleCandidates.length)
+        viewMode: viewModeFilterResult.hiddenCount,
+        overflow: Math.max(0, viewModeFilterResult.candidates.length - visibleCandidates.length)
     };
 
     rememberRankRecommendationWarmCachePriorityCandidates(visibleCandidates);
@@ -4873,6 +4916,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             rankOrderResolution.ranksHighToLow.map((rank) => rank.code).join(">"),
             `hidden-user:${hiddenSummary.userDecision}`,
             `hidden-resolved:${hiddenSummary.resolvedRankChange}`,
+            `hidden-view-mode:${hiddenSummary.viewMode}`,
+            `view-mode:${rankRecommendationViewMode}`,
             `overflow:${hiddenSummary.overflow}`,
             `display-limit:${rankRecommendationDisplayLimit}`,
             visibleCandidates.map((candidate) => [
@@ -4890,6 +4935,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         facilityCacheKey,
         rankLadder,
         rankOrder: rankOrderResolution,
+        viewMode: rankRecommendationViewMode,
         hiddenSummary,
         canShowMore: hiddenSummary.overflow > 0 && rankRecommendationDisplayLimit < RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
         canResetDisplayLimit: rankRecommendationDisplayLimit > RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT
@@ -5672,6 +5718,7 @@ interface RankRecommendationCandidateFilterResult {
 interface RankRecommendationHiddenSummary {
     userDecision: number;
     resolvedRankChange: number;
+    viewMode: number;
     overflow: number;
 }
 
@@ -5714,6 +5761,40 @@ function applyRankRecommendationDecisionFilter(
         candidates: visibleCandidates,
         hiddenCount
     };
+}
+
+function applyRankRecommendationViewModeFilter(
+    candidates: RankRecommendationCandidate[],
+    viewMode: RankRecommendationViewMode
+): RankRecommendationCandidateFilterResult {
+    if (viewMode === "all") {
+        return {
+            candidates,
+            hiddenCount: 0
+        };
+    }
+
+    const visibleCandidates = candidates.filter((candidate) => isRankRecommendationVisibleInViewMode(candidate, viewMode));
+    return {
+        candidates: visibleCandidates,
+        hiddenCount: candidates.length - visibleCandidates.length
+    };
+}
+
+function isRankRecommendationVisibleInViewMode(
+    candidate: RankRecommendationCandidate,
+    viewMode: RankRecommendationViewMode
+): boolean {
+    if (viewMode === "raise") {
+        return candidate.action === "raise_watch";
+    }
+    if (viewMode === "lower") {
+        return candidate.action === "lower_watch";
+    }
+    if (viewMode === "caution") {
+        return summarizeRankRecommendationConfidenceCautions(candidate.diagnostics).length > 0;
+    }
+    return true;
 }
 
 function isRankRecommendationConfidenceEscalated(
@@ -5787,6 +5868,7 @@ function renderRankRecommendationList(
         facilityCacheKey?: string;
         rankLadder?: readonly RankRecommendationRankLadderEntry[];
         rankOrder?: RankRecommendationRankOrderResolution;
+        viewMode?: RankRecommendationViewMode;
         hiddenSummary?: RankRecommendationHiddenSummary;
         canShowMore?: boolean;
         canResetDisplayLimit?: boolean;
@@ -5807,7 +5889,11 @@ function renderRankRecommendationList(
 
     const metaElement = document.createElement("div");
     metaElement.setAttribute("data-ra-rank-recommendation-meta", "");
-    metaElement.textContent = formatRankRecommendationListMeta(candidates, options.statusText, options.hiddenSummary);
+    metaElement.textContent = formatRankRecommendationListMeta(candidates, options.statusText, options.hiddenSummary, options.viewMode ?? "all");
+
+    const viewModeControlElement = options.statusText === null
+        ? createRankRecommendationViewModeControl(options.viewMode ?? "all")
+        : null;
 
     const displayLimitControlElement = options.canShowMore === true || options.canResetDisplayLimit === true
         ? createRankRecommendationDisplayLimitControl({
@@ -5842,7 +5928,9 @@ function renderRankRecommendationList(
         const emptyRowElement = document.createElement("tr");
         const emptyCellElement = document.createElement("td");
         emptyCellElement.colSpan = 10;
-        emptyCellElement.textContent = "現在表示中のカレンダーに料金調整候補はありません";
+        emptyCellElement.textContent = options.viewMode === undefined || options.viewMode === "all"
+            ? "現在表示中のカレンダーに料金調整候補はありません"
+            : "現在の表示条件に該当する料金調整候補はありません";
         emptyRowElement.append(emptyCellElement);
         bodyElement.append(emptyRowElement);
     } else {
@@ -5854,6 +5942,7 @@ function renderRankRecommendationList(
     rootElement.replaceChildren(...[
         titleElement,
         metaElement,
+        ...(viewModeControlElement === null ? [] : [viewModeControlElement]),
         ...(displayLimitControlElement === null ? [] : [displayLimitControlElement]),
         ...(rankOrderControlElement === null ? [] : [rankOrderControlElement]),
         tableElement
@@ -5863,6 +5952,29 @@ function renderRankRecommendationList(
         rootElement.remove();
         host.parentElement.insertBefore(rootElement, host.insertAfterElement.nextSibling);
     }
+}
+
+function createRankRecommendationViewModeControl(currentMode: RankRecommendationViewMode): HTMLElement {
+    const controlElement = document.createElement("div");
+    controlElement.setAttribute(RANK_RECOMMENDATION_VIEW_MODE_CONTROL_ATTRIBUTE, "");
+
+    const labelElement = document.createElement("span");
+    labelElement.textContent = "表示";
+    controlElement.append(labelElement);
+
+    for (const option of RANK_RECOMMENDATION_VIEW_MODE_OPTIONS) {
+        const buttonElement = document.createElement("button");
+        buttonElement.type = "button";
+        buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+        buttonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "view-mode");
+        buttonElement.setAttribute(RANK_RECOMMENDATION_VIEW_MODE_ATTRIBUTE, option.mode);
+        buttonElement.setAttribute("aria-pressed", option.mode === currentMode ? "true" : "false");
+        buttonElement.textContent = option.label;
+        buttonElement.title = option.title;
+        controlElement.append(buttonElement);
+    }
+
+    return controlElement;
 }
 
 function createRankRecommendationDisplayLimitControl(options: {
@@ -5986,7 +6098,8 @@ function formatRankRecommendationOrderDiagnosticStatus(diagnostics: readonly str
 function formatRankRecommendationListMeta(
     candidates: readonly RankRecommendationCandidate[],
     statusText: string | null,
-    hiddenSummary?: RankRecommendationHiddenSummary
+    hiddenSummary?: RankRecommendationHiddenSummary,
+    viewMode: RankRecommendationViewMode = "all"
 ): string {
     if (statusText !== null) {
         return statusText;
@@ -5998,10 +6111,28 @@ function formatRankRecommendationListMeta(
         formatRankRecommendationPrioritySummary(candidates),
         formatRankRecommendationConfidenceSummary(candidates),
         formatRankRecommendationCautionSummary(candidates),
+        formatRankRecommendationViewModeSummary(hiddenSummary, viewMode),
         formatRankRecommendationHiddenSummary(hiddenSummary),
         formatRankRecommendationOverflowSummary(hiddenSummary)
     ].filter((part): part is string => part !== null);
     return parts.join(" / ");
+}
+
+function formatRankRecommendationViewModeSummary(
+    hiddenSummary: RankRecommendationHiddenSummary | undefined,
+    viewMode: RankRecommendationViewMode
+): string | null {
+    if (viewMode === "all") {
+        return null;
+    }
+
+    const filteredCount = hiddenSummary?.viewMode ?? 0;
+    const countText = filteredCount > 0 ? `・条件外 ${filteredCount}件` : "";
+    return `表示条件 ${formatRankRecommendationViewModeLabel(viewMode)}${countText}`;
+}
+
+function formatRankRecommendationViewModeLabel(viewMode: RankRecommendationViewMode): string {
+    return RANK_RECOMMENDATION_VIEW_MODE_OPTIONS.find((option) => option.mode === viewMode)?.label ?? "全て";
 }
 
 function formatRankRecommendationAsOfDateSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
@@ -12251,6 +12382,17 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.4;
         }
 
+        [${RANK_RECOMMENDATION_VIEW_MODE_CONTROL_ATTRIBUTE}] {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            flex-wrap: wrap;
+            margin: 0 0 8px;
+            color: #5b6b7d;
+            font-size: 12px;
+            font-weight: 800;
+        }
+
         [data-ra-rank-recommendation-display-limit-control] {
             display: flex;
             gap: 6px;
@@ -12371,6 +12513,12 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.2;
             text-decoration: none;
             cursor: pointer;
+        }
+
+        [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][aria-pressed="true"] {
+            border-color: #315b8d;
+            background: #e8f1fb;
+            color: #1f4f83;
         }
 
         [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][disabled] {

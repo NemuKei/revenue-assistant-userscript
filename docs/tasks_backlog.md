@@ -2675,6 +2675,60 @@
   - `spec-checkpoint`: during-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-RR-44 top list の表示モードを切り替える
+
+- 状態:
+  - 2026-05-29 実装済み。
+- 目的:
+  - 候補数が増えた top list で、RM が短い作業単位ごとに確認対象を切り替えられるようにする。
+- 背景:
+  - `RAU-RR-42` で top 10 の外にある active candidates を段階的に確認できるようにした。
+  - `RAU-RR-43` で、広げた候補 list を初期 10 件へ戻せるようにした。
+  - ただし、候補が多い状態では「上げ検討だけを確認する」「下げ注意だけを確認する」「不足または注意が残る候補だけを確認する」という作業単位へ切り替える入口がない。
+- スコープ:
+  - top list meta の下に表示モード control を追加する。
+  - 表示モードは `全て`、`上げ検討`、`下げ注意`、`注意あり` とする。
+  - `全て` は lifecycle filter 後の active candidates を優先度順に表示する。
+  - `上げ検討` は `action="raise_watch"` の候補だけを表示する。
+  - `下げ注意` は `action="lower_watch"` の候補だけを表示する。
+  - `注意あり` は不足または注意 diagnostics が残る候補だけを表示する。
+  - 表示モード変更時は表示上限を初期値 10 件へ戻す。
+  - summary には、`全て` 以外の表示モードで `表示条件 ...` と、条件外になった active candidates 件数を表示する。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonCodes、reasonFingerprint を変更すること。
+  - rank order、manual override、user decision、resolved 判定を変更すること。
+  - sort UI、任意条件式、複数条件の組み合わせ、永続保存される表示条件を追加すること。
+  - API request 範囲、request 件数、request 間隔を変更すること。
+  - forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示すること。
+  - Revenue Assistant write / bulk apply。
+- 受け入れ条件:
+  - 初期表示モードは `全て` である。
+  - `上げ検討` を押すと、`raise_watch` の候補だけが表示され、summary に `表示条件 上げ検討` と条件外件数が表示される。
+  - `下げ注意` を押すと、`lower_watch` の候補だけが表示される。該当候補が 0 件の場合は、表示条件に該当する候補がないことを示す空行を表示する。
+  - `注意あり` を押すと、不足または注意 diagnostics が残る候補だけが表示される。
+  - 表示モードを変更すると、表示上限は 10 件へ戻る。
+  - top list に forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent、推奨レート金額を表示しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab を確認し、Chrome DevTools Protocol で最新 dist 一時注入後の表示モード切替を確認する。
+- 実装内容:
+  - top list meta の下に `全て`、`上げ検討`、`下げ注意`、`注意あり` の表示モード control を追加した。
+  - 表示モードは user decision と rank change resolved の lifecycle filter 後に適用し、表示中 row、summary、`他 n件`、`さらに表示` の対象を切り替える。
+  - `上げ検討` は `action="raise_watch"`、`下げ注意` は `action="lower_watch"`、`注意あり` は不足または注意 diagnostics summary が 1 件以上ある候補だけを表示する。
+  - 表示モードを変更した場合は、表示上限を初期値 10 件へ戻し、`10件に戻す` を不要な状態へ戻す。
+  - `全て` 以外では summary に `表示条件 ...` と、表示モードで条件外になった active candidates 件数を表示する。
+  - 表示モード該当候補が 0 件の場合は、表示条件に該当する候補がないことを示す空行を表示する。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になったため、権限許可後に同じ command を再実行して通過
+  - Chrome拡張 backend capability 確認: extension browser と `openTabs()` を取得でき、tab count 3 を確認した。
+  - `npm run chrome:pages`: passed。通常 Chrome に Tampermonkey dashboard、OneTab、Revenue Assistant `https://ra.jalan.net/analyze/2026-09-15` が開いていることを確認した。
+  - Chrome DevTools Protocol 合成 DOM 確認: 通常 Chrome の CDP endpoint へ接続し、合成 page と合成 API response に最新 `dist/revenue-assistant-userscript.user.js` を一時注入した。active candidates 25 件の条件で、初期 `全て` は row 10 件、`さらに表示 (10件)`、`表示条件` 表示なしだった。`さらに表示` 後は row 20 件と `10件に戻す` を確認した。`上げ検討` は row 10 件がすべて `raise_watch`、summary `表示条件 上げ検討・条件外 13件`、`さらに表示 (2件)`、`10件に戻す` なしだった。`下げ注意` は row 5 件がすべて `lower_watch`、summary `表示条件 下げ注意・条件外 20件`、`さらに表示` なしだった。`注意あり` は summary `表示条件 注意あり` と `さらに表示` を確認した。`全て` へ戻すと summary から `表示条件` が消えた。金額、percent、forecast、売上、ADR の文字列は top list に出ず、unexpected request、page error、console error は 0 件だった。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: during-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Forecast Bundle
 
 この section は予測関連 task をまとめて保持する。実行順は下の `Remaining Task Triage` を正とする。
