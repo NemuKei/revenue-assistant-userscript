@@ -276,8 +276,8 @@ const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
     "#9a4fb3",
     "#4f7f9f"
 ];
-const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v7";
-const PRICE_TREND_OVERVIEW_UI_VERSION = "official-price-trend-v1";
+const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-toggle-v8";
+const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-filter-v2";
 const PRICE_TREND_COMPETITOR_MIN_YAD_NO = "__competitor_min__";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
@@ -941,6 +941,8 @@ let competitorPriceSnapshotUiState: CompetitorPriceSnapshotUiState = createIniti
 let priceTrendUiState: PriceTrendUiState = createInitialPriceTrendUiState();
 let competitorPriceRoomTypeFilter: string | null = null;
 let competitorPriceMealTypeFilter: string | null = null;
+let priceTrendRoomTypeFilter: string | null = null;
+let priceTrendMealTypeFilter: string | null = null;
 let salesSettingWarmCacheIndicatorMinimized = false;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
@@ -12644,12 +12646,24 @@ function renderPriceTrendOverviewAtTarget(
     sectionContainer: HTMLElement,
     state: PriceTrendUiState
 ): void {
+    const filters = buildPriceTrendFilterOptions(state.records);
+    const roomTypeFilter = filters.roomTypes.includes(priceTrendRoomTypeFilter ?? "")
+        ? priceTrendRoomTypeFilter
+        : null;
+    const mealTypeFilter = filters.mealTypes.includes(priceTrendMealTypeFilter ?? "")
+        ? priceTrendMealTypeFilter
+        : null;
+    priceTrendRoomTypeFilter = roomTypeFilter;
+    priceTrendMealTypeFilter = mealTypeFilter;
+    const filteredRecords = selectPriceTrendRecordsForFilters(state.records, roomTypeFilter, mealTypeFilter);
     const signature = [
         PRICE_TREND_OVERVIEW_UI_VERSION,
         state.status,
         state.reason ?? "reason:none",
         state.errorMessage ?? "error:none",
-        state.records.map((record) => record.recordKey).join("|")
+        state.records.map((record) => record.recordKey).join("|"),
+        roomTypeFilter ?? "room:any",
+        mealTypeFilter ?? "meal:any"
     ].join("::");
     const existingContainer = findDirectChildByAttribute(sectionContainer, SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE);
     for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE}]`))) {
@@ -12665,11 +12679,11 @@ function renderPriceTrendOverviewAtTarget(
 
         const titleElement = document.createElement("div");
         titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_TITLE_ATTRIBUTE, "");
-        titleElement.textContent = "公式価格推移 最安値推移";
+        titleElement.textContent = "競合価格 最安値推移（90日版）";
 
         const metaElement = document.createElement("div");
         metaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE, "");
-        metaElement.textContent = formatPriceTrendOverviewMeta(state);
+        metaElement.textContent = formatPriceTrendOverviewMeta(state, filteredRecords);
 
         if (state.records.length === 0) {
             const emptyElement = document.createElement("div");
@@ -12677,14 +12691,22 @@ function renderPriceTrendOverviewAtTarget(
             emptyElement.textContent = formatPriceTrendEmptyText(state);
             containerElement.replaceChildren(titleElement, metaElement, emptyElement);
         } else {
-            const chartSeries = buildPriceTrendGuestChartSeries(state.records);
-            const legendElement = createCompetitorPriceLegend(chartSeries.facilities);
-            const chartGridElement = document.createElement("div");
-            chartGridElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE, "");
-            for (const guestCount of PRICE_TREND_GUEST_COUNTS) {
-                chartGridElement.append(createPriceTrendChartPanel(guestCount, chartSeries));
+            const controlsElement = createPriceTrendFilterControls(filters, roomTypeFilter, mealTypeFilter);
+            if (filteredRecords.length === 0) {
+                const emptyElement = document.createElement("div");
+                emptyElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE, "");
+                emptyElement.textContent = "選択した条件の価格推移データは保存されていません。";
+                containerElement.replaceChildren(titleElement, metaElement, controlsElement, emptyElement);
+            } else {
+                const chartSeries = buildPriceTrendGuestChartSeries(filteredRecords);
+                const legendElement = createCompetitorPriceLegend(chartSeries.facilities);
+                const chartGridElement = document.createElement("div");
+                chartGridElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE, "");
+                for (const guestCount of PRICE_TREND_GUEST_COUNTS) {
+                    chartGridElement.append(createPriceTrendChartPanel(guestCount, chartSeries));
+                }
+                containerElement.replaceChildren(titleElement, metaElement, controlsElement, legendElement, chartGridElement);
             }
-            containerElement.replaceChildren(titleElement, metaElement, legendElement, chartGridElement);
         }
     }
 
@@ -12763,6 +12785,7 @@ interface PriceTrendChartPoint {
     observedDate: string | null;
     yadNo: string;
     price: number;
+    roomType: string | null;
     status: string | null;
 }
 
@@ -12772,12 +12795,13 @@ interface PriceTrendGuestChartSeries {
     pointsByGuestCount: Map<PriceTrendGuestCount, PriceTrendChartPoint[]>;
 }
 
-function formatPriceTrendOverviewMeta(state: PriceTrendUiState): string {
-    const latestRecord = state.records
+function formatPriceTrendOverviewMeta(state: PriceTrendUiState, records: PriceTrendRecord[]): string {
+    const latestRecord = records
         .slice()
         .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
     const parts = [
         state.stayDate === null ? null : `対象宿泊日 ${formatCompactDateForDisplay(state.stayDate)}`,
+        latestRecord === null ? null : `部屋タイプ ${formatPriceTrendRoomTypeForDisplay(getPriceTrendRecordRoomTypeLabel(latestRecord))}`,
         latestRecord === null ? null : `食事 ${formatMealTypeForDisplay(latestRecord.mealType)}`,
         latestRecord === null ? null : `公式更新 ${formatNullableDateTimeForDisplay(latestRecord.payload.latestSourceUpdatedAt)}`,
         latestRecord === null ? null : `保存 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
@@ -12806,6 +12830,51 @@ function formatNullableDateTimeForDisplay(value: string | null): string {
     return value === null ? "不明" : formatDateTimeForDisplay(value);
 }
 
+function buildPriceTrendFilterOptions(records: PriceTrendRecord[]): CompetitorPriceFilterOptions {
+    const roomTypes = new Set<string>();
+    const mealTypes = new Set<string>();
+    for (const record of records) {
+        const roomType = getPriceTrendRecordRoomTypeLabel(record);
+        if (roomType !== null) {
+            roomTypes.add(roomType);
+        }
+        if (record.mealType.trim() !== "") {
+            mealTypes.add(record.mealType);
+        }
+    }
+
+    return {
+        roomTypes: Array.from(roomTypes).sort(compareCompetitorPriceRoomTypeLabels),
+        mealTypes: Array.from(mealTypes).sort((left, right) => formatMealTypeForDisplay(left).localeCompare(formatMealTypeForDisplay(right), "ja"))
+    };
+}
+
+function selectPriceTrendRecordsForFilters(
+    records: PriceTrendRecord[],
+    roomTypeFilter: string | null,
+    mealTypeFilter: string | null
+): PriceTrendRecord[] {
+    const hasUnspecifiedRoomTypeRecords = records.some((record) => getPriceTrendRecordRoomTypeLabel(record) === null);
+    return records.filter((record) => {
+        const roomType = getPriceTrendRecordRoomTypeLabel(record);
+        const roomTypeMatches = roomTypeFilter === null
+            ? (hasUnspecifiedRoomTypeRecords ? roomType === null : true)
+            : roomType === roomTypeFilter;
+        const mealTypeMatches = mealTypeFilter === null || record.mealType === mealTypeFilter;
+        return roomTypeMatches && mealTypeMatches;
+    });
+}
+
+function getPriceTrendRecordRoomTypeLabel(record: PriceTrendRecord): string | null {
+    const label = record.roomTypeLabel ?? record.scope.roomTypeLabel ?? record.roomType ?? record.scope.roomType;
+    const trimmed = label?.trim() ?? "";
+    return trimmed === "" ? null : trimmed;
+}
+
+function formatPriceTrendRoomTypeForDisplay(roomType: string | null): string {
+    return roomType === null ? "指定なし" : formatRoomTypeForDisplay(roomType);
+}
+
 function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTrendGuestChartSeries {
     const leadTimeDaySet = new Set<number>();
     const pointsByGuestCount = new Map<PriceTrendGuestCount, PriceTrendChartPoint[]>();
@@ -12821,6 +12890,7 @@ function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTren
     for (const record of records) {
         const points = pointsByGuestCount.get(record.numGuests) ?? [];
         const competitorMinimumByLeadTime = new Map<number, PriceTrendChartPoint>();
+        const roomType = getPriceTrendRecordRoomTypeLabel(record);
         for (const yad of record.payload.yads) {
             for (const point of yad.points) {
                 leadTimeDaySet.add(point.leadTimeDays);
@@ -12833,6 +12903,7 @@ function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTren
                     observedDate: point.date,
                     yadNo: yad.yadNo,
                     price: point.priceIncludingTax,
+                    roomType,
                     status: point.status
                 };
                 points.push(chartPoint);
@@ -12897,7 +12968,7 @@ function createPriceTrendChartPanel(
     panelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE, "");
     const titleElement = document.createElement("div");
     titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE, "");
-    titleElement.textContent = `${guestCount}名 公式価格推移`;
+    titleElement.textContent = `${guestCount}名 最安値`;
     const points = chartSeries.pointsByGuestCount.get(guestCount) ?? [];
     if (points.length === 0) {
         const emptyElement = document.createElement("div");
@@ -12999,17 +13070,53 @@ function createCompetitorPriceFilterControls(
     roomTypeFilter: string | null,
     mealTypeFilter: string | null
 ): HTMLElement {
+    return createPriceSeriesFilterControls(
+        filters,
+        roomTypeFilter,
+        mealTypeFilter,
+        (value) => {
+            competitorPriceRoomTypeFilter = value;
+            renderCompetitorPriceOverviewFromState();
+        },
+        (value) => {
+            competitorPriceMealTypeFilter = value;
+            renderCompetitorPriceOverviewFromState();
+        }
+    );
+}
+
+function createPriceTrendFilterControls(
+    filters: CompetitorPriceFilterOptions,
+    roomTypeFilter: string | null,
+    mealTypeFilter: string | null
+): HTMLElement {
+    return createPriceSeriesFilterControls(
+        filters,
+        roomTypeFilter,
+        mealTypeFilter,
+        (value) => {
+            priceTrendRoomTypeFilter = value;
+            renderPriceTrendOverviewFromState();
+        },
+        (value) => {
+            priceTrendMealTypeFilter = value;
+            renderPriceTrendOverviewFromState();
+        }
+    );
+}
+
+function createPriceSeriesFilterControls(
+    filters: CompetitorPriceFilterOptions,
+    roomTypeFilter: string | null,
+    mealTypeFilter: string | null,
+    onRoomTypeChange: (value: string | null) => void,
+    onMealTypeChange: (value: string | null) => void
+): HTMLElement {
     const controlsElement = document.createElement("div");
     controlsElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CONTROLS_ATTRIBUTE, "");
     controlsElement.append(
-        createCompetitorPriceFilterGroup("部屋タイプ", filters.roomTypes, roomTypeFilter, (value) => {
-            competitorPriceRoomTypeFilter = value;
-            renderCompetitorPriceOverviewFromState();
-        }, formatRoomTypeForDisplay),
-        createCompetitorPriceFilterGroup("食事", filters.mealTypes, mealTypeFilter, (value) => {
-            competitorPriceMealTypeFilter = value;
-            renderCompetitorPriceOverviewFromState();
-        }, formatMealTypeForDisplay)
+        createCompetitorPriceFilterGroup("部屋タイプ", filters.roomTypes, roomTypeFilter, onRoomTypeChange, formatRoomTypeForDisplay),
+        createCompetitorPriceFilterGroup("食事", filters.mealTypes, mealTypeFilter, onMealTypeChange, formatMealTypeForDisplay)
     );
     return controlsElement;
 }
@@ -13319,7 +13426,7 @@ function createPriceTrendChartSvg(
     svgElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE, "");
     svgElement.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svgElement.setAttribute("role", "img");
-    svgElement.setAttribute("aria-label", `${guestCount}名の公式価格推移`);
+    svgElement.setAttribute("aria-label", `${guestCount}名の競合価格最安値推移 90日版`);
 
     for (const [index, tick] of yAxisTicks.entries()) {
         const y = getCompetitorPriceChartY(tick, yMin, yMax, paddingTop, plotHeight);
@@ -13401,6 +13508,7 @@ function createPriceTrendChartSvg(
     const hitboxElements: SVGRectElement[] = [];
     for (const [leadTimeIndex, leadTimeDaysValue] of leadTimeDays.entries()) {
         const x = getCompetitorPriceChartX(leadTimeIndex, leadTimeDays.length, layout);
+        const previousLeadTimeDays = leadTimeDays[leadTimeIndex - 1] ?? null;
         const hitboxElement = document.createElementNS(svgNamespace, "rect");
         hitboxElement.setAttribute("x", getCompetitorPriceChartHitboxX(leadTimeIndex, leadTimeDays.length, layout).toFixed(2));
         hitboxElement.setAttribute("y", String(paddingTop));
@@ -13411,11 +13519,11 @@ function createPriceTrendChartSvg(
         hitboxElements.push(hitboxElement);
         hitboxElement.addEventListener("mouseenter", (event) => {
             setActiveCompetitorPriceChartHitbox(hitboxElements, hitboxElement);
-            showPriceTrendTooltip(tooltipElement, guideLineElement, x, width, leadTimeDaysValue, facilities, points, event.clientX);
+            showPriceTrendTooltip(tooltipElement, guideLineElement, x, width, leadTimeDaysValue, previousLeadTimeDays, facilities, points, event.clientX);
         });
         hitboxElement.addEventListener("focus", () => {
             setActiveCompetitorPriceChartHitbox(hitboxElements, hitboxElement);
-            showPriceTrendTooltip(tooltipElement, guideLineElement, x, width, leadTimeDaysValue, facilities, points);
+            showPriceTrendTooltip(tooltipElement, guideLineElement, x, width, leadTimeDaysValue, previousLeadTimeDays, facilities, points);
         });
         hitboxElement.addEventListener("mouseleave", () => {
             hideCompetitorPriceTooltip(tooltipElement, guideLineElement);
@@ -13473,6 +13581,10 @@ function showCompetitorPriceTooltip(
     guideLineElement.setAttribute("x1", x.toFixed(2));
     guideLineElement.setAttribute("x2", x.toFixed(2));
 
+    const ownFacility = facilities.find((facility) => facility.name === "自社");
+    const ownPoint = ownFacility === undefined
+        ? undefined
+        : points.find((candidate) => candidate.fetchDate === fetchDate && candidate.yadNo === ownFacility.yadNo);
     const rows = facilities
         .map((facility) => {
             const point = points.find((candidate) => candidate.fetchDate === fetchDate && candidate.yadNo === facility.yadNo);
@@ -13482,10 +13594,11 @@ function showCompetitorPriceTooltip(
             const previousPoint = previousFetchDate === null
                 ? undefined
                 : points.find((candidate) => candidate.fetchDate === previousFetchDate && candidate.yadNo === facility.yadNo);
-            const delta = previousPoint === undefined ? null : point.price - previousPoint.price;
-            return { facility, point, delta };
+            const previousDelta = previousPoint === undefined ? null : point.price - previousPoint.price;
+            const ownDelta = ownPoint === undefined || facility.name === "自社" ? null : point.price - ownPoint.price;
+            return { facility, point, previousDelta, ownDelta };
         })
-        .filter((row): row is { facility: CompetitorPriceFacilitySeries; point: CompetitorPriceChartPoint; delta: number | null } => row !== null);
+        .filter((row): row is { facility: CompetitorPriceFacilitySeries; point: CompetitorPriceChartPoint; previousDelta: number | null; ownDelta: number | null } => row !== null);
 
     const titleElement = document.createElement("div");
     titleElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE, "");
@@ -13500,7 +13613,7 @@ function showCompetitorPriceTooltip(
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
     const headRowElement = document.createElement("tr");
-    for (const label of ["施設", "部屋タイプ", "価格", "前回差分"]) {
+    for (const label of ["部屋タイプ", "価格", "前回差分", "自社との差"]) {
         const cellElement = document.createElement("th");
         cellElement.scope = "col";
         cellElement.textContent = label;
@@ -13511,22 +13624,17 @@ function showCompetitorPriceTooltip(
     const bodyElement = document.createElement("tbody");
     for (const row of rows) {
         const rowElement = document.createElement("tr");
-        const facilityElement = document.createElement("td");
-        const facilityLabelElement = document.createElement("span");
-        facilityLabelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE, "");
-        const swatchElement = document.createElement("span");
-        swatchElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE, "");
-        swatchElement.style.backgroundColor = row.facility.color;
-        facilityLabelElement.append(swatchElement, document.createTextNode(row.facility.name));
-        facilityElement.append(facilityLabelElement);
         const roomTypeElement = document.createElement("td");
-        roomTypeElement.textContent = row.point.roomType === null ? "不明" : formatRoomTypeForDisplay(row.point.roomType);
+        roomTypeElement.append(createPriceSeriesTooltipLabel(row.facility, row.point.roomType === null ? "不明" : formatRoomTypeForDisplay(row.point.roomType)));
         const priceElement = document.createElement("td");
         priceElement.textContent = formatPriceForDisplay(row.point.price);
-        const deltaElement = document.createElement("td");
-        deltaElement.textContent = row.delta === null ? "前回なし" : formatSignedPriceForDisplay(row.delta);
-        deltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.delta));
-        rowElement.append(facilityElement, roomTypeElement, priceElement, deltaElement);
+        const previousDeltaElement = document.createElement("td");
+        previousDeltaElement.textContent = row.previousDelta === null ? "前回なし" : formatSignedPriceForDisplay(row.previousDelta);
+        previousDeltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.previousDelta));
+        const ownDeltaElement = document.createElement("td");
+        ownDeltaElement.textContent = row.ownDelta === null ? "-" : formatSignedPriceForDisplay(row.ownDelta);
+        ownDeltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.ownDelta));
+        rowElement.append(roomTypeElement, priceElement, previousDeltaElement, ownDeltaElement);
         bodyElement.append(rowElement);
     }
     tableElement.append(headElement, bodyElement);
@@ -13542,6 +13650,7 @@ function showPriceTrendTooltip(
     x: number,
     width: number,
     leadTimeDays: number,
+    previousLeadTimeDays: number | null,
     facilities: CompetitorPriceFacilitySeries[],
     points: PriceTrendChartPoint[],
     cursorClientX: number | null = null
@@ -13561,10 +13670,14 @@ function showPriceTrendTooltip(
             if (point === undefined) {
                 return null;
             }
-            const delta = ownPoint === undefined || facility.name === "自社" ? null : point.price - ownPoint.price;
-            return { facility, point, delta };
+            const previousPoint = previousLeadTimeDays === null
+                ? undefined
+                : points.find((candidate) => candidate.leadTimeDays === previousLeadTimeDays && candidate.yadNo === facility.yadNo);
+            const previousDelta = previousPoint === undefined ? null : point.price - previousPoint.price;
+            const ownDelta = ownPoint === undefined || facility.name === "自社" ? null : point.price - ownPoint.price;
+            return { facility, point, previousDelta, ownDelta };
         })
-        .filter((row): row is { facility: CompetitorPriceFacilitySeries; point: PriceTrendChartPoint; delta: number | null } => row !== null);
+        .filter((row): row is { facility: CompetitorPriceFacilitySeries; point: PriceTrendChartPoint; previousDelta: number | null; ownDelta: number | null } => row !== null);
 
     const titleElement = document.createElement("div");
     titleElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE, "");
@@ -13581,7 +13694,7 @@ function showPriceTrendTooltip(
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
     const headRowElement = document.createElement("tr");
-    for (const label of ["施設", "価格", "自社との差", "状態"]) {
+    for (const label of ["部屋タイプ", "価格", "前回差分", "自社との差"]) {
         const cellElement = document.createElement("th");
         cellElement.scope = "col";
         cellElement.textContent = label;
@@ -13592,22 +13705,17 @@ function showPriceTrendTooltip(
     const bodyElement = document.createElement("tbody");
     for (const row of rows) {
         const rowElement = document.createElement("tr");
-        const facilityElement = document.createElement("td");
-        const facilityLabelElement = document.createElement("span");
-        facilityLabelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE, "");
-        const swatchElement = document.createElement("span");
-        swatchElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE, "");
-        swatchElement.style.backgroundColor = row.facility.color;
-        facilityLabelElement.append(swatchElement, document.createTextNode(row.facility.name));
-        facilityElement.append(facilityLabelElement);
+        const roomTypeElement = document.createElement("td");
+        roomTypeElement.append(createPriceSeriesTooltipLabel(row.facility, formatPriceTrendRoomTypeForDisplay(row.point.roomType)));
         const priceElement = document.createElement("td");
         priceElement.textContent = formatPriceForDisplay(row.point.price);
-        const deltaElement = document.createElement("td");
-        deltaElement.textContent = row.delta === null ? "-" : formatSignedPriceForDisplay(row.delta);
-        deltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.delta));
-        const statusElement = document.createElement("td");
-        statusElement.textContent = formatPriceTrendPointStatus(row.point.status);
-        rowElement.append(facilityElement, priceElement, deltaElement, statusElement);
+        const previousDeltaElement = document.createElement("td");
+        previousDeltaElement.textContent = row.previousDelta === null ? "前回なし" : formatSignedPriceForDisplay(row.previousDelta);
+        previousDeltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.previousDelta));
+        const ownDeltaElement = document.createElement("td");
+        ownDeltaElement.textContent = row.ownDelta === null ? "-" : formatSignedPriceForDisplay(row.ownDelta);
+        ownDeltaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE, getCompetitorPriceDeltaTone(row.ownDelta));
+        rowElement.append(roomTypeElement, priceElement, previousDeltaElement, ownDeltaElement);
         bodyElement.append(rowElement);
     }
     tableElement.append(headElement, bodyElement);
@@ -13617,9 +13725,14 @@ function showPriceTrendTooltip(
     positionCompetitorPriceTooltip(tooltipElement, x, width, cursorClientX);
 }
 
-function formatPriceTrendPointStatus(status: string | null): string {
-    const trimmed = status?.trim() ?? "";
-    return trimmed === "" ? "-" : trimmed;
+function createPriceSeriesTooltipLabel(facility: CompetitorPriceFacilitySeries, roomType: string): HTMLElement {
+    const labelElement = document.createElement("span");
+    labelElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE, "");
+    const swatchElement = document.createElement("span");
+    swatchElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE, "");
+    swatchElement.style.backgroundColor = facility.color;
+    labelElement.append(swatchElement, document.createTextNode(`${facility.name} / ${roomType}`));
+    return labelElement;
 }
 
 function positionCompetitorPriceTooltip(

@@ -55,6 +55,8 @@ export interface PriceTrendScope {
     stayDate: string;
     numGuests: PriceTrendGuestCount;
     mealType: string;
+    roomType: string | null;
+    roomTypeLabel: string | null;
     yadNos: string[];
     source: "price-trends-tab";
 }
@@ -83,6 +85,8 @@ export interface PriceTrendRecord {
     stayDate: string;
     numGuests: PriceTrendGuestCount;
     mealType: string;
+    roomType: string | null;
+    roomTypeLabel: string | null;
     fetchedAt: string;
     endpoint: string;
     query: string;
@@ -106,6 +110,8 @@ export interface FetchAndPersistPriceTrendResult {
 interface PriceTrendRequestContext {
     facilities: PriceTrendFacility[];
     mealType: string;
+    roomType: string | null;
+    roomTypeLabel: string | null;
     ownYadNo: string;
     competitorYadNos: string[];
 }
@@ -176,6 +182,8 @@ async function fetchAndPersistPriceTrendRecordsInternal(
             stayDate: options.stayDate,
             numGuests,
             mealType: requestContext.mealType,
+            roomType: requestContext.roomType,
+            roomTypeLabel: requestContext.roomTypeLabel,
             fetchedAt,
             endpoint: PRICE_TRENDS_ENDPOINT,
             query: request.query,
@@ -245,6 +253,8 @@ async function buildPriceTrendRequestContext(): Promise<PriceTrendRequestContext
             ...competitorFacilities
         ].filter((facility) => facility.yadNo !== ""),
         mealType: normalizeMealType(filterSettings.meal_type),
+        roomType: null,
+        roomTypeLabel: null,
         ownYadNo,
         competitorYadNos: competitorFacilities.map((facility) => facility.yadNo)
     };
@@ -275,6 +285,8 @@ function buildPriceTrendRecord(options: {
     stayDate: string;
     numGuests: PriceTrendGuestCount;
     mealType: string;
+    roomType: string | null;
+    roomTypeLabel: string | null;
     fetchedAt: string;
     endpoint: string;
     query: string;
@@ -283,11 +295,13 @@ function buildPriceTrendRecord(options: {
     apiResponse: PriceTrendApiResponse;
 }): PriceTrendRecord {
     return {
-        recordKey: buildPriceTrendRecordKey(options.facilityId, options.stayDate, options.numGuests, options.mealType, options.fetchedAt),
+        recordKey: buildPriceTrendRecordKey(options.facilityId, options.stayDate, options.numGuests, options.mealType, options.roomType, options.fetchedAt),
         facilityId: options.facilityId,
         stayDate: options.stayDate,
         numGuests: options.numGuests,
         mealType: options.mealType,
+        roomType: options.roomType,
+        roomTypeLabel: options.roomTypeLabel,
         fetchedAt: options.fetchedAt,
         endpoint: options.endpoint,
         query: options.query,
@@ -297,6 +311,8 @@ function buildPriceTrendRecord(options: {
             stayDate: options.stayDate,
             numGuests: options.numGuests,
             mealType: options.mealType,
+            roomType: options.roomType,
+            roomTypeLabel: options.roomTypeLabel,
             yadNos: options.scopeYadNos,
             source: "price-trends-tab"
         },
@@ -330,16 +346,18 @@ function normalizePriceTrendPoint(apiPoint: PriceTrendApiPoint): PriceTrendPoint
 }
 
 function selectLatestPriceTrendRecords(records: PriceTrendRecord[]): PriceTrendRecord[] {
-    const latestByGuestAndMealType = new Map<string, PriceTrendRecord>();
+    const latestByGuestAndScope = new Map<string, PriceTrendRecord>();
     for (const record of records) {
-        const key = `${record.numGuests}|${record.mealType}`;
-        const existing = latestByGuestAndMealType.get(key);
+        const key = `${record.numGuests}|${record.mealType}|${record.roomType ?? ""}`;
+        const existing = latestByGuestAndScope.get(key);
         if (existing === undefined || existing.fetchedAt.localeCompare(record.fetchedAt) < 0) {
-            latestByGuestAndMealType.set(key, record);
+            latestByGuestAndScope.set(key, record);
         }
     }
-    return Array.from(latestByGuestAndMealType.values())
-        .sort((left, right) => left.numGuests - right.numGuests || left.mealType.localeCompare(right.mealType));
+    return Array.from(latestByGuestAndScope.values())
+        .sort((left, right) => left.numGuests - right.numGuests
+            || left.mealType.localeCompare(right.mealType)
+            || (left.roomType ?? "").localeCompare(right.roomType ?? ""));
 }
 
 function buildPriceTrendRecordKey(
@@ -347,6 +365,7 @@ function buildPriceTrendRecordKey(
     stayDate: string,
     numGuests: PriceTrendGuestCount,
     mealType: string,
+    roomType: string | null,
     fetchedAt: string
 ): string {
     return [
@@ -354,6 +373,7 @@ function buildPriceTrendRecordKey(
         stayDate,
         `guest:${numGuests}`,
         `meal:${mealType}`,
+        `room:${roomType ?? "unspecified"}`,
         fetchedAt
     ].join("|");
 }

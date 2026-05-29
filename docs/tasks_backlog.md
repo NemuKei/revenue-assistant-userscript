@@ -106,9 +106,11 @@
 - 目的:
   - 公式 `価格推移` タブで、既存の競合価格 snapshot ではなく、公式 `価格推移` API から取得した同一宿泊日、同一競合施設、同一食事条件の lead time 別データを確認できるようにする。
 - スコープ:
-  - `price-trends-content` が表示されている場合、`公式価格推移 最安値推移` セクションを同じ親要素内に描画する。
+  - `price-trends-content` が表示されている場合、`競合価格 最安値推移（90日版）` セクションを同じ親要素内に描画する。`公式価格推移` という見出しは、RAU 追加表示が公式サイト自体の価格であると誤読されやすいため使わない。
   - 公式 `価格推移` API を人数 1 から 4 まで取得し、人数別の 4 panel を既定表示する。
   - `yad_nos[]` は自社と競合施設を含め、表示 series は `自社`、`競合最低価格`、競合施設別 series とする。
+  - `価格推移` タブ側にも、既存 `競合価格` タブの graph と同じ形の `部屋タイプ`、`食事` 絞り込み UI を表示する。公式 API で部屋タイプ query parameter が未確認のため、初期実装では保存済み `price-trend-records` の scope に含まれる条件だけを UI 上の絞り込み対象にする。未確認 parameter を推測して追加 request は出さない。
+  - graph tooltip の列は、`競合価格` タブと `価格推移` タブの両方で `部屋タイプ`、`価格`、`前回差分`、`自社との差` に揃える。施設名は系列識別のため、`部屋タイプ` cell 内に色 swatch と施設名を併記する。
   - 公式価格推移データは、既存 `competitor-price-snapshots` とは別の IndexedDB database / store に永続保存する。
 - 非目標:
   - 既存 `競合価格` タブの snapshot グラフを削除または置換すること。
@@ -116,16 +118,20 @@
   - 公式価格推移データを料金調整候補の scoring 補正へ接続すること。
 - 受け入れ条件:
   - `価格推移` タブ本文が表示されている場合、公式価格推移データがあれば人数 1 から 4 の graph が表示される。
+  - `価格推移` タブの RAU graph に `部屋タイプ` と `食事` の絞り込み UI が表示され、保存済み公式価格推移 record の範囲で graph が更新される。
+  - `競合価格` タブと `価格推移` タブの tooltip は、列名として `部屋タイプ`、`価格`、`前回差分`、`自社との差` を表示する。
   - 89日より先、または公式側に対象データがない宿泊日は、空 graph ではなく対象外理由を表示する。
   - 販売設定タブや非表示タブには RAU の競合価格 graph が割り込まない。
   - `競合価格` タブの既存表示と IndexedDB snapshot 保存挙動を壊さない。
 - 実装内容:
   - `price-trends-content` が visible の場合、`/api/v1/price_trends` の取得結果から作った overview を、その content 内に 1 セクションだけ描画する。
   - `価格推移` タブ click は公式価格推移取得だけを開始し、既存 `competitor-tab` source の競合価格 snapshot 保存要求を開始しない。
+  - 2026-05-29 の Chrome DevTools Protocol 追加確認では、`/api/v1/price_trends` の query key は `stay_date`、`num_guests`、`meal_type`、`yad_nos[]` であり、部屋タイプ系 key は観測されなかった。`/api/v1/price_trends/filter_settings` は `meal_type`、`num_guests`、`room_type_options` を返すが、確認した宿泊日では `room_type_options` は 0 件だった。
   - 既存の `競合価格` タブでは、従来どおり `competitor-price-tax-included-text` 周辺を挿入位置として使い、既存 snapshot graph を維持する。
 - GUI 確認:
   - 2026-05-29 に Chrome DevTools Protocol で通常 Chrome の Analyze 日付ページ `https://ra.jalan.net/analyze/2026-06-05` へ最新 `dist` を一時注入して確認した。`価格推移` タブでは `price-trends-content` 直下の RAU overview 1 件、panel 4 件、SVG 4 件、empty 表示 0 件、別 store record 4 件だった。
   - 同じ確認で、`価格推移` タブでは既存 `競合価格` snapshot overview は 0 件だった。`競合価格` タブへ切り替えると価格推移 overview は 0 件、競合価格 overview は 1 件だった。page error と console error は 0 件だった。
+  - 2026-05-29 の追加確認では、`価格推移` タブの RAU overview 1 件、既存競合価格 overview 0 件、見出し `競合価格 最安値推移（90日版）`、filter label `部屋タイプ` / `食事`、panel title `1名 最安値` から `4名 最安値`、SVG 4 件を確認した。価格推移側 tooltip は、データがある hitbox で header `部屋タイプ` / `価格` / `前回差分` / `自社との差`、row 6 件、first cell `自社 / 指定なし` だった。`競合価格` タブ側も tooltip header が同じ 4 列で、first cell は `自社 / シングル` だった。page error と console error は 0 件だった。
   - 89日超過候補の `2026-09-01` と `2026-09-30` は公式側の `price-trends-content` が表示されず、RAU の対象外表示は今回の GUI では確認できなかった。
 - metadata:
   - `spec-impact`: yes
@@ -138,7 +144,7 @@
   - 公式 `価格推移` API のデータを後続の比較や再表示に使えるよう、既存 `competitor-price-snapshots` と混ざらない永続 store に保存する。
 - スコープ:
   - IndexedDB database は `revenue-assistant-price-trends`、store は `price-trend-records` とする。
-  - record は `facilityId`、`stayDate`、`numGuests`、`mealType`、`fetchedAt`、`endpoint`、`query`、`facilities`、`scope`、`payload` を持つ。
+  - record は `facilityId`、`stayDate`、`numGuests`、`mealType`、`roomType`、`roomTypeLabel`、`fetchedAt`、`endpoint`、`query`、`facilities`、`scope`、`payload` を持つ。`roomType` と `roomTypeLabel` は、公式価格推移 API で部屋タイプ条件が確認できない場合は `null` とし、競合価格 snapshot 側の部屋タイプ条件とは混ぜない。
   - `payload.yads[].points[]` は `date`、`leadTimeDays`、`priceIncludingTax`、`status` を持つ。
 - 非目標:
   - 既存 `competitor-price-snapshots` の schema migration。
@@ -146,7 +152,7 @@
   - API response body 全文、HAR、raw trace、Cookie、token、credential を docs や Git 管理へ保存すること。
 - 受け入れ条件:
   - `価格推移` タブを開いたとき、人数 1 から 4 の公式価格推移 record が別 store に保存される。
-  - 同じ stay_date の表示では、保存済み record のうち人数、食事条件ごとの最新取得分を使う。
+  - 同じ stay_date の表示では、保存済み record のうち人数、食事条件、部屋タイプ scope ごとの最新取得分を使う。
   - 89日より先で `yads` が空の場合は保存対象外として扱い、対象外理由を UI に表示する。
 - GUI 確認:
   - 2026-05-29 に Chrome DevTools Protocol で最新 `dist` を一時注入し、`2026-06-05` の `価格推移` タブで IndexedDB `revenue-assistant-price-trends` / `price-trend-records` の record 4 件を確認した。人数は 1、2、3、4 で、各 record の `payload.yads` は 6 件だった。
