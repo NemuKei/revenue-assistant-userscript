@@ -2851,7 +2851,7 @@
 ### RAU-RR-48 料金調整候補からrank調整を行うためのwrite挙動を調査する
 
 - 状態:
-  - 未着手。
+  - read-only 調査済み。
 - 目的:
   - Analyze 画面へ遷移せずに料金調整候補から rank 調整するため、Revenue Assistant 標準の料金変更挙動、request shape、取消可能性、安全制約を確認する。
 - 背景:
@@ -2869,6 +2869,16 @@
   - rank 変更に必要な request shape、安全制約、取消可能性、partial failure または error response の扱いが、実装可否判断に足る粒度で整理されている。
   - 実際に rank 変更を行った場合は、変更後に元へ戻したこと、または戻さない理由が明記されている。
   - 実データ、credential、raw trace が Git に入っていない。
+- 調査結果:
+  - Chrome拡張で通常 Chrome の Revenue Assistant tab が存在することを確認し、Chrome DevTools Protocol で root 画面と配信 JavaScript bundle を read-only 調査した。
+  - 標準画面の料金ランク一括反映は、site controller ごとに `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を呼び分ける候補がある。Rakutsu はこの断片では `NotLinked` 扱いだった。
+  - payload 候補は標準画面の `targetSalesSettings` から作られる配列で、各要素は少なくとも `date`、`rmRoomGroupId`、`priceRankCode` を持つ。現在設定に値がある場合だけ `limitedNumber`、`withoutMeal`、`withOnlyBreakfast`、`withOnlyDinner`、`withBreakfastAndDinner` を同梱し、送信前に decamelize される。
+  - 標準 UI には、送信前の modal 内 state、`最初からやり直す`、`閉じる` 時の確認 prompt、`続けて反映する` state、成功、一部失敗、失敗の通知種別がある。
+  - 実 POST は実行していない。CSRF、server 側 validation、HTTP status、error body、partial failure の response schema、同時更新時の挙動、反映後 rollback 可否は未確認のままとする。
+  - この結果により、top list から直接 Revenue Assistant へ rank 変更を実行する実装はまだ行わない。次は `RAU-RR-49` で、browser-local の `様子見` と `対応不要` の反映バッファを設計し、将来の rank 変更にも適用できる pending 操作モデルを固定する。
+- verify:
+  - Chrome拡張 backend / 通常 Chrome tab 確認: `npm run chrome:pages` で Revenue Assistant root tab を確認した。
+  - Chrome DevTools Protocol read-only 調査: root 画面の rank UI 文言、標準 bundle の endpoint 候補、payload 候補 field、送信前 confirm prompt、通知種別を確認した。write endpoint は実行していない。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -3468,11 +3478,11 @@
 
 Now:
 
-- `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
+- `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
 
 Next:
 
-- `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
+- なし。
 
 After Next:
 
@@ -3524,7 +3534,7 @@ Later:
 - `RAU-RR-46` は 2026-05-29 に実装済みである。top list に `前回変更` 列を追加し、既存取得済み rank change history と browser-local user decision record から、前回変更日、変更内容、様子見 cooldown 期限切れ、別 `reasonFingerprint`、confidence 表示段階上昇を tooltip で確認できるようにした。cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-50` は 2026-05-29 に実装済みである。Chrome DevTools Protocol の read-only 確認では、下げ候補に近い入力は存在し、表示モードを `下げ注意` に切り替えると `lower_watch` は表示された。一方で `全て` の初期 10 件と展開後 50 件は `raise_watch` / `high` に占められていたため、下げ候補が見えにくい主因は `lower_watch` の初期 `medium` priority と priority-first sort だった。対応として、実下振れ evidence がある `lower_watch` だけを `high` に上げ、欠損由来の `lower_watch` は `medium` に留めた。
 - `RAU-RR-47` は 2026-05-29 に実装済みである。top list の候補 row に `曲線` button を追加し、候補 row 直下の追加 row で Analyze 画面と同じ chart component を使った booking curve preview を開閉できるようにした。data source は既存保存済みの `booking_curve_raw_source:v2` に限定し、raw source がない場合は不足 diagnostics を表示する。preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やしていない。
-- `RAU-RR-48` と `RAU-RR-49` は write safety と取消可能性に関わるため、booking curve preview 完了後に置く。実 rank 変更を伴う確認は、対象施設、対象日付、対象 roomGroup、変更前 rank、変更後 rank、戻し方を固定してから行う。
+- `RAU-RR-48` は 2026-05-29 に read-only 調査済みである。標準画面の料金ランク一括反映は、site controller ごとに `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を呼び分ける候補があり、payload 候補は `date`、`rmRoomGroupId`、`priceRankCode` と、現在設定に値がある場合の `limitedNumber`、食事条件 field から作られる。標準 UI には送信前の確認ややり直し入口、成功、一部失敗、失敗の通知種別がある。ただし実 POST は実行していないため、server 側 validation、error body、partial failure response schema、同時更新時の挙動、反映後 rollback 可否は未確認である。top list 直接 rank 変更の実装はまだ行わず、次は `RAU-RR-49` で取消可能な pending 操作モデルを設計する。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

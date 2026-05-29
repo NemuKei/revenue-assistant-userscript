@@ -193,13 +193,17 @@ JavaScript bundle から見つかった write endpoint 候補
 - 2026-05-28 の Chrome DevTools Protocol 調査で、bundle 内に `POST /api/v1/lincoln/price_ranks`、`POST /api/v1/neppan/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/lincoln/suggest`、`POST /api/v3/lincoln/suggest/status` などの候補文字列を確認した。
 - これらの write endpoint は実行していない。request body、CSRF、権限、provider 差、対象日付範囲、partial failure、同時更新、rollback、Revenue Assistant 標準 UI との競合条件は未確認である。
 - first phase ではこれらの write endpoint を呼ばない。`RAU-RR-11` では feasibility と guardrail を調査し、実行は別判断にする。
+- 2026-05-29 の `RAU-RR-48` read-only 追加確認では、標準画面の料金ランク一括反映が `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を site controller ごとに呼び分ける実装候補を確認した。Rakutsu はこの断片では `NotLinked` 扱いだった。
+- 同確認で、送信候補 payload は標準画面の `targetSalesSettings` から作られる配列であり、各要素は少なくとも `date`、`rmRoomGroupId`、`priceRankCode` を持つ。現在設定に値がある場合だけ `limitedNumber`、`withoutMeal`、`withOnlyBreakfast`、`withOnlyDinner`、`withBreakfastAndDinner` を同梱する。送信前に key は decamelize されるため、wire format では snake_case になる可能性が高い。ただし実 POST を実行していないため、server が必須とする field、null 許容、空配列、日付範囲、複数 roomGroup 混在、provider 差は未確認である。
+- 標準 UI には、modal 内の未反映 state、`最初からやり直す`、`閉じる` 時の確認 prompt、`続けて反映する` state、成功、一部失敗、失敗の通知種別がある。ただし、これは送信前の取り消しと送信後の結果表示に関する手掛かりであり、送信後に Revenue Assistant 側が一定時間の rollback または undo を提供することは確認していない。
+- したがって、RAU から top list 直接 rank 変更を実装する場合でも、標準 UI と同じ write endpoint をすぐ呼ぶのではなく、少なくとも事前 preview、現在 rank 再取得、対象 `stayDate x roomGroup` の固定、隣接 rank 限定、送信前の取消可能な pending state、送信結果の成功 / 一部失敗 / 失敗記録、同時更新検知、実 POST の低リスク確認を別 task で満たす必要がある。
 
 ### Unconfirmed / Investigation Tasks
 
-次は確認済み仕様として扱わず、browser-trace / browser-to-api 調査 task にする。
+次は確認済み仕様として扱わず、browser-trace / browser-to-api 調査 task、または対象を固定した低リスクの手動確認 task にする。
 
 - rank 別、日付別、部屋タイプ別価格表の取得可否。
-- Revenue Assistant への rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動。
+- Revenue Assistant への rank 反映 API の server-side validation、CSRF、権限差、error response、partial failure response schema、同時更新時の挙動、反映後 rollback 可否。`RAU-RR-48` で payload 候補は read-only 確認したが、実 POST は実行していない。
 - 現在販売中価格の全体像が取れるか。
 - プラン別、人数別、食事条件別の価格と rank の関係が取れるか。
 
@@ -493,7 +497,8 @@ rank response dataset の first contract:
 
 - first wave の後続では、トップ画面の料金調整候補から Analyze 画面へ遷移せずに、該当 roomGroup の booking curve、前回変更日、rank 調整操作、取消可能な反映バッファを確認または操作できるようにする。
 - ただし、Revenue Assistant write API、rank 変更の request shape、安全制約、取消可能時間、partial failure、同時更新時の挙動が未確認の間は、トップ画面からの rank 変更を実装済み仕様として扱わない。
-- `様子見`、`対応不要`、将来の rank 変更操作は、押下直後に即時確定して戻せない挙動にしない。少なくとも短時間の取消入口を持つ反映バッファを設ける。反映バッファの秒数、表示位置、確定条件は、Revenue Assistant 標準の料金変更挙動を確認してから確定する。
+- `RAU-RR-48` の read-only 確認により、標準の料金ランク一括反映 UI には送信前の modal state、`最初からやり直す`、`閉じる` 時の確認 prompt、`続けて反映する` state があることを確認した。一方で、送信後の rollback または短時間 undo は未確認である。
+- `様子見`、`対応不要`、将来の rank 変更操作は、押下直後に即時確定して戻せない挙動にしない。少なくとも短時間の取消入口を持つ反映バッファを設ける。browser-local の `様子見` と `対応不要` は RAU 内で確定前に取り消せる設計にする。将来の Revenue Assistant rank 変更では、RAU 内の pending state は送信前の取消に限定し、送信後 undo を実装済みとして扱わない。
 - 前回変更日は top list の `前回変更` 列に表示する。rank change history による resolved 判定、user decision cooldown、候補再表示条件を区別できる表示にする。前回変更日が近い候補に推奨が出る場合は、cooldown が効いていないのか、別 roomGroup、別 reasonFingerprint、confidence 表示段階上昇、または販売状況変化として再表示されているのかを検証できるようにする。
 - booking curve preview は、Analyze 画面と同じ意味の全体 / 個人 / 団体、reference curve、不足 diagnostics を使う。top list 上では tooltip ではなく候補 row 直下の追加 row として表示し、候補一覧の作業順を保ったまま開閉できるようにする。preview の data source は既存保存済みの `booking_curve_raw_source:v2` とし、top list preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔を増やさない。raw source がない場合または基準日以前の booking curve point がない場合は、chart の代わりに不足 diagnostics を表示する。reference curve は保存済み raw source 内の前年、2年前、3年前の room count から作る preview 用 reference とする。top list preview では forecast 数値、sales / ADR 数値、競合価格の金額、推奨レート金額を直接出す契約にはしない。
 
