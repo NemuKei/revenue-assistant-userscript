@@ -258,6 +258,8 @@ UI は最初の `rank調整` 押下で inline preview を開く。preview には
 
 POST 成功後は、adapter の HTTP response だけで成功扱いにせず、可能な範囲で `/api/v3/lincoln/suggest/status` または fresh current settings により反映結果を再確認する。成功後は current settings cache と rank status cache を破棄し、再取得結果で row を更新する。
 
+2026-05-29 の補完後実確認では、利用者が実務上反映してよい候補を RAU の top list `rank調整` 導線から操作し、`POST /api/v1/lincoln/suggest` が 1 回だけ発生し HTTP `204` を返した。POST 直前と直後に `/api/v1/suggest/output/current_settings` と `/api/v3/lincoln/suggest/status` が取得され、いずれも HTTP `200` だった。利用者は Revenue Assistant 画面上で実際に反映できていることを確認した。この確認中、`/api/v1/lincoln/suggest/reflection_allow` request は発生しなかった。
+
 POST 失敗または送信前 guard 失敗時は同じ row に要約を表示し、自動再送しない。browser-local に保存してよいのは HTTP status、失敗分類、発生時刻、対象を識別する最小 key だけである。raw response body、credential、非公開データは保存しない。
 
 `POST /api/v1/lincoln/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/neppan/price_ranks` は、2026-05-29 時点では一括反映または別操作系の候補として扱う。`RAU-RR-51` の単一行 rank 変更では呼ばない。
