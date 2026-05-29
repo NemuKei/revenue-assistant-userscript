@@ -2813,7 +2813,7 @@
 ### RAU-RR-47 料金調整候補上でbooking curve previewを表示する
 
 - 状態:
-  - 未着手。
+  - 実装済み。
 - 目的:
   - Analyze 画面へ遷移しなくても、候補の該当 roomGroup の booking curve と reference curve の概要を確認できるようにする。
 - 背景:
@@ -2821,7 +2821,12 @@
 - スコープ:
   - top list の候補 row から、該当 `stayDate x roomGroup` の booking curve preview を開ける入口を追加する。
   - preview は Analyze 画面と同じ意味の全体 / 個人 / 団体、reference curve、不足 diagnostics を使う。
-  - top list の読みやすさを壊さないよう、tooltip、popover、details などのうち 1 つの表示形式に絞る。
+  - top list の読みやすさを壊さないよう、tooltip ではなく候補 row 直下の追加 row として表示する。
+- 実装:
+  - 候補 row の操作列に `曲線` button を追加した。押下すると `stayDate x roomGroupId` 単位で preview を開閉し、表示モード切替時は開閉状態を初期化する。
+  - preview は既存保存済みの `booking_curve_raw_source:v2` を読む。top list preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やさない。
+  - reference curve は保存済み raw source 内の前年、2年前、3年前の room count から作る preview 用 reference とする。
+  - raw source がない場合または基準日以前の booking curve point がない場合は chart の代わりに不足 diagnostics を表示する。
 - 非目標:
   - 新しい forecast 数値、sales / ADR 数値、競合価格の金額、推奨レート金額を top list に追加すること。
   - request 範囲、request 件数、request 間隔を増やすこと。
@@ -2831,6 +2836,13 @@
   - preview に不足 diagnostics が表示される。
   - preview を開閉しても候補 row、表示モード、表示件数 control の状態が壊れない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- 確認:
+  - `npm run typecheck`
+  - `npm run lint`
+  - `npm run build`
+  - `git diff --check`
+  - Chrome拡張 backend 確認: node_repl から Chrome extension browser の `openTabs()` が通ることを確認した。
+  - Chrome DevTools Protocol 実ログイン通常 Chrome 確認: 最新 `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10件、`曲線` button 10件、preview 開閉、表示中 preview row、SVG chart 2個、diagnostics 1件、page error 0件、console error 0件、preview text 内の金額・percent・ADR・sales・競合価格・推奨レート表示 0件を確認した。既存画面側で background の `/api/v4/booking_curve` request が継続していたため、CDP 上では click 起因の request だけを完全分離できなかった。ただし実装上の click handler は `queueCalendarSync()`、`loadBookingCurve()`、`getBookingCurve()` を呼ばず、描画済み preview row の `hidden` と button の `aria-expanded` だけを変更する。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -3456,15 +3468,15 @@
 
 Now:
 
-- `RAU-RR-47` 料金調整候補上でbooking curve previewを表示する
+- `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
 
 Next:
 
-- `RAU-RR-48` 料金調整候補からrank調整を行うためのwrite挙動を調査する
+- `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
 
 After Next:
 
-- `RAU-RR-49` 様子見、対応不要、rank変更に取消可能な反映バッファを設計する
+- なし。
 
 Later:
 
@@ -3511,8 +3523,8 @@ Later:
 - `RAU-RR-45` は 2026-05-29 に実装済みである。top list の挿入位置を、toolbar 直下から月次カレンダー container の直後へ移した。candidate scoring、priority、confidence、reasonFingerprint、表示モード、表示件数、user decision、resolved 判定、rank order、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-46` は 2026-05-29 に実装済みである。top list に `前回変更` 列を追加し、既存取得済み rank change history と browser-local user decision record から、前回変更日、変更内容、様子見 cooldown 期限切れ、別 `reasonFingerprint`、confidence 表示段階上昇を tooltip で確認できるようにした。cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲、Revenue Assistant write / bulk apply は変更していない。
 - `RAU-RR-50` は 2026-05-29 に実装済みである。Chrome DevTools Protocol の read-only 確認では、下げ候補に近い入力は存在し、表示モードを `下げ注意` に切り替えると `lower_watch` は表示された。一方で `全て` の初期 10 件と展開後 50 件は `raise_watch` / `high` に占められていたため、下げ候補が見えにくい主因は `lower_watch` の初期 `medium` priority と priority-first sort だった。対応として、実下振れ evidence がある `lower_watch` だけを `high` に上げ、欠損由来の `lower_watch` は `medium` に留めた。
-- `RAU-RR-47` を Now に置く理由は、`RAU-RR-45`、`RAU-RR-46`、`RAU-RR-50` により top list の配置、前回変更、上げ/下げの見え方が整ったため、次に Analyze へ遷移せずに判断材料を確認するための booking curve preview を検討できる状態になったためである。ただし、booking curve preview は表示密度、既存 top list の横幅、追加 request 範囲に影響するため、実装前に利用する既存 raw source と追加取得の有無を切り分ける。
-- `RAU-RR-48` と `RAU-RR-49` は write safety と取消可能性に関わるため、booking curve preview より後に置く。実 rank 変更を伴う確認は、対象施設、対象日付、対象 roomGroup、変更前 rank、変更後 rank、戻し方を固定してから行う。
+- `RAU-RR-47` は 2026-05-29 に実装済みである。top list の候補 row に `曲線` button を追加し、候補 row 直下の追加 row で Analyze 画面と同じ chart component を使った booking curve preview を開閉できるようにした。data source は既存保存済みの `booking_curve_raw_source:v2` に限定し、raw source がない場合は不足 diagnostics を表示する。preview のために `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔は増やしていない。
+- `RAU-RR-48` と `RAU-RR-49` は write safety と取消可能性に関わるため、booking curve preview 完了後に置く。実 rank 変更を伴う確認は、対象施設、対象日付、対象 roomGroup、変更前 rank、変更後 rank、戻し方を固定してから行う。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

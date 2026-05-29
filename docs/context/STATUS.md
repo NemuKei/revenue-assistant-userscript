@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-46` まで、および `RAU-RR-50` が完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `RAU-RR-47`。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-47` まで、および `RAU-RR-50` が完了済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now は `RAU-RR-48`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -52,6 +52,7 @@
   - `RAU-RR-44` top list の表示モードを切り替える
   - `RAU-RR-45` 料金調整候補をカレンダー下に配置する
   - `RAU-RR-46` 料金調整候補に前回変更日とcooldown診断を表示する
+  - `RAU-RR-47` 料金調整候補上でbooking curve previewを表示する
   - `RAU-RR-50` 上げ推奨と下げ推奨のpriority比較を見直す
   - `RAU-FC-01` rooms-only 予測モデルの導入要否を判断する
   - `RAU-FC-02` 予測評価 dataset / metrics と ForecastResult v1 candidate を設計する
@@ -76,8 +77,8 @@
   - `docs/spec_002_curve_core.md`
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
-  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日とcooldown診断の表示、上げ推奨と下げ推奨の priority 比較見直しまで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-47` とする。次に進める場合は、料金調整候補上で booking curve preview を表示するため、既存 `booking_curve_raw_source:v2` を使う範囲と、追加取得が必要になる範囲を分けて確認する。
+  - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日とcooldown診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直しまで完了済みとして扱う。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-48` とする。次に進める場合は、料金調整候補から rank 調整するための Revenue Assistant write 挙動、request shape、取消可能性、安全制約を read-only 優先で調査する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -298,8 +299,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-47` であることを確認する。
-2. `RAU-RR-47` では、料金調整候補上で booking curve preview を表示するため、Analyze 画面と同等の表示に必要な data source、既存 raw source の利用可否、追加 request の有無、top list 上の表示密度を切り分ける。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-48` であることを確認する。
+2. `RAU-RR-48` では、料金調整候補から rank 調整するため、Revenue Assistant 標準の rank 変更 request shape、取消可能性、安全制約、実データ操作を避けられる確認範囲を切り分ける。
 3. Rank Recommendation Bundle を進める場合は、forecast 数値、sales / ADR 数値、競合価格の金額または差額を top list へ直接表示しない契約と、rank price table、write endpoint request shape を未確認のまま実装済み仕様として扱わない契約を維持する。
 
 変更しない契約:

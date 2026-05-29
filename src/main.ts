@@ -153,6 +153,9 @@ const RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE = "data-ra-rank-reco
 const RANK_RECOMMENDATION_BUTTON_ACTION_LABEL_ATTRIBUTE = "data-ra-rank-recommendation-action-label";
 const RANK_RECOMMENDATION_BUTTON_REASON_TEXT_ATTRIBUTE = "data-ra-rank-recommendation-reason-text";
 const RANK_RECOMMENDATION_BUTTON_CAUTION_TEXT_ATTRIBUTE = "data-ra-rank-recommendation-caution-text";
+const RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-row";
+const RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-cell";
+const RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-diagnostics";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
@@ -725,6 +728,15 @@ interface RankRecommendationDisplayInfo {
     signature: string;
 }
 
+interface RankRecommendationCurvePreviewInfo {
+    curveData: SalesSettingBookingCurveRenderData | null;
+    maxValue: number | null;
+    currentOverallRoomCount: number | null;
+    currentSecondaryRoomCount: number | null;
+    diagnostics: string[];
+    signature: string;
+}
+
 interface RankRecommendationRankOrderOverrideRecord {
     facilityCacheKey: string;
     rankCodesHighToLow: string[];
@@ -755,6 +767,7 @@ const competitorPriceSnapshotBackgroundTaskKeys = new Set<string>();
 const competitorPriceSnapshotBackgroundQueue: CompetitorPriceSnapshotBackgroundTask[] = [];
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
 const salesSettingBookingCurveReferenceVisibilityState = new Map<SalesSettingBookingCurveReferenceKind, boolean>();
+const rankRecommendationCurvePreviewOpenState = new Map<string, boolean>();
 let salesSettingBookingCurveSameWeekdayVisible = false;
 let salesSettingBookingCurveSecondarySegment: SalesSettingBookingCurveSecondarySegment = "individual";
 let latestSalesSettingPreparedSnapshot: {
@@ -881,6 +894,16 @@ function installInteractionHooks(): void {
             );
             if (rankRecommendationAnalyzeLink !== null) {
                 persistPendingRankRecommendationFocusFromElement(rankRecommendationAnalyzeLink);
+                return;
+            }
+
+            const rankRecommendationCurvePreviewButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="curve-preview-toggle"]`
+            );
+            if (rankRecommendationCurvePreviewButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleRankRecommendationCurvePreviewFromElement(rankRecommendationCurvePreviewButton);
                 return;
             }
 
@@ -1304,6 +1327,28 @@ function setRankRecommendationOrderControlStatus(element: HTMLElement | null, te
     }
 }
 
+function toggleRankRecommendationCurvePreviewFromElement(element: HTMLElement): void {
+    const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
+    const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
+    if (stayDate === null || roomGroupId === null || stayDate === "" || roomGroupId === "") {
+        return;
+    }
+
+    const key = buildRankRecommendationCurvePreviewKey({ stayDate, roomGroupId });
+    const nextOpen = element.getAttribute("aria-expanded") !== "true";
+    rankRecommendationCurvePreviewOpenState.set(key, nextOpen);
+    element.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+    element.textContent = nextOpen ? "曲線を閉じる" : "曲線";
+
+    const previewRowElement = element.closest("tr")?.nextElementSibling;
+    if (
+        previewRowElement instanceof HTMLTableRowElement
+        && previewRowElement.hasAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE)
+    ) {
+        previewRowElement.hidden = !nextOpen;
+    }
+}
+
 function increaseRankRecommendationDisplayLimit(): void {
     const nextLimit = Math.min(
         RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
@@ -1334,6 +1379,7 @@ function setRankRecommendationViewModeFromElement(element: HTMLElement): void {
 
     rankRecommendationViewMode = viewMode;
     rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+    rankRecommendationCurvePreviewOpenState.clear();
     queueCalendarSync({ force: true, reason: "rank-recommendation-view-mode" });
 }
 
@@ -4931,6 +4977,11 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statuses,
         batchDateKey
     );
+    const curvePreviewInfoByKey = await buildRankRecommendationCurvePreviewInfoByKey(visibleCandidates, {
+        facilityId: facilityCacheKey,
+        asOfDate: batchDateKey,
+        statuses
+    });
     const hiddenSummary = {
         userDecision: decisionFilterResult.hiddenCount,
         resolvedRankChange: resolvedFilterResult.hiddenCount,
@@ -4962,7 +5013,9 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
                 candidate.recommendedRankName ?? "",
                 candidate.recommendedRankUnavailableReason ?? "",
                 candidate.rankOrderSource,
-                displayInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate))?.signature ?? ""
+                displayInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate))?.signature ?? "",
+                curvePreviewInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate))?.signature ?? "",
+                isRankRecommendationCurvePreviewOpen(candidate) ? "preview-open" : "preview-closed"
             ].join(",")).join("|")
         ].join(":"),
         statusText: null,
@@ -4972,6 +5025,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         viewMode: rankRecommendationViewMode,
         hiddenSummary,
         displayInfoByKey,
+        curvePreviewInfoByKey,
         canShowMore: hiddenSummary.overflow > 0 && rankRecommendationDisplayLimit < RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
         canResetDisplayLimit: rankRecommendationDisplayLimit > RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT
     });
@@ -5087,6 +5141,194 @@ async function buildRankRecommendationCurveEvidenceByKey(
     }));
 
     return new Map(entries.filter((entry): entry is [string, RankRecommendationCurveEvidence] => entry !== null));
+}
+
+async function buildRankRecommendationCurvePreviewInfoByKey(
+    candidates: readonly RankRecommendationCandidate[],
+    options: {
+        facilityId: string;
+        asOfDate: string;
+        statuses: readonly LincolnSuggestStatus[];
+    }
+): Promise<Map<string, RankRecommendationCurvePreviewInfo>> {
+    const rankHistoryByStayDate = new Map<string, Map<string, SalesSettingRankHistoryEvent[]>>();
+    const getRankHistory = (candidate: RankRecommendationCandidate): SalesSettingRankHistoryEvent[] => {
+        let historyByRoomGroupName = rankHistoryByStayDate.get(candidate.stayDate);
+        if (historyByRoomGroupName === undefined) {
+            historyByRoomGroupName = buildSalesSettingRankHistoryByRoomGroup(Array.from(options.statuses), candidate.stayDate);
+            rankHistoryByStayDate.set(candidate.stayDate, historyByRoomGroupName);
+        }
+        return historyByRoomGroupName.get(candidate.roomGroupName) ?? [];
+    };
+
+    const entries = await Promise.all(candidates.map(async (candidate) => {
+        const key = buildRankRecommendationCandidateDisplayInfoKey(candidate);
+        const previewInfo = await readRankRecommendationCurvePreviewInfo({
+            candidate,
+            facilityId: options.facilityId,
+            asOfDate: options.asOfDate,
+            rankHistory: getRankHistory(candidate)
+        });
+        return [key, previewInfo] as const;
+    }));
+    return new Map(entries);
+}
+
+async function readRankRecommendationCurvePreviewInfo(options: {
+    candidate: RankRecommendationCandidate;
+    facilityId: string;
+    asOfDate: string;
+    rankHistory: SalesSettingRankHistoryEvent[];
+}): Promise<RankRecommendationCurvePreviewInfo> {
+    const query = buildBookingCurveQuerySignature(options.candidate.stayDate, options.candidate.roomGroupId);
+    const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+        facilityId: options.facilityId,
+        stayDate: options.candidate.stayDate,
+        asOfDate: options.asOfDate,
+        scope: "roomGroup",
+        roomGroupId: options.candidate.roomGroupId,
+        endpoint: BOOKING_CURVE_ENDPOINT,
+        query
+    });
+    const record = await readBookingCurveRawSourceRecord(rawSourceKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation curve preview source`, {
+                stayDate: options.candidate.stayDate,
+                asOfDate: options.asOfDate,
+                roomGroupId: options.candidate.roomGroupId,
+                error
+            });
+            return undefined;
+        });
+
+    if (record === undefined) {
+        return buildMissingRankRecommendationCurvePreviewInfo(["booking_curve_source_missing"]);
+    }
+
+    const response = record.response as BookingCurveResponse;
+    const point = findLatestBookingCurvePoint(response, options.asOfDate);
+    if (point === null) {
+        return buildMissingRankRecommendationCurvePreviewInfo(["booking_curve_point_missing"]);
+    }
+
+    const referenceData = buildRankRecommendationCurvePreviewReferenceData({
+        candidate: options.candidate,
+        facilityId: options.facilityId,
+        asOfDate: options.asOfDate,
+        response
+    });
+    const secondarySegment = getSalesSettingBookingCurveSecondarySegment();
+    const curveData = buildSalesSettingBookingCurveRenderData(
+        response,
+        referenceData,
+        [],
+        options.candidate.stayDate,
+        options.asOfDate,
+        options.rankHistory,
+        secondarySegment
+    );
+    const maxValue = resolveRankRecommendationCurvePreviewMaxValue(response, curveData);
+    const currentOverallRoomCount = normalizeBookingCurveRoomCount(point.all?.this_year_room_sum);
+    const currentSecondaryRoomCount = normalizeBookingCurveRoomCount(
+        secondarySegment === "group"
+            ? point.group?.this_year_room_sum
+            : point.transient?.this_year_room_sum
+    );
+    const diagnostics = collectRankRecommendationCurvePreviewDiagnostics(referenceData);
+
+    return {
+        curveData,
+        maxValue,
+        currentOverallRoomCount,
+        currentSecondaryRoomCount,
+        diagnostics,
+        signature: [
+            "available",
+            `max:${maxValue}`,
+            `current:${currentOverallRoomCount ?? "-"}:${currentSecondaryRoomCount ?? "-"}`,
+            `segment:${curveData.secondarySegment}`,
+            `overall:${curveData.overall.signature}`,
+            `secondary:${curveData.secondary.signature}`,
+            `rank:${curveData.rankSignature}`,
+            `diagnostics:${diagnostics.join("/")}`
+        ].join("|")
+    };
+}
+
+function buildMissingRankRecommendationCurvePreviewInfo(diagnostics: string[]): RankRecommendationCurvePreviewInfo {
+    return {
+        curveData: null,
+        maxValue: null,
+        currentOverallRoomCount: null,
+        currentSecondaryRoomCount: null,
+        diagnostics,
+        signature: `missing:${diagnostics.join("/")}`
+    };
+}
+
+function buildRankRecommendationCurvePreviewReferenceData(options: {
+    candidate: RankRecommendationCandidate;
+    facilityId: string;
+    asOfDate: string;
+    response: BookingCurveResponse;
+}): SalesSettingBookingCurveReferenceData {
+    const buildReference = (segment: CurveSegment, curveKind: ReferenceCurveKind): ReferenceCurveResult => (
+        buildRankRecommendationHistoricalReferenceCurveResult({
+            facilityId: options.facilityId,
+            stayDate: options.candidate.stayDate,
+            asOfDate: options.asOfDate,
+            roomGroupId: options.candidate.roomGroupId,
+            response: options.response,
+            segment,
+            curveKind
+        })
+    );
+
+    return {
+        recentOverall: buildReference("all", "recent_weighted_90"),
+        seasonalOverall: buildReference("all", "seasonal_component"),
+        recentIndividual: buildReference("transient", "recent_weighted_90"),
+        seasonalIndividual: buildReference("transient", "seasonal_component"),
+        recentGroup: buildReference("group", "recent_weighted_90"),
+        seasonalGroup: buildReference("group", "seasonal_component")
+    };
+}
+
+function collectRankRecommendationCurvePreviewDiagnostics(referenceData: SalesSettingBookingCurveReferenceData): string[] {
+    const diagnostics = [
+        referenceData.recentOverall?.diagnostics.missingReason,
+        referenceData.seasonalOverall?.diagnostics.missingReason,
+        referenceData.recentIndividual?.diagnostics.missingReason,
+        referenceData.seasonalIndividual?.diagnostics.missingReason,
+        referenceData.recentGroup?.diagnostics.missingReason,
+        referenceData.seasonalGroup?.diagnostics.missingReason
+    ].filter((diagnostic): diagnostic is string => diagnostic !== undefined);
+    return Array.from(new Set(diagnostics));
+}
+
+function resolveRankRecommendationCurvePreviewMaxValue(
+    response: BookingCurveResponse,
+    curveData: SalesSettingBookingCurveRenderData
+): number {
+    if (typeof response.max_room_count === "number" && Number.isFinite(response.max_room_count) && response.max_room_count > 0) {
+        return response.max_room_count;
+    }
+
+    const seriesValues = [
+        curveData.overall.current,
+        curveData.overall.recent,
+        curveData.overall.seasonal,
+        curveData.secondary.current,
+        curveData.secondary.recent,
+        curveData.secondary.seasonal
+    ].flatMap((series) => series?.values ?? []);
+    const markerValues = [
+        ...curveData.overallRankMarkers.map((marker) => marker.value),
+        ...curveData.secondaryRankMarkers.map((marker) => marker.value)
+    ];
+    const values = [...seriesValues, ...markerValues]
+        .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
+    return Math.max(1, ...values);
 }
 
 async function readRankRecommendationCurveEvidence(options: {
@@ -6123,6 +6365,7 @@ function renderRankRecommendationList(
         viewMode?: RankRecommendationViewMode;
         hiddenSummary?: RankRecommendationHiddenSummary;
         displayInfoByKey?: ReadonlyMap<string, RankRecommendationDisplayInfo>;
+        curvePreviewInfoByKey?: ReadonlyMap<string, RankRecommendationCurvePreviewInfo>;
         canShowMore?: boolean;
         canResetDisplayLimit?: boolean;
     }
@@ -6188,8 +6431,10 @@ function renderRankRecommendationList(
         bodyElement.append(emptyRowElement);
     } else {
         for (const candidate of candidates) {
-            const displayInfo = options.displayInfoByKey?.get(buildRankRecommendationCandidateDisplayInfoKey(candidate)) ?? null;
-            bodyElement.append(createRankRecommendationRow(candidate, displayInfo));
+            const displayInfoKey = buildRankRecommendationCandidateDisplayInfoKey(candidate);
+            const displayInfo = options.displayInfoByKey?.get(displayInfoKey) ?? null;
+            const curvePreviewInfo = options.curvePreviewInfoByKey?.get(displayInfoKey) ?? null;
+            bodyElement.append(...createRankRecommendationRows(candidate, displayInfo, curvePreviewInfo));
         }
     }
     tableElement.append(headElement, bodyElement);
@@ -6531,10 +6776,11 @@ function formatRankRecommendationCountSummary<T extends string>(
     return `${prefix} ${parts.join("・")}`;
 }
 
-function createRankRecommendationRow(
+function createRankRecommendationRows(
     candidate: RankRecommendationCandidate,
-    displayInfo: RankRecommendationDisplayInfo | null
-): HTMLTableRowElement {
+    displayInfo: RankRecommendationDisplayInfo | null,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null
+): HTMLTableRowElement[] {
     const rowElement = document.createElement("tr");
     rowElement.setAttribute(RANK_RECOMMENDATION_ROW_ATTRIBUTE, "");
     rowElement.setAttribute(RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE, candidate.priority);
@@ -6594,6 +6840,22 @@ function createRankRecommendationRow(
     analyzeLinkElement.href = `/analyze/${formatCompactDateForDisplay(candidate.stayDate)}`;
     analyzeLinkElement.textContent = "Analyzeで確認";
 
+    const isPreviewOpen = isRankRecommendationCurvePreviewOpen(candidate);
+    const curvePreviewButtonElement = document.createElement("button");
+    curvePreviewButtonElement.type = "button";
+    curvePreviewButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    curvePreviewButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "curve-preview-toggle");
+    curvePreviewButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, candidate.stayDate);
+    curvePreviewButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, candidate.roomGroupId);
+    curvePreviewButtonElement.setAttribute("aria-expanded", isPreviewOpen ? "true" : "false");
+    curvePreviewButtonElement.textContent = isPreviewOpen ? "曲線を閉じる" : "曲線";
+    curvePreviewButtonElement.title = "Analyzeへ移動せずに、この候補のブッキングカーブを表示";
+    curvePreviewButtonElement.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        toggleRankRecommendationCurvePreviewFromElement(curvePreviewButtonElement);
+    });
+
     const snoozeButtonElement = document.createElement("button");
     snoozeButtonElement.type = "button";
     snoozeButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
@@ -6610,9 +6872,128 @@ function createRankRecommendationRow(
     dismissButtonElement.title = "同じ根拠の候補を非表示にする";
     dismissButtonElement.textContent = "対応不要";
 
-    actionCellElement.append(analyzeLinkElement, snoozeButtonElement, dismissButtonElement);
+    actionCellElement.append(analyzeLinkElement, curvePreviewButtonElement, snoozeButtonElement, dismissButtonElement);
     rowElement.append(actionCellElement);
+    return [
+        rowElement,
+        createRankRecommendationCurvePreviewRow(candidate, curvePreviewInfo, isPreviewOpen)
+    ];
+}
+
+function createRankRecommendationCurvePreviewRow(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null,
+    isOpen: boolean
+): HTMLTableRowElement {
+    const rowElement = document.createElement("tr");
+    rowElement.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE, "");
+    rowElement.hidden = !isOpen;
+    const cellElement = document.createElement("td");
+    cellElement.colSpan = 11;
+    cellElement.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE, "");
+
+    if (curvePreviewInfo === null || curvePreviewInfo.curveData === null || curvePreviewInfo.maxValue === null) {
+        cellElement.append(createRankRecommendationCurvePreviewDiagnostics([
+            ...(curvePreviewInfo?.diagnostics ?? ["booking_curve_source_missing"])
+        ]));
+    } else {
+        cellElement.append(
+            createRankRecommendationCurvePreviewSection(candidate, curvePreviewInfo),
+            createRankRecommendationCurvePreviewDiagnostics(curvePreviewInfo.diagnostics)
+        );
+    }
+
+    rowElement.append(cellElement);
     return rowElement;
+}
+
+function createRankRecommendationCurvePreviewSection(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo
+): HTMLElement {
+    const curveData = curvePreviewInfo.curveData;
+    const maxValue = curvePreviewInfo.maxValue;
+    if (curveData === null || maxValue === null) {
+        return createRankRecommendationCurvePreviewDiagnostics(curvePreviewInfo.diagnostics);
+    }
+
+    const sectionElement = document.createElement("section");
+    sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE, "");
+    sectionElement.setAttribute(SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE, "card");
+
+    const headerElement = document.createElement("div");
+    headerElement.setAttribute(SALES_SETTING_BOOKING_CURVE_HEADER_ATTRIBUTE, "");
+
+    const titleElement = document.createElement("span");
+    titleElement.textContent = `ブッキングカーブ（${candidate.roomGroupName}）`;
+
+    const noteElement = document.createElement("span");
+    noteElement.setAttribute(SALES_SETTING_BOOKING_CURVE_NOTE_ATTRIBUTE, "");
+    noteElement.textContent = "候補一覧 preview";
+
+    headerElement.replaceChildren(
+        titleElement,
+        noteElement,
+        createSalesSettingBookingCurveSegmentToggleGroup(),
+        createSalesSettingBookingCurveReferenceToggleGroup()
+    );
+
+    const gridElement = document.createElement("div");
+    gridElement.setAttribute(SALES_SETTING_BOOKING_CURVE_GRID_ATTRIBUTE, "");
+    gridElement.replaceChildren(
+        createSalesSettingBookingCurvePanel(
+            "全体",
+            maxValue,
+            curvePreviewInfo.currentOverallRoomCount,
+            curveData.overall,
+            curveData.overallRankMarkers,
+            "overall"
+        ),
+        createSalesSettingBookingCurvePanel(
+            getSalesSettingBookingCurveSecondarySegmentLabel(curveData.secondarySegment),
+            maxValue,
+            curvePreviewInfo.currentSecondaryRoomCount,
+            curveData.secondary,
+            curveData.secondaryRankMarkers,
+            curveData.secondarySegment
+        )
+    );
+
+    sectionElement.replaceChildren(headerElement, createSalesSettingBookingCurveLegend(curveData), gridElement);
+    return sectionElement;
+}
+
+function createRankRecommendationCurvePreviewDiagnostics(diagnostics: readonly string[]): HTMLElement {
+    const element = document.createElement("div");
+    element.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE, "");
+    element.textContent = diagnostics.length === 0
+        ? "不足診断: なし"
+        : `不足診断: ${diagnostics.map(formatRankRecommendationCurvePreviewDiagnostic).join(" / ")}`;
+    return element;
+}
+
+function formatRankRecommendationCurvePreviewDiagnostic(diagnostic: string): string {
+    switch (diagnostic) {
+        case "booking_curve_source_missing":
+            return "booking_curve raw source が未保存のため表示できません";
+        case "booking_curve_point_missing":
+            return "基準日以前の booking_curve 点がありません";
+        case "raw_history_reference_missing":
+            return "前年実績から作る reference curve が不足しています";
+        default:
+            return diagnostic;
+    }
+}
+
+function isRankRecommendationCurvePreviewOpen(candidate: RankRecommendationCandidate): boolean {
+    return rankRecommendationCurvePreviewOpenState.get(buildRankRecommendationCurvePreviewKey(candidate)) === true;
+}
+
+function buildRankRecommendationCurvePreviewKey(parts: {
+    stayDate: string;
+    roomGroupId: string;
+}): string {
+    return `${parts.stayDate}:${parts.roomGroupId}`;
 }
 
 function setRankRecommendationDecisionButtonAttributes(
@@ -12876,6 +13257,39 @@ function ensureGroupRoomStyles(): void {
 
         [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_STATUS_ATTRIBUTE}="not_eligible"] {
             color: #6a7684;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE}] td {
+            padding: 0 8px 10px;
+            border-top: 0;
+            white-space: normal;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}] {
+            background: #f3f7fb;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}] {
+            margin: 0;
+            border-radius: 6px;
+            background: #ffffff;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_BOOKING_CURVE_HEADER_ATTRIBUTE}] {
+            flex-wrap: wrap;
+            justify-content: flex-start;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_BOOKING_CURVE_REFERENCE_TOGGLE_GROUP_ATTRIBUTE}] {
+            margin-left: auto;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE}] {
+            margin-top: 6px;
+            color: #5b6b7d;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.45;
         }
 
         [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}] {
