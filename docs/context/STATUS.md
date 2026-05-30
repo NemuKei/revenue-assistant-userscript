@@ -6,7 +6,7 @@
 
 - 主対象: 2026-05-30 時点で Remaining Task Triage に残っていた task は完了済みである。`RAU-RR-60` では rank 変更後の反映確認不能状態と再取得失敗分類を実装し、`RAU-MP-03` では月次実績画面の現在表示月 first render、background queue、loading state を実装した。`RAU-UX-04` では React island を今すぐ導入せず、view model 抽出と依存追加承認を分ける設計判断を `docs/tasks_backlog.md` に記録した。`RAU-WC-17` では CDP 接続付き通常 Chrome で browser-local IndexedDB raw source cache を限定削除し、`候補優先 10 / 10 保存 1 skip 9` の indicator 発火を確認した。
 - 追加 follow-up の `RAU-UX-08`、`RAU-RR-61`、`RAU-MP-04`、`RAU-UX-06`、`RAU-UX-07` も完了済みである。`RAU-UX-08` では GitHub Pages の公開配布物 `@version 0.1.0.330` を確認し、利用者本人の Tampermonkey 手動更新後に通常 Chrome の Revenue Assistant で配布版が実行されることを確認した。`RAU-RR-61` では POST 成功後の `反映確認中` 状態と同一 `facilityId x stayDate x roomGroupId` の二重送信 block を実装した。`RAU-MP-04` では月次実績画面の合成 fixture mode と空状態表示を追加した。`RAU-UX-06` では料金調整候補 list の view model と fixture render path を抽出した。`RAU-UX-07` では利用者承認に基づいて `react` と `react-dom` を追加し、料金調整候補 section 内の最小 React island mount marker を導入した。
-- 現在の Remaining Task Triage は空である。
+- 2026-05-30 に、利用者が React 化を段階的に進める方針を明示したため、料金調整候補 list の React 移行 task を追加した。現在の Remaining Task Triage は Now `RAU-UX-09`、Next `RAU-UX-10`、After Next `RAU-UX-11` と `RAU-UX-12`、Later `RAU-UX-13` と `RAU-UX-14` である。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -103,7 +103,12 @@
   - `RAU-UX-06` 料金調整候補 list の view model を抽出し、React なしで fixture render を検証する
   - `RAU-UX-07` React island 導入の依存承認と最小 mount を検証する
 - 未実装 Task ID:
-  - なし
+  - `RAU-UX-09` React 移行用の fixture-only list component と parity check を追加する
+  - `RAU-UX-10` React component に live list の read-only 表示を切り替える
+  - `RAU-UX-11` React component へ row open state と preview host の表示制御を移す
+  - `RAU-UX-12` React component へ browser-local decision pending UX を移す
+  - `RAU-UX-13` React component へ rank change pending UX と guard 表示を移す
+  - `RAU-UX-14` vanilla list renderer を削除し、React list を正規 path にする
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -116,7 +121,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は空である。React island 導入は `RAU-UX-06` の view model 抽出と fixture render、利用者承認後の `RAU-UX-07` の `react` / `react-dom` 追加、bundle build、通常 Chrome top smoke まで完了済みである。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now `RAU-UX-09`、Next `RAU-UX-10`、After Next `RAU-UX-11` と `RAU-UX-12`、Later `RAU-UX-13` と `RAU-UX-14` である。React island 導入は `RAU-UX-06` の view model 抽出と fixture render、利用者承認後の `RAU-UX-07` の `react` / `react-dom` 追加、bundle build、通常 Chrome top smoke まで完了済みである。次は fixture-only React component で parity check を行い、live behavior を変える前に観測点を固定する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -351,9 +356,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が空であることを確認する。
-2. 次に task 化する場合は、料金調整候補の React island を hidden marker から実 UI component へ広げるか、月次実績 fixture のブラウザ確認を安定化するための dedicated smoke helper を追加するかを選ぶ。
-3. browser smoke が必要な場合は、Tampermonkey、通常 Chrome profile、Revenue Assistant のログイン済み状態が必要かを先に分類し、必要な場合は Chrome Extension または CDP 接続付き Chrome で確認する。
+1. `docs/tasks_backlog.md` の Remaining Task Triage を確認し、Now の `RAU-UX-09` から着手する。
+2. `RAU-UX-09` では、live の料金調整候補 list を切り替えず、fixture-only React component と parity check だけを追加する。
+3. 各 React 移行 task では、`npm run check`、通常 Chrome または CDP 接続付き Chrome の smoke、監視対象 write API POST 0 件確認を段階ごとに行う。Tampermonkey、通常 Chrome profile、Revenue Assistant のログイン済み状態が必要な確認では Chrome Extension または CDP 接続付き Chrome を使う。
 
 変更しない契約:
 

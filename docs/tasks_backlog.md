@@ -4513,26 +4513,162 @@
   - 公開版 `@version 0.1.0.330` を Tampermonkey へ手動更新後、通常 Chrome top 画面で marker 1 件、`data-mode="live"`、`data-row-count="10"` を確認した。
   - build 後の公開 userscript size は workflow 配布物で約 519.8 KB である。React 導入は hidden marker に限定しており、撤退条件に該当する UI 不安定化は今回の top smoke では確認していない。
 
+### RAU-UX-09 React 移行用の fixture-only list component と parity check を追加する
+
+- 目的:
+  - hidden marker だけの React island から、実 UI へ進む前に、料金調整候補 list を React component として描画できることを合成 fixture で確認する。
+  - live の料金調整候補 list は vanilla DOM のまま維持し、React component の構造、selector、文言、表示件数、状態表現だけを比較できるようにする。
+- スコープ:
+  - 対象は `RankRecommendationListViewModel` から作る fixture-only React component である。
+  - `localStorage["revenue-assistant:rank-recommendation:fixture-mode"] = "basic"` または専用の React fixture flag で、合成候補だけを React 側へ描画する。
+  - 既存の `data-ra-rank-recommendation-*` selector と、CDP / Chrome 拡張で読む観測点を維持する。
+  - parity check は、候補件数、列構成、主要 text、status attribute、React island marker、console error を確認対象にする。
+- 非目標:
+  - live の料金調整候補 list を React へ切り替えない。
+  - Revenue Assistant API、IndexedDB、warm cache queue、rank change adapter、user decision 保存を React component から直接呼ばない。
+  - UI 文言、候補生成、scoring、pending 秒数、write guard、API request 範囲を変更しない。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - fixture-only React component で合成候補が描画され、候補件数、主要 text、status attribute、React island marker を確認できる。
+  - 通常 Chrome または CDP 接続付き Chrome で fixture-only 表示を確認し、console error が 0 件である。
+  - live top 画面では従来の vanilla DOM list が表示され、監視対象 write API POST が 0 件である。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-UX-10 React component に live list の read-only 表示を切り替える
+
+- 目的:
+  - 料金調整候補 list の live 表示のうち、操作を伴わない一覧表示を React component へ移す。
+  - 候補生成、scoring、API adapter、IndexedDB、warm cache queue は既存 controller 側に残し、React は view model を受け取って DOM を描画する役割に限定する。
+- スコープ:
+  - 対象は top 料金調整候補 list root、meta、表示 mode、表示上限、対象月 filter、read-only columns、read-only status label である。
+  - `曲線`、`rank調整`、`様子見`、`対応不要` などの操作はこの task では移行しない。必要な場合は既存 vanilla host または disabled placeholder として扱い、操作移行は後続 task に分ける。
+  - React component は既存 section 内の 1 mount root だけを使う。
+- 非目標:
+  - row action の click handler、pending state、booking curve preview、rank change preview、write API 呼び出しを React へ移さない。
+  - Revenue Assistant write API、rank 変更 endpoint、payload、guard を変更しない。
+  - 表示件数、sort、filter、candidate lifecycle、reasonFingerprint を変更しない。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - 通常 Chrome top 画面で、React live list が候補 row 10 件を表示する。
+  - 既存の meta、表示 mode、表示上限、対象月 filter が React 移行前と同じ意味で表示される。
+  - `data-ra-rank-recommendation-*` selector による CDP / Chrome 拡張 smoke が維持される。
+  - 監視対象 write API POST が 0 件である。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-UX-11 React component へ row open state と preview host の表示制御を移す
+
+- 目的:
+  - `曲線` preview と `rank調整` preview の開閉状態を React component 側で管理し、開いている row、閉じる条件、表示上限変更時の close を明確にする。
+  - preview 内のデータ取得、IndexedDB 読み取り、rank change adapter は既存 controller / adapter に残し、React は表示状態と host 描画を担当する。
+- スコープ:
+  - 対象は row の open / close state、booking curve preview host、rank change preview host、表示 mode / 表示上限 / 対象月変更時の preview close である。
+  - preview 本体に渡す data は既存の view model または既存 controller の結果を使う。
+  - `曲線` と `rank調整` の button 表示、aria state、open row の selector を CDP で確認できるよう維持する。
+- 非目標:
+  - booking curve の計算、raw source 読み取り、rank change POST、送信前 guard、pending 秒数を変更しない。
+  - preview の見た目改善を主目的にしない。必要な差分が出る場合は既存表示と同じ意味であることを確認する。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - 通常 Chrome top 画面で、`曲線` preview の開閉、`rank調整` preview の開閉、表示 mode / 表示上限 / 対象月変更時の preview close を確認している。
+  - booking curve preview と rank change preview の既存 selector が維持される。
+  - smoke test 中の監視対象 write API POST が 0 件である。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-UX-12 React component へ browser-local decision pending UX を移す
+
+- 目的:
+  - `様子見` と `対応不要` の 5 秒 pending、残り秒数表示、取消、保存完了後の再描画を React component 側へ移す。
+  - browser-local decision の保存と lifecycle filter は既存 controller / storage adapter に残し、React は pending 表示と操作 event の受け渡しに限定する。
+- スコープ:
+  - 対象は `様子見`、`対応不要`、pending 表示、残り秒数、`取消`、保存後の row state 更新である。
+  - IndexedDB 書き込みは既存 adapter を通す。
+  - pending 中の disabled state と row 表示を React component 側で管理する。
+- 非目標:
+  - user decision の保存 schema、cooldown、dismiss、confidence escalation、reasonFingerprint を変更しない。
+  - Revenue Assistant write API を呼ばない。
+  - pending 秒数を変更しない。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - 通常 Chrome top 画面で、`様子見` pending cancel と `対応不要` pending cancel を確認している。
+  - cancel した操作では IndexedDB に decision record が保存されないことを確認している。
+  - smoke test 中の監視対象 write API POST が 0 件である。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-UX-13 React component へ rank change pending UX と guard 表示を移す
+
+- 目的:
+  - `rank調整` の 5 秒 pending、取消、送信前 guard 表示、POST 成功後の `反映確認中`、反映確認不能、再取得失敗表示を React component 側へ移す。
+  - rank change adapter、送信前再取得、送信後反映確認、二重送信 block は既存 controller / adapter に残し、React は状態表示と操作 event の受け渡しに限定する。
+- スコープ:
+  - 対象は rank select、`反映する`、5 秒 pending、`取消`、guard error 表示、`反映確認中`、disabled state、last result 表示である。
+  - 同じ `facilityId x stayDate x roomGroupId` の pending / confirming block 表示を React component で確認できるようにする。
+  - 実送信確認は、利用者が実務上反映してよい候補を明示した場合だけ別途行う。
+- 非目標:
+  - rank change endpoint、payload、送信前 guard、送信後確認ロジック、pending 秒数を変更しない。
+  - 未観測 provider、`price_ranks` 系 endpoint、bulk apply、自動反映を追加しない。
+  - raw trace、request body、response body、Cookie、token、credential、非公開データを保存しない。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - 実 POST を伴わない smoke test で、rank change preview、pending、cancel、guard 表示、same-scope block 表示を確認している。
+  - smoke test 中の監視対象 write API POST が 0 件である。
+  - 実送信確認を行う場合は、利用者が指定した実務上反映してよい候補だけを対象にし、`POST /api/v1/lincoln/suggest` の発生回数、HTTP status、反映確認結果を raw body なしで記録する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-UX-14 vanilla list renderer を削除し、React list を正規 path にする
+
+- 目的:
+  - `RAU-UX-09` から `RAU-UX-13` までの段階移行と smoke を通過した後、料金調整候補 list の重複した vanilla DOM renderer を削除し、React list を正規 path にする。
+  - 実装経路を 2 系統残し続けることによる selector drift、pending state drift、cleanup 漏れを防ぐ。
+- スコープ:
+  - 対象は、React 移行後に不要になった vanilla list / row / action / preview host renderer、未使用 helper、未使用 CSS、未使用 selector 定数である。
+  - 削除対象は、React 側で同じ入力、同じ出力、同じ selector、同じ smoke 観測点を満たしているものだけに限定する。
+  - fallback を残す場合は、発火条件、廃止条件、verify 方法を完了メモに明記する。
+- 非目標:
+  - cleanup と同時に UI 仕様、文言、候補生成、scoring、API request 範囲、write guard を変更しない。
+  - Revenue Assistant write API の確認を増やさない。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - `rg` で未使用になった vanilla renderer / selector / CSS が残っていないことを確認している。
+  - 通常 Chrome top 画面で候補 list、display controls、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel を確認している。
+  - smoke test 中の監視対象 write API POST が 0 件である。
+  - 配布版に反映後、Tampermonkey 経由の通常 Chrome top smoke を実施している。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
 ## Remaining Task Triage
 
 Now:
 
-- なし
+- `RAU-UX-09` React 移行用の fixture-only list component と parity check を追加する。
 
 Next:
 
-- なし
+- `RAU-UX-10` React component に live list の read-only 表示を切り替える。
 
 After Next:
 
-- なし
+- `RAU-UX-11` React component へ row open state と preview host の表示制御を移す。
+- `RAU-UX-12` React component へ browser-local decision pending UX を移す。
 
 Later:
 
-- なし
+- `RAU-UX-13` React component へ rank change pending UX と guard 表示を移す。
+- `RAU-UX-14` vanilla list renderer を削除し、React list を正規 path にする。
 
 統合判断:
 
+- 2026-05-30 に、利用者が React 化を段階的に進める方針を明示したため、料金調整候補 list の React 移行 task を `RAU-UX-09` から `RAU-UX-14` として追加した。既存の `RAU-UX-06` は view model 抽出、`RAU-UX-07` は依存追加と hidden marker の最小 mount として完了済みであり、次は live behavior を変えない fixture-only component から進める。実行順は、fixture-only parity、live read-only 表示、preview open state、browser-local decision pending、rank change pending / guard、vanilla renderer cleanup とする。理由は、Revenue Assistant write API に近い操作ほど後ろへ置き、各段階で `npm run check`、通常 Chrome smoke、監視対象 write API POST 0 件確認を挟むためである。
 - 2026-05-30 に、追加 follow-up の `RAU-UX-08`、`RAU-RR-61`、`RAU-MP-04`、`RAU-UX-06`、`RAU-UX-07` を閉じた。`RAU-UX-08` は GitHub Pages の公開配布物 `0.1.0.330` と Tampermonkey 手動更新後の通常 Chrome smoke を確認した。`RAU-RR-61` は rank change POST 成功後の `反映確認中` と同一 scope 二重送信 block を実装した。`RAU-MP-04` は月次実績画面の合成 fixture mode と空状態を追加した。`RAU-UX-06` は料金調整候補 list の view model と fixture render path を抽出した。`RAU-UX-07` は承認済み依存として React / React DOM を追加し、hidden marker の最小 React island を公開版 smoke で確認した。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 2026-05-30 に、前回完了報告で推奨した follow-up を task 化した。`RAU-UX-08` は latest `dist` を Tampermonkey 経由の実配布物として確認する task であり、以後の GUI 確認の前提になるため Now とした。`RAU-RR-61` は rank change POST 成功後の二重送信防止であり、React 導入や view model 抽出より先に write safety を固める必要があるため Next とした。`RAU-MP-04` は月次 graph の空状態と比較不足の表示品質を合成 fixture で確認する task であり、月次画面の追加改善として After Next に置いた。`RAU-UX-06` は React 依存追加前に料金調整候補 list の view model と副作用境界を分ける task であり、React 導入の前提として After Next に置いた。`RAU-UX-07` は `react` と `react-dom` の追加承認、bundle size、Tampermonkey dist 更新、通常 Chrome smoke を含むため、依存追加の明示承認が必要な Later とした。
 - 2026-05-30 に、開始時点で Remaining Task Triage にあった `RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02`、および追加で戻した `RAU-UX-05` は閉じた。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-05` は、利用者本人が Tampermonkey dashboard から latest `dist/revenue-assistant-userscript.user.js` を手動更新した後に完了した。CDP 一時注入なしの top smoke では料金調整候補 list 10 行、pending 取消、監視対象 write API POST 0 件を確認した。Analyze `価格推移` tab では `競合価格 最安値推移（90日版）`、初期 16 件の `/api/v1/price_trends` GET、`背景取得 3 / 112`、合計 19 件の `/api/v1/price_trends` GET、監視対象 write API POST 0 件を確認した。この bundle の完了時点では Remaining Task Triage の Now / Next / After Next / Later は空であった。
