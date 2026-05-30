@@ -4529,6 +4529,7 @@
   - UI 文言、候補生成、scoring、pending 秒数、write guard、API request 範囲を変更しない。
 - 受け入れ条件:
   - `npm run check` が通過する。
+  - React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`react-doctor` Skill の差分診断として `npx react-doctor@latest --verbose --diff` の実行を検討し、実行結果または見送り理由を完了メモに記録している。
   - fixture-only React component で合成候補が描画され、候補件数、主要 text、status attribute、React island marker を確認できる。
   - 通常 Chrome または CDP 接続付き Chrome で fixture-only 表示を確認し、console error が 0 件である。
   - live top 画面では従来の vanilla DOM list が表示され、監視対象 write API POST が 0 件である。
@@ -4551,6 +4552,7 @@
   - 表示件数、sort、filter、candidate lifecycle、reasonFingerprint を変更しない。
 - 受け入れ条件:
   - `npm run check` が通過する。
+  - React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`react-doctor` Skill の差分診断として `npx react-doctor@latest --verbose --diff` の実行を検討し、実行結果または見送り理由を完了メモに記録している。
   - 通常 Chrome top 画面で、React live list が候補 row 10 件を表示する。
   - 既存の meta、表示 mode、表示上限、対象月 filter が React 移行前と同じ意味で表示される。
   - `data-ra-rank-recommendation-*` selector による CDP / Chrome 拡張 smoke が維持される。
@@ -4573,6 +4575,7 @@
   - preview の見た目改善を主目的にしない。必要な差分が出る場合は既存表示と同じ意味であることを確認する。
 - 受け入れ条件:
   - `npm run check` が通過する。
+  - React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`react-doctor` Skill の差分診断として `npx react-doctor@latest --verbose --diff` の実行を検討し、実行結果または見送り理由を完了メモに記録している。
   - 通常 Chrome top 画面で、`曲線` preview の開閉、`rank調整` preview の開閉、表示 mode / 表示上限 / 対象月変更時の preview close を確認している。
   - booking curve preview と rank change preview の既存 selector が維持される。
   - smoke test 中の監視対象 write API POST が 0 件である。
@@ -4595,6 +4598,7 @@
   - pending 秒数を変更しない。
 - 受け入れ条件:
   - `npm run check` が通過する。
+  - React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`react-doctor` Skill の差分診断として `npx react-doctor@latest --verbose --diff` の実行を検討し、実行結果または見送り理由を完了メモに記録している。
   - 通常 Chrome top 画面で、`様子見` pending cancel と `対応不要` pending cancel を確認している。
   - cancel した操作では IndexedDB に decision record が保存されないことを確認している。
   - smoke test 中の監視対象 write API POST が 0 件である。
@@ -4617,6 +4621,7 @@
   - raw trace、request body、response body、Cookie、token、credential、非公開データを保存しない。
 - 受け入れ条件:
   - `npm run check` が通過する。
+  - React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`react-doctor` Skill の差分診断として `npx react-doctor@latest --verbose --diff` の実行を検討し、実行結果または見送り理由を完了メモに記録している。
   - 実 POST を伴わない smoke test で、rank change preview、pending、cancel、guard 表示、same-scope block 表示を確認している。
   - smoke test 中の監視対象 write API POST が 0 件である。
   - 実送信確認を行う場合は、利用者が指定した実務上反映してよい候補だけを対象にし、`POST /api/v1/lincoln/suggest` の発生回数、HTTP status、反映確認結果を raw body なしで記録する。
@@ -4638,6 +4643,7 @@
   - Revenue Assistant write API の確認を増やさない。
 - 受け入れ条件:
   - `npm run check` が通過する。
+  - React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`react-doctor` Skill の差分診断として `npx react-doctor@latest --verbose --diff` の実行を検討し、実行結果または見送り理由を完了メモに記録している。
   - `rg` で未使用になった vanilla renderer / selector / CSS が残っていないことを確認している。
   - 通常 Chrome top 画面で候補 list、display controls、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel を確認している。
   - smoke test 中の監視対象 write API POST が 0 件である。

@@ -361,7 +361,7 @@
 
 1. `docs/tasks_backlog.md` の Remaining Task Triage を確認し、Now の `RAU-UX-09` から着手する。
 2. `RAU-UX-09` では、live の料金調整候補 list を切り替えず、fixture-only React component と parity check だけを追加する。
-3. 各 React 移行 task では、`npm run check`、通常 Chrome または CDP 接続付き Chrome の smoke、監視対象 write API POST 0 件確認を段階ごとに行う。Tampermonkey、通常 Chrome profile、Revenue Assistant のログイン済み状態が必要な確認では Chrome Extension または CDP 接続付き Chrome を使う。
+3. 各 React 移行 task では、`npm run check`、通常 Chrome または CDP 接続付き Chrome の smoke、監視対象 write API POST 0 件確認を段階ごとに行う。React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`react-doctor` Skill の差分診断 `npx react-doctor@latest --verbose --diff` の実行を検討し、実行結果または見送り理由を完了メモに記録する。Tampermonkey、通常 Chrome profile、Revenue Assistant のログイン済み状態が必要な確認では Chrome Extension または CDP 接続付き Chrome を使う。
 
 変更しない契約:
 
