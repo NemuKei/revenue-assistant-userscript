@@ -116,6 +116,16 @@ interface MonthlyProgressPreviewModel {
     secondaryMetric: MonthlyProgressSecondaryMetricKind;
     focusMonths: MonthlyProgressFocusMonthPreview[];
     observationDateKey: string;
+    loadingSummary: string | null;
+}
+
+interface MonthlyProgressBackgroundPrefetchState {
+    signature: string;
+    targetYearMonths: string[];
+    processedCount: number;
+    failedCount: number;
+    currentYearMonth: string | null;
+    completed: boolean;
 }
 
 interface MonthlyProgressPanelModel {
@@ -133,6 +143,7 @@ let monthlyProgressObserver: MutationObserver | null = null;
 let monthlyProgressRenderQueued = false;
 let latestMonthlyProgressPreviewSignature = "";
 let monthlyProgressPreviewSyncSequence = 0;
+const monthlyProgressBackgroundPrefetchStateBySignature = new Map<string, MonthlyProgressBackgroundPrefetchState>();
 
 export function getMonthlyProgressRouteState(pathname: string): MonthlyProgressRouteState | null {
     const match = MONTHLY_PROGRESS_ROUTE_PATTERN.exec(pathname);
@@ -272,31 +283,76 @@ export function syncMonthlyProgressPage(options: MonthlyProgressSyncOptions): vo
 function startMonthlyProgressSnapshotPrefetch(context: MonthlyProgressResolvedContext): void {
     const storage = createMonthlyProgressStorageAdapter(context.facilityCacheKey);
     const compareMode = resolveMonthlyProgressCompareMode(storage);
-    const targetYearMonths = buildMonthlyProgressSnapshotPrefetchYearMonths(context.routeState.yearMonth, compareMode);
+    const targetYearMonths = buildMonthlyProgressSnapshotPrefetchYearMonths(context.routeState.yearMonth, compareMode)
+        .filter((yearMonth) => yearMonth !== context.routeState.yearMonth);
     if (targetYearMonths.length === 0) {
         return;
     }
 
-    void Promise.allSettled(targetYearMonths.map((yearMonth) => persistMonthlyBookingCurveSnapshot({
-        scriptName: context.scriptName,
-        facilityCacheKey: context.facilityCacheKey,
-        yearMonth,
-        batchDateKey: context.batchDateKey
-    }))).then((results) => {
-        const rejectedCount = results.filter((result) => result.status === "rejected").length;
-        if (rejectedCount === 0) {
-            return;
-        }
+    const signature = buildMonthlyProgressBackgroundPrefetchSignature(context, compareMode);
+    const currentState = monthlyProgressBackgroundPrefetchStateBySignature.get(signature);
+    if (currentState !== undefined && !currentState.completed) {
+        return;
+    }
 
-        console.warn(`[${context.scriptName}] monthly-progress snapshot prefetch partially failed`, {
-            href: context.href,
-            routeYearMonth: context.routeState.yearMonth,
-            batchDateKey: context.batchDateKey,
-            facilityCacheKey: context.facilityCacheKey,
-            targetYearMonths,
-            rejectedCount
-        });
-    });
+    const state: MonthlyProgressBackgroundPrefetchState = {
+        signature,
+        targetYearMonths,
+        processedCount: 0,
+        failedCount: 0,
+        currentYearMonth: null,
+        completed: false
+    };
+    monthlyProgressBackgroundPrefetchStateBySignature.set(signature, state);
+
+    void runMonthlyProgressBackgroundPrefetch(context, state);
+}
+
+async function runMonthlyProgressBackgroundPrefetch(
+    context: MonthlyProgressResolvedContext,
+    state: MonthlyProgressBackgroundPrefetchState
+): Promise<void> {
+    for (const yearMonth of state.targetYearMonths) {
+        state.currentYearMonth = yearMonth;
+        queueMonthlyProgressPreviewSync();
+        try {
+            await persistMonthlyBookingCurveSnapshot({
+                scriptName: context.scriptName,
+                facilityCacheKey: context.facilityCacheKey,
+                yearMonth,
+                batchDateKey: context.batchDateKey
+            });
+        } catch (error: unknown) {
+            state.failedCount += 1;
+            console.warn(`[${context.scriptName}] monthly-progress background snapshot failed`, {
+                href: context.href,
+                routeYearMonth: context.routeState.yearMonth,
+                yearMonth,
+                batchDateKey: context.batchDateKey,
+                facilityCacheKey: context.facilityCacheKey,
+                error
+            });
+        } finally {
+            state.processedCount += 1;
+            queueMonthlyProgressPreviewSync();
+        }
+    }
+
+    state.currentYearMonth = null;
+    state.completed = true;
+    queueMonthlyProgressPreviewSync();
+}
+
+function buildMonthlyProgressBackgroundPrefetchSignature(
+    context: MonthlyProgressResolvedContext,
+    compareMode: MonthlyProgressCompareMode
+): string {
+    return [
+        context.facilityCacheKey,
+        context.routeState.yearMonth,
+        context.batchDateKey,
+        `compare:${compareMode}`
+    ].join(":");
 }
 
 function buildMonthlyProgressSnapshotPrefetchYearMonths(
@@ -465,13 +521,18 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
     const secondaryMetric = resolveMonthlyProgressSecondaryMetric(storage);
     const focusYearMonths = buildFutureYearMonths(context.routeState.yearMonth, MONTHLY_PROGRESS_VISIBLE_MONTH_COUNT);
     const focusMonths: MonthlyProgressFocusMonthPreview[] = [];
+    const backgroundState = monthlyProgressBackgroundPrefetchStateBySignature.get(
+        buildMonthlyProgressBackgroundPrefetchSignature(context, compareMode)
+    ) ?? null;
 
     for (const [index, focusYearMonth] of focusYearMonths.entries()) {
         if (focusYearMonth === null || focusYearMonth === undefined) {
             continue;
         }
 
-        const primarySnapshot = await ensureMonthlyProgressSnapshotRecord(context, focusYearMonth);
+        const primarySnapshot = index === 0
+            ? await ensureMonthlyProgressSnapshotRecord(context, focusYearMonth)
+            : await readLatestMonthlyBookingCurveSnapshot(context.facilityCacheKey, focusYearMonth);
         if (primarySnapshot === undefined) {
             continue;
         }
@@ -501,7 +562,7 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
 
         const previousYearMonth = compareMode >= 2 ? shiftYearMonth(focusYearMonth, -12) : null;
         if (previousYearMonth !== null) {
-            const previousYearSnapshot = await ensureMonthlyProgressSnapshotRecord(context, previousYearMonth);
+            const previousYearSnapshot = await readLatestMonthlyBookingCurveSnapshot(context.facilityCacheKey, previousYearMonth);
             if (previousYearSnapshot !== undefined) {
                 const previousYearMonthBounds = getYearMonthBounds(previousYearSnapshot.yearMonth);
                 if (previousYearMonthBounds !== null) {
@@ -523,7 +584,7 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
 
         const twoYearsAgoMonth = compareMode >= 3 ? shiftYearMonth(focusYearMonth, -24) : null;
         if (twoYearsAgoMonth !== null) {
-            const twoYearsAgoSnapshot = await ensureMonthlyProgressSnapshotRecord(context, twoYearsAgoMonth);
+            const twoYearsAgoSnapshot = await readLatestMonthlyBookingCurveSnapshot(context.facilityCacheKey, twoYearsAgoMonth);
             if (twoYearsAgoSnapshot !== undefined) {
                 const twoYearsAgoMonthBounds = getYearMonthBounds(twoYearsAgoSnapshot.yearMonth);
                 if (twoYearsAgoMonthBounds !== null) {
@@ -565,7 +626,14 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
         compareLabel: formatMonthlyProgressCompareYearLabel(context.routeState.yearMonth, compareMode),
         secondaryMetric,
         focusMonths,
-        observationDateKey: context.batchDateKey
+        observationDateKey: context.batchDateKey,
+        loadingSummary: formatMonthlyProgressLoadingSummary({
+            context,
+            compareMode,
+            focusYearMonths: focusYearMonths.filter((yearMonth): yearMonth is string => yearMonth !== null),
+            focusMonths,
+            backgroundState
+        })
     };
 }
 
@@ -640,6 +708,42 @@ function buildMonthlyProgressFocusMonthPreview(options: {
     };
 }
 
+function formatMonthlyProgressLoadingSummary(options: {
+    context: MonthlyProgressResolvedContext;
+    compareMode: MonthlyProgressCompareMode;
+    focusYearMonths: string[];
+    focusMonths: MonthlyProgressFocusMonthPreview[];
+    backgroundState: MonthlyProgressBackgroundPrefetchState | null;
+}): string {
+    const currentMonth = options.focusMonths.find((month) => month.yearMonth === options.context.routeState.yearMonth) ?? null;
+    const displayedCount = options.focusMonths.length;
+    const expectedFocusCount = options.focusYearMonths.length;
+    const compareShortageCount = options.focusMonths.filter(hasMonthlyProgressCompareShortage).length;
+    const currentStatus = currentMonth === null
+        ? `${formatYearMonthLabel(options.context.routeState.yearMonth)} 取得中`
+        : compareShortageCount > 0
+            ? `${currentMonth.label} 保存済み・比較不足あり`
+            : `${currentMonth.label} 保存済み`;
+    const displayStatus = displayedCount < expectedFocusCount
+        ? `表示 ${displayedCount} / ${expectedFocusCount}か月`
+        : `表示 ${displayedCount}か月`;
+    const backgroundStatus = options.backgroundState === null
+        ? "background 待機中"
+        : options.backgroundState.completed
+            ? `background 完了 ${options.backgroundState.processedCount} / ${options.backgroundState.targetYearMonths.length}・失敗 ${options.backgroundState.failedCount}`
+            : `background 取得中 ${options.backgroundState.processedCount} / ${options.backgroundState.targetYearMonths.length}・現在 ${options.backgroundState.currentYearMonth === null ? "-" : formatYearMonthLabel(options.backgroundState.currentYearMonth)}・失敗 ${options.backgroundState.failedCount}`;
+
+    return [
+        currentStatus,
+        displayStatus,
+        backgroundStatus
+    ].join(" / ");
+}
+
+function hasMonthlyProgressCompareShortage(month: MonthlyProgressFocusMonthPreview): boolean {
+    return [...month.roomPoints, ...month.salesPoints].some((point) => point.compareValue === null);
+}
+
 function buildMonthlyProgressMetricPoints(
     primarySeries: MonthlyProgressLeadTimeSeries,
     compareMode: MonthlyProgressCompareMode,
@@ -686,18 +790,13 @@ function renderMonthlyProgressPreview(options: {
     context: MonthlyProgressResolvedContext;
     previewModel: MonthlyProgressPreviewModel;
 }): void {
-    const chart = document.querySelector<HTMLElement>(`[data-testid="${MONTHLY_PROGRESS_RESERVATION_CHART_TEST_ID}"]`);
-    if (chart === null) {
+    const insertionTarget = findMonthlyProgressPreviewInsertionTarget();
+    if (insertionTarget === null) {
         cleanupMonthlyProgressPreview();
         return;
     }
 
-    const chartContainer = chart.parentElement;
-    const chartGroup = chartContainer?.parentElement;
-    if (!(chartContainer instanceof HTMLElement) || !(chartGroup instanceof HTMLElement)) {
-        cleanupMonthlyProgressPreview();
-        return;
-    }
+    const { chartContainer, chartGroup } = insertionTarget;
 
     ensureMonthlyProgressPreviewStyles();
 
@@ -705,6 +804,7 @@ function renderMonthlyProgressPreview(options: {
         route: options.context.routeState.yearMonth,
         batch: options.context.batchDateKey,
         compareMode: options.previewModel.compareMode,
+        loadingSummary: options.previewModel.loadingSummary,
         focusMonths: options.previewModel.focusMonths.map((month) => ({
             yearMonth: month.yearMonth,
             room: month.roomPoints.map((point) => [point.tick, point.currentValue, point.compareValue]),
@@ -742,6 +842,10 @@ function renderMonthlyProgressPreview(options: {
         createMonthlyProgressMonthLegend(options.previewModel.focusMonths)
     );
 
+    const status = document.createElement("div");
+    status.setAttribute(MONTHLY_PROGRESS_PREVIEW_STATUS_ATTRIBUTE, "");
+    status.textContent = options.previewModel.loadingSummary ?? "";
+
     const grid = document.createElement("div");
     grid.setAttribute(MONTHLY_PROGRESS_PREVIEW_GRID_ATTRIBUTE, "");
     grid.replaceChildren(
@@ -762,12 +866,49 @@ function renderMonthlyProgressPreview(options: {
         })
     );
 
-    root.replaceChildren(heading, meta, note, controls, grid);
+    root.replaceChildren(heading, meta, note, controls, status, grid);
 
     if (root.parentElement !== chartGroup || root.previousElementSibling !== chartContainer) {
         root.remove();
         chartContainer.insertAdjacentElement("afterend", root);
     }
+}
+
+interface MonthlyProgressPreviewInsertionTarget {
+    chartContainer: HTMLElement;
+    chartGroup: HTMLElement;
+}
+
+function findMonthlyProgressPreviewInsertionTarget(): MonthlyProgressPreviewInsertionTarget | null {
+    const preferredChart = document.querySelector<HTMLElement>(`[data-testid="${MONTHLY_PROGRESS_RESERVATION_CHART_TEST_ID}"]`);
+    const visibleChart = preferredChart ?? findVisibleMonthlyProgressChartContent();
+    if (visibleChart !== null) {
+        const chartContainer = visibleChart.parentElement instanceof HTMLElement
+            ? visibleChart.parentElement
+            : visibleChart;
+        const chartGroup = chartContainer.parentElement instanceof HTMLElement
+            ? chartContainer.parentElement
+            : chartContainer;
+        return { chartContainer, chartGroup };
+    }
+
+    const chartTabs = document.querySelector<HTMLElement>('[data-testid="chart-tabs"]');
+    if (chartTabs?.parentElement instanceof HTMLElement) {
+        return {
+            chartContainer: chartTabs.parentElement,
+            chartGroup: chartTabs.parentElement
+        };
+    }
+
+    return null;
+}
+
+function findVisibleMonthlyProgressChartContent(): HTMLElement | null {
+    const chartContents = Array.from(document.querySelectorAll<HTMLElement>('[data-testid^="chart-content-"]'));
+    return chartContents.find((element) => {
+        const rect = element.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }) ?? chartContents[0] ?? null;
 }
 
 function createMonthlyProgressCompareGroup(

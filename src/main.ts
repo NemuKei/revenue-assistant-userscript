@@ -838,6 +838,8 @@ type RankRecommendationRankChangeFailureClass =
     | "current_rank_mismatch"
     | "rank_status_changed"
     | "proposal_disabled"
+    | "http_401"
+    | "http_403"
     | RankRecommendationWriteFailureType
     | "reflection_unconfirmed";
 
@@ -848,6 +850,19 @@ interface RankRecommendationRankChangeResult {
     httpStatus: number | null;
     occurredAt: string;
 }
+
+interface RankRecommendationReadFailure {
+    endpointLabel: string;
+    failureClass: Extract<
+        RankRecommendationRankChangeFailureClass,
+        "http_401" | "http_403" | "http_error" | "network_error" | "unexpected_error"
+    >;
+    httpStatus: number | null;
+}
+
+type RankRecommendationReflectionConfirmationResult =
+    | { confirmed: true }
+    | { confirmed: false; failure: RankRecommendationReadFailure | null };
 
 interface RankRecommendationWarmCachePriorityCandidate {
     stayDate: string;
@@ -2052,13 +2067,16 @@ async function commitPendingRankRecommendationRankChange(cacheKey: string): Prom
         return;
     }
 
-    const confirmed = await confirmRankRecommendationRankChangeReflection(proposal, submittedAt);
-    if (!confirmed) {
+    const confirmation = await confirmRankRecommendationRankChangeReflection(proposal, submittedAt);
+    if (!confirmation.confirmed) {
+        const readFailure = confirmation.failure;
         const result: RankRecommendationRankChangeResult = {
             status: "failed",
-            message: "送信は完了しましたが、反映確認がまだ取れていません",
-            failureClass: "reflection_unconfirmed",
-            httpStatus: submitResult.status,
+            message: readFailure === null
+                ? "送信は完了しましたが、反映確認がまだ取れていません。Revenue Assistant 標準画面で対象日と部屋タイプを確認してください。"
+                : formatRankRecommendationReadFailureMessage(readFailure, "confirmation"),
+            failureClass: readFailure?.failureClass ?? "reflection_unconfirmed",
+            httpStatus: readFailure?.httpStatus ?? submitResult.status,
             occurredAt: new Date().toISOString()
         };
         setRankRecommendationRankChangeResult(cacheKey, result);
@@ -2082,28 +2100,48 @@ async function preflightRankRecommendationRankChange(
     draft: PendingRankRecommendationRankChangeDraft
 ): Promise<RankRecommendationRankChangeResult | null> {
     const proposal = draft.proposal;
-    const [currentSettings, statuses] = await Promise.all([
+    const [currentSettingsResult, statusesResult] = await Promise.allSettled([
         loadSalesSettingCurrentSettings(proposal.stayDate, proposal.stayDate),
         loadLincolnSuggestStatuses(proposal.stayDate)
-    ]).catch((error: unknown) => {
+    ] as const);
+
+    if (currentSettingsResult.status === "rejected") {
+        const readFailure = classifyRankRecommendationReadFailure(currentSettingsResult.reason, "current settings");
         console.warn(`[${SCRIPT_NAME}] failed to preflight rank recommendation rank change`, {
             stayDate: proposal.stayDate,
             roomGroupId: proposal.roomGroupId,
-            error
+            endpointLabel: readFailure.endpointLabel,
+            failureClass: readFailure.failureClass,
+            httpStatus: readFailure.httpStatus
         });
-        return [null, null] as const;
-    });
-
-    if (currentSettings === null || statuses === null) {
         return {
             status: "blocked",
-            message: "送信直前の再取得に失敗したため送信しません",
-            failureClass: "unexpected_error",
-            httpStatus: null,
+            message: formatRankRecommendationReadFailureMessage(readFailure, "preflight"),
+            failureClass: readFailure.failureClass,
+            httpStatus: readFailure.httpStatus,
+            occurredAt: new Date().toISOString()
+        };
+    }
+    if (statusesResult.status === "rejected") {
+        const readFailure = classifyRankRecommendationReadFailure(statusesResult.reason, "rank status");
+        console.warn(`[${SCRIPT_NAME}] failed to preflight rank recommendation rank change`, {
+            stayDate: proposal.stayDate,
+            roomGroupId: proposal.roomGroupId,
+            endpointLabel: readFailure.endpointLabel,
+            failureClass: readFailure.failureClass,
+            httpStatus: readFailure.httpStatus
+        });
+        return {
+            status: "blocked",
+            message: formatRankRecommendationReadFailureMessage(readFailure, "preflight"),
+            failureClass: readFailure.failureClass,
+            httpStatus: readFailure.httpStatus,
             occurredAt: new Date().toISOString()
         };
     }
 
+    const currentSettings = currentSettingsResult.value;
+    const statuses = statusesResult.value;
     const currentRoomGroup = findRankRecommendationCurrentRoomGroup(currentSettings, proposal.stayDate, proposal.roomGroupId);
     const latestRankCode = normalizeRankRecommendationElementText(currentRoomGroup?.latest_current?.price_rank_code ?? null);
     const latestRankName = normalizeRankRecommendationElementText(currentRoomGroup?.latest_current?.price_rank_name ?? null);
@@ -2133,32 +2171,85 @@ async function preflightRankRecommendationRankChange(
 async function confirmRankRecommendationRankChangeReflection(
     proposal: RankRecommendationRankChangeProposal,
     submittedAt: string
-): Promise<boolean> {
+): Promise<RankRecommendationReflectionConfirmationResult> {
+    let firstReadFailure: RankRecommendationReadFailure | null = null;
     for (let attempt = 0; attempt < 10; attempt += 1) {
         if (attempt > 0) {
             await delay(3000);
         }
         clearRankRecommendationRankChangeReadCaches();
-        const [currentSettings, statuses] = await Promise.all([
-            loadSalesSettingCurrentSettings(proposal.stayDate, proposal.stayDate).catch(() => null),
-            loadLincolnSuggestStatuses(proposal.stayDate).catch(() => null)
-        ]);
+        const [currentSettingsResult, statusesResult] = await Promise.allSettled([
+            loadSalesSettingCurrentSettings(proposal.stayDate, proposal.stayDate),
+            loadLincolnSuggestStatuses(proposal.stayDate)
+        ] as const);
 
-        if (currentSettings !== null) {
+        if (currentSettingsResult.status === "fulfilled") {
+            const currentSettings = currentSettingsResult.value;
             const currentRoomGroup = findRankRecommendationCurrentRoomGroup(currentSettings, proposal.stayDate, proposal.roomGroupId);
             const latestRankCode = normalizeRankRecommendationElementText(currentRoomGroup?.latest_current?.price_rank_code ?? null);
             const latestRankName = normalizeRankRecommendationElementText(currentRoomGroup?.latest_current?.price_rank_name ?? null);
             if (latestRankCode === proposal.targetRankCode && latestRankName === proposal.targetRankName) {
-                return true;
+                return { confirmed: true };
             }
+        } else if (firstReadFailure === null) {
+            firstReadFailure = classifyRankRecommendationReadFailure(currentSettingsResult.reason, "current settings");
         }
 
-        if (statuses !== null && hasConfirmedRankRecommendationStatus(statuses, proposal, submittedAt)) {
-            return true;
+        if (statusesResult.status === "fulfilled") {
+            if (hasConfirmedRankRecommendationStatus(statusesResult.value, proposal, submittedAt)) {
+                return { confirmed: true };
+            }
+        } else if (firstReadFailure === null) {
+            firstReadFailure = classifyRankRecommendationReadFailure(statusesResult.reason, "rank status");
         }
     }
 
-    return false;
+    return {
+        confirmed: false,
+        failure: firstReadFailure
+    };
+}
+
+function classifyRankRecommendationReadFailure(error: unknown, endpointLabel: string): RankRecommendationReadFailure {
+    if (error instanceof RevenueAssistantRequestError) {
+        return {
+            endpointLabel,
+            failureClass: error.status === 401 ? "http_401" : error.status === 403 ? "http_403" : "http_error",
+            httpStatus: error.status
+        };
+    }
+
+    return {
+        endpointLabel,
+        failureClass: error instanceof TypeError ? "network_error" : "unexpected_error",
+        httpStatus: null
+    };
+}
+
+function formatRankRecommendationReadFailureMessage(
+    failure: RankRecommendationReadFailure,
+    phase: "preflight" | "confirmation"
+): string {
+    const actionPrefix = phase === "preflight"
+        ? `送信直前の${failure.endpointLabel}再取得に失敗したため送信しません`
+        : `送信は完了しましたが、${failure.endpointLabel}再取得に失敗したため反映確認ができていません`;
+    const actionSuffix = phase === "confirmation"
+        ? "Revenue Assistant 標準画面で対象日と部屋タイプを確認してください。"
+        : "";
+
+    switch (failure.failureClass) {
+        case "http_401":
+            return `${actionPrefix}（HTTP 401）。Revenue Assistant へ再ログインしてから再確認してください。${actionSuffix}`.trim();
+        case "http_403":
+            return `${actionPrefix}（HTTP 403）。閲覧または操作権限を確認してください。${actionSuffix}`.trim();
+        case "http_error":
+            return `${actionPrefix}（HTTP ${failure.httpStatus ?? "-"}）。時間を置いて再確認してください。${actionSuffix}`.trim();
+        case "network_error":
+            return `${actionPrefix}（network error）。通信状態を確認してから再確認してください。${actionSuffix}`.trim();
+        case "unexpected_error":
+        default:
+            return `${actionPrefix}。${actionSuffix}`.trim();
+    }
 }
 
 function findRankRecommendationCurrentRoomGroup(
@@ -9977,6 +10068,10 @@ function formatRankRecommendationRankChangeFailureClass(
             return "rank status changed";
         case "proposal_disabled":
             return "proposal disabled";
+        case "http_401":
+            return "HTTP 401";
+        case "http_403":
+            return "HTTP 403";
         case "http_error":
             return "HTTP error";
         case "network_error":
@@ -11498,7 +11593,7 @@ async function loadLincolnSuggestStatusesForRange(fromDateKey: string, toDateKey
     });
 
     if (!response.ok) {
-        throw new Error(`lincoln suggest status request failed: ${response.status}`);
+        throw new RevenueAssistantRequestError(LINCOLN_SUGGEST_STATUS_ENDPOINT, response.status);
     }
 
     const payload = (await response.json()) as LincolnSuggestStatusResponse;

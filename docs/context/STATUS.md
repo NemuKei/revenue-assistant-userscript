@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: 2026-05-30 時点で Remaining Task Triage に残っていた `RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02`、`RAU-UX-05` は処理済みである。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-05` は、利用者本人が Tampermonkey dashboard から latest `dist/revenue-assistant-userscript.user.js` を手動更新した後、CDP 一時注入なしの Revenue Assistant tab で確認した。top 画面は料金調整候補 list 10 行、`対応不要` pending 取消、`rank調整` pending 取消、監視対象 write API POST 0 件を確認した。Analyze `価格推移` tab は `競合価格 最安値推移（90日版）`、`背景取得 3 / 112`、`/api/v1/price_trends` 19 GET、監視対象 write API POST 0 件を確認した。その後、推奨 4 件を `RAU-RR-60`、`RAU-MP-03`、`RAU-UX-04`、`RAU-WC-17` として task 化した。Remaining Task Triage の Now は `RAU-RR-60` である。
+- 主対象: 2026-05-30 時点で Remaining Task Triage に残っていた `RAU-RR-60`、`RAU-MP-03`、`RAU-UX-04`、`RAU-WC-17` は完了済みである。`RAU-RR-60` では rank 変更後の反映確認不能状態と再取得失敗分類を実装し、`RAU-MP-03` では月次実績画面の現在表示月 first render、background queue、loading state を実装した。`RAU-UX-04` では React island を今すぐ導入せず、view model 抽出と依存追加承認を分ける設計判断を `docs/tasks_backlog.md` に記録した。`RAU-WC-17` では CDP 接続付き通常 Chrome で browser-local IndexedDB raw source cache を限定削除し、`候補優先 10 / 10 保存 1 skip 9` の indicator 発火を確認した。Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -91,11 +91,12 @@
   - `RAU-UX-03` Tampermonkey に latest dist を正式反映して top 画面 smoke test を行う
   - `RAU-WC-16` 候補優先 raw source 取得の発火状態を GUI 確認する
   - `RAU-UX-05` Tampermonkey へ latest dist を正式反映した後、CDP 一時注入なしで配布物 smoke test を再実施する
-- 未実装 Task ID:
   - `RAU-RR-60` rank 変更後の `reflection_unconfirmed` と再取得失敗分類を実装する
   - `RAU-MP-03` 月次実績画面の current-month-first graph と loading state を実装する
   - `RAU-UX-04` 料金調整候補 list / row actions の React island 導入可否を実装前に設計する
   - `RAU-WC-17` 候補優先 raw source 取得の安全 fixture を作り、indicator 発火を確認する
+- 未実装 Task ID:
+  - なし
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -108,7 +109,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-60`、`Next: RAU-MP-03`、`After Next: RAU-UX-04 / RAU-WC-17` である。`RAU-RR-60` は spec-impact yes のため、実装前に `docs/spec_003_rank_recommendation_signal.md` の更新要否を確認する。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は空である。次に作る task は、今回の完了報告で提案する follow-up 視点から利用者が採用したものを追加する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -343,8 +344,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-60` であることを確認する。
-2. `RAU-RR-60` の実装前に、`docs/spec_003_rank_recommendation_signal.md` の更新要否を確認し、`reflection_unconfirmed` と再取得失敗分類の表示契約を確定する。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が空であることを確認する。
+2. 次の task を作る場合は、今回の完了報告で提案した follow-up 視点から採用するものを選び、`docs/tasks_backlog.md` に task ID、目的、スコープ、非目標、受け入れ条件、spec-impact を追加する。
 3. browser smoke が必要な場合は、Tampermonkey、通常 Chrome profile、Revenue Assistant のログイン済み状態が必要かを先に分類し、必要な場合は Chrome Extension または CDP 接続付き Chrome で確認する。
 4. Rank Recommendation Bundle を続ける場合は、forecast 数値、sales / ADR 数値、競合価格の金額または差額を top list へ直接表示しない契約と、未観測 provider や `price_ranks` 系 endpoint を確認済み仕様として扱わない契約を維持する。
 

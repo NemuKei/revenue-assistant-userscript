@@ -4270,6 +4270,11 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+- 完了メモ:
+  - `docs/spec_003_rank_recommendation_signal.md` に、送信前再取得失敗と送信後反映確認失敗の表示契約を追記した。
+  - 実装では、送信前 current settings / rank status 再取得と、送信後の反映確認再取得を `Promise.allSettled` で扱い、HTTP 401、HTTP 403、その他 HTTP status、network error、unexpected error を分類する。
+  - `POST /api/v1/lincoln/suggest` が成功しても、期待 rank を確認できない場合は送信失敗ではなく `reflection_unconfirmed` として表示する。再取得自体が失敗した場合は、ログイン切れ、権限不足、HTTP error、通信失敗を利用者向け文言で分ける。
+  - CDP 接続付き通常 Chrome で current settings の HTTP 401 fixture を使い、`送信直前のcurrent settings再取得に失敗したため送信しません（HTTP 401）` が表示され、監視対象 write API POST が 0 件であることを確認した。
 
 ### RAU-MP-03 月次実績画面の current-month-first graph と loading state を実装する
 
@@ -4293,6 +4298,11 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 完了メモ:
+  - `docs/spec_001_analyze_expansion.md` に、現在表示月を先に描画し、future month と比較月を background queue で取得する契約を追記した。
+  - 実装では、現在表示月だけを同期的に `ensure` し、2 か月目以降と比較月は保存済み snapshot を読める分だけ描画する。未保存分は background queue が順番に取得し、取得中、完了、失敗数、表示月数、比較不足を status text に出す。
+  - Revenue Assistant 実 DOM では `chart-content-numberOfRoomsSold-dateOfReservationBasis` が常に存在しないため、標準画面の選択中 chart content、または chart tabs 周辺へ挿入する fallback を追加した。標準 UI の選択 tab は変更しない。
+  - CDP 一時注入で `https://ra.jalan.net/monthly-progress/2026-05` を確認し、`LTブッキングカーブ`、2 panel、2 SVG、`2026-05 保存済み・比較不足あり / 表示 4か月 / background 完了 7 / 7・失敗 0`、監視対象 write request 0 件を確認した。
 
 ### RAU-UX-04 料金調整候補 list / row actions の React island 導入可否を実装前に設計する
 
@@ -4315,6 +4325,19 @@
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+- 設計判断:
+  - 現時点では、料金調整候補 list と row actions へ React island をすぐ導入しない。
+  - 理由は、現在の list が候補生成、lifecycle filter、warm cache indicator、booking curve preview、rank 変更 pending、write guard の状態を同じ DOM 更新経路で扱っており、React 依存を先に追加すると、状態境界と副作用境界が曖昧なまま置き換え範囲だけが広がるためである。
+  - React island を導入する場合の対象 surface は、top 料金調整候補 list root、候補 row、row actions、decision pending 表示、rank change pending 表示、booking curve preview host、rank change preview host に限定する。
+  - React island に入れないものは、candidate generation、rank recommendation scoring、IndexedDB 読み書き、Revenue Assistant API adapter、warm cache queue、Chrome / Tampermonkey 起動境界、userscript metadata である。
+  - mount root は既存の料金調整候補 section 内に 1 つだけ置く。Revenue Assistant 標準 DOM の外側へ root を増やさず、標準 UI の event delegation と競合しないよう、row action の click propagation は既存と同じく RAU section 内で止める。
+  - CSS 境界は `data-ra-rank-recommendation-*` attribute を維持し、React component 導入後も既存 selector と screenshot / CDP 検証の観測点を壊さない。
+  - state 境界は、候補 view model、UI open state、pending state、last result state に分ける。API request、IndexedDB、localStorage、warm cache queue は React component から直接呼ばず、既存 adapter または controller 関数を経由する。
+  - bundle size と依存追加は別承認にする。`react` と `react-dom` を追加する前に、現在の vanilla DOM 実装から候補 view model を抽出し、React なしで fixture render できることを確認する。
+  - 最初の子 task 候補は `RAU-UX-06` とし、内容は料金調整候補 list の view model 抽出、row action state の入力 / 出力整理、React なしの fixture render 検証に限定する。依存追加は行わない。
+  - React 依存追加へ進む場合は `RAU-UX-07` として別 task にし、`react`、`react-dom`、bundle size 差分、Tampermonkey dist 更新、通常 Chrome top 画面 smoke、write API POST 0 件確認を承認ポイントにする。
+  - 撤退条件は、bundle size 増加が実用上大きい、Tampermonkey 更新後に top list 初回表示が遅くなる、pending 取消または rank change guard の状態再現が不安定になる、既存 CDP 検証の selector が維持できない、のいずれかである。
+  - この task では runtime behavior、候補件数、scoring、Revenue Assistant API request 範囲、write guard、pending 秒数、React 依存を変更しない。
 
 ### RAU-WC-17 候補優先 raw source 取得の安全 fixture を作り、indicator 発火を確認する
 
@@ -4337,29 +4360,34 @@
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
+- 完了メモ:
+  - CDP 接続付き通常 Chrome の top 画面で、表示中候補 1 件に対応する browser-local IndexedDB `booking-curve-raw-sources` record を限定削除した。
+  - 削除対象は browser-local cache だけであり、raw response body、HAR、Cookie、token、credential、非公開価格データは保存していない。
+  - 検証では、表示中候補 list 10 行、削除前 raw source `最新基準日あり` 10 件、削除後の warm cache indicator `候補優先 10 / 10 保存 1 skip 9`、候補行 raw source `最新基準日あり` への復帰、監視対象 write request 0 件を確認した。
+  - CDP 検証中の通常 Chrome tab は background 扱いで `document.visibilityState === "hidden"` だったため、検証用に `requestAnimationFrame` と `visibilityState` を一時 shim し、確認後に queue を `タブ非表示` で停止した。この shim は browser runtime だけの一時操作で、repo の runtime behavior には含めていない。
 
 ## Remaining Task Triage
 
 Now:
 
-- `RAU-RR-60` rank 変更後の `reflection_unconfirmed` と再取得失敗分類を実装する。
+- なし。
 
 Next:
 
-- `RAU-MP-03` 月次実績画面の current-month-first graph と loading state を実装する。
+- なし。
 
 After Next:
 
-- `RAU-UX-04` 料金調整候補 list / row actions の React island 導入可否を実装前に設計する。
-- `RAU-WC-17` 候補優先 raw source 取得の安全 fixture を作り、indicator 発火を確認する。
+- なし。
 
 Later:
 
-  - なし。
+- なし。
 
 統合判断:
 
 - 2026-05-30 に、開始時点で Remaining Task Triage にあった `RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02`、および追加で戻した `RAU-UX-05` は閉じた。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-05` は、利用者本人が Tampermonkey dashboard から latest `dist/revenue-assistant-userscript.user.js` を手動更新した後に完了した。CDP 一時注入なしの top smoke では料金調整候補 list 10 行、pending 取消、監視対象 write API POST 0 件を確認した。Analyze `価格推移` tab では `競合価格 最安値推移（90日版）`、初期 16 件の `/api/v1/price_trends` GET、`背景取得 3 / 112`、合計 19 件の `/api/v1/price_trends` GET、監視対象 write API POST 0 件を確認した。2026-05-30 時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
+- 2026-05-30 に、開始時点で Remaining Task Triage にあった `RAU-RR-60`、`RAU-MP-03`、`RAU-UX-04`、`RAU-WC-17` を閉じた。`RAU-RR-60` と `RAU-MP-03` は実装と対象 spec 更新を完了し、`RAU-UX-04` は依存追加なしの設計判断として完了した。`RAU-WC-17` は CDP 接続付き通常 Chrome で browser-local IndexedDB cache を限定削除し、候補優先 indicator の発火、進行、保存、skip 表示を確認した。2026-05-30 時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 2026-05-30 に、完了報告で推奨した 4 件を task 化した。`RAU-RR-60` は rank write 後の確認不能状態と再取得失敗分類であり、既に実送信導線が存在するため安全性と誤読防止の効果が大きい。`RAU-MP-03` は `RAU-MP-02` の正本化済み契約に続く実装 task であり、月次実績画面の first render と loading state を改善する。`RAU-UX-04` は React 依存追加前の設計 task であり、runtime behavior を変更しない。`RAU-WC-17` は実データで未発火だった indicator を安全 fixture で確認する検証 task である。この順序により、write safety、画面価値、依存追加判断、未発火 fixture 検証の順で進める。
 - 2026-05-30 に、前回完了報告で提案した follow-up を task 化した。当時は CDP 一時注入ではなく Tampermonkey 反映後の配布物確認が以後の GUI 確認の前提になるため、`RAU-UX-03` を Now とした。`RAU-WC-16` は `RAU-WC-14` の未発火 GUI 確認であり、Tampermonkey 反映後に確認する task とした。`RAU-CP-14` は `RAU-WC-15` で docs 設計した価格推移タブの background queue 実装であり、実装効果が大きいため After Next に置いた。`RAU-MP-02` は実装前に final graph 契約を正本化する task であり、`RAU-RR-59` は write guard の追加調査である。`RAU-UX-02` は React island 化の棚卸しであり、依存追加判断を伴うため、配布物確認と未発火確認より後に回した。
 - 2026-05-30 に、React 導入の技術的関心と component ブラッシュアップのため、`RAU-UX-02` を追加した。既存の `RAU-UX-01` は competitor prices と団体系列の導入判断であり、React / component 化の棚卸しとは目的が異なるため重複しない。`RAU-UX-02` は依存追加や runtime behavior 変更を行わない docs-only の棚卸し task とし、実装に進む場合は棚卸し後に surface 単位の子 task へ分割する。

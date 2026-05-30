@@ -311,7 +311,7 @@ Indicator:
 - Analyze 日付ページは、利用者が開いている stay_date を warm cache の最優先対象にする。表示上の基準日は `as_of_date` であり、indicator は `この日 raw`、`参考線`、`同曜日` の内訳を出す。保存済み raw source、derived reference curve、同曜日 raw source のいずれが不足しているかを分けて表示する。
 - 競合価格タブは、競合価格 snapshot の保存状態を booking curve warm cache とは別の状態として表示する。対象 stay_date、検索条件 signature、最終保存時刻、前回 snapshot の有無、競合施設数、skip 理由、保存失敗を区別する。競合価格 snapshot を booking curve warm cache の完了定義へ混ぜない。
 - 価格推移タブは、公式 `/api/v1/price_trends` から保存した `price-trend-records` を使う。初回表示では、表示中 stay_date の `roomType = 指定なし`、`mealType = NONE / BREAKFAST / DINNER / BREAKFAST_DINNER`、`guestCount = 1 / 2 / 3 / 4` の 16 request を優先する。これは既定の `部屋タイプ=指定なし`、`食事=指定なし`、人数別 4 panel を先に描画するための最小単位である。部屋タイプ別 request を含む残りの `mealType x roomType x guestCount` は background queue で取得する。保存済み record は `fetchedAt` を取得時刻として表示できるようにし、89 日より先または `yads` 空配列は対象外理由として扱う。
-- 月次実績画面は、現在表示月の snapshot を初回表示の優先対象にし、比較月または future month の prefetch は background 扱いにする。`RAU-MP-02` で final graph 契約と読み込み状態を定義したが、GUI 確認が未完了であるため、Top または Analyze の安定済み公開挙動と同等にはまだ扱わない。
+- 月次実績画面は、現在表示月の snapshot を初回表示の優先対象にし、比較月または future month の prefetch は background 扱いにする。`RAU-MP-03` では、現在表示月の snapshot だけを初回描画の同期対象にし、future month と比較月は background queue で順次取得する。画面上には、現在表示月の保存状態、表示中の月数、background の処理済み件数、対象件数、失敗件数、現在取得中の yearMonth を表示する。これにより、比較月や future month の取得が遅い場合でも、現在表示月の graph を先に確認できる。
 
 ### Sync Timing
 
@@ -400,8 +400,8 @@ Indicator:
 - 表示対象月は、route の現在表示月から未来 4 か月までを同じ graph section に出す。各月は色を分けて表示し、tooltip では月、LT、対象日、値、前年同日または前年同 bucket との比率を確認できるようにする。
 - 比較対象は `前年`、`前年 / 前々年`、`前年 / 前々年 / 3年前` の段階切替とする。比較対象月の snapshot が未保存または取得失敗の場合は、その比較線だけを欠損として扱い、現在表示月の線を消さない。
 - 読み込み優先順位は、まず route の現在表示月、次に同じ graph section に出す未来 4 か月、最後に選択中 compare mode で必要な前年、前々年、3年前の比較月とする。現在表示月が描画可能な場合は、比較月または future month の取得完了を待たずに section を表示する。
-- 読み込み状態は、現在表示月を `取得中`、`保存済み`、`保存済みだが比較不足`、`取得失敗`、`対象外` に分ける。background 対象は、対象月、比較月、取得済み数、失敗数、現在取得中の yearMonth を表示できる形にする。初期実装で表示 UI が未整備な場合でも、この分類に沿って後続 task を切る。
-- 実装に進む場合の最小 task は、現在表示月だけを先に描画し、比較月と future month を background に回す queue と、その読み込み状態表示を 1 画面で検証できる粒度にする。既存 snapshot schema migration、料金調整候補 scoring への接続、月次実績の rank recommendation 入力化は別 task とする。
+- 読み込み状態は、現在表示月を `取得中`、`保存済み`、`保存済みだが比較不足`、`取得失敗`、`対象外` に分ける。background 対象は、対象月、比較月、処理済み件数、対象件数、失敗件数、現在取得中の yearMonth を表示できる形にする。`RAU-MP-03` の初期実装では、現在表示月が保存済みで比較値が不足している場合に `保存済み・比較不足あり` と表示し、background queue は `background 取得中 processed / total・現在 YYYY-MM・失敗 n` または `background 完了 processed / total・失敗 n` と表示する。
+- 既存 snapshot schema migration、料金調整候補 scoring への接続、月次実績の rank recommendation 入力化は別 task とする。
 
 2026-04-30 の Chrome CDP 観測結果:
 
