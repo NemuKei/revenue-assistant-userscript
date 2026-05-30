@@ -401,6 +401,7 @@ Indicator:
 - 比較対象は `前年`、`前年 / 前々年`、`前年 / 前々年 / 3年前` の段階切替とする。比較対象月の snapshot が未保存または取得失敗の場合は、その比較線だけを欠損として扱い、現在表示月の線を消さない。
 - 読み込み優先順位は、まず route の現在表示月、次に同じ graph section に出す未来 4 か月、最後に選択中 compare mode で必要な前年、前々年、3年前の比較月とする。現在表示月が描画可能な場合は、比較月または future month の取得完了を待たずに section を表示する。
 - 読み込み状態は、現在表示月を `取得中`、`保存済み`、`保存済みだが比較不足`、`取得失敗`、`対象外` に分ける。background 対象は、対象月、比較月、処理済み件数、対象件数、失敗件数、現在取得中の yearMonth を表示できる形にする。`RAU-MP-03` の初期実装では、現在表示月が保存済みで比較値が不足している場合に `保存済み・比較不足あり` と表示し、background queue は `background 取得中 processed / total・現在 YYYY-MM・失敗 n` または `background 完了 processed / total・失敗 n` と表示する。
+- 表示品質確認用に、browser-local の `localStorage["revenue-assistant:monthly-progress:v1:fixture-mode"]` で合成 fixture を有効化できる。値は `empty`、`current-only`、`compare-shortage`、`partial-failure` とし、raw response body、Cookie、token、credential、非公開データを使わない。fixture mode 中は月次 snapshot の background prefetch を開始せず、合成 view model だけで空状態、現在月のみ保存済み、比較不足、一部取得失敗の表示を確認する。
 - 既存 snapshot schema migration、料金調整候補 scoring への接続、月次実績の rank recommendation 入力化は別 task とする。
 
 2026-04-30 の Chrome CDP 観測結果:
