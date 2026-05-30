@@ -4857,7 +4857,7 @@
   - `日次差分表示` を先にする理由は、既存の `monthly-progress` snapshot と LT bucket view model だけで入力が閉じ、過去 batch 間比較のような保存世代管理を増やさずに、利用者が月内の増減日を読めるようにできるためである。
   - 採用候補 task の入力データは、`facilityCacheKey x yearMonth x batchDateKey` の保存済み monthly snapshot と、既存の month-end anchor に変換した LT bucket 系列である。処理は、同じ表示月の連続する予約日または LT bucket の差分を計算し、増加、減少、変化なし、未観測を UI 表示用 view model へ変換する。出力は、既存 `LTブッキングカーブ` section 内の補助表示として、対象月、LT bucket、差分方向、差分量の表示有無、未観測理由を持つ。
   - `過去 batch 履歴比較` は、同じ `yearMonth` の複数 `batchDateKey` snapshot を比較するため、保存世代の選択、古い snapshot の保持方針、比較基準 batch の表示が必要である。`表示密度調整` は入力データを増やさず、系列数、tooltip 情報量、panel 配置、既存 Revenue Assistant chart との距離を調整する UI task として扱う。
-  - この task では runtime behavior を変更していない。次に実装へ進める場合の候補は `RAU-MP-06` 月次実績画面に日次差分表示を追加する、である。ただし今回の依頼は既存未着手 task の完了であるため、`Remaining Task Triage` へ新しい未着手 task としては追加せず、最終報告の次タスク候補へ回す。
+  - この task では runtime behavior を変更していない。次に実装へ進める場合の候補は `RAU-MP-06` 月次実績画面に日次差分表示を追加する、である。2026-05-31 の次回更新で、この候補は正式な未着手 task として `Remaining Task Triage` へ追加した。
 
 ### RAU-CP-15 価格推移 background queue の安定性を再確認する
 
@@ -4890,28 +4890,122 @@
   - 確認中の監視対象 write API POST は 0 件、console error は 0 件、page error は 0 件だった。raw response body、HAR、Cookie、token、credential、非公開価格データは保存していない。
   - 小修正が必要な停止、再開、skip、失敗表示の不具合は、この確認範囲では見つからなかった。
 
+### RAU-UX-21 React Doctor の既存診断を rule family ごとに棚卸しする
+
+- 目的:
+  - `RAU-UX-20` で導入した repo-local command の `npm run react:doctor` を使い、既存診断 69 件を実装前に分類する。
+  - React component 追加や分割を進める前に、診断結果のうち実装で直すべきもの、誤検知として扱うもの、利用者確認が必要なものを分ける。
+- スコープ:
+  - 対象は `npm run react:doctor -- --diff false` の出力と、必要に応じた verbose 出力である。
+  - 診断は rule family ごとにまとめる。rule family とは、React Doctor が同じ種類の問題として分類する診断群を指す。
+  - 影響ファイル、診断件数、実際の runtime behavior への影響、修正候補、修正しない理由を `docs/tasks_backlog.md` または適切な docs に記録する。
+- 非目標:
+  - この task では runtime behavior を変更しない。
+  - React Doctor の設定変更、診断抑制、dependency 更新、広い component refactor は行わない。
+  - version pin のない remote package 実行を追加しない。
+- 受け入れ条件:
+  - React Doctor の既存診断が、rule family、対象ファイル、影響、対応判断、次アクションに分けて記録されている。
+  - 高確度で直すべき診断だけが、別 task または既存 task への追記として明示されている。
+  - 誤検知または保留と判断した診断には、その理由と再確認条件が書かれている。
+  - `git diff --check` が通過する。コード変更を含めた場合は `npm run check` も通過する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-22 `smoke:distribution` を Analyze / monthly-progress mode へ広げる
+
+- 目的:
+  - `RAU-UX-19` で追加した配布版 smoke helper を、top 画面だけでなく Analyze と月次実績画面の主要確認にも使えるようにする。
+  - 通常 Chrome、Tampermonkey、GitHub Pages 配布物、監視対象 write API POST 0 件確認を、画面ごとに同じ入口から再実行できるようにする。
+- スコープ:
+  - 対象は `scripts/run-distribution-smoke.mjs`、`package.json` の npm script、README の配布版 smoke 手順である。
+  - `--mode top`、`--mode price-trends`、`--mode monthly-progress` のように、確認対象画面を明示できる入力を追加する。
+  - mode ごとに URL、主要 selector、React marker または RAU section、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力する。
+- 非目標:
+  - Tampermonkey dashboard の更新操作を helper に追加しない。
+  - Revenue Assistant write API、rank 変更送信、非公開 API の呼び出し範囲拡大、raw response body 保存は行わない。
+  - browser trace や HAR を Git 管理へ入れない。
+- 受け入れ条件:
+  - helper が top、Analyze 価格推移、月次実績画面を mode で切り替えられる。
+  - 各 mode の出力項目と失敗時に完了扱いにしない条件が README に書かれている。
+  - `npm run check` と `git diff --check` が通過する。
+  - ブラウザ確認が可能な場合は、通常 Chrome または Chrome DevTools Protocol 接続付き Chrome で少なくとも一つの追加 mode を実行し、監視対象 write API POST 0 件を確認する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-MP-06 月次実績画面に日次差分表示を追加する
+
+- 目的:
+  - `RAU-MP-05` で最初に実装する候補として選んだ `日次差分表示` を、月次実績画面へ追加する。
+  - 利用者が月内の増加日、減少日、変化なし、未観測を、既存の LT booking curve preview と同じ文脈で読めるようにする。
+- スコープ:
+  - 対象は `/monthly-progress/YYYY-MM` の月次実績画面、`src/monthlyProgress.ts`、必要に応じた pure helper と fixture mode である。
+  - 入力は、`facilityCacheKey x yearMonth x batchDateKey` の保存済み monthly snapshot と、既存の month-end anchor に変換した LT bucket 系列である。
+  - 処理は、同じ表示月の連続する予約日または LT bucket の差分を計算し、増加、減少、変化なし、未観測を UI 表示用 view model へ変換する。
+  - 出力は、既存 `LTブッキングカーブ` section 内の補助表示として、対象月、LT bucket、差分方向、差分量の表示有無、未観測理由を持つ。
+- 非目標:
+  - 過去 batch 履歴比較、保存世代管理、外部 DB、PMS データ連携、料金調整候補 scoring への接続は行わない。
+  - raw monthly API response body、顧客情報、予約情報、価格や在庫の非公開データを repo に保存しない。
+  - Revenue Assistant write API は使わない。
+- 受け入れ条件:
+  - current-only、compare-shortage、partial-failure のような確認条件で、差分あり、差分なし、未観測、比較不足が誤読なく表示される。
+  - 既存の月次 graph、LT bucket 表示、loading state、空状態を壊さない。
+  - `npm run check` と `git diff --check` が通過する。
+  - GUI 確認または fixture 確認で、日次差分表示の主要状態を確認している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-CP-16 価格推移 background queue の long-run 完了と failure fixture を確認する
+
+- 目的:
+  - `RAU-CP-15` で確認した短時間の background queue 安定性に続き、より長い実行または制御された fixture で完了、skip、失敗表示を確認する。
+  - 利用者が価格推移 tab を見たときに、background queue の進行、完了、失敗、再試行要否を誤読しない状態にする。
+- スコープ:
+  - 対象は Analyze `価格推移` tab、`/api/v1/price_trends` の read-only GET、`price-trend-records` store、background status 表示である。
+  - long-run 確認では、処理済み件数、保存件数、skip 件数、失敗件数、停止または完了条件を記録する。
+  - failure fixture を使う場合は、request body、response body、Cookie、token、authorization header、価格や在庫の非公開データを保存しない方法で、表示状態だけを確認する。
+- 非目標:
+  - request 対象範囲を広げない。
+  - 料金調整候補 scoring へ価格推移 data を接続しない。
+  - write API、hidden API、認証回避、rate limit 回避を追加しない。
+  - raw trace、HAR、request body、response body を Git 管理へ入れない。
+- 受け入れ条件:
+  - long-run 完了、または制限時間つき観測での進行状況と停止理由が記録されている。
+  - skip または controlled failure の少なくとも一つについて、画面表示と内部 count の扱いを確認している。
+  - 確認中の監視対象 write API POST が 0 件である。
+  - `npm run check` と `git diff --check` が通過する。docs-only の確認 task として終える場合は `git diff --check` と該当 docs の text search を最小 verify とする。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
 ## Remaining Task Triage
 
 Now:
 
-- なし。
+- `RAU-UX-21` React Doctor の既存診断を rule family ごとに棚卸しする。
 
 Next:
 
-- なし。
+- `RAU-UX-22` `smoke:distribution` を Analyze / monthly-progress mode へ広げる。
 
 After Next:
 
-- なし。
+- `RAU-MP-06` 月次実績画面に日次差分表示を追加する。
 
 Later:
 
-- なし。
+- `RAU-CP-16` 価格推移 background queue の long-run 完了と failure fixture を確認する。
 
 統合判断:
 
+- 2026-05-31 に、前回完了報告で推奨した 4 件を task 化した。`RAU-UX-21` は React Doctor 導入直後の既存診断を分類し、次の React UI 変更で無関係な警告に引きずられないようにするため Now とした。`RAU-UX-22` は配布版 smoke helper を top 以外の重要画面へ広げ、今後の GUI 確認を同じ基準で実行できるようにするため Next とした。`RAU-MP-06` は `RAU-MP-05` で採用した月次実績画面の実装候補であり、仕様影響を確認してから進めるため After Next とした。`RAU-CP-16` は価格推移 background queue の短時間確認後に残る long-run と failure 表示の確認であり、現時点で緊急の修正は見つかっていないため Later とした。
 - 2026-05-31 に、開始時点で Remaining Task Triage に残っていた `RAU-UX-20`、`RAU-UX-18`、`RAU-UX-19`、`RAU-MP-05`、`RAU-CP-15` を閉じた。`RAU-UX-20` では `react-doctor@0.2.14` を exact devDependency として lockfile に固定し、`npm run react:doctor` を追加した。`RAU-UX-18` では React list を mount marker、summary、controls、table、row、cell、row actions、preview rows へ責務分割した。`RAU-UX-19` では配布版 smoke helper `npm run smoke:distribution` を追加した。`RAU-MP-05` では月次実績画面の次段階候補を比較し、最初に実装する候補を `日次差分表示` と判断した。`RAU-CP-15` では通常 Chrome の Tampermonkey installed version `0.1.0.336` で価格推移 background queue の停止、復帰、表示安定性を確認した。
-- 2026-05-31 時点で、既存の未着手 task は Remaining Task Triage に残していない。次に task 化する候補は、利用者判断後に新規 task として追加する。候補は、`RAU-MP-06` 月次実績画面に日次差分表示を追加する、`RAU-UX-21` React Doctor 既存診断 69 件を rule family ごとに棚卸しする、`RAU-UX-22` `smoke:distribution` を top 以外の Analyze / monthly-progress mode へ広げる、`RAU-CP-16` 価格推移 background queue の long-run 完了と failure fixture を確認する、である。
 - 2026-05-30 に、`npx react-doctor@latest` のような version pin のない remote package 実行が供給網リスクになるという利用者確認に基づき、`RAU-UX-20` を Now に追加した。React component 分割の `RAU-UX-18` へ進む前に、`react-doctor` を導入する前提で、どの version と lockfile と repo-local command に固定し、どの条件で更新または停止するかを決めるためである。`RAU-UX-18` は Next、`RAU-UX-19` は After Next、`RAU-MP-05` と `RAU-CP-15` は Later に置く。
 - 2026-05-30 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-18` は React list 正規 path 化直後の保守性改善であり、次の UI 変更前に component 責務を分けるため Now とした。`RAU-UX-19` は公開版、Tampermonkey、通常 Chrome smoke、write API POST 0 件確認を一つの再現可能な検証入口へ寄せる補助 task であり、React component 分割後の配布確認を楽にするため Next とした。`RAU-MP-05` は月次実績画面の次段階候補を実装前に比較する docs-first task であり、月次画面の外部契約に影響し得るため After Next とした。`RAU-CP-15` は価格推移 background queue の実画面安定性確認であり、現在の queue は実装済みで緊急の仕様変更ではないため Later とした。
 - 2026-05-30 に、開始時点で Remaining Task Triage に残っていた `RAU-UX-09` から `RAU-UX-17` を閉じた。料金調整候補 list は React component を正規 path とし、vanilla list renderer は削除した。candidate generation、scoring、IndexedDB、Revenue Assistant API adapter、warm cache queue、rank change adapter、write guard、pending 秒数、監視対象 write API endpoint は変更していない。CDP 接続付き通常 Chrome の Revenue Assistant top page に local `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10 件、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel、監視対象 write API POST 0 件を確認した。`react-doctor` は remote package の unpinned 実行として sandbox policy に拒否されたため未実施である。
