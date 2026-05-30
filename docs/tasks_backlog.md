@@ -4388,6 +4388,14 @@
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
+- 完了メモ:
+  - GitHub Pages の `publish-userscript.yml` workflow run `26676824048` が成功した。
+  - 公開配布物 `https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js` の metadata は `@version 0.1.0.330`、`@updateURL` と `@downloadURL` は同じ公開 URL であることを確認した。
+  - 利用者本人が Tampermonkey で配布版を手動更新した後、通常 Chrome の Revenue Assistant top 画面で CDP 一時注入なしに `data-ra-rank-recommendation-react-island="mounted"` が 1 件、`data-mode="live"`、`data-row-count="10"` になることを確認した。
+  - 同じ top 画面では料金調整候補 row が 10 件、ログイン form なし、Chrome console error 0 件だった。
+  - 月次実績画面 `https://ra.jalan.net/monthly-progress/2026-05` では、CDP 一時注入なしに月次 preview root 1 件、panel 2 件、SVG 2 件を確認した。
+  - Analyze `価格推移` tab `https://ra.jalan.net/analyze/2026-06-05` では、`price-trends-content` 1 件、RAU の `競合価格 最安値推移（90日版）` 表示、SVG 5 件、公式価格推移または background queue 由来の status text を確認した。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、非公開データは保存していない。
 
 ### RAU-RR-61 rank 変更 POST 成功後に `反映確認中` 状態を維持し、同一候補の二重送信を防ぐ
 
@@ -4412,6 +4420,11 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+- 完了メモ:
+  - 対象 scope は `facilityId x stayDate x roomGroupId` とし、POST 成功後から current settings または rank status の再取得が終わるまで `反映確認中` を維持する実装にした。
+  - 同じ scope の pending rank change または反映確認中 rank change がある場合、追加の rank change pending を開始できないようにした。
+  - 反映確認成功、反映確認不能、再取得失敗の分類は `RAU-RR-60` の表示を維持し、HTTP success だけで成功済みと誤読されないようにした。
+  - 対応する仕様は `docs/spec_003_rank_recommendation_signal.md` に反映済みである。
 
 ### RAU-MP-04 月次実績画面の空状態と比較不足 fixture を追加し、表示品質を確認する
 
@@ -4435,6 +4448,12 @@
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 完了メモ:
+  - `localStorage["revenue-assistant:monthly-progress:v1:fixture-mode"]` による合成 fixture mode を追加した。
+  - fixture value は `empty`、`current-only`、`compare-shortage`、`partial-failure` である。
+  - fixture mode 中は月次 snapshot の background prefetch を開始せず、合成 view model だけで空状態、現在月のみ保存済み、比較不足、一部取得失敗を確認できる。
+  - 月次実績画面の実データ smoke では、配布版で preview root 1 件、panel 2 件、SVG 2 件を確認した。
+  - 対応する仕様は `docs/spec_001_analyze_expansion.md` に反映済みである。
 
 ### RAU-UX-06 料金調整候補 list の view model を抽出し、React なしで fixture render を検証する
 
@@ -4458,6 +4477,11 @@
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
+- 完了メモ:
+  - 料金調整候補 list の表示入力を `RankRecommendationListViewModel` と row view model に分けた。
+  - `localStorage["revenue-assistant:rank-recommendation:fixture-mode"] = "basic"` により、live API write を伴わずに合成候補 2 件の fixture render を確認できる入口を追加した。
+  - 既存の `data-ra-rank-recommendation-*` selector は維持し、Chrome / CDP smoke の観測点を壊さない形にした。
+  - candidate generation、rank recommendation scoring、IndexedDB、Revenue Assistant API adapter、warm cache queue は view model 変換の外側に残した。
 
 ### RAU-UX-07 React island 導入の依存承認と最小 mount を検証する
 
@@ -4483,28 +4507,33 @@
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+- 完了メモ:
+  - 利用者が依存追加を承認したため、`react@19.2.6` と `react-dom@19.2.6` を dependencies に、`@types/react@19.2.15` と `@types/react-dom@19.2.3` を devDependencies に exact pin で追加した。
+  - 料金調整候補 section 内に hidden React island mount marker を追加した。現時点では UI 本体を React へ置き換えず、`data-ra-rank-recommendation-react-island="mounted"`、`data-row-count`、`data-mode`、`data-signature` を同期的に出す最小 mount に限定している。
+  - 公開版 `@version 0.1.0.330` を Tampermonkey へ手動更新後、通常 Chrome top 画面で marker 1 件、`data-mode="live"`、`data-row-count="10"` を確認した。
+  - build 後の公開 userscript size は workflow 配布物で約 519.8 KB である。React 導入は hidden marker に限定しており、撤退条件に該当する UI 不安定化は今回の top smoke では確認していない。
 
 ## Remaining Task Triage
 
 Now:
 
-- `RAU-UX-08` latest dist を Tampermonkey に正式反映した後、CDP 一時注入なしで smoke test を再実施する。
+- なし
 
 Next:
 
-- `RAU-RR-61` rank 変更 POST 成功後に `反映確認中` 状態を維持し、同一候補の二重送信を防ぐ。
+- なし
 
 After Next:
 
-- `RAU-MP-04` 月次実績画面の空状態と比較不足 fixture を追加し、表示品質を確認する。
-- `RAU-UX-06` 料金調整候補 list の view model を抽出し、React なしで fixture render を検証する。
+- なし
 
 Later:
 
-- `RAU-UX-07` React island 導入の依存承認と最小 mount を検証する。
+- なし
 
 統合判断:
 
+- 2026-05-30 に、追加 follow-up の `RAU-UX-08`、`RAU-RR-61`、`RAU-MP-04`、`RAU-UX-06`、`RAU-UX-07` を閉じた。`RAU-UX-08` は GitHub Pages の公開配布物 `0.1.0.330` と Tampermonkey 手動更新後の通常 Chrome smoke を確認した。`RAU-RR-61` は rank change POST 成功後の `反映確認中` と同一 scope 二重送信 block を実装した。`RAU-MP-04` は月次実績画面の合成 fixture mode と空状態を追加した。`RAU-UX-06` は料金調整候補 list の view model と fixture render path を抽出した。`RAU-UX-07` は承認済み依存として React / React DOM を追加し、hidden marker の最小 React island を公開版 smoke で確認した。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 2026-05-30 に、前回完了報告で推奨した follow-up を task 化した。`RAU-UX-08` は latest `dist` を Tampermonkey 経由の実配布物として確認する task であり、以後の GUI 確認の前提になるため Now とした。`RAU-RR-61` は rank change POST 成功後の二重送信防止であり、React 導入や view model 抽出より先に write safety を固める必要があるため Next とした。`RAU-MP-04` は月次 graph の空状態と比較不足の表示品質を合成 fixture で確認する task であり、月次画面の追加改善として After Next に置いた。`RAU-UX-06` は React 依存追加前に料金調整候補 list の view model と副作用境界を分ける task であり、React 導入の前提として After Next に置いた。`RAU-UX-07` は `react` と `react-dom` の追加承認、bundle size、Tampermonkey dist 更新、通常 Chrome smoke を含むため、依存追加の明示承認が必要な Later とした。
 - 2026-05-30 に、開始時点で Remaining Task Triage にあった `RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02`、および追加で戻した `RAU-UX-05` は閉じた。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-05` は、利用者本人が Tampermonkey dashboard から latest `dist/revenue-assistant-userscript.user.js` を手動更新した後に完了した。CDP 一時注入なしの top smoke では料金調整候補 list 10 行、pending 取消、監視対象 write API POST 0 件を確認した。Analyze `価格推移` tab では `競合価格 最安値推移（90日版）`、初期 16 件の `/api/v1/price_trends` GET、`背景取得 3 / 112`、合計 19 件の `/api/v1/price_trends` GET、監視対象 write API POST 0 件を確認した。この bundle の完了時点では Remaining Task Triage の Now / Next / After Next / Later は空であった。
 - 2026-05-30 に、開始時点で Remaining Task Triage にあった `RAU-RR-60`、`RAU-MP-03`、`RAU-UX-04`、`RAU-WC-17` を閉じた。`RAU-RR-60` と `RAU-MP-03` は実装と対象 spec 更新を完了し、`RAU-UX-04` は依存追加なしの設計判断として完了した。`RAU-WC-17` は CDP 接続付き通常 Chrome で browser-local IndexedDB cache を限定削除し、候補優先 indicator の発火、進行、保存、skip 表示を確認した。この bundle の完了時点では Remaining Task Triage の Now / Next / After Next / Later は空であった。
