@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: 2026-05-30 時点で Remaining Task Triage に残っていた `RAU-UX-03`、`RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02` は処理済みである。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-03` の top 画面 smoke test は通常 Chrome で実施済みだが、Tampermonkey dashboard への latest `dist` 正式反映は Chrome Extension tool の Browser Use security policy により Codex からは実施できなかった。完全な配布物反映確認には、利用者本人による Tampermonkey 更新後の再 smoke test が必要である。
+- 主対象: 2026-05-30 時点で Remaining Task Triage に残っていた `RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02` は処理済みである。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-03` の top 画面 smoke test は通常 Chrome で実施済みだが、Tampermonkey dashboard への latest `dist` 正式反映は Chrome Extension tool の Browser Use security policy により Codex からは実施できなかった。さらに 2026-05-30 の追加監査で、CDP 一時注入なしの実 Tampermonkey 経由 `価格推移` tab は `/api/v1/price_trends` を 128 request 即時発行し、`背景取得 ... / 112` を表示しなかった。つまり Tampermonkey 側は `RAU-CP-14` 実装後の latest `dist` へ反映されていない。Remaining Task Triage の Now は `RAU-UX-05`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -91,7 +91,7 @@
   - `RAU-UX-03` Tampermonkey に latest dist を正式反映して top 画面 smoke test を行う
   - `RAU-WC-16` 候補優先 raw source 取得の発火状態を GUI 確認する
 - 未実装 Task ID:
-  - なし。次に進む場合は `docs/tasks_backlog.md` の `Proposed Next Task Candidates` から task を確定して Remaining Task Triage へ入れる。
+  - `RAU-UX-05` Tampermonkey へ latest dist を正式反映した後、CDP 一時注入なしで配布物 smoke test を再実施する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -103,7 +103,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は空である。次に進む場合は、`RAU-UX-04`、`RAU-MP-03`、`RAU-RR-60`、`RAU-WC-17`、`RAU-UX-05` のいずれかを、利用者の優先順位に合わせて正式 task 化する。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-UX-05` である。Chrome Extension tool の policy により Codex は Tampermonkey dashboard を claim できず、同じ outcome を CDP や extension storage 直接編集で回避しない。利用者本人が Tampermonkey dashboard へ latest `dist/revenue-assistant-userscript.user.js` を反映した後、Codex は Revenue Assistant tab だけを対象に smoke test する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -338,9 +338,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が空であることを確認する。
-2. 次に進む場合は、`docs/tasks_backlog.md` の `Proposed Next Task Candidates` から 1 件を選び、目的、非目標、受け入れ条件を正式 task として確定する。
-3. Tampermonkey dashboard へ latest `dist/revenue-assistant-userscript.user.js` を正式反映した後の配布物確認が必要な場合は、利用者本人が Tampermonkey 更新を行った後、Codex は Revenue Assistant tab だけを対象に top 画面の追加 UI、pending 取消、write API POST 0 件を確認する。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-UX-05` であることを確認する。
+2. 利用者本人が Tampermonkey dashboard へ latest `dist/revenue-assistant-userscript.user.js` を正式反映した後、Codex は Revenue Assistant tab だけを対象に top 画面と Analyze `価格推移` tab の smoke test を行う。
+3. `RAU-UX-05` の確認では、CDP 一時注入なしで、top 画面の追加 UI、pending 取消、write API POST 0 件、Analyze `価格推移` tab の `背景取得 ... / 112` 表示を確認する。
 4. Rank Recommendation Bundle を続ける場合は、forecast 数値、sales / ADR 数値、競合価格の金額または差額を top list へ直接表示しない契約と、未観測 provider や `price_ranks` 系 endpoint を確認済み仕様として扱わない契約を維持する。
 
 変更しない契約:

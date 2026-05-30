@@ -494,7 +494,7 @@
   - 通常 Chrome の Revenue Assistant top 画面では、CDP 一時注入なしで料金調整候補 list が表示され、10 行、`曲線`、`rank調整`、`様子見`、`対応不要` の行内操作が存在することを確認した。
   - `対応不要` pending の `取消` と、`rank調整` の `反映する` 後の送信前 pending `取消` を実行し、監視対象の write API である `POST /api/v1/lincoln/suggest`、`POST /api/v1/lincoln/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/neppan/price_ranks` は 0 件だった。
   - 検証中に raw response body、HAR、Cookie、token、credential、非公開価格データは保存していない。browser-local decision record の恒久保存は、取消確認だけを行ったため発生していない。
-  - 未完了条件: Tampermonkey dashboard への latest `dist/revenue-assistant-userscript.user.js` の手動反映は、上記 tool policy により Codex からは実施できていない。次に完全な配布物確認を行う場合は、利用者本人が Tampermonkey dashboard で script 本体を更新した後、Codex が Revenue Assistant tab だけを対象に smoke test する。
+  - 未完了条件: Tampermonkey dashboard への latest `dist/revenue-assistant-userscript.user.js` の手動反映は、上記 tool policy により Codex からは実施できていない。2026-05-30 の追加監査では、CDP 一時注入なしの実 Tampermonkey 経由 Analyze `価格推移` tab が `/api/v1/price_trends` を 128 request 即時発行し、`背景取得 ... / 112` を表示しなかった。つまり Tampermonkey 側は `RAU-CP-14` 実装後の latest `dist` へ反映されていない。この残作業は `RAU-UX-05` として Remaining Task Triage に戻す。
 
 ### RAU-WC-16 候補優先 raw source 取得の発火状態を GUI 確認する
 
@@ -4213,27 +4213,53 @@
   - `直近型カーブ` と `季節型カーブ` の算出ロジック。
   - reference curve 用 cache と request scheduling。
 
+## Planned / Next From 2026-05-30 Completion Audit
+
+### RAU-UX-05 Tampermonkey へ latest dist を正式反映した後、CDP 一時注入なしで配布物 smoke test を再実施する
+
+- 目的:
+  - `RAU-UX-03` の未完了条件である Tampermonkey 正式反映後の配布物確認を完了する。
+  - 2026-05-30 の追加監査では、CDP 一時注入なしの実 Tampermonkey 経由 Analyze `価格推移` tab が `/api/v1/price_trends` を 128 request 即時発行し、`背景取得 ... / 112` を表示しなかった。したがって、Tampermonkey 側は `RAU-CP-14` 実装後の latest `dist` へ反映されていない。
+- スコープ:
+  - 利用者本人が Tampermonkey dashboard へ latest `dist/revenue-assistant-userscript.user.js` を反映した後、Codex は Revenue Assistant tab だけを対象に確認する。
+  - top 画面で、料金調整候補 list、`曲線`、`rank調整`、`様子見`、`対応不要`、decision pending 取消、rank pending 取消を確認する。
+  - Analyze `価格推移` tab で、CDP 一時注入なしに `競合価格 最安値推移（90日版）` と `背景取得 ... / 112` が表示されることを確認する。
+  - 監視対象 write API である `POST /api/v1/lincoln/suggest`、`POST /api/v1/lincoln/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/neppan/price_ranks` が smoke test 中に 0 件であることを確認する。
+- 非目標:
+  - Codex が Chrome Extension tool policy を回避して Tampermonkey dashboard を CDP、extension storage 直接編集、別ブラウザ、間接実行で操作すること。
+  - Revenue Assistant write API を実行すること。
+  - raw response body、HAR、Cookie、token、credential、非公開価格データを保存または Git 管理へ入れること。
+- 受け入れ条件:
+  - Tampermonkey 反映後に開いた Revenue Assistant URL と確認時刻が記録されている。
+  - CDP 一時注入なしで、top 画面の主要 UI と pending 取消が動作する。
+  - CDP 一時注入なしで、Analyze `価格推移` tab に `背景取得 ... / 112` が表示される。
+  - 対象 write API POST が 0 件である。
+  - `docs/context/STATUS.md` と `docs/tasks_backlog.md` の Remaining Task Triage から `RAU-UX-05` が外れている。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
 ## Remaining Task Triage
 
 Now:
 
-- なし。2026-05-30 開始時点の未着手 task は、実装、docs 正本化、GUI 確認、または tool policy による実施不能範囲の明示まで処理済みである。
+- `RAU-UX-05` Tampermonkey へ latest dist を正式反映した後、CDP 一時注入なしで配布物 smoke test を再実施する。
 
 Next:
 
-- なし。次に進む場合は、下の `Proposed Next Task Candidates` から 1 件を選び、Task ID、目的、受け入れ条件を確定してから Remaining Task Triage へ入れる。
+- なし。`RAU-UX-05` は Chrome Extension tool policy により Codex 単独では dashboard 反映操作を完了できないため、次の実装 task へ進む前に配布物確認の状態を明確にする。
 
 After Next:
 
-- なし。
+  - なし。
 
 Later:
 
-- なし。
+  - なし。
 
 統合判断:
 
-- 2026-05-30 に、開始時点で Remaining Task Triage にあった `RAU-UX-03`、`RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02` は閉じた。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-03` のうち Revenue Assistant top 画面 smoke test は通常 Chrome で実施済みだが、Tampermonkey dashboard への latest `dist` 正式反映は Chrome Extension tool の Browser Use security policy により Codex からは実施できなかったため、完全な配布物反映確認には利用者本人による Tampermonkey 更新後の再 smoke test が必要である。
+- 2026-05-30 に、開始時点で Remaining Task Triage にあった `RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02` は閉じた。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-03` のうち Revenue Assistant top 画面 smoke test は通常 Chrome で実施済みだが、Tampermonkey dashboard への latest `dist` 正式反映は Chrome Extension tool の Browser Use security policy により Codex からは実施できなかった。2026-05-30 の追加監査で、CDP 一時注入なしの実 Tampermonkey 経由 Analyze `価格推移` tab は `/api/v1/price_trends` を 128 request 即時発行し、`背景取得 ... / 112` を表示しなかったため、Tampermonkey 側は `RAU-CP-14` 実装後の latest `dist` へ反映されていない。この残作業を `RAU-UX-05` として Now に置く。
 - 2026-05-30 に、前回完了報告で提案した follow-up を task 化した。CDP 一時注入ではなく Tampermonkey 反映後の配布物確認が以後の GUI 確認の前提になるため、`RAU-UX-03` を Now とする。`RAU-WC-16` は `RAU-WC-14` の未発火 GUI 確認であり、Tampermonkey 反映後に確認する。`RAU-CP-14` は `RAU-WC-15` で docs 設計した価格推移タブの background queue 実装であり、実装効果が大きいため After Next に置く。`RAU-MP-02` は実装前に final graph 契約を正本化する task であり、`RAU-RR-59` は write guard の追加調査である。`RAU-UX-02` は React island 化の棚卸しであり、依存追加判断を伴うため、配布物確認と未発火確認より後に回す。
 - 2026-05-30 に、React 導入の技術的関心と component ブラッシュアップのため、`RAU-UX-02` を追加した。既存の `RAU-UX-01` は competitor prices と団体系列の導入判断であり、React / component 化の棚卸しとは目的が異なるため重複しない。`RAU-UX-02` は依存追加や runtime behavior 変更を行わない docs-only の棚卸し task とし、実装に進む場合は棚卸し後に surface 単位の子 task へ分割する。
 - 2026-05-30 の読み込み UX 調査では、top list の `基準日` 表示と top candidate 用 raw source 優先取得は実装済みだが、利用者に「どのデータが取得中か」「候補用 raw source を優先取得しているか」「取得後に候補が更新されるか」が十分には見えないと判断した。そのため、`RAU-RR-54` から `RAU-RR-56` の行内操作 UX follow-up より先に、`RAU-WC-12` から `RAU-WC-14` で読み込み状態の UX 契約と top list 更新中表示を整える。`RAU-WC-15` は価格推移タブ、競合価格タブ、月次実績画面の重い取得を含むため、top list の読み込み UX を固めた後の Later とする。
@@ -4259,9 +4285,6 @@ Later:
 - `RAU-WC-17` 候補優先 raw source 取得の安全 fixture を作り、indicator 発火を確認する。
   - 目的: 実データでは未発火だった `候補優先` 表示を、検証用 profile または限定的な IndexedDB fixture で再現し、表示の total / processed / stored / skip / failed / current と候補行 raw source state の変化を確認する。
   - 非目標: 本番 profile の raw trace、response body、Cookie、token、credential、非公開価格データを保存しない。
-- `RAU-UX-05` 利用者本人が Tampermonkey dashboard へ latest `dist` を反映した後、CDP 一時注入なしで配布物 smoke test を再実施する。
-  - 目的: Chrome Extension tool policy により Codex から実施できなかった Tampermonkey dashboard 反映後の配布物確認を、Revenue Assistant tab だけを対象に再実行する。
-  - 最小 verify: top 画面の list 表示、preview 開閉、decision pending 取消、rank pending 取消、監視対象 write API POST 0 件を確認する。
 - `RAU-RR-04` は実装済みである。トップ画面に `stayDate x roomGroup` 単位の候補リスト shell を追加し、current settings の current rank、remaining、max を使う仮候補生成を `src/rankRecommendation.ts` に分離した。`Analyzeで確認` は URL 導線として表示し、`様子見` と `対応不要` は `RAU-RR-07` まで disabled button として置く。
 - `RAU-RR-05` は実装済みである。`booking_curve_raw_source:v2` の roomGroup raw source から asOfDate 時点の this_year rooms と過去年 rooms 平均を読み、`all`、`transient`、`group` ごとに reference deviation を計算する。欠損は推測で埋めず `reference不足` として出す。group が上振れ主因で transient が上振れていない場合は、個人価格 rank の上げ検討を抑制する。
 - `RAU-RR-06` は実装済みである。`Analyzeで確認` click 時に pending focus を `sessionStorage` へ保存し、Analyze 表示時に対象 roomGroup card を開く、scroll する、highlight する。対象が見つからない場合は通常 Analyze 表示を維持し、console warning へ診断を出す。
