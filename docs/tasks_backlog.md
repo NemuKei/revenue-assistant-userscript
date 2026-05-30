@@ -4725,32 +4725,42 @@
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
+- 完了メモ:
+  - `RAU-UX-09` から `RAU-UX-14` では、料金調整候補 list を描画する React component を `src/rankRecommendationReactIsland.ts` に追加し、`src/main.ts` の `RankRecommendationListViewModel` から React 用 snapshot を作って同期する経路へ切り替えた。
+  - live top 料金調整候補 list の root、meta、対象月 filter、表示 mode、表示上限、rank order control、候補 row、`曲線` preview host、`rank調整` preview host、browser-local decision pending、rank change pending、rank change result 表示は React component で描画する。
+  - candidate generation、scoring、IndexedDB、Revenue Assistant API adapter、warm cache queue、rank change adapter、送信前再取得、送信後反映確認、同一 `facilityId x stayDate x roomGroupId` の二重送信 block、provider 判定、payload 生成、pending 秒数は React component へ移していない。
+  - vanilla list / controls / row / action / preview host renderer は削除した。`src/main.ts` に残した DOM 生成は、React が用意した preview cell 内へ既存 booking curve chart と rank change preview body を hydration する処理に限定した。
+  - CDP 接続付き通常 Chrome の Revenue Assistant top page に local `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10 件、React marker 1 件、対象月 select 1 件、表示 mode button 4 件、display limit control 1 件、rank order control 1 件、`曲線` button 10 件、`rank調整` button 10 件を確認した。
+  - 同じ CDP smoke で、`曲線` preview row 10 件、preview cell 10 件、SVG 20 件、`rank調整` preview row 10 件、preview cell 10 件、inline rank change UI 1 件以上を確認した。
+  - 同じ CDP smoke で、`rank調整` の `反映する` を押して 5 秒 pending に入り、5 秒経過前に `取消` できること、取消後に rank pending cancel button が 0 件へ戻ることを確認した。実 POST を伴う確認、未観測 provider の確認、guard failure を意図的に発生させる確認は実施していない。
+  - 同じ CDP smoke で、`様子見` を押下後、5 秒経過前に `取消` できること、取消後に decision pending cancel button が 0 件へ戻ること、IndexedDB の decision record 件数が増えないこと、監視対象 write API POST が 0 件であることを確認した。
+  - `RAU-UX-15` では `scripts/check-userscript-version.mjs` を追加し、local `dist`、GitHub Pages 公開版、手入力した Tampermonkey installed version、CDP 接続中の Revenue Assistant tab を確認できるようにした。`npm run userscript:version-check -- --installed-version manual-not-checked` では local version `0.1.0`、published version `0.1.0.334`、Revenue Assistant page `https://ra.jalan.net/monthly-progress/2026-05` を確認した。
+  - `RAU-UX-16` では README に通常 Chrome smoke checklist を追加した。対象は top 料金調整候補 list、`曲線` preview、`rank調整` pending cancel、browser-local decision pending cancel、Analyze `価格推移` tab、月次実績画面、warm cache indicator、console / page error、監視対象 write API POST 0 件である。
+  - `RAU-UX-17` では `scripts/monitor-write-api-posts.mjs` を追加した。監視対象 endpoint は `/api/v1/lincoln/suggest`、`/api/v1/lincoln/price_ranks`、`/api/v1/tema/price_ranks`、`/api/v1/neppan/price_ranks` である。出力は、観測対象 URL、操作名、観測秒数、endpoint 一覧、POST count、確認時刻に限定し、raw request body、raw response body、Cookie、token、authorization header、顧客情報、予約情報、価格や在庫の非公開データは保存しない。
+  - `npm run smoke:write-posts -- --seconds 5 --operation top-idle --url https://ra.jalan.net/` を実行し、Revenue Assistant top page の短時間 idle 監視で POST count 0 件を確認した。
+  - `react-doctor` の差分診断は `npx react-doctor@latest --verbose --diff` の実行を試みたが、version pin のない remote package 実行として sandbox policy に拒否されたため実施していない。
 
 ## Remaining Task Triage
 
 Now:
 
-- `RAU-UX-09` React 移行用の fixture-only list component と parity check を追加する。
+- なし
 
 Next:
 
-- `RAU-UX-10` React component に live list の read-only 表示を切り替える。
+- なし
 
 After Next:
 
-- `RAU-UX-11` React component へ row open state と preview host の表示制御を移す。
-- `RAU-UX-12` React component へ browser-local decision pending UX を移す。
+- なし
 
 Later:
 
-- `RAU-UX-13` React component へ rank change pending UX と guard 表示を移す。
-- `RAU-UX-14` vanilla list renderer を削除し、React list を正規 path にする。
-- `RAU-UX-15` 配布版の更新確認手順をワンクリックに近づける。
-- `RAU-UX-16` 通常 Chrome smoke の観測項目を checklist 化する。
-- `RAU-UX-17` write API POST 0 件の監視を再利用できる検証補助にする。
+- なし
 
 統合判断:
 
+- 2026-05-30 に、開始時点で Remaining Task Triage に残っていた `RAU-UX-09` から `RAU-UX-17` を閉じた。料金調整候補 list は React component を正規 path とし、vanilla list renderer は削除した。candidate generation、scoring、IndexedDB、Revenue Assistant API adapter、warm cache queue、rank change adapter、write guard、pending 秒数、監視対象 write API endpoint は変更していない。CDP 接続付き通常 Chrome の Revenue Assistant top page に local `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10 件、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel、監視対象 write API POST 0 件を確認した。`react-doctor` は remote package の unpinned 実行として sandbox policy に拒否されたため未実施である。
 - 2026-05-30 に、前回完了報告で推奨した運用補助 3 件を task 化した。`RAU-UX-15` は配布版、Tampermonkey、実行中 userscript の version 不一致を早く見つけるための確認手順である。`RAU-UX-16` は通常 Chrome smoke の観測項目を checklist 化し、画面、操作、期待結果、証跡を作業者の記憶に依存させないための task である。`RAU-UX-17` は監視対象 write API POST 0 件確認を再利用できる検証補助にし、React 移行や GUI smoke 中に accidental write が起きていないことを同じ基準で記録するための task である。これらは React 移行の本線を直接進める task ではなく、`RAU-UX-09` から `RAU-UX-14` の各段階を確認しやすくする補助 task であるため Later に置く。
 - 2026-05-30 に、利用者が React 化を段階的に進める方針を明示したため、料金調整候補 list の React 移行 task を `RAU-UX-09` から `RAU-UX-14` として追加した。既存の `RAU-UX-06` は view model 抽出、`RAU-UX-07` は依存追加と hidden marker の最小 mount として完了済みであり、次は live behavior を変えない fixture-only component から進める。実行順は、fixture-only parity、live read-only 表示、preview open state、browser-local decision pending、rank change pending / guard、vanilla renderer cleanup とする。理由は、Revenue Assistant write API に近い操作ほど後ろへ置き、各段階で `npm run check`、通常 Chrome smoke、監視対象 write API POST 0 件確認を挟むためである。
 - 2026-05-30 に、追加 follow-up の `RAU-UX-08`、`RAU-RR-61`、`RAU-MP-04`、`RAU-UX-06`、`RAU-UX-07` を閉じた。`RAU-UX-08` は GitHub Pages の公開配布物 `0.1.0.330` と Tampermonkey 手動更新後の通常 Chrome smoke を確認した。`RAU-RR-61` は rank change POST 成功後の `反映確認中` と同一 scope 二重送信 block を実装した。`RAU-MP-04` は月次実績画面の合成 fixture mode と空状態を追加した。`RAU-UX-06` は料金調整候補 list の view model と fixture render path を抽出した。`RAU-UX-07` は承認済み依存として React / React DOM を追加し、hidden marker の最小 React island を公開版 smoke で確認した。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。

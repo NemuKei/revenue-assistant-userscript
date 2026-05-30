@@ -36,6 +36,8 @@ npm run check
 - `npm run chrome:debug:default-profile:resume`: 既存の Chrome Default プロファイルを前回セッション復元付きで起動
 - `npm run chrome:profiles`: 利用可能な Chrome プロファイルを一覧表示
 - `npm run chrome:pages`: CDP 経由で Chrome に接続し、開いているページを一覧表示
+- `npm run userscript:version-check -- --installed-version <Tampermonkey上のversion>`: local `dist`、GitHub Pages 公開版、Tampermonkey 上の version、Revenue Assistant tab の有無を確認
+- `npm run smoke:write-posts -- --seconds 30 --operation <確認内容>`: CDP 接続中の Chrome tab で、監視対象 write API の POST 件数を確認
 
 ## Verification
 
@@ -65,6 +67,46 @@ node .\node_modules\typescript\bin\tsc --noEmit
 node .\node_modules\eslint\bin\eslint.js .
 node .\scripts\build.mjs
 ```
+
+## 配布版確認と通常 Chrome smoke
+
+この確認は、`dist` は更新済みだが通常 Chrome の Tampermonkey では古い版が動いている、という状態を早く見つけるために行います。
+
+### Version Check
+
+1. `npm run build` を実行し、local `dist/revenue-assistant-userscript.user.js` を更新する。
+2. `npm run userscript:version-check` を実行し、local version、published version、`@updateURL`、`@downloadURL`、Revenue Assistant tab の有無を確認する。
+3. Tampermonkey dashboard で対象 userscript の version を確認する。Codex が dashboard の保存操作を自動化しない。更新が必要な場合は、利用者本人が Tampermonkey の更新操作を行う。
+4. 更新後に `npm run userscript:version-check -- --installed-version <確認したversion> --open-url https://ra.jalan.net/` を実行し、local / published / installed version と開いた Revenue Assistant URL を記録する。
+
+### Smoke Checklist
+
+通常 Chrome、Tampermonkey、Revenue Assistant ログイン状態が必要な確認では、CDP 一時注入ではなく配布版 userscript を使います。CDP は DOM、console、network の観測補助に限定します。
+
+| 画面 | 操作 | 期待結果 | 証跡として残す値 |
+| --- | --- | --- | --- |
+| Top 料金調整候補 | Revenue Assistant top を reload | `料金調整候補` section、候補 row、meta、表示条件、対象月 filter が表示される | URL、row count、`data-ra-rank-recommendation-react-island="mounted"`、`data-mode`、console error 件数 |
+| Top 料金調整候補 | `曲線` を開閉 | preview row が開閉し、既存 booking curve selector が維持される | preview row 件数、SVG 件数、console error 件数 |
+| Top 料金調整候補 | `rank調整` を開閉し、送信前に `取消` する | 5 秒 pending 中に取消でき、実 POST は発生しない | pending 表示、取消後の pending 件数、監視対象 write API POST 件数 |
+| Top 料金調整候補 | `様子見` と `対応不要` を押し、保存前に `取消` する | browser-local decision record が保存されず、row 表示が戻る | pending 表示、取消後の pending 件数、監視対象 write API POST 件数 |
+| Analyze 価格推移 tab | `価格推移` tab を開く | `競合価格 最安値推移（90日版）`、初回表示優先、background queue 状態が表示される | URL、panel / SVG 件数、background status text、console error 件数 |
+| 月次実績画面 | `/monthly-progress/YYYY-MM` を reload | `LTブッキングカーブ`、2 panel、loading / background state が表示される | URL、preview root 件数、panel / SVG 件数、status text、console error 件数 |
+| Warm cache indicator | Top または Analyze で detail を開く | 対象期間、保存、skip、失敗、候補優先が発火する場合の進行状態が読める | indicator text、対象期間、保存 / skip / 失敗件数 |
+
+標準 smoke では実送信を行いません。監視対象 write API は次の POST です。
+
+- `/api/v1/lincoln/suggest`
+- `/api/v1/lincoln/price_ranks`
+- `/api/v1/tema/price_ranks`
+- `/api/v1/neppan/price_ranks`
+
+確認中に POST 0 件を記録する場合は、対象 Chrome tab を開いた状態で次を実行します。
+
+```powershell
+npm run smoke:write-posts -- --seconds 30 --operation top-react-smoke
+```
+
+出力には、観測対象 URL、操作名、観測秒数、監視 endpoint、POST count、確認時刻が含まれます。raw request body、raw response body、Cookie、token、authorization header、顧客情報、予約情報、価格や在庫の非公開データは保存しません。
 
 ## 現在の実装状態
 

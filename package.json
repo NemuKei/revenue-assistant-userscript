@@ -16,7 +16,9 @@
         "chrome:debug:default-profile": "pwsh -ExecutionPolicy Bypass -File ./scripts/open-chrome-debug.ps1 -UseChromeUserData -ProfileDirectory Default",
         "chrome:debug:default-profile:resume": "pwsh -ExecutionPolicy Bypass -File ./scripts/open-chrome-debug.ps1 -UseChromeUserData -ProfileDirectory Default -RestoreLastSession",
         "chrome:profiles": "pwsh -ExecutionPolicy Bypass -File ./scripts/list-chrome-profiles.ps1",
-        "chrome:pages": "node ./scripts/attach-chrome.mjs"
+        "chrome:pages": "node ./scripts/attach-chrome.mjs",
+        "userscript:version-check": "node ./scripts/check-userscript-version.mjs",
+        "smoke:write-posts": "node ./scripts/monitor-write-api-posts.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
