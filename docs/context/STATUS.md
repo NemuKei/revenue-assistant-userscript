@@ -5,7 +5,7 @@
 ## Current Task Bundle
 
 - 主対象: 2026-05-30 時点で Remaining Task Triage に残っていた task は完了済みである。`RAU-UX-09` から `RAU-UX-14` では、料金調整候補 list の描画を React component へ移し、view model 生成、controls、row、preview host、browser-local decision pending、rank change pending、React list 正規 path 化まで完了した。`RAU-UX-15` から `RAU-UX-17` では、配布版 version 確認 helper、通常 Chrome smoke checklist、監視対象 write API POST 0 件確認 helper を追加した。
-- `main` push 後の GitHub Pages 配布物は `@version 0.1.0.335` である。Tampermonkey dashboard も `Revenue Assistant Userscript 0.1.0.335` へ更新し、CDP 一時注入なしの通常 Chrome top smoke で候補 row 10 件、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel、監視対象 write API POST 0 件を確認した。
+- `main` push 後の GitHub Pages 配布物は `@version 0.1.0.336` である。Tampermonkey dashboard も `Revenue Assistant Userscript 0.1.0.336` へ更新し、CDP 一時注入なしの通常 Chrome top smoke で候補 row 10 件、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel、監視対象 write API POST 0 件を確認した。
 - 追加 follow-up の `RAU-UX-08`、`RAU-RR-61`、`RAU-MP-04`、`RAU-UX-06`、`RAU-UX-07` も完了済みである。`RAU-UX-08` では GitHub Pages の公開配布物 `@version 0.1.0.330` を確認し、利用者本人の Tampermonkey 手動更新後に通常 Chrome の Revenue Assistant で配布版が実行されることを確認した。`RAU-RR-61` では POST 成功後の `反映確認中` 状態と同一 `facilityId x stayDate x roomGroupId` の二重送信 block を実装した。`RAU-MP-04` では月次実績画面の合成 fixture mode と空状態表示を追加した。`RAU-UX-06` では料金調整候補 list の view model と fixture render path を抽出した。`RAU-UX-07` では利用者承認に基づいて `react` と `react-dom` を追加し、料金調整候補 section 内の最小 React island mount marker を導入した。
 - 2026-05-30 に、利用者が React 化を段階的に進める方針を明示したため追加した `RAU-UX-09` から `RAU-UX-17` は完了済みである。現在の Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 完了済み Task ID:
