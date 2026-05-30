@@ -422,6 +422,82 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
+## Planned / Next
+
+### RAU-RR-54 料金調整候補の行内で booking curve を確認できるようにする
+
+- 目的:
+  - 候補行から離れずに、対象 `stayDate x roomGroup` の booking curve の要点を確認できるようにする。
+- スコープ:
+  - 既存の `曲線` button と preview block は残す。
+  - 候補行内に hover / focus / click で開ける小型 popover を追加する。
+  - popover は保存済み `booking_curve_raw_source:v2` と既存 preview 用 data を使い、新規 API request 範囲、request 件数、request 間隔を増やさない。
+  - popover では詳細 chart 全体ではなく、判断に必要な要約、全体 / 個人 / 団体の現在値、reference curve との差分の非数値要約、不足 diagnostics を表示する。
+- 非目標:
+  - 既存 preview block の削除。
+  - forecast 数値、sales / ADR 数値、競合価格金額、推奨レート金額の表示。
+  - candidate scoring、priority、confidence、reasonFingerprint の変更。
+- 受け入れ条件:
+  - 候補行で booking curve の要点を確認できる。
+  - 詳細確認用の既存 `曲線` preview block は従来どおり開閉できる。
+  - popover 操作が `Analyzeで確認`、rank 操作、`様子見`、`対応不要` を妨げない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-55 推奨ランクを候補行で直接変更できるようにする
+
+- 目的:
+  - `rank調整` block を開かなくても、候補行の `推奨` 付近で rank 変更を開始できるようにする。
+- スコープ:
+  - 既存の `rank調整` preview block は残す。
+  - 推奨欄または action cell に、推奨 rank を初期値にした rank select と `反映する` button を追加する。
+  - 任意 rank 変更を許可する。ただし送信対象は既存の観測済み `/api/v1/lincoln/suggest` 単一行 custom rank path に限定する。
+  - 押下後は既存の 5 秒 pending、`取消`、送信直前 current rank 再取得、rank status 再取得、反映確認を再利用する。
+  - 行内の表示は Revenue Assistant 標準 UI に寄せ、`反映する`、`取消`、`反映中`、成功または未確認結果を同じ行で見せる。
+- 非目標:
+  - bulk apply。
+  - 自動反映。
+  - 未観測 provider 対応。
+  - `/api/v1/lincoln/price_ranks`、`/api/v1/tema/price_ranks`、`/api/v1/neppan/price_ranks` の実行。
+  - 推奨レート金額、人数別価格、食事条件別価格、プラン別価格の変更。
+- 受け入れ条件:
+  - 推奨 rank の初期値から、そのまま `反映する` を押せる。
+  - 利用者が rank select で別 rank を選び、その rank を送信候補にできる。
+  - `反映する` 押下直後に同じ行へ `n秒後に送信` と `取消` が出る。
+  - pending 終了後は同じ行で `反映中` が分かる。
+  - current rank mismatch、候補生成後の rank change、送信失敗、反映未確認は既存 guard と同じ基準で止める、または結果表示する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-RR-56 様子見 / 対応不要の pending UX を標準 UI に寄せる
+
+- 目的:
+  - 既存の `様子見` と `対応不要` の 5 秒 pending を、rank 変更と同じ操作感に揃える。
+- スコープ:
+  - 既存の遅延保存ロジックは維持する。
+  - 表示文言、配置、色、disabled 状態、`取消` の見え方を、rank 変更の行内 pending と揃える。
+  - pending 中は対象行の状態が分かるようにし、保存前の取消で IndexedDB に何も保存されない挙動を維持する。
+  - timer 満了後は従来どおり `rank-recommendation-decisions` record を保存し、cooldown、dismiss、confidence escalation、reasonFingerprint の既存 lifecycle を維持する。
+- 非目標:
+  - cooldown 期間の変更。
+  - `様子見` と `対応不要` の意味の変更。
+  - decision record schema の不要な migration。
+  - Revenue Assistant への write API 実行。
+- 受け入れ条件:
+  - `様子見` 押下後に、同じ行で `n秒後に確定` と `取消` が分かる。
+  - `対応不要` 押下後に、同じ行で `n秒後に確定` と `取消` が分かる。
+  - `取消` した場合、decision record は保存されない。
+  - timer 満了後だけ従来どおり browser-local decision が保存される。
+  - rank 変更 pending と同時に操作した場合、どちらの pending か誤読しない表示になる。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Recently Implemented / GUI Unconfirmed
 
 ### RAU-WC-08 カレンダー下線を現在取得中の progress bar として表示する
@@ -3735,15 +3811,15 @@
 
 Now:
 
-- なし。
+- `RAU-RR-54` 料金調整候補の行内で booking curve を確認できるようにする。
 
 Next:
 
-- なし。
+- `RAU-RR-55` 推奨ランクを候補行で直接変更できるようにする。
 
 After Next:
 
-- なし。
+- `RAU-RR-56` 様子見 / 対応不要の pending UX を標準 UI に寄せる。
 
 Later:
 
@@ -3794,6 +3870,7 @@ Later:
 - `RAU-RR-48` は 2026-05-29 に read-only 調査済みである。標準画面の料金ランク一括反映は、site controller ごとに `POST v1/lincoln/price_ranks`、`POST v1/tema/price_ranks`、`POST v1/neppan/price_ranks` を呼び分ける候補があり、payload 候補は `date`、`rmRoomGroupId`、`priceRankCode` と、現在設定に値がある場合の `limitedNumber`、食事条件 field から作られる。標準 UI には送信前の確認ややり直し入口、成功、一部失敗、失敗の通知種別がある。ただし実 POST は実行していないため、server 側 validation、error body、partial failure response schema、同時更新時の挙動、反映後 rollback 可否は未確認である。top list 直接 rank 変更の実装はまだ行わない。
 - `RAU-RR-49` は 2026-05-29 に実装済みである。`様子見` と `対応不要` は押下直後に保存せず、5 秒の in-memory pending state に入れる。pending 中は行内に `n秒後に確定` と `取消` button を表示し、`取消` で decision record を保存せずに戻せる。timer 満了後だけ従来と同じ decision record を保存し、cooldown、dismiss、confidence escalation、reasonFingerprint による lifecycle filter は変更していない。Revenue Assistant write API、rank 直接変更、bulk apply は追加していない。
 - `RAU-RR-51` は 2026-05-29 に実装済みである。料金調整候補から 1 件ずつ rank 調整する導線として、`rank調整` preview、5 秒 pending、取消、送信直前 current rank 再取得、同じ `stayDate x roomGroup` の rank change status 再取得、観測済み `POST /api/v1/lincoln/suggest` adapter を追加した。実装は、利用者が実務上変更してよい対象として選んだ `2026-07-23 x キャンプ、ツインS 11 -> 10` の標準 UI 観測結果に限定し、未観測 provider、`price_ranks` 系 endpoint、bulk apply、自動反映、推奨金額や人数別・食事条件別・プラン別価格の変更は対象外である。Chrome DevTools Protocol の通常 Chrome 非送信確認では、候補 row 10 件、`rank調整` button 10 件、preview 表示 1 件、`POST /api/v1/lincoln/suggest` 0 件を確認した。補完後の実送信確認では、RAU top list 導線からの `POST /api/v1/lincoln/suggest` が 1 回だけ発生して HTTP `204` を返し、利用者が Revenue Assistant 画面上で反映済みを確認した。
+- `RAU-RR-54` から `RAU-RR-56` は、既存の `曲線` preview block と `rank調整` preview block を残したまま、候補行の中で軽量確認と軽量操作を完結させる follow-up として追加した。実装順は、まず booking curve 要点 popover、次に推奨 rank の行内変更、最後に `様子見` / `対応不要` pending 表示の統一とする。
 - `RAU-SALES-01` で、Analyze 日付単位の売上・ADR は既存 `/api/v4/booking_curve` response に含まれることを確認した。2026-05-27 に `RAU-RR-02` で raw source 保存契約を v2 へ更新したため、追加取得 queue は作らない。
 - `RAU-FC-01` は 2026-05-28 に判断済みである。結論は、forecast model を今すぐ実装せず、先に `RAU-FC-02` で forecast evaluation dataset / metrics と `ForecastResult v1 candidate` を設計することである。
 - `RAU-FC-02` は 2026-05-28 に設計済みである。`ForecastResult v1 candidate` の field、evaluation dataset の grain、除外条件、未来情報混入防止、metric、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定した。

@@ -1,10 +1,10 @@
 # STATUS
 
-最終更新: 2026-05-29
+最終更新: 2026-05-30
 
 ## Current Task Bundle
 
-- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-53` まで完了済み。Analyze booking curve / competitor price bundle は `RAU-AF-11`、`RAU-CP-11`、`RAU-CP-12` まで実装済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。現在の Remaining Task Triage の Now はなし。
+- 主対象: Rank Recommendation Bundle は `RAU-RR-01` から `RAU-RR-53` まで完了済み。Analyze booking curve / competitor price bundle は `RAU-AF-11`、`RAU-CP-11`、`RAU-CP-12` まで実装済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。2026-05-30 に、料金調整候補の行内操作 UX follow-up として `RAU-RR-54` から `RAU-RR-56` を新規 task 化した。現在の Remaining Task Triage の Now は `RAU-RR-54`。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -75,6 +75,10 @@
   - `RAU-SALES-07` ログイン済み通常 Chrome で sales / ADR health signal の DOM 再描画分布を確認する
   - `RAU-SALES-08` `raise_watch` と sales / ADR 弱含み signal が同時に出る候補の表示または補正を調整する
   - `RAU-SALES-09` sales / ADR 弱含み行の priority downgrade を実データで再確認する
+- 未実装 Task ID:
+  - `RAU-RR-54` 料金調整候補の行内で booking curve を確認できるようにする
+  - `RAU-RR-55` 推奨ランクを候補行で直接変更できるようにする
+  - `RAU-RR-56` 様子見 / 対応不要の pending UX を標準 UI に寄せる
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -86,7 +90,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: なし` とする。次に進める場合は、利用者が次の priority を指定するか、Remaining Task Triage を再作成してから着手する。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-RR-54`、`Next: RAU-RR-55`、`After Next: RAU-RR-56` とする。まず `RAU-RR-54` で、既存の `曲線` preview block を残したまま、候補行内で booking curve の要点を確認できる小型 popover を追加する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -104,6 +108,7 @@
   - `RAU-AF-11` は実装済み、Chrome DevTools Protocol で GUI 確認済み。booking curve の `個人 / 団体` 切り替え時に、保持済みの最新 `SalesSettingPreparedData` と rank status snapshot から Analyze 側の全体 summary、室タイプ別 card、rank overview、競合価格 graph 位置を即時再描画し、その後に通常の calendar sync を強制実行する。料金調整候補 preview では、preview 用の最新 snapshot から開いている preview row を即時再描画し、sales setting card 用 cleanup が preview 内の booking curve section を削除しないようにした。request 範囲と request 件数は増やさない。GUI 確認では Analyze 側の切り替え前、切り替え直後、再同期後のいずれも section 1 件、SVG 2 件を維持した。preview 側も、拡張なし一時 context に候補 10 件分の read-only booking_curve raw source を入れて確認し、開いた preview が visible section 1 件、visible SVG 2 件を維持した。
   - `RAU-RR-52` は実装済み、Chrome DevTools Protocol で GUI 確認済み。top list の `現ランク` cell に tooltip を追加し、同一宿泊日の全部屋タイプについて `部屋タイプ`、`現ランク`、`対象候補との差`、`備考` を表示する。rank order が未解決、または rank ladder 上の位置を確定できない場合は `順序未確認` と表示し、候補方向や scoring には使わない。GUI 確認では top list 10 行、trigger 10 件、tooltip 10 件、header 4 列、target row 10 件を確認した。
   - `RAU-RR-53` は実装済み、Chrome DevTools Protocol で top list の非数値表示を確認済み。保存済み `competitor-price-snapshots` の最新 snapshot から人数 1 から 4 の自施設最安値と競合中央値を比較し、宿泊日まで 30 日以内かつ比較可能人数 2 つ以上の場合だけ、`相場より安め` / `相場より高め` を confidence `+0.04 / -0.04` 以内の補正として使う。競合価格だけで候補方向を反転させず、新規候補も作らない。top list には金額または percent を直接表示しない。
+  - `RAU-RR-54` から `RAU-RR-56` は未実装である。既存の `曲線` preview block と `rank調整` preview block は廃止せず、候補行の中に軽量操作を足す方針とする。`RAU-RR-54` は booking curve 要点 popover、`RAU-RR-55` は推奨 rank を初期値にした行内 rank select と `反映する`、`RAU-RR-56` は `様子見` / `対応不要` の pending 表示を rank 変更 pending と同じ操作感へ揃える task である。単一行 rank 変更は引き続き観測済み `/api/v1/lincoln/suggest` に限定し、未観測 provider、`price_ranks` 系 endpoint、bulk apply、自動反映、推奨レート金額は扱わない。
   - `RAU-CP-11` は追加 read-only 調査済み。公式 Analyze `価格推移` タブで `tab-priceTrends`、`price-trends-content`、filter、chart header、updated-at の DOM を確認し、公式 `価格推移` API が `GET /api/v1/price_trends` であることを確認した。query は `stay_date`、`num_guests`、`meal_type`、`yad_nos[]` を持ち、response は `latest_source_updated_at`、`stay_date`、`yads[].yad_no`、`yads[].price_trends[].date`、`lead_time_days`、`jalan_min_price`、`jalan_min_price_status` を持つ。89日より先の確認では HTTP 200 だが `yads` 空配列だった。2026-05-29 の追加確認では、公式 frontend bundle が `roomTypeOptions` を `GET /api/v1/price_trends` に渡しており、配列形式の `room_type_options[]` が部屋タイプ指定として有効だった。HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データは repo に保存していない。
   - `RAU-CP-12` は方針を更新し、公式 `価格推移` タブでは既存 `competitor-price-snapshots` 由来 graph を使わない。`price-trends-content` には `/api/v1/price_trends` から取得した人数 1 から 4 の lead time 別 graph を表示する。表示 series は `自社` と競合施設別 series とし、集計 series `競合最低価格` は表示しない。既存 `競合価格` タブの snapshot graph と IndexedDB snapshot store は削除、置換しない。見出しは `競合価格 最安値推移（90日版）` とし、価格推移側にも `部屋タイプ` と `食事` の絞り込み UI を表示する。tooltip は `競合価格` タブと `価格推移` タブの両方で `施設`、`部屋タイプ`、`価格`、`前回差分`、`自社との差` に揃える。価格推移側の `部屋タイプ=指定なし` は、部屋タイプ別 request record が保存されている場合は部屋タイプ別 request record 全体から `facility x leadTime` ごとの最安値へ集約し、tooltip には採用された request scope の部屋タイプを表示する。部屋タイプ選択時は、対応する `room_type_options[]` 単独指定で保存した record を使う。食事タイプ選択時は、`NONE`、`BREAKFAST`、`DINNER`、`BREAKFAST_DINNER` を個別取得した保存済み record のうち、該当 `mealType` scope だけを使う。`食事=指定なし` では、保存済み食事タイプ全体を `facility x leadTime` ごとの最安値へ集約して描画する。
   - `RAU-CP-13` は実装済み、Chrome DevTools Protocol で GUI 確認済み。公式価格推移 data は既存 `competitor-price-snapshots` とは別に、IndexedDB database `revenue-assistant-price-trends` / store `price-trend-records` へ保存する。record は `facilityId`、`stayDate`、`numGuests`、`mealType`、`roomType`、`roomTypeLabel`、`fetchedAt`、`endpoint`、`query`、`facilities`、`scope`、`payload` を持つ。`mealType` は `NONE`、`BREAKFAST`、`DINNER`、`BREAKFAST_DINNER` のいずれかにする。`roomType` と `roomTypeLabel` は、指定なし request では `null`、部屋タイプ別 request では `SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS`、`WASHITSU`、`WAYOUSHITSU` のいずれかと表示 label にする。料金調整候補 scoring への接続はまだ行わない。最新 `dist` の一時注入確認では、`価格推移` タブで RAU overview 1 件、panel 4 件、SVG 4 件、別 store record 4 件、人数 1 から 4、各 record の `payload.yads` 6 件を確認した。追加確認では、`価格推移` タブの RAU overview 1 件、既存競合価格 overview 0 件、見出し `競合価格 最安値推移（90日版）`、filter label `部屋タイプ` / `食事`、panel title `1名 最安値` から `4名 最安値`、page error 0 件、console error 0 件を確認した。部屋タイプ別取得確認では、同一 fetch run の 32 record が保存され、scope は `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS`、`WASHITSU`、`WAYOUSHITSU` と人数 1 から 4 の組み合わせだった。UI では `ツイン` 選択後の tooltip first cell が `自社 / ツイン` になった。食事タイプ別取得確認では、同一 fetch run の 128 record が保存され、scope は `mealType` が `NONE`、`BREAKFAST`、`DINNER`、`BREAKFAST_DINNER`、`roomType` が `指定なし`、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS`、`WASHITSU`、`WAYOUSHITSU`、`guestCount` が 1 から 4 の組み合わせだった。UI では `朝食`、`夕食`、`朝夕食` の filter button が表示され、`朝食` 選択後の active state は `指定なし` / `朝食`、meta は `食事 朝食`、panel title は `1名 最安値` から `4名 最安値`、page error と console error は 0 件だった。tooltip 5 列化、価格推移側の採用部屋タイプ表示、`競合最低価格` series 廃止は D-20260529-023 で追加更新した。`競合価格` タブへ切り替えると価格推移 overview は 0 件、競合価格 overview は 1 件だった。89日超過候補の `2026-09-01` と `2026-09-30` は公式側の `price-trends-content` が表示されず、RAU の対象外表示は今回の GUI では確認できなかった。
@@ -317,8 +322,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: なし` であることを確認する。
-2. 次に進める場合は、利用者の指定または `docs/tasks_backlog.md` の再整理で新しい Now を決める。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-RR-54`、`Next: RAU-RR-55`、`After Next: RAU-RR-56` であることを確認する。
+2. `RAU-RR-54` から着手し、既存の `曲線` preview block を残したまま、候補行内に booking curve 要点 popover を追加する。
 3. Rank Recommendation Bundle を進める場合は、forecast 数値、sales / ADR 数値、競合価格の金額または差額を top list へ直接表示しない契約と、未観測 provider や `price_ranks` 系 endpoint を確認済み仕様として扱わない契約を維持する。
 
 変更しない契約:
