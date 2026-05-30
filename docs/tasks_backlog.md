@@ -4646,6 +4646,80 @@
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
 
+### RAU-UX-15 配布版の更新確認手順をワンクリックに近づける
+
+- 意図:
+  - `main` push 後の GitHub Pages 配布物、Tampermonkey へ入っている userscript version、Revenue Assistant 上で実行されている userscript version の不一致を早く見つける。
+  - Codex が Tampermonkey dashboard を直接保存操作できない場面でも、利用者に依頼する作業を最小化し、確認対象、期待 version、更新後に開く Revenue Assistant URL を明確にする。
+  - 「dist は更新済みだが、通常 Chrome の Tampermonkey では古い版が動いている」という状態を、React 移行や GUI smoke の前提崩れとして扱えるようにする。
+- スコープ:
+  - 対象は配布版確認の補助手順、確認コマンド、または小さな helper script である。
+  - 確認する値は、local `dist/revenue-assistant-userscript.user.js` の `@version`、GitHub Pages 公開版の `@version`、通常 Chrome の Tampermonkey dashboard または Revenue Assistant 実行中 userscript から読める version である。
+  - Tampermonkey dashboard の保存操作は、Chrome Extension tool policy に従い、利用者本人が実施する前提にする。Codex は保存操作を CDP、extension storage 直接編集、別ブラウザ、間接実行で回避しない。
+  - 可能なら、確認結果として `local version`、`published version`、`installed version`、`opened Revenue Assistant URL`、`confirmed at` を短く出力する。
+- 非目標:
+  - Tampermonkey の保存操作を自動化しない。
+  - Chrome Extension tool policy を迂回しない。
+  - userscript metadata、配布 URL、GitHub Actions workflow、依存 version を変更しない。
+  - Revenue Assistant 画面上の機能挙動を変更しない。
+- 受け入れ条件:
+  - 配布版確認の入口が README または既存 script から辿れる。
+  - local `dist`、GitHub Pages 公開版、通常 Chrome / Tampermonkey 側の version 差分を確認する手順が明記されている。
+  - 利用者が必要な場合に手動更新する箇所と、Codex が触らない箇所が明記されている。
+  - 手順確認または helper 実行後、確認結果に version と Revenue Assistant URL が残る。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-UX-16 通常 Chrome smoke の観測項目を checklist 化する
+
+- 意図:
+  - React 移行、rank change pending、monthly progress、warm cache などの GUI 確認で、毎回見る項目が会話や作業者の記憶に依存しないようにする。
+  - 「何を確認したら smoke test 完了か」を、画面、selector、network、console、page error、write API POST 0 件に分けて確認できるようにする。
+  - 通常 Chrome、Tampermonkey、Revenue Assistant ログイン状態が必要な確認と、fixture-only または CDP 内部確認で足りる確認を混同しないようにする。
+- スコープ:
+  - 対象は通常 Chrome smoke 用 checklist の正本配置である。新規ファイルを作るか README / tasks_backlog に統合するかは実装時に `docs-governance` で再判定する。
+  - checklist は少なくとも top 料金調整候補 list、Analyze 価格推移 tab、月次実績画面、warm cache indicator、console error、page error、監視対象 write API POST 0 件を対象にする。
+  - 各項目は「見る画面」「操作」「期待表示」「取得する selector または network 条件」「記録する結果」を分けて書く。
+  - Chrome Extension、CDP、Playwright、アプリ内ブラウザのどれを使うかは、repo の Browser Tool Routing に従って分ける。
+- 非目標:
+  - smoke checklist 作成と同時に runtime behavior、UI 文言、selector、network request 範囲を変更しない。
+  - すべての smoke を自動化しない。まず手動または半自動で再現できる確認項目を固定する。
+  - Revenue Assistant write API の実送信確認を標準 smoke に含めない。
+- 受け入れ条件:
+  - 通常 Chrome smoke の checklist が、次回以降の task から参照できる場所に記録されている。
+  - checklist には、top list、Analyze、月次実績、warm cache、console / page error、監視対象 write API POST 0 件の項目がある。
+  - 各項目に、操作、期待結果、証跡として残す値が書かれている。
+  - React 移行 task で使う smoke 項目と、配布版確認後だけ行う smoke 項目が区別されている。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-UX-17 write API POST 0 件の監視を再利用できる検証補助にする
+
+- 意図:
+  - React 移行や GUI smoke のたびに、`POST /api/v1/lincoln/suggest`、`POST /api/v1/lincoln/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/neppan/price_ranks` が発生していないことを、同じ方法で確認できるようにする。
+  - 「確認中に write API を呼んでいない」という安全条件を、口頭報告ではなく、対象 endpoint、観測時間、操作、POST 件数として残せるようにする。
+  - 実送信が必要な task と、実送信を伴わない smoke を分離し、React 移行中の accidental write risk を下げる。
+- スコープ:
+  - 対象は Chrome DevTools Protocol または Chrome Extension 経由で使える、監視対象 write API POST 0 件確認の再利用手順または helper script である。
+  - helper を作る場合は、観測対象 endpoint、観測開始、操作実施、観測終了、POST count、該当 request URL、HTTP status の有無を出力する。
+  - raw request body、raw response body、Cookie、token、authorization header、顧客情報、予約情報、価格や在庫の非公開データは保存しない。
+  - 実 POST を許可する確認は、利用者が実務上反映してよい候補を明示した場合だけ別手順に分ける。
+- 非目標:
+  - Revenue Assistant write API の呼び出しを追加しない。
+  - hidden API の request body や response body を repo に保存しない。
+  - rate limit 回避、bot 検知回避、認証回避を行わない。
+  - write API adapter、rank change payload、guard logic を変更しない。
+- 受け入れ条件:
+  - 監視対象 write API endpoint の一覧が、helper または手順に明記されている。
+  - 通常 Chrome smoke の前後で、対象 endpoint の POST count を確認できる。
+  - 出力または記録には、観測対象 URL、操作した画面、観測時間、POST count が含まれる。
+  - raw body、credential、非公開データを保存しないことが手順に明記されている。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
 ## Remaining Task Triage
 
 Now:
@@ -4665,9 +4739,13 @@ Later:
 
 - `RAU-UX-13` React component へ rank change pending UX と guard 表示を移す。
 - `RAU-UX-14` vanilla list renderer を削除し、React list を正規 path にする。
+- `RAU-UX-15` 配布版の更新確認手順をワンクリックに近づける。
+- `RAU-UX-16` 通常 Chrome smoke の観測項目を checklist 化する。
+- `RAU-UX-17` write API POST 0 件の監視を再利用できる検証補助にする。
 
 統合判断:
 
+- 2026-05-30 に、前回完了報告で推奨した運用補助 3 件を task 化した。`RAU-UX-15` は配布版、Tampermonkey、実行中 userscript の version 不一致を早く見つけるための確認手順である。`RAU-UX-16` は通常 Chrome smoke の観測項目を checklist 化し、画面、操作、期待結果、証跡を作業者の記憶に依存させないための task である。`RAU-UX-17` は監視対象 write API POST 0 件確認を再利用できる検証補助にし、React 移行や GUI smoke 中に accidental write が起きていないことを同じ基準で記録するための task である。これらは React 移行の本線を直接進める task ではなく、`RAU-UX-09` から `RAU-UX-14` の各段階を確認しやすくする補助 task であるため Later に置く。
 - 2026-05-30 に、利用者が React 化を段階的に進める方針を明示したため、料金調整候補 list の React 移行 task を `RAU-UX-09` から `RAU-UX-14` として追加した。既存の `RAU-UX-06` は view model 抽出、`RAU-UX-07` は依存追加と hidden marker の最小 mount として完了済みであり、次は live behavior を変えない fixture-only component から進める。実行順は、fixture-only parity、live read-only 表示、preview open state、browser-local decision pending、rank change pending / guard、vanilla renderer cleanup とする。理由は、Revenue Assistant write API に近い操作ほど後ろへ置き、各段階で `npm run check`、通常 Chrome smoke、監視対象 write API POST 0 件確認を挟むためである。
 - 2026-05-30 に、追加 follow-up の `RAU-UX-08`、`RAU-RR-61`、`RAU-MP-04`、`RAU-UX-06`、`RAU-UX-07` を閉じた。`RAU-UX-08` は GitHub Pages の公開配布物 `0.1.0.330` と Tampermonkey 手動更新後の通常 Chrome smoke を確認した。`RAU-RR-61` は rank change POST 成功後の `反映確認中` と同一 scope 二重送信 block を実装した。`RAU-MP-04` は月次実績画面の合成 fixture mode と空状態を追加した。`RAU-UX-06` は料金調整候補 list の view model と fixture render path を抽出した。`RAU-UX-07` は承認済み依存として React / React DOM を追加し、hidden marker の最小 React island を公開版 smoke で確認した。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 2026-05-30 に、前回完了報告で推奨した follow-up を task 化した。`RAU-UX-08` は latest `dist` を Tampermonkey 経由の実配布物として確認する task であり、以後の GUI 確認の前提になるため Now とした。`RAU-RR-61` は rank change POST 成功後の二重送信防止であり、React 導入や view model 抽出より先に write safety を固める必要があるため Next とした。`RAU-MP-04` は月次 graph の空状態と比較不足の表示品質を合成 fixture で確認する task であり、月次画面の追加改善として After Next に置いた。`RAU-UX-06` は React 依存追加前に料金調整候補 list の view model と副作用境界を分ける task であり、React 導入の前提として After Next に置いた。`RAU-UX-07` は `react` と `react-dom` の追加承認、bundle size、Tampermonkey dist 更新、通常 Chrome smoke を含むため、依存追加の明示承認が必要な Later とした。
