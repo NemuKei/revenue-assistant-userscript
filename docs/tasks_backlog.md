@@ -4740,26 +4740,27 @@
   - `npm run smoke:write-posts -- --seconds 5 --operation top-idle --url https://ra.jalan.net/` を実行し、Revenue Assistant top page の短時間 idle 監視で POST count 0 件を確認した。
   - `react-doctor` の差分診断は `npx react-doctor@latest --verbose --diff` の実行を試みたが、version pin のない remote package 実行として sandbox policy に拒否されたため実施していない。
 
-### RAU-UX-20 React diagnostics tool の導入可否と固定実行方法を決める
+### RAU-UX-20 React diagnostics tool を安全に固定導入する
 
 - 目的:
   - `npx react-doctor@latest --verbose --diff` のような version pin のない remote package 実行を、React 変更時の標準 verify 条件に残さない。
-  - `react-doctor` は話題性が高く、悪意ある package 名の衝突、package 乗っ取り、依存 package への悪意ある混入の標的になり得るため、実行する場合は repo-local に固定した再現可能な方法だけを許可する。
-  - `react-doctor` を使わない場合は、既存の `npm run check`、CDP または通常 Chrome smoke、監視対象 write API POST 0 件確認を React 変更時の追加診断方針として明記する。
+  - `react-doctor` の導入を前提に、悪意ある package 名の衝突、package 乗っ取り、依存 package への悪意ある混入を考慮した安全な運用条件を決める。
+  - React 変更時は、既存の `npm run check`、CDP または通常 Chrome smoke、監視対象 write API POST 0 件確認に加え、固定済み repo-local command として `react-doctor` を実行できる状態にする。
 - スコープ:
-  - 対象は `react-doctor` または代替 React diagnostics の導入判断、package 固定方法、README / `docs/tasks_backlog.md` の verify 文言更新である。
-  - 導入する場合は、exact version、入手元、依存 package、install script、実行権限、lockfile、`package.json` script、実行条件、見送り条件を確認する。
-  - 導入しない場合は、未実装 task に残る `npx react-doctor@latest --verbose --diff` 参照を、安全な見送り文または固定済み repo-local command へ置き換える。
+  - 対象は `react-doctor` の導入、package 固定方法、README / `docs/tasks_backlog.md` の verify 文言更新である。
+  - exact version、入手元、依存 package、install script、実行権限、lockfile、`package.json` script、実行条件、更新条件、停止条件を確認する。
+  - 未実装 task に残る `npx react-doctor@latest --verbose --diff` 参照を、固定済み repo-local command へ置き換える。
 - 非目標:
   - この task では React component の runtime behavior を変更しない。
   - version pin なしの `npx ...@latest`、package manager の global install、lockfile なしの導入を行わない。
   - 供給元、依存 package、install script、実行権限を未確認のまま完了扱いしない。
+  - 導入前提を崩すのは、供給元確認、依存確認、lockfile 固定、実行権限確認のいずれかで明確な blocker が見つかった場合だけにする。
 - 受け入れ条件:
   - `git diff --check` が通過する。
-  - `react-doctor` を導入する場合は、exact version と lockfile が残り、`npm run <script>` で repo-local 実行できる。
-  - `react-doctor` を導入しない場合は、理由を `not-now`、`policy-reject`、`security-reject`、`cost-reject` のいずれかで記録している。
+  - `react-doctor` の exact version と lockfile が残り、`npm run <script>` で repo-local 実行できる。
+  - 導入前提を止める blocker が見つかった場合は、理由を `policy-reject` または `security-reject` として記録し、代替 verify を明記している。
   - `RAU-UX-18` 以降の React 関連 task が、`npx react-doctor@latest --verbose --diff` を完了条件として要求しない状態になっている。
-  - README または `docs/tasks_backlog.md` に、React 変更時の安全な追加診断方針が残っている。
+  - README または `docs/tasks_backlog.md` に、React 変更時の固定済み `react-doctor` 実行方針、更新条件、停止条件が残っている。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
@@ -4771,7 +4772,7 @@
   - React component 内の役割を、入力 snapshot、controls、table、row actions、pending display、preview host に分け、次の UI 変更で修正対象を読み取りやすくする。
 - スコープ:
   - 対象は `src/rankRecommendationReactIsland.ts` 内の React component と型定義である。
-  - `RAU-UX-20` で React diagnostics tool の導入可否と固定実行方法を決めた後に着手する。
+  - `RAU-UX-20` で React diagnostics tool の固定導入と安全な運用条件を決めた後に着手する。
   - 既存の public export、`syncRankRecommendationReactList()`、`RankRecommendationReactListSnapshot` の外部契約は、必要最小限の rename を除いて維持する。
   - 分割後も `data-ra-rank-recommendation-*` selector、aria state、button action、preview host selector を維持する。
 - 非目標:
@@ -4780,7 +4781,7 @@
   - 新しい状態管理 library、routing、CSS framework を追加しない。
 - 受け入れ条件:
   - `npm run check` と `git diff --check` が通過する。
-  - React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`RAU-UX-20` で決めた固定済み repo-local command または明示された見送り理由に従い、実行結果または見送り理由を完了メモに記録している。
+  - React component、React mount、JSX / TSX、React state 管理を追加または変更した場合は、`RAU-UX-20` で決めた固定済み repo-local command に従い、実行結果を完了メモに記録している。導入前提を止める blocker が見つかっていた場合だけ、`RAU-UX-20` で記録した停止理由と代替 verify に従っている。
   - 通常 Chrome または CDP 接続付き Chrome の top 画面で、候補 row 10 件、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel を確認している。
   - smoke test 中の監視対象 write API POST が 0 件である。
 - metadata:
@@ -4859,7 +4860,7 @@
 
 Now:
 
-- `RAU-UX-20` React diagnostics tool の導入可否と固定実行方法を決める。
+- `RAU-UX-20` React diagnostics tool を安全に固定導入する。
 
 Next:
 
@@ -4876,7 +4877,7 @@ Later:
 
 統合判断:
 
-- 2026-05-30 に、`npx react-doctor@latest` のような version pin のない remote package 実行が供給網リスクになるという利用者確認に基づき、`RAU-UX-20` を Now に追加した。React component 分割の `RAU-UX-18` へ進む前に、診断 tool を使うか、使わないか、使う場合はどの version と lockfile と repo-local command に固定するかを決めるためである。`RAU-UX-18` は Next、`RAU-UX-19` は After Next、`RAU-MP-05` と `RAU-CP-15` は Later に置く。
+- 2026-05-30 に、`npx react-doctor@latest` のような version pin のない remote package 実行が供給網リスクになるという利用者確認に基づき、`RAU-UX-20` を Now に追加した。React component 分割の `RAU-UX-18` へ進む前に、`react-doctor` を導入する前提で、どの version と lockfile と repo-local command に固定し、どの条件で更新または停止するかを決めるためである。`RAU-UX-18` は Next、`RAU-UX-19` は After Next、`RAU-MP-05` と `RAU-CP-15` は Later に置く。
 - 2026-05-30 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-18` は React list 正規 path 化直後の保守性改善であり、次の UI 変更前に component 責務を分けるため Now とした。`RAU-UX-19` は公開版、Tampermonkey、通常 Chrome smoke、write API POST 0 件確認を一つの再現可能な検証入口へ寄せる補助 task であり、React component 分割後の配布確認を楽にするため Next とした。`RAU-MP-05` は月次実績画面の次段階候補を実装前に比較する docs-first task であり、月次画面の外部契約に影響し得るため After Next とした。`RAU-CP-15` は価格推移 background queue の実画面安定性確認であり、現在の queue は実装済みで緊急の仕様変更ではないため Later とした。
 - 2026-05-30 に、開始時点で Remaining Task Triage に残っていた `RAU-UX-09` から `RAU-UX-17` を閉じた。料金調整候補 list は React component を正規 path とし、vanilla list renderer は削除した。candidate generation、scoring、IndexedDB、Revenue Assistant API adapter、warm cache queue、rank change adapter、write guard、pending 秒数、監視対象 write API endpoint は変更していない。CDP 接続付き通常 Chrome の Revenue Assistant top page に local `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10 件、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel、監視対象 write API POST 0 件を確認した。`react-doctor` は remote package の unpinned 実行として sandbox policy に拒否されたため未実施である。
 - 2026-05-30 に、`main` push 後の GitHub Pages 配布物 `@version 0.1.0.336` を確認し、Tampermonkey dashboard も `Revenue Assistant Userscript 0.1.0.336` へ更新した。CDP 一時注入なしの通常 Chrome top smoke では、候補 row 10 件、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview visible row 1 件、curve SVG 20 件、`rank調整` preview、decision pending cancel、rank pending cancel、監視対象 write API POST 0 件を確認した。
