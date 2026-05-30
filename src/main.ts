@@ -155,6 +155,8 @@ const RANK_RECOMMENDATION_ORDER_INPUT_ATTRIBUTE = "data-ra-rank-recommendation-o
 const RANK_RECOMMENDATION_ORDER_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-order-status";
 const RANK_RECOMMENDATION_VIEW_MODE_CONTROL_ATTRIBUTE = "data-ra-rank-recommendation-view-mode-control";
 const RANK_RECOMMENDATION_VIEW_MODE_ATTRIBUTE = "data-ra-rank-recommendation-view-mode";
+const RANK_RECOMMENDATION_TARGET_MONTH_CONTROL_ATTRIBUTE = "data-ra-rank-recommendation-target-month-control";
+const RANK_RECOMMENDATION_TARGET_MONTH_ATTRIBUTE = "data-ra-rank-recommendation-target-month";
 const RANK_RECOMMENDATION_ROW_ATTRIBUTE = "data-ra-rank-recommendation-row";
 const RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE = "data-ra-rank-recommendation-priority";
 const RANK_RECOMMENDATION_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-action";
@@ -935,6 +937,7 @@ let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesS
 let rankRecommendationWarmCachePriorityCandidates: RankRecommendationWarmCachePriorityCandidate[] = [];
 let rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
 let rankRecommendationViewMode: RankRecommendationViewMode = "all";
+let rankRecommendationTargetMonth: string | null = null;
 let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
 let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
 let salesSettingWarmCacheStoredCalendarMarkerStates = new Map<string, SalesSettingWarmCacheStoredMarkerState>();
@@ -1239,6 +1242,22 @@ function installInteractionHooks(): void {
 
         scheduleCompetitorPriceOverviewPlacementRepair();
         scheduleInteractionSync();
+    });
+
+    document.addEventListener("change", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const targetMonthSelect = target.closest<HTMLSelectElement>(`select[${RANK_RECOMMENDATION_TARGET_MONTH_ATTRIBUTE}]`);
+        if (targetMonthSelect === null) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        setRankRecommendationTargetMonthFromElement(targetMonthSelect);
     });
 }
 
@@ -2272,10 +2291,31 @@ function setRankRecommendationViewModeFromElement(element: HTMLElement): void {
     queueCalendarSync({ force: true, reason: "rank-recommendation-view-mode" });
 }
 
+function setRankRecommendationTargetMonthFromElement(element: HTMLSelectElement): void {
+    const targetMonth = parseRankRecommendationTargetMonth(element.value);
+    if (targetMonth === rankRecommendationTargetMonth) {
+        return;
+    }
+
+    rankRecommendationTargetMonth = targetMonth;
+    rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+    rankRecommendationCurvePreviewOpenState.clear();
+    rankRecommendationRankChangePreviewOpenState.clear();
+    queueCalendarSync({ force: true, reason: "rank-recommendation-target-month" });
+}
+
 function parseRankRecommendationViewMode(value: string | null): RankRecommendationViewMode | null {
     return RANK_RECOMMENDATION_VIEW_MODE_OPTIONS.some((option) => option.mode === value)
         ? value as RankRecommendationViewMode
         : null;
+}
+
+function parseRankRecommendationTargetMonth(value: string | null): string | null {
+    if (value === null || value === "all") {
+        return null;
+    }
+
+    return /^\d{6}$/.test(value) ? value : null;
 }
 
 function parseRankRecommendationRankLadderFromElement(element: HTMLElement): RankRecommendationRankLadderEntry[] {
@@ -6028,7 +6068,13 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statuses,
         batchDateKey
     );
-    const viewModeFilterResult = applyRankRecommendationViewModeFilter(resolvedFilterResult.candidates, rankRecommendationViewMode);
+    const targetMonthOptions = buildRankRecommendationTargetMonthOptions(resolvedFilterResult.candidates);
+    const effectiveTargetMonth = resolveRankRecommendationEffectiveTargetMonth(rankRecommendationTargetMonth, targetMonthOptions);
+    if (effectiveTargetMonth !== rankRecommendationTargetMonth) {
+        rankRecommendationTargetMonth = effectiveTargetMonth;
+    }
+    const targetMonthFilterResult = applyRankRecommendationTargetMonthFilter(resolvedFilterResult.candidates, effectiveTargetMonth);
+    const viewModeFilterResult = applyRankRecommendationViewModeFilter(targetMonthFilterResult.candidates, rankRecommendationViewMode);
     const visibleCandidates = viewModeFilterResult.candidates.slice(0, rankRecommendationDisplayLimit);
     const displayInfoByKey = buildRankRecommendationDisplayInfoByKey(
         visibleCandidates,
@@ -6046,6 +6092,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     const hiddenSummary = {
         userDecision: decisionFilterResult.hiddenCount,
         resolvedRankChange: resolvedFilterResult.hiddenCount,
+        targetMonth: targetMonthFilterResult.hiddenCount,
         viewMode: viewModeFilterResult.hiddenCount,
         overflow: Math.max(0, viewModeFilterResult.candidates.length - visibleCandidates.length)
     };
@@ -6061,7 +6108,10 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             rankOrderResolution.ranksHighToLow.map((rank) => rank.code).join(">"),
             `hidden-user:${hiddenSummary.userDecision}`,
             `hidden-resolved:${hiddenSummary.resolvedRankChange}`,
+            `hidden-target-month:${hiddenSummary.targetMonth}`,
             `hidden-view-mode:${hiddenSummary.viewMode}`,
+            `target-month:${effectiveTargetMonth ?? "all"}`,
+            `target-month-options:${targetMonthOptions.map((option) => `${option.month}=${option.count}`).join(",")}`,
             `view-mode:${rankRecommendationViewMode}`,
             `overflow:${hiddenSummary.overflow}`,
             `display-limit:${rankRecommendationDisplayLimit}`,
@@ -6093,6 +6143,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         rankLadder,
         rankOrder: rankOrderResolution,
         viewMode: rankRecommendationViewMode,
+        targetMonth: effectiveTargetMonth,
+        targetMonthOptions,
         hiddenSummary,
         displayInfoByKey,
         curvePreviewInfoByKey,
@@ -7269,9 +7321,15 @@ interface RankRecommendationCandidateFilterResult {
     hiddenCount: number;
 }
 
+interface RankRecommendationTargetMonthOption {
+    month: string;
+    count: number;
+}
+
 interface RankRecommendationHiddenSummary {
     userDecision: number;
     resolvedRankChange: number;
+    targetMonth: number;
     viewMode: number;
     overflow: number;
 }
@@ -7333,6 +7391,57 @@ function applyRankRecommendationViewModeFilter(
         candidates: visibleCandidates,
         hiddenCount: candidates.length - visibleCandidates.length
     };
+}
+
+function buildRankRecommendationTargetMonthOptions(
+    candidates: readonly RankRecommendationCandidate[]
+): RankRecommendationTargetMonthOption[] {
+    const countByMonth = new Map<string, number>();
+    for (const candidate of candidates) {
+        const month = getRankRecommendationTargetMonth(candidate);
+        if (month === null) {
+            continue;
+        }
+
+        countByMonth.set(month, (countByMonth.get(month) ?? 0) + 1);
+    }
+
+    return Array.from(countByMonth.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([month, count]) => ({ month, count }));
+}
+
+function resolveRankRecommendationEffectiveTargetMonth(
+    targetMonth: string | null,
+    options: readonly RankRecommendationTargetMonthOption[]
+): string | null {
+    if (targetMonth === null) {
+        return null;
+    }
+
+    return options.some((option) => option.month === targetMonth) ? targetMonth : null;
+}
+
+function applyRankRecommendationTargetMonthFilter(
+    candidates: RankRecommendationCandidate[],
+    targetMonth: string | null
+): RankRecommendationCandidateFilterResult {
+    if (targetMonth === null) {
+        return {
+            candidates,
+            hiddenCount: 0
+        };
+    }
+
+    const visibleCandidates = candidates.filter((candidate) => getRankRecommendationTargetMonth(candidate) === targetMonth);
+    return {
+        candidates: visibleCandidates,
+        hiddenCount: candidates.length - visibleCandidates.length
+    };
+}
+
+function getRankRecommendationTargetMonth(candidate: RankRecommendationCandidate): string | null {
+    return /^\d{8}$/.test(candidate.stayDate) ? candidate.stayDate.slice(0, 6) : null;
 }
 
 function isRankRecommendationVisibleInViewMode(
@@ -7778,6 +7887,8 @@ function renderRankRecommendationList(
         rankLadder?: readonly RankRecommendationRankLadderEntry[];
         rankOrder?: RankRecommendationRankOrderResolution;
         viewMode?: RankRecommendationViewMode;
+        targetMonth?: string | null;
+        targetMonthOptions?: readonly RankRecommendationTargetMonthOption[];
         hiddenSummary?: RankRecommendationHiddenSummary;
         displayInfoByKey?: ReadonlyMap<string, RankRecommendationDisplayInfo>;
         curvePreviewInfoByKey?: ReadonlyMap<string, RankRecommendationCurvePreviewInfo>;
@@ -7800,10 +7911,19 @@ function renderRankRecommendationList(
 
     const metaElement = document.createElement("div");
     metaElement.setAttribute("data-ra-rank-recommendation-meta", "");
-    metaElement.textContent = formatRankRecommendationListMeta(candidates, options.statusText, options.hiddenSummary, options.viewMode ?? "all");
+    metaElement.textContent = formatRankRecommendationListMeta(
+        candidates,
+        options.statusText,
+        options.hiddenSummary,
+        options.viewMode ?? "all",
+        options.targetMonth ?? null
+    );
 
     const viewModeControlElement = options.statusText === null
         ? createRankRecommendationViewModeControl(options.viewMode ?? "all")
+        : null;
+    const targetMonthControlElement = options.statusText === null && (options.targetMonthOptions?.length ?? 0) > 0
+        ? createRankRecommendationTargetMonthControl(options.targetMonth ?? null, options.targetMonthOptions ?? [])
         : null;
 
     const displayLimitControlElement = options.canShowMore === true || options.canResetDisplayLimit === true
@@ -7856,6 +7976,7 @@ function renderRankRecommendationList(
     rootElement.replaceChildren(...[
         titleElement,
         metaElement,
+        ...(targetMonthControlElement === null ? [] : [targetMonthControlElement]),
         ...(viewModeControlElement === null ? [] : [viewModeControlElement]),
         ...(displayLimitControlElement === null ? [] : [displayLimitControlElement]),
         ...(rankOrderControlElement === null ? [] : [rankOrderControlElement]),
@@ -7888,6 +8009,37 @@ function createRankRecommendationViewModeControl(currentMode: RankRecommendation
         controlElement.append(buttonElement);
     }
 
+    return controlElement;
+}
+
+function createRankRecommendationTargetMonthControl(
+    currentMonth: string | null,
+    options: readonly RankRecommendationTargetMonthOption[]
+): HTMLElement {
+    const controlElement = document.createElement("label");
+    controlElement.setAttribute(RANK_RECOMMENDATION_TARGET_MONTH_CONTROL_ATTRIBUTE, "");
+
+    const labelElement = document.createElement("span");
+    labelElement.textContent = "対象月";
+
+    const selectElement = document.createElement("select");
+    selectElement.setAttribute(RANK_RECOMMENDATION_TARGET_MONTH_ATTRIBUTE, "");
+    selectElement.title = "料金調整候補の対象宿泊月で絞り込む";
+
+    const allOptionElement = document.createElement("option");
+    allOptionElement.value = "all";
+    allOptionElement.textContent = `全ての月 (${options.reduce((total, option) => total + option.count, 0)}件)`;
+    selectElement.append(allOptionElement);
+
+    for (const option of options) {
+        const optionElement = document.createElement("option");
+        optionElement.value = option.month;
+        optionElement.textContent = `${formatRankRecommendationTargetMonthLabel(option.month)} (${option.count}件)`;
+        selectElement.append(optionElement);
+    }
+
+    selectElement.value = currentMonth ?? "all";
+    controlElement.append(labelElement, selectElement);
     return controlElement;
 }
 
@@ -8013,7 +8165,8 @@ function formatRankRecommendationListMeta(
     candidates: readonly RankRecommendationCandidate[],
     statusText: string | null,
     hiddenSummary?: RankRecommendationHiddenSummary,
-    viewMode: RankRecommendationViewMode = "all"
+    viewMode: RankRecommendationViewMode = "all",
+    targetMonth: string | null = null
 ): string {
     if (statusText !== null) {
         return statusText;
@@ -8025,11 +8178,33 @@ function formatRankRecommendationListMeta(
         formatRankRecommendationPrioritySummary(candidates),
         formatRankRecommendationConfidenceSummary(candidates),
         formatRankRecommendationCautionSummary(candidates),
+        formatRankRecommendationTargetMonthSummary(hiddenSummary, targetMonth),
         formatRankRecommendationViewModeSummary(hiddenSummary, viewMode),
         formatRankRecommendationHiddenSummary(hiddenSummary),
         formatRankRecommendationOverflowSummary(hiddenSummary)
     ].filter((part): part is string => part !== null);
     return parts.join(" / ");
+}
+
+function formatRankRecommendationTargetMonthSummary(
+    hiddenSummary: RankRecommendationHiddenSummary | undefined,
+    targetMonth: string | null
+): string | null {
+    if (targetMonth === null) {
+        return null;
+    }
+
+    const filteredCount = hiddenSummary?.targetMonth ?? 0;
+    const countText = filteredCount > 0 ? `・条件外 ${filteredCount}件` : "";
+    return `対象月 ${formatRankRecommendationTargetMonthLabel(targetMonth)}${countText}`;
+}
+
+function formatRankRecommendationTargetMonthLabel(targetMonth: string): string {
+    if (!/^\d{6}$/.test(targetMonth)) {
+        return targetMonth;
+    }
+
+    return `${targetMonth.slice(0, 4)}年${Number(targetMonth.slice(4, 6))}月`;
 }
 
 function formatRankRecommendationViewModeSummary(
@@ -15688,6 +15863,7 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.4;
         }
 
+        [${RANK_RECOMMENDATION_TARGET_MONTH_CONTROL_ATTRIBUTE}],
         [${RANK_RECOMMENDATION_VIEW_MODE_CONTROL_ATTRIBUTE}] {
             display: flex;
             align-items: center;
@@ -15697,6 +15873,17 @@ function ensureGroupRoomStyles(): void {
             color: #5b6b7d;
             font-size: 12px;
             font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_TARGET_MONTH_CONTROL_ATTRIBUTE}] select {
+            min-width: 150px;
+            padding: 4px 8px;
+            border: 1px solid #b7c4d3;
+            border-radius: 5px;
+            background: #ffffff;
+            color: #243245;
+            font: inherit;
+            font-weight: 700;
         }
 
         [data-ra-rank-recommendation-display-limit-control] {

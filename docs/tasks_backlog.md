@@ -500,6 +500,43 @@
 
 ## Recently Implemented / GUI Unconfirmed
 
+### RAU-RR-58 料金調整候補を対象月で絞り込めるようにする
+
+- 目的:
+  - 料金調整候補の件数が多い場合でも、対象宿泊月ごとに候補を確認できるようにする。
+- スコープ:
+  - 料金調整候補 list 上部に `対象月` select を追加する。
+  - 選択肢は、user decision と rank change resolved による lifecycle filter 後の active candidates に含まれる `stayDate` の年月から作る。
+  - 初期値は `全ての月` とする。
+  - 対象月 filter は既存の表示モード filter より前に適用する。
+  - 対象月を変更した場合は表示上限を初期値 10 件へ戻し、開いている booking curve preview と rank change preview を閉じる。
+  - summary には、対象月 filter が有効な場合に対象月と条件外件数を表示する。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonFingerprint、rank order、manual override、user decision、resolved 判定を変更すること。
+  - API request 範囲、request 件数、request 間隔を変更すること。
+  - 表示対象月を localStorage や IndexedDB に永続化すること。
+- 受け入れ条件:
+  - `対象月` select で `全ての月` と候補に含まれる月を選択できる。
+  - 月を選ぶと、その月の `stayDate` を持つ候補だけが表示される。
+  - 対象月変更時に表示上限が初期値 10 件へ戻る。
+  - 対象月 filter と既存の `全て`、`上げ検討`、`下げ注意`、`注意あり` の表示モード filter を併用できる。
+  - 対象月 filter は候補生成、候補評価、Revenue Assistant write API に影響しない。
+- 実装内容:
+  - `rankRecommendationTargetMonth` state を追加し、`対象月` select の `change` event で表示対象月を切り替えるようにした。
+  - lifecycle filter と rank change resolved filter の後に、候補の `stayDate` から対象月 option を作るようにした。
+  - 対象月 filter は表示モード filter の前に適用し、対象月変更時は表示上限、booking curve preview、rank change preview を初期化するようにした。
+  - 対象月 filter が有効な場合は、summary に `対象月 YYYY年M月・条件外 n件` を表示するようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+- GUI 確認:
+  - 未実施。Codex アプリ内ブラウザの現在ページは Analyze 日付ページであり、料金調整候補 top list の対象画面ではないため、実画面での `対象月` select 表示は未確認である。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: during-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ### RAU-RR-57 現ランク tooltip に各部屋タイプの OH/キャパを追加する
 
 - 目的:
