@@ -4764,6 +4764,13 @@
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
+- 実施結果:
+  - `react-doctor` は `react-doctor@0.2.14` を exact devDependency として `package.json` と `package-lock.json` に固定した。導入は `npm install --save-dev react-doctor@0.2.14 --ignore-scripts` で行い、install script は実行していない。
+  - npm registry で確認した範囲では、license は MIT、repository は `github.com/millionco/react-doctor`、bin は `bin/react-doctor.js`、package 自体に `install` / `postinstall` script は見当たらなかった。`npm audit` は 0 vulnerabilities だった。
+  - transitive dependency の `ini@7.0.0` は Node `^22.22.2 || ^24.15.0 || >=26.0.0` を要求し、導入時の Node `24.13.0` では `EBADENGINE` warning が出た。現時点では command 実行が通るため採用するが、この warning が install failure または CI failure へ変わった場合は React 診断を停止し、Node runtime 更新または別 fixed version への差し替えを判断する。
+  - `package.json` に `npm run react:doctor` を追加した。標準実行は `react-doctor --yes --no-score --fail-on none` であり、React component 変更時は `npm run react:doctor -- --diff false` を使う。
+  - `npx react-doctor@latest`、global install、lockfile なしの一時実行は React 関連 task の完了条件から外し、README に fixed command、更新条件、停止条件を追加した。
+  - `npm run react:doctor -- --diff false` は sandbox 内では `spawn EPERM` で失敗したが、同じ command を通常権限で再実行して通過した。出力は既存診断として Performance 50 warnings、Dead Code 16 warnings、Server 3 warnings、合計 69 issues だった。`--fail-on none` のため、この診断は React 変更時の追加観測として扱い、今回の component 分割を止める blocker にはしない。
 
 ### RAU-UX-18 React list component を責務単位で分割する
 
@@ -4787,6 +4794,12 @@
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
+- 実施結果:
+  - `src/rankRecommendationReactIsland.ts` の React list を、mount marker、summary、controls、table header、table body、row、cell、row actions、preview rows の責務に分けた。
+  - 外部 contract の `syncRankRecommendationReactList()`、`unmountRankRecommendationReactIsland()`、`RankRecommendationReactListSnapshot`、`RankRecommendationReactRowSnapshot` は維持した。
+  - `data-ra-rank-recommendation-*` selector、`aria-expanded`、button action、preview host selector、pending 表示 selector は維持した。候補生成、scoring、IndexedDB、Revenue Assistant API adapter、warm cache queue、rank change adapter、write guard、pending 秒数は変更していない。
+  - clean CDP context に通常 Chrome の Revenue Assistant cookie だけを引き継ぎ、Tampermonkey なしで local `dist/revenue-assistant-userscript.user.js` を一時注入した。top 画面で候補 row 10 件、React marker、対象月 select、表示 mode 4 件、表示上限 button 1 件、rank order control、`曲線` button 10 件、`rank調整` button 10 件、decision button 20 件を確認した。
+  - 同じ確認で、`曲線` preview row 1 件を開けること、`rank調整` pending を開始して取消できること、browser-local decision pending を開始して取消できること、取消後の pending 件数が 0 件に戻ること、監視対象 write API POST 0 件、console error 0 件、page error 0 件を確認した。表示中 candidate の保存済み curve source に依存するため、この snapshot では curve SVG は 0 件だった。
 
 ### RAU-UX-19 配布版 smoke を半自動化する
 
@@ -4809,6 +4822,13 @@
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
+- 実施結果:
+  - `scripts/run-distribution-smoke.mjs` を追加し、`package.json` に `npm run smoke:distribution` を追加した。
+  - helper は local `dist` version、GitHub Pages 公開版 version、手入力した Tampermonkey installed version、Revenue Assistant URL、top row count、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button、価格推移 overview count、価格推移 background status、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力する。
+  - helper は Tampermonkey dashboard の更新操作を行わない。dashboard の更新が必要な場合は、通常 UI で更新してから installed version を手入力して再実行する。
+  - README の `配布版確認と通常 Chrome smoke` に、開始 command、Chrome / CDP 前提、Tampermonkey 更新が必要な場合の扱い、出力項目、version 不一致時に完了扱いにしないことを追加した。
+  - `npm run smoke:distribution -- --installed-version 0.1.0.336 --url https://ra.jalan.net/ --seconds 20` を実行し、published version `0.1.0.336`、installed version `0.1.0.336`、top row 10 件、React marker yes、対象月 select yes、表示 mode 4 件、表示上限 button 1 件、rank order control yes、`曲線` button 10 件、`rank調整` button 10 件、decision button 20 件、console error 0 件、page error 0 件、監視対象 write API POST 0 件を確認した。
+  - 同じ helper は `--seconds 5` では top row 0 件を返す場合があったため、README の例は `--seconds 30` とし、配布版 smoke の実運用では Revenue Assistant top の初期描画を待てる秒数で実行する。
 
 ### RAU-MP-05 月次実績画面の次段階を task 前提で設計する
 
@@ -4831,6 +4851,13 @@
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実施結果:
+  - `docs/spec_001_analyze_expansion.md` の月次実績画面 final graph 契約へ、次段階候補の比較を追加した。
+  - 比較した候補は、`過去 batch 履歴比較`、`日次差分表示`、`表示密度調整` である。最初に実装する候補は `日次差分表示` とする。
+  - `日次差分表示` を先にする理由は、既存の `monthly-progress` snapshot と LT bucket view model だけで入力が閉じ、過去 batch 間比較のような保存世代管理を増やさずに、利用者が月内の増減日を読めるようにできるためである。
+  - 採用候補 task の入力データは、`facilityCacheKey x yearMonth x batchDateKey` の保存済み monthly snapshot と、既存の month-end anchor に変換した LT bucket 系列である。処理は、同じ表示月の連続する予約日または LT bucket の差分を計算し、増加、減少、変化なし、未観測を UI 表示用 view model へ変換する。出力は、既存 `LTブッキングカーブ` section 内の補助表示として、対象月、LT bucket、差分方向、差分量の表示有無、未観測理由を持つ。
+  - `過去 batch 履歴比較` は、同じ `yearMonth` の複数 `batchDateKey` snapshot を比較するため、保存世代の選択、古い snapshot の保持方針、比較基準 batch の表示が必要である。`表示密度調整` は入力データを増やさず、系列数、tooltip 情報量、panel 配置、既存 Revenue Assistant chart との距離を調整する UI task として扱う。
+  - この task では runtime behavior を変更していない。次に実装へ進める場合の候補は `RAU-MP-06` 月次実績画面に日次差分表示を追加する、である。ただし今回の依頼は既存未着手 task の完了であるため、`Remaining Task Triage` へ新しい未着手 task としては追加せず、最終報告の次タスク候補へ回す。
 
 ### RAU-CP-15 価格推移 background queue の安定性を再確認する
 
@@ -4855,28 +4882,36 @@
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
+- 実施結果:
+  - Chrome DevTools Protocol で通常 Chrome の Revenue Assistant tab を使い、CDP 一時注入なし、Tampermonkey installed version `0.1.0.336` の状態で確認した。
+  - Analyze URL は `https://ra.jalan.net/analyze/2026-06-07` である。`価格推移` tab を開き、RAU の `競合価格 最安値推移（90日版）` overview 1 件、panel 4 件、SVG 4 件を確認した。
+  - background queue は、確認中に `背景取得 6 / 112・保存 6・skip 0` から、復帰後に `背景取得 10 / 112・保存 10・skip 0` へ進んだ。表示中 graph は `部屋タイプ 全部屋タイプから最安値 / 食事 指定なし` のまま維持され、background queue 途中で表示 source が切り替わる挙動は確認されなかった。
+  - `document.hidden` 相当の visibility change を CDP で発火し、3 秒間の待機中に `/api/v1/price_trends` request count が 24 件から増えないことを確認した。同じ価格推移 tab へ復帰させた後、request count は 28 件へ増え、queue が再開することを確認した。
+  - 確認中の監視対象 write API POST は 0 件、console error は 0 件、page error は 0 件だった。raw response body、HAR、Cookie、token、credential、非公開価格データは保存していない。
+  - 小修正が必要な停止、再開、skip、失敗表示の不具合は、この確認範囲では見つからなかった。
 
 ## Remaining Task Triage
 
 Now:
 
-- `RAU-UX-20` React diagnostics tool を安全に固定導入する。
+- なし。
 
 Next:
 
-- `RAU-UX-18` React list component を責務単位で分割する。
+- なし。
 
 After Next:
 
-- `RAU-UX-19` 配布版 smoke を半自動化する。
+- なし。
 
 Later:
 
-- `RAU-MP-05` 月次実績画面の次段階を task 前提で設計する。
-- `RAU-CP-15` 価格推移 background queue の安定性を再確認する。
+- なし。
 
 統合判断:
 
+- 2026-05-31 に、開始時点で Remaining Task Triage に残っていた `RAU-UX-20`、`RAU-UX-18`、`RAU-UX-19`、`RAU-MP-05`、`RAU-CP-15` を閉じた。`RAU-UX-20` では `react-doctor@0.2.14` を exact devDependency として lockfile に固定し、`npm run react:doctor` を追加した。`RAU-UX-18` では React list を mount marker、summary、controls、table、row、cell、row actions、preview rows へ責務分割した。`RAU-UX-19` では配布版 smoke helper `npm run smoke:distribution` を追加した。`RAU-MP-05` では月次実績画面の次段階候補を比較し、最初に実装する候補を `日次差分表示` と判断した。`RAU-CP-15` では通常 Chrome の Tampermonkey installed version `0.1.0.336` で価格推移 background queue の停止、復帰、表示安定性を確認した。
+- 2026-05-31 時点で、既存の未着手 task は Remaining Task Triage に残していない。次に task 化する候補は、利用者判断後に新規 task として追加する。候補は、`RAU-MP-06` 月次実績画面に日次差分表示を追加する、`RAU-UX-21` React Doctor 既存診断 69 件を rule family ごとに棚卸しする、`RAU-UX-22` `smoke:distribution` を top 以外の Analyze / monthly-progress mode へ広げる、`RAU-CP-16` 価格推移 background queue の long-run 完了と failure fixture を確認する、である。
 - 2026-05-30 に、`npx react-doctor@latest` のような version pin のない remote package 実行が供給網リスクになるという利用者確認に基づき、`RAU-UX-20` を Now に追加した。React component 分割の `RAU-UX-18` へ進む前に、`react-doctor` を導入する前提で、どの version と lockfile と repo-local command に固定し、どの条件で更新または停止するかを決めるためである。`RAU-UX-18` は Next、`RAU-UX-19` は After Next、`RAU-MP-05` と `RAU-CP-15` は Later に置く。
 - 2026-05-30 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-18` は React list 正規 path 化直後の保守性改善であり、次の UI 変更前に component 責務を分けるため Now とした。`RAU-UX-19` は公開版、Tampermonkey、通常 Chrome smoke、write API POST 0 件確認を一つの再現可能な検証入口へ寄せる補助 task であり、React component 分割後の配布確認を楽にするため Next とした。`RAU-MP-05` は月次実績画面の次段階候補を実装前に比較する docs-first task であり、月次画面の外部契約に影響し得るため After Next とした。`RAU-CP-15` は価格推移 background queue の実画面安定性確認であり、現在の queue は実装済みで緊急の仕様変更ではないため Later とした。
 - 2026-05-30 に、開始時点で Remaining Task Triage に残っていた `RAU-UX-09` から `RAU-UX-17` を閉じた。料金調整候補 list は React component を正規 path とし、vanilla list renderer は削除した。candidate generation、scoring、IndexedDB、Revenue Assistant API adapter、warm cache queue、rank change adapter、write guard、pending 秒数、監視対象 write API endpoint は変更していない。CDP 接続付き通常 Chrome の Revenue Assistant top page に local `dist/revenue-assistant-userscript.user.js` を一時注入し、候補 row 10 件、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel、監視対象 write API POST 0 件を確認した。`react-doctor` は remote package の unpinned 実行として sandbox policy に拒否されたため未実施である。

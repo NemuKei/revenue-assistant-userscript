@@ -402,6 +402,10 @@ Indicator:
 - 読み込み優先順位は、まず route の現在表示月、次に同じ graph section に出す未来 4 か月、最後に選択中 compare mode で必要な前年、前々年、3年前の比較月とする。現在表示月が描画可能な場合は、比較月または future month の取得完了を待たずに section を表示する。
 - 読み込み状態は、現在表示月を `取得中`、`保存済み`、`保存済みだが比較不足`、`取得失敗`、`対象外` に分ける。background 対象は、対象月、比較月、処理済み件数、対象件数、失敗件数、現在取得中の yearMonth を表示できる形にする。`RAU-MP-03` の初期実装では、現在表示月が保存済みで比較値が不足している場合に `保存済み・比較不足あり` と表示し、background queue は `background 取得中 processed / total・現在 YYYY-MM・失敗 n` または `background 完了 processed / total・失敗 n` と表示する。
 - 表示品質確認用に、browser-local の `localStorage["revenue-assistant:monthly-progress:v1:fixture-mode"]` で合成 fixture を有効化できる。値は `empty`、`current-only`、`compare-shortage`、`partial-failure` とし、raw response body、Cookie、token、credential、非公開データを使わない。fixture mode 中は月次 snapshot の background prefetch を開始せず、合成 view model だけで空状態、現在月のみ保存済み、比較不足、一部取得失敗の表示を確認する。
+- 月次実績画面の次段階候補は、`過去 batch 履歴比較`、`日次差分表示`、`表示密度調整` の 3 つに分けて扱う。最初に実装する候補は `日次差分表示` とする。理由は、既存の `monthly-progress` snapshot と LT bucket view model だけで入力が閉じ、過去 batch 間比較のような保存世代管理を増やさずに、利用者が月内の増減日を読めるようにできるためである。
+- `日次差分表示` の入力は、`facilityCacheKey x yearMonth x batchDateKey` の保存済み monthly snapshot と、既存の month-end anchor に変換した LT bucket 系列である。処理は、同じ表示月の連続する予約日または LT bucket の差分を計算し、増加、減少、変化なし、未観測を UI 表示用の view model へ変換する。出力は、既存 `LTブッキングカーブ` section 内の補助表示として、対象月、LT bucket、差分方向、差分量の表示有無、未観測理由を持つ。raw monthly API response body、Cookie、token、credential、非公開データは保存または docs 化しない。
+- `過去 batch 履歴比較` は、同じ `yearMonth` の複数 `batchDateKey` snapshot を比較するため、保存世代の選択、古い snapshot の保持方針、比較基準 batch の表示が必要である。これは `日次差分表示` より保存単位と UI 説明が増えるため、月次画面の次段階 1 件目にはしない。
+- `表示密度調整` は、系列数、tooltip 情報量、panel 配置、既存 Revenue Assistant chart との距離を調整する UI task とする。入力データの追加は伴わないため、日次差分表示または過去 batch 比較で情報量が増えた後に必要性を再判断する。
 - 既存 snapshot schema migration、料金調整候補 scoring への接続、月次実績の rank recommendation 入力化は別 task とする。
 
 2026-04-30 の Chrome CDP 観測結果:

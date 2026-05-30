@@ -12,13 +12,15 @@
         "typecheck": "tsc --noEmit",
         "lint": "eslint .",
         "check": "npm run typecheck && npm run lint && npm run build",
+        "react:doctor": "react-doctor --yes --no-score --fail-on none",
         "chrome:debug": "pwsh -ExecutionPolicy Bypass -File ./scripts/open-chrome-debug.ps1",
         "chrome:debug:default-profile": "pwsh -ExecutionPolicy Bypass -File ./scripts/open-chrome-debug.ps1 -UseChromeUserData -ProfileDirectory Default",
         "chrome:debug:default-profile:resume": "pwsh -ExecutionPolicy Bypass -File ./scripts/open-chrome-debug.ps1 -UseChromeUserData -ProfileDirectory Default -RestoreLastSession",
         "chrome:profiles": "pwsh -ExecutionPolicy Bypass -File ./scripts/list-chrome-profiles.ps1",
         "chrome:pages": "node ./scripts/attach-chrome.mjs",
         "userscript:version-check": "node ./scripts/check-userscript-version.mjs",
-        "smoke:write-posts": "node ./scripts/monitor-write-api-posts.mjs"
+        "smoke:write-posts": "node ./scripts/monitor-write-api-posts.mjs",
+        "smoke:distribution": "node ./scripts/run-distribution-smoke.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
@@ -30,6 +32,7 @@
         "eslint": "10.4.0",
         "globals": "17.6.0",
         "playwright-core": "1.60.0",
+        "react-doctor": "0.2.14",
         "typescript": "6.0.3",
         "typescript-eslint": "8.59.3"
     },

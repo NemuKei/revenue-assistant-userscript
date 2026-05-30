@@ -194,20 +194,41 @@ function ensureRankRecommendationReactIslandHost(container: HTMLElement): HTMLEl
 function RankRecommendationReactList(props: { snapshot: RankRecommendationReactListSnapshot }): React.ReactElement {
     const snapshot = props.snapshot;
     return React.createElement(React.Fragment, null,
+        React.createElement(RankRecommendationReactMountMarker, { snapshot }),
+        React.createElement(RankRecommendationReactSummary, { snapshot }),
+        React.createElement(RankRecommendationReactControls, { controls: snapshot.controls }),
+        React.createElement(RankRecommendationReactTable, { snapshot })
+    );
+}
+
+function RankRecommendationReactMountMarker(props: { snapshot: RankRecommendationReactListSnapshot }): React.ReactElement {
+    const snapshot = props.snapshot;
+    return (
         React.createElement("span", {
             [RANK_RECOMMENDATION_REACT_ISLAND_ATTRIBUTE]: "mounted",
             "data-row-count": String(snapshot.rows.length),
             "data-mode": snapshot.mode,
             "data-signature": snapshot.signature,
             hidden: true
-        }),
+        })
+    );
+}
+
+function RankRecommendationReactSummary(props: { snapshot: RankRecommendationReactListSnapshot }): React.ReactElement {
+    const snapshot = props.snapshot;
+    return React.createElement(React.Fragment, null,
         React.createElement("h2", null, snapshot.title),
-        React.createElement("div", { "data-ra-rank-recommendation-meta": "" }, snapshot.metaText),
-        renderTargetMonthControl(snapshot.controls.targetMonth),
-        renderViewModeControl(snapshot.controls.viewMode),
-        renderDisplayLimitControl(snapshot.controls.displayLimit),
-        renderRankOrderControl(snapshot.controls.rankOrder),
-        renderTable(snapshot)
+        React.createElement("div", { "data-ra-rank-recommendation-meta": "" }, snapshot.metaText)
+    );
+}
+
+function RankRecommendationReactControls(props: { controls: RankRecommendationReactControlsSnapshot }): React.ReactElement {
+    const controls = props.controls;
+    return React.createElement(React.Fragment, null,
+        renderTargetMonthControl(controls.targetMonth),
+        renderViewModeControl(controls.viewMode),
+        renderDisplayLimitControl(controls.displayLimit),
+        renderRankOrderControl(controls.rankOrder)
     );
 }
 
@@ -285,21 +306,31 @@ function renderRankOrderControl(control: RankRecommendationReactControlsSnapshot
     );
 }
 
-function renderTable(snapshot: RankRecommendationReactListSnapshot): React.ReactElement {
+function RankRecommendationReactTable(props: { snapshot: RankRecommendationReactListSnapshot }): React.ReactElement {
+    const snapshot = props.snapshot;
     return React.createElement("table", null,
-        React.createElement("thead", null,
-            React.createElement("tr", null, snapshot.columns.map((label) => React.createElement("th", { key: label, scope: "col" }, label)))
-        ),
-        React.createElement("tbody", null,
-            snapshot.emptyText === null
-                ? snapshot.rows.flatMap((row) => [
-                    React.createElement(RankRecommendationReactRow, { key: `${row.key}:main`, row }),
-                    React.createElement(RankRecommendationReactPreviewRows, { key: `${row.key}:preview`, row, colSpan: snapshot.columns.length })
-                ])
-                : React.createElement("tr", null,
-                    React.createElement("td", { colSpan: snapshot.columns.length }, snapshot.emptyText)
-                )
-        )
+        React.createElement(RankRecommendationReactTableHeader, { columns: snapshot.columns }),
+        React.createElement(RankRecommendationReactTableBody, { snapshot })
+    );
+}
+
+function RankRecommendationReactTableHeader(props: { columns: readonly string[] }): React.ReactElement {
+    return React.createElement("thead", null,
+        React.createElement("tr", null, props.columns.map((label) => React.createElement("th", { key: label, scope: "col" }, label)))
+    );
+}
+
+function RankRecommendationReactTableBody(props: { snapshot: RankRecommendationReactListSnapshot }): React.ReactElement {
+    const snapshot = props.snapshot;
+    return React.createElement("tbody", null,
+        snapshot.emptyText === null
+            ? snapshot.rows.flatMap((row) => [
+                React.createElement(RankRecommendationReactRow, { key: `${row.key}:main`, row }),
+                React.createElement(RankRecommendationReactPreviewRows, { key: `${row.key}:preview`, row, colSpan: snapshot.columns.length })
+            ])
+            : React.createElement("tr", null,
+                React.createElement("td", { colSpan: snapshot.columns.length }, snapshot.emptyText)
+            )
     );
 }
 
@@ -311,25 +342,15 @@ function RankRecommendationReactRow(props: { row: RankRecommendationReactRowSnap
         [RANK_RECOMMENDATION_ACTION_ATTRIBUTE]: row.action,
         [RANK_RECOMMENDATION_STATUS_ATTRIBUTE]: row.status
     },
-        ...row.cells.map((cell, index) => renderCell(cell, index)),
-        React.createElement("td", null,
-            renderAnalyzeLink(row.analyzeLink),
-            renderButton(row.curvePreviewButton, { "aria-expanded": row.curvePreviewButton.expanded ? "true" : "false" }),
-            renderCurvePopover(row.curvePopoverItems),
-            renderButton(row.rankChangeButton, { "aria-expanded": row.rankChangeButton.expanded ? "true" : "false" }),
-            React.createElement(InlineRankChange, { inlineRankChange: row.inlineRankChange }),
-            renderButton(row.snoozeButton),
-            renderButton(row.dismissButton),
-            renderPendingDecision(row.pendingDecision),
-            renderPendingRankChange(row.pendingRankChange),
-            row.pendingRankChange === null ? renderRankChangeResult(row.rankChangeResult) : null
-        )
+        ...row.cells.map((cell, index) => React.createElement(RankRecommendationReactCell, { key: `cell:${index}`, cell })),
+        React.createElement(RankRecommendationReactRowActions, { row })
     );
 }
 
-function renderCell(cell: RankRecommendationReactCellSnapshot, index: number): React.ReactElement {
+function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellSnapshot }): React.ReactElement {
+    const { cell } = props;
     if (cell.kind === "rankGap") {
-        return React.createElement("td", { key: `cell:${index}`, [RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE]: "" },
+        return React.createElement("td", { [RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE]: "" },
             React.createElement("span", { [RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE]: "" },
                 React.createElement("button", {
                     type: "button",
@@ -361,10 +382,25 @@ function renderCell(cell: RankRecommendationReactCellSnapshot, index: number): R
 
     const attrs = cell.attribute === undefined ? {} : { [cell.attribute]: "" };
     return React.createElement("td", {
-        key: `cell:${index}`,
         title: cell.title,
         ...attrs
     }, cell.value);
+}
+
+function RankRecommendationReactRowActions(props: { row: RankRecommendationReactRowSnapshot }): React.ReactElement {
+    const row = props.row;
+    return React.createElement("td", null,
+        renderAnalyzeLink(row.analyzeLink),
+        renderButton(row.curvePreviewButton, { "aria-expanded": row.curvePreviewButton.expanded ? "true" : "false" }),
+        renderCurvePopover(row.curvePopoverItems),
+        renderButton(row.rankChangeButton, { "aria-expanded": row.rankChangeButton.expanded ? "true" : "false" }),
+        React.createElement(InlineRankChange, { inlineRankChange: row.inlineRankChange }),
+        renderButton(row.snoozeButton),
+        renderButton(row.dismissButton),
+        renderPendingDecision(row.pendingDecision),
+        renderPendingRankChange(row.pendingRankChange),
+        row.pendingRankChange === null ? renderRankChangeResult(row.rankChangeResult) : null
+    );
 }
 
 function RankRecommendationReactPreviewRows(props: { row: RankRecommendationReactRowSnapshot; colSpan: number }): React.ReactElement[] {

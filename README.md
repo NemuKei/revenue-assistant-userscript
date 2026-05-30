@@ -31,6 +31,7 @@ npm run check
 - `npm run typecheck`: TypeScript の型検査
 - `npm run lint`: ESLint 実行
 - `npm run check`: 型検査、lint、build をまとめて実行
+- `npm run react:doctor`: 固定済み `react-doctor@0.2.14` を repo-local に実行
 - `npm run chrome:debug`: デバッグポート 9222 付きの Chrome を専用プロファイルで起動
 - `npm run chrome:debug:default-profile`: 既存の Chrome Default プロファイルを remote debugging 付きで起動
 - `npm run chrome:debug:default-profile:resume`: 既存の Chrome Default プロファイルを前回セッション復元付きで起動
@@ -38,6 +39,7 @@ npm run check
 - `npm run chrome:pages`: CDP 経由で Chrome に接続し、開いているページを一覧表示
 - `npm run userscript:version-check -- --installed-version <Tampermonkey上のversion>`: local `dist`、GitHub Pages 公開版、Tampermonkey 上の version、Revenue Assistant tab の有無を確認
 - `npm run smoke:write-posts -- --seconds 30 --operation <確認内容>`: CDP 接続中の Chrome tab で、監視対象 write API の POST 件数を確認
+- `npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --url https://ra.jalan.net/`: 配布版 version、top 主要 selector、監視対象 write API POST 件数をまとめて確認
 
 ## Verification
 
@@ -54,11 +56,16 @@ npm run lint
 # userscript bundle 再生成だけを確認
 npm run build
 
+# React component 変更後の追加診断
+npm run react:doctor -- --diff false
+
 # commit 前の whitespace error 確認
 git diff --check
 ```
 
 `npm run check` は `npm run typecheck`、`npm run lint`、`npm run build` を順に実行します。
+
+React component、React mount、React state 管理を追加または変更した場合は、`npm run check` に加えて `npm run react:doctor -- --diff false` を実行します。`react-doctor` は `devDependency` として `0.2.14` に固定し、lockfile に記録しています。`@latest` を指定した `npx react-doctor@latest`、global install、lockfile を更新しない一時実行は使いません。更新する場合は、npm registry の version、license、repository、dependencies、bin、lifecycle script、lockfile 差分、`npm audit`、repo-local 実行結果を確認してから行います。`npm install` や `npm run react:doctor` が Node engine、install script、未確認依存、network、権限のいずれかで失敗する場合は、その回の React 診断は停止し、`npm run check` と通常 Chrome smoke を代替 verify として記録します。
 
 Codex automation shell などで `npm run ...` をそのまま実行できない場合は、次の direct command を fallback として使います。
 
@@ -107,6 +114,14 @@ npm run smoke:write-posts -- --seconds 30 --operation top-react-smoke
 ```
 
 出力には、観測対象 URL、操作名、観測秒数、監視 endpoint、POST count、確認時刻が含まれます。raw request body、raw response body、Cookie、token、authorization header、顧客情報、予約情報、価格や在庫の非公開データは保存しません。
+
+配布版 smoke を半自動でまとめる場合は、通常 Chrome を remote debugging port `9222` 付きで起動し、Tampermonkey 上の installed version を確認してから次を実行します。
+
+```powershell
+npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --url https://ra.jalan.net/ --seconds 30
+```
+
+この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、top 料金調整候補 row 件数、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button、価格推移 overview 件数、価格推移 background status、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。Tampermonkey dashboard の更新操作は行いません。local / published / installed version が一致しない場合は、配布版 smoke を完了扱いにせず、Tampermonkey の通常 UI から更新してから再実行します。
 
 ## 現在の実装状態
 
