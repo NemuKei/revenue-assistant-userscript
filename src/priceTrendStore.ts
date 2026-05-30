@@ -13,6 +13,12 @@ export type PriceTrendMealTypeRequest = typeof PRICE_TREND_MEAL_TYPE_REQUESTS[nu
 export const PRICE_TREND_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS", "WASHITSU", "WAYOUSHITSU"] as const;
 export type PriceTrendRoomTypeRequest = typeof PRICE_TREND_ROOM_TYPE_REQUESTS[number];
 
+export interface PriceTrendRequestScope {
+    numGuests: PriceTrendGuestCount;
+    mealType: PriceTrendMealTypeRequest;
+    roomType: PriceTrendRoomTypeRequest | null;
+}
+
 interface PriceTrendYadInfoApiResponse {
     yad_no?: string | number | null;
     name?: string | null;
@@ -96,6 +102,7 @@ export interface PriceTrendRecord {
 export interface FetchAndPersistPriceTrendOptions {
     facilityId: string;
     stayDate: string;
+    scopes?: readonly PriceTrendRequestScope[];
 }
 
 export interface FetchAndPersistPriceTrendResult {
@@ -115,7 +122,7 @@ const pendingPriceTrendWrites = new Map<string, Promise<FetchAndPersistPriceTren
 export async function fetchAndPersistPriceTrendRecords(
     options: FetchAndPersistPriceTrendOptions
 ): Promise<FetchAndPersistPriceTrendResult> {
-    const pendingKey = `${options.facilityId}|${options.stayDate}`;
+    const pendingKey = `${options.facilityId}|${options.stayDate}|${buildPriceTrendScopeListKey(options.scopes)}`;
     const pending = pendingPriceTrendWrites.get(pendingKey);
     if (pending !== undefined) {
         return pending;
@@ -159,38 +166,33 @@ async function fetchAndPersistPriceTrendRecordsInternal(
 
     const fetchedAt = new Date().toISOString();
     const records: PriceTrendRecord[] = [];
-    const mealTypeRequests: PriceTrendMealTypeRequest[] = [...PRICE_TREND_MEAL_TYPE_REQUESTS];
-    const roomTypeRequests: Array<PriceTrendRoomTypeRequest | null> = [null, ...PRICE_TREND_ROOM_TYPE_REQUESTS];
-    for (const mealType of mealTypeRequests) {
-        for (const roomType of roomTypeRequests) {
-            for (const numGuests of PRICE_TREND_GUEST_COUNTS) {
-                const request = buildPriceTrendRequest(options.stayDate, numGuests, mealType, roomType, yadNos);
-                const response = await fetch(request.url, {
-                    credentials: "include",
-                    headers: {
-                        "x-requested-with": "XMLHttpRequest"
-                    }
-                });
-                if (!response.ok) {
-                    throw new Error(`price trends request failed: ${response.status}`);
-                }
-                const apiResponse = await response.json() as PriceTrendApiResponse;
-                records.push(buildPriceTrendRecord({
-                    facilityId: options.facilityId,
-                    stayDate: options.stayDate,
-                    numGuests,
-                    mealType,
-                    roomType,
-                    roomTypeLabel: formatPriceTrendRoomTypeRequestLabel(roomType),
-                    fetchedAt,
-                    endpoint: PRICE_TRENDS_ENDPOINT,
-                    query: request.query,
-                    facilities: requestContext.facilities,
-                    scopeYadNos: yadNos,
-                    apiResponse
-                }));
+    const scopes = options.scopes ?? buildAllPriceTrendRequestScopes();
+    for (const scope of scopes) {
+        const request = buildPriceTrendRequest(options.stayDate, scope.numGuests, scope.mealType, scope.roomType, yadNos);
+        const response = await fetch(request.url, {
+            credentials: "include",
+            headers: {
+                "x-requested-with": "XMLHttpRequest"
             }
+        });
+        if (!response.ok) {
+            throw new Error(`price trends request failed: ${response.status}`);
         }
+        const apiResponse = await response.json() as PriceTrendApiResponse;
+        records.push(buildPriceTrendRecord({
+            facilityId: options.facilityId,
+            stayDate: options.stayDate,
+            numGuests: scope.numGuests,
+            mealType: scope.mealType,
+            roomType: scope.roomType,
+            roomTypeLabel: formatPriceTrendRoomTypeRequestLabel(scope.roomType),
+            fetchedAt,
+            endpoint: PRICE_TRENDS_ENDPOINT,
+            query: request.query,
+            facilities: requestContext.facilities,
+            scopeYadNos: yadNos,
+            apiResponse
+        }));
     }
 
     const hasAnyYads = records.some((record) => record.payload.yads.length > 0);
@@ -220,6 +222,37 @@ async function fetchAndPersistPriceTrendRecordsInternal(
         stored: true,
         records
     };
+}
+
+export function buildAllPriceTrendRequestScopes(): PriceTrendRequestScope[] {
+    const scopes: PriceTrendRequestScope[] = [];
+    for (const mealType of PRICE_TREND_MEAL_TYPE_REQUESTS) {
+        for (const roomType of [null, ...PRICE_TREND_ROOM_TYPE_REQUESTS] as const) {
+            for (const numGuests of PRICE_TREND_GUEST_COUNTS) {
+                scopes.push({
+                    numGuests,
+                    mealType,
+                    roomType
+                });
+            }
+        }
+    }
+    return scopes;
+}
+
+function buildPriceTrendScopeListKey(scopes: readonly PriceTrendRequestScope[] | undefined): string {
+    if (scopes === undefined) {
+        return "all";
+    }
+    return scopes.map(buildPriceTrendScopeKey).join(",");
+}
+
+function buildPriceTrendScopeKey(scope: PriceTrendRequestScope): string {
+    return [
+        `guest:${scope.numGuests}`,
+        `meal:${scope.mealType}`,
+        `room:${scope.roomType ?? "unspecified"}`
+    ].join("|");
 }
 
 async function buildPriceTrendRequestContext(): Promise<PriceTrendRequestContext> {

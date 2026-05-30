@@ -310,8 +310,8 @@ Indicator:
 - Top の `料金調整候補` は、現在の月次カレンダー表示範囲に対する `/api/v1/suggest/output/current_settings`、rank ladder、rank status、browser-local decision、保存済み `booking_curve_raw_source:v2` を使う。`基準日` は候補の `asOfDate` であり、`宿泊まで` の日数と current settings の観測日を示す。保存済み raw source は、候補別に `最新基準日あり`、`過去基準日あり`、`未保存`、`取得中`、`取得失敗` の非数値状態として表示できる。`最新基準日あり` は候補と同じ `asOfDate` の raw source がある状態を指す。`過去基準日あり` は同じ stay_date と roomGroup の raw source はあるが、候補と同じ `asOfDate` ではない状態を指す。`取得中` は warm cache の現在 task または queue に、同じ stay_date と roomGroup の `currentRaw` task が残っている状態を指す。
 - Analyze 日付ページは、利用者が開いている stay_date を warm cache の最優先対象にする。表示上の基準日は `as_of_date` であり、indicator は `この日 raw`、`参考線`、`同曜日` の内訳を出す。保存済み raw source、derived reference curve、同曜日 raw source のいずれが不足しているかを分けて表示する。
 - 競合価格タブは、競合価格 snapshot の保存状態を booking curve warm cache とは別の状態として表示する。対象 stay_date、検索条件 signature、最終保存時刻、前回 snapshot の有無、競合施設数、skip 理由、保存失敗を区別する。競合価格 snapshot を booking curve warm cache の完了定義へ混ぜない。
-- 価格推移タブは、公式 `/api/v1/price_trends` から保存した `price-trend-records` を使う。初回表示に必要な record は、表示中 stay_date、既定人数、既定部屋タイプ、既定食事条件を優先する。`mealType x roomType x guestCount` の全組み合わせを取得する処理は、初回表示を塞がない background queue 化の候補とする。保存済み record は `fetchedAt` を取得時刻として表示できるようにし、89 日より先または `yads` 空配列は対象外理由として扱う。
-- 月次実績画面は、現在表示月の snapshot を初回表示の優先対象にし、比較月または future month の prefetch は background 扱いにする。GUI 確認と final graph 契約が未完了の間は、月次実績画面の読み込み表示は実装候補として扱い、Top または Analyze の安定済み契約と同等の完了済み公開挙動として扱わない。
+- 価格推移タブは、公式 `/api/v1/price_trends` から保存した `price-trend-records` を使う。初回表示では、表示中 stay_date の `roomType = 指定なし`、`mealType = NONE / BREAKFAST / DINNER / BREAKFAST_DINNER`、`guestCount = 1 / 2 / 3 / 4` の 16 request を優先する。これは既定の `部屋タイプ=指定なし`、`食事=指定なし`、人数別 4 panel を先に描画するための最小単位である。部屋タイプ別 request を含む残りの `mealType x roomType x guestCount` は background queue で取得する。保存済み record は `fetchedAt` を取得時刻として表示できるようにし、89 日より先または `yads` 空配列は対象外理由として扱う。
+- 月次実績画面は、現在表示月の snapshot を初回表示の優先対象にし、比較月または future month の prefetch は background 扱いにする。`RAU-MP-02` で final graph 契約と読み込み状態を定義したが、GUI 確認が未完了であるため、Top または Analyze の安定済み公開挙動と同等にはまだ扱わない。
 
 ### Sync Timing
 
@@ -386,6 +386,22 @@ Indicator:
 - `価格推移` タブ側にも、既存 `競合価格` タブの graph と同じ形の `部屋タイプ`、`食事` 絞り込み UI を表示する。部屋タイプの表示候補は、保存済み公式価格推移 record の `roomType` / `roomTypeLabel` scope から作る。食事の表示候補は、保存済み公式価格推移 record の `mealType` scope から作る。`部屋タイプ=指定なし` 選択時は、部屋タイプ別 request record が保存されている場合は部屋タイプ別 request record 全体を `facility x leadTime` ごとの最安値へ集約し、tooltip には採用された request scope の部屋タイプを表示する。部屋タイプ別 request record がない場合だけ指定なし request の record を使う。部屋タイプ選択時は対応する `room_type_options[]` 単独指定 request の record を使う。`食事=指定なし` 選択時は保存済み食事タイプ全体を `facility x leadTime` ごとの最安値へ集約し、食事タイプ選択時は該当 meal type scope だけを使う。
 - `競合価格` タブと `価格推移` タブの RAU graph tooltip は、列名を `施設`、`部屋タイプ`、`価格`、`前回差分`、`自社との差` に揃える。`施設` cell には色 swatch と施設名を表示し、`部屋タイプ` cell にはその行の最安値として採用した plan または request scope の部屋タイプを表示する。同じ取得日または同じ lead time の自社価格が取れない場合、`自社との差` は `-` と表示する。
 - `価格推移` タブを開いた場合、RAU は公式価格推移取得だけを開始し、既存 `competitor-tab` source の競合価格 snapshot 保存要求を開始しない。既存 `競合価格` タブでは、従来どおり `competitor-price-tax-included-text` 周辺に保存済み snapshot graph を表示し、IndexedDB snapshot 保存挙動も維持する。
+- `RAU-CP-14` 以降、価格推移タブの取得は初回表示用 request と background queue を分ける。初回表示用 request は `room_type_options[]` を指定しない record だけを対象にし、食事タイプ 4 種と人数 4 種の 16 record を先に保存する。初回表示用 request が保存できたら、残りの部屋タイプ別 request を 1 秒間隔の background queue で保存する。background queue の対象は、`SINGLE`、`DOUBLE`、`TWIN`、`TRIPLE`、`FOUR_BEDS`、`WASHITSU`、`WAYOUSHITSU` と、食事タイプ 4 種、人数 4 種の組み合わせである。取得対象の総組み合わせは増やさない。
+- 価格推移タブの background queue は、booking curve warm cache queue と競合価格 snapshot queue へ混ぜない。`document.hidden`、別 Analyze 日付への遷移、施設 cache key の変更、価格推移タブ本文が表示されなくなった場合は停止する。`document.hidden` で停止した場合は、同じ価格推移タブへ戻ったときに残り queue を再開できる。
+- 価格推移タブの meta 表示では、background queue の `処理済み / 対象数`、保存数、skip 数、失敗数、現在取得中条件、完了または停止理由を表示する。取得中条件は、人数、食事、部屋タイプを表示する。
+- `部屋タイプ=指定なし` の graph は、部屋タイプ別 record がすべてそろうまでは初回表示用の指定なし record を使う。部屋タイプ別 record が一部だけ保存された途中状態で、指定なし graph を部分的な部屋タイプ別集約へ切り替えない。これにより、background queue 中に現在表示条件の graph が不要に揺れることを避ける。
+
+月次実績画面 final graph 契約:
+
+- 月次実績画面の対象 route は `/monthly-progress/YYYY-MM` である。画面ごとの起動境界は `monthlyProgress` module に閉じ、top / analyze の observer、booking curve warm cache、競合価格 snapshot queue、価格推移 queue とは混ぜない。
+- 入力データは `/api/v1/booking_curve/monthly` の response を、`facilityCacheKey x yearMonth x batchDateKey` 単位で保存した `monthly-progress` IndexedDB snapshot である。raw response body 全文、Cookie、token、credential、非公開データは docs や Git 管理へ保存しない。
+- final graph は既存 Revenue Assistant の予約日基準 chart を置き換えず、その直下に RAU の独立 section として表示する。1 つ目の panel は `販売客室数`、2 つ目の panel は `販売単価` または `売上` の切替表示とする。
+- 横軸は日別 booking curve と同じ LT bucket を使う。表示 tick は `360 / 270 / 180 / 120 / 90 / 60 / 45 / 30 / 21 / 14 / 7 / 3 / ACT` を基本にする。`ACT` は対象月末日を anchor とした最終実績であり、現在表示月がまだ月末に到達していない場合は this year の `ACT` を未観測として扱う。
+- 表示対象月は、route の現在表示月から未来 4 か月までを同じ graph section に出す。各月は色を分けて表示し、tooltip では月、LT、対象日、値、前年同日または前年同 bucket との比率を確認できるようにする。
+- 比較対象は `前年`、`前年 / 前々年`、`前年 / 前々年 / 3年前` の段階切替とする。比較対象月の snapshot が未保存または取得失敗の場合は、その比較線だけを欠損として扱い、現在表示月の線を消さない。
+- 読み込み優先順位は、まず route の現在表示月、次に同じ graph section に出す未来 4 か月、最後に選択中 compare mode で必要な前年、前々年、3年前の比較月とする。現在表示月が描画可能な場合は、比較月または future month の取得完了を待たずに section を表示する。
+- 読み込み状態は、現在表示月を `取得中`、`保存済み`、`保存済みだが比較不足`、`取得失敗`、`対象外` に分ける。background 対象は、対象月、比較月、取得済み数、失敗数、現在取得中の yearMonth を表示できる形にする。初期実装で表示 UI が未整備な場合でも、この分類に沿って後続 task を切る。
+- 実装に進む場合の最小 task は、現在表示月だけを先に描画し、比較月と future month を background に回す queue と、その読み込み状態表示を 1 画面で検証できる粒度にする。既存 snapshot schema migration、料金調整候補 scoring への接続、月次実績の rank recommendation 入力化は別 task とする。
 
 2026-04-30 の Chrome CDP 観測結果:
 

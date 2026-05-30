@@ -58,9 +58,13 @@ import {
 } from "./competitorPriceSnapshotStore";
 import {
     PRICE_TREND_GUEST_COUNTS,
+    PRICE_TREND_MEAL_TYPE_REQUESTS,
+    PRICE_TREND_ROOM_TYPE_REQUESTS,
+    buildAllPriceTrendRequestScopes,
     fetchAndPersistPriceTrendRecords,
     readLatestPriceTrendRecordsForStayDate,
     type PriceTrendGuestCount,
+    type PriceTrendRequestScope,
     type PriceTrendRecord
 } from "./priceTrendStore";
 import {
@@ -290,6 +294,8 @@ const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-room-tooltip-v4";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
+const PRICE_TREND_BACKGROUND_QUEUE_INTERVAL_MS = 1000;
+const PRICE_TREND_BACKGROUND_QUEUE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -490,6 +496,22 @@ interface PriceTrendUiState {
     reason: string | null;
     errorMessage: string | null;
     updatedAt: string | null;
+}
+
+type PriceTrendBackgroundStatus = "idle" | "running" | "complete" | "stopped";
+
+interface PriceTrendBackgroundQueueState {
+    status: PriceTrendBackgroundStatus;
+    facilityId: string | null;
+    stayDate: string | null;
+    total: number;
+    processed: number;
+    stored: number;
+    skipped: number;
+    errors: number;
+    consecutiveErrors: number;
+    currentScope: PriceTrendRequestScope | null;
+    pauseReason: string | null;
 }
 
 interface MonthlyCalendarCell {
@@ -944,6 +966,10 @@ let salesSettingWarmCacheTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundRunning = false;
 let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
+let priceTrendBackgroundQueueTimeoutId: number | null = null;
+let priceTrendBackgroundQueueRunning = false;
+let priceTrendBackgroundQueue: PriceTrendRequestScope[] = [];
+let priceTrendBackgroundQueueState: PriceTrendBackgroundQueueState = createInitialPriceTrendBackgroundQueueState();
 let pendingCompetitorPriceTabSnapshotRequest: PendingCompetitorPriceTabSnapshotRequest | null = null;
 let pendingPriceTrendTabRequest: PendingPriceTrendTabRequest | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
@@ -1010,19 +1036,23 @@ function installLifecycleConsistencyHooks(): void {
     window.addEventListener("pageshow", () => {
         scheduleConsistencyCheck("pageshow");
         scheduleSalesSettingWarmCacheDrain(0);
+        resumePriceTrendBackgroundQueueAfterVisibility();
     });
 
     window.addEventListener("focus", () => {
         scheduleConsistencyCheck("focus");
         scheduleSalesSettingWarmCacheDrain(0);
+        resumePriceTrendBackgroundQueueAfterVisibility();
     });
 
     document.addEventListener("visibilitychange", () => {
         if (document.visibilityState === "visible") {
             scheduleConsistencyCheck("visibility");
             scheduleSalesSettingWarmCacheDrain(0);
+            resumePriceTrendBackgroundQueueAfterVisibility();
         } else {
             pauseSalesSettingWarmCache("タブ非表示");
+            stopPriceTrendBackgroundQueue("タブ非表示");
         }
     });
 }
@@ -2778,6 +2808,7 @@ function syncPage(): void {
             clearPendingPriceTrendTabRequest();
         }
         resetCompetitorPriceSnapshotBackgroundProgress();
+        resetPriceTrendBackgroundQueue("対象宿泊日変更");
         cleanupCompetitorPriceOverview();
         cleanupPriceTrendOverview();
     }
@@ -2791,6 +2822,7 @@ function syncPage(): void {
         clearPendingCompetitorPriceTabSnapshotRequest();
         clearPendingPriceTrendTabRequest();
         resetCompetitorPriceSnapshotBackgroundProgress();
+        resetPriceTrendBackgroundQueue("対象画面外");
         cleanupCompetitorPriceOverview();
         cleanupPriceTrendOverview();
         renderSalesSettingWarmCacheIndicator();
@@ -3247,6 +3279,22 @@ function createInitialPriceTrendUiState(): PriceTrendUiState {
         reason: null,
         errorMessage: null,
         updatedAt: null
+    };
+}
+
+function createInitialPriceTrendBackgroundQueueState(): PriceTrendBackgroundQueueState {
+    return {
+        status: "idle",
+        facilityId: null,
+        stayDate: null,
+        total: 0,
+        processed: 0,
+        stored: 0,
+        skipped: 0,
+        errors: 0,
+        consecutiveErrors: 0,
+        currentScope: null,
+        pauseReason: null
     };
 }
 
@@ -5563,6 +5611,8 @@ async function runPriceTrendFetch(
     analysisDate: string,
     facilityCacheKey: string
 ): Promise<boolean> {
+    resetPriceTrendBackgroundQueue("初回取得を開始");
+    const initialScopes = buildInitialPriceTrendRequestScopes();
     priceTrendUiState = {
         ...priceTrendUiState,
         status: "loading",
@@ -5578,7 +5628,8 @@ async function runPriceTrendFetch(
     try {
         const result = await fetchAndPersistPriceTrendRecords({
             facilityId: facilityCacheKey,
-            stayDate: analysisDate
+            stayDate: analysisDate,
+            scopes: initialScopes
         });
         if (!result.stored) {
             priceTrendUiState = {
@@ -5597,6 +5648,9 @@ async function runPriceTrendFetch(
                 facilityCacheKey,
                 reason: result.reason
             });
+            if (result.reason === "unsupported-stay-date" || result.reason === "indexeddb-unavailable") {
+                resetPriceTrendBackgroundQueue(result.reason);
+            }
             return false;
         }
 
@@ -5616,6 +5670,7 @@ async function runPriceTrendFetch(
             facilityCacheKey,
             storedCount: result.records.length
         });
+        schedulePriceTrendBackgroundQueue(analysisDate, facilityCacheKey, initialScopes);
         return true;
     } catch (error: unknown) {
         priceTrendUiState = {
@@ -5635,6 +5690,193 @@ async function runPriceTrendFetch(
         });
         return false;
     }
+}
+
+function buildInitialPriceTrendRequestScopes(): PriceTrendRequestScope[] {
+    const scopes: PriceTrendRequestScope[] = [];
+    for (const mealType of PRICE_TREND_MEAL_TYPE_REQUESTS) {
+        for (const numGuests of PRICE_TREND_GUEST_COUNTS) {
+            scopes.push({
+                numGuests,
+                mealType,
+                roomType: null
+            });
+        }
+    }
+    return scopes;
+}
+
+function schedulePriceTrendBackgroundQueue(
+    analysisDate: string,
+    facilityCacheKey: string,
+    initialScopes: readonly PriceTrendRequestScope[]
+): void {
+    const initialScopeKeys = new Set(initialScopes.map(buildPriceTrendRequestScopeKey));
+    priceTrendBackgroundQueue = buildAllPriceTrendRequestScopes()
+        .filter((scope) => !initialScopeKeys.has(buildPriceTrendRequestScopeKey(scope)));
+    priceTrendBackgroundQueueRunning = false;
+    if (priceTrendBackgroundQueueTimeoutId !== null) {
+        window.clearTimeout(priceTrendBackgroundQueueTimeoutId);
+        priceTrendBackgroundQueueTimeoutId = null;
+    }
+    priceTrendBackgroundQueueState = {
+        ...createInitialPriceTrendBackgroundQueueState(),
+        status: priceTrendBackgroundQueue.length === 0 ? "complete" : "running",
+        facilityId: facilityCacheKey,
+        stayDate: analysisDate,
+        total: priceTrendBackgroundQueue.length
+    };
+    renderPriceTrendOverviewFromState();
+    schedulePriceTrendBackgroundQueueDrain(PRICE_TREND_BACKGROUND_QUEUE_INTERVAL_MS);
+}
+
+function resetPriceTrendBackgroundQueue(reason: string): void {
+    if (priceTrendBackgroundQueueTimeoutId !== null) {
+        window.clearTimeout(priceTrendBackgroundQueueTimeoutId);
+        priceTrendBackgroundQueueTimeoutId = null;
+    }
+    priceTrendBackgroundQueueRunning = false;
+    priceTrendBackgroundQueue = [];
+    priceTrendBackgroundQueueState = {
+        ...createInitialPriceTrendBackgroundQueueState(),
+        pauseReason: reason
+    };
+    renderPriceTrendOverviewFromState();
+}
+
+function schedulePriceTrendBackgroundQueueDrain(delayMs: number = PRICE_TREND_BACKGROUND_QUEUE_INTERVAL_MS): void {
+    if (priceTrendBackgroundQueueTimeoutId !== null) {
+        window.clearTimeout(priceTrendBackgroundQueueTimeoutId);
+    }
+    priceTrendBackgroundQueueTimeoutId = window.setTimeout(() => {
+        priceTrendBackgroundQueueTimeoutId = null;
+        void drainPriceTrendBackgroundQueue();
+    }, delayMs);
+}
+
+async function drainPriceTrendBackgroundQueue(): Promise<void> {
+    if (priceTrendBackgroundQueueRunning || priceTrendBackgroundQueueState.status !== "running") {
+        return;
+    }
+    if (document.hidden) {
+        stopPriceTrendBackgroundQueue("タブ非表示");
+        return;
+    }
+    if (
+        priceTrendBackgroundQueueState.facilityId === null
+        || priceTrendBackgroundQueueState.stayDate === null
+        || activeAnalyzeDate !== priceTrendBackgroundQueueState.stayDate
+        || activeFacilityCacheKey !== priceTrendBackgroundQueueState.facilityId
+        || resolvePriceTrendTabSectionTarget() === null
+    ) {
+        stopPriceTrendBackgroundQueue("対象画面外");
+        return;
+    }
+    const facilityId = priceTrendBackgroundQueueState.facilityId;
+    const stayDate = priceTrendBackgroundQueueState.stayDate;
+
+    const scope = priceTrendBackgroundQueue.shift() ?? null;
+    if (scope === null) {
+        priceTrendBackgroundQueueState = {
+            ...priceTrendBackgroundQueueState,
+            status: "complete",
+            currentScope: null,
+            pauseReason: null
+        };
+        renderPriceTrendOverviewFromState();
+        return;
+    }
+
+    priceTrendBackgroundQueueRunning = true;
+    priceTrendBackgroundQueueState = {
+        ...priceTrendBackgroundQueueState,
+        currentScope: scope,
+        pauseReason: null
+    };
+    renderPriceTrendOverviewFromState();
+
+    try {
+        const result = await fetchAndPersistPriceTrendRecords({
+            facilityId,
+            stayDate,
+            scopes: [scope]
+        });
+        priceTrendBackgroundQueueState = {
+            ...priceTrendBackgroundQueueState,
+            processed: priceTrendBackgroundQueueState.processed + 1,
+            stored: priceTrendBackgroundQueueState.stored + (result.stored ? 1 : 0),
+            skipped: priceTrendBackgroundQueueState.skipped + (result.stored ? 0 : 1),
+            consecutiveErrors: 0,
+            currentScope: null
+        };
+        await refreshPriceTrendRecords(facilityId, stayDate);
+    } catch (error: unknown) {
+        const consecutiveErrors = priceTrendBackgroundQueueState.consecutiveErrors + 1;
+        priceTrendBackgroundQueueState = {
+            ...priceTrendBackgroundQueueState,
+            processed: priceTrendBackgroundQueueState.processed + 1,
+            errors: priceTrendBackgroundQueueState.errors + 1,
+            consecutiveErrors,
+            currentScope: null,
+            pauseReason: getErrorMessage(error)
+        };
+        console.warn(`[${SCRIPT_NAME}] failed to fetch price trend background record`, {
+            analysisDate: priceTrendBackgroundQueueState.stayDate,
+            facilityCacheKey: priceTrendBackgroundQueueState.facilityId,
+            scope,
+            error
+        });
+        if (consecutiveErrors >= PRICE_TREND_BACKGROUND_QUEUE_MAX_CONSECUTIVE_ERRORS) {
+            stopPriceTrendBackgroundQueue("連続エラー");
+        }
+    } finally {
+        priceTrendBackgroundQueueRunning = false;
+    }
+
+    renderPriceTrendOverviewFromState();
+    if (priceTrendBackgroundQueueState.status === "running") {
+        schedulePriceTrendBackgroundQueueDrain();
+    }
+}
+
+function stopPriceTrendBackgroundQueue(reason: string): void {
+    if (priceTrendBackgroundQueueTimeoutId !== null) {
+        window.clearTimeout(priceTrendBackgroundQueueTimeoutId);
+        priceTrendBackgroundQueueTimeoutId = null;
+    }
+    priceTrendBackgroundQueueState = {
+        ...priceTrendBackgroundQueueState,
+        status: "stopped",
+        currentScope: null,
+        pauseReason: reason
+    };
+    renderPriceTrendOverviewFromState();
+}
+
+function resumePriceTrendBackgroundQueueAfterVisibility(): void {
+    if (
+        priceTrendBackgroundQueueState.status !== "stopped"
+        || priceTrendBackgroundQueueState.pauseReason !== "タブ非表示"
+        || priceTrendBackgroundQueue.length === 0
+        || document.hidden
+    ) {
+        return;
+    }
+    priceTrendBackgroundQueueState = {
+        ...priceTrendBackgroundQueueState,
+        status: "running",
+        pauseReason: null
+    };
+    renderPriceTrendOverviewFromState();
+    schedulePriceTrendBackgroundQueueDrain(0);
+}
+
+function buildPriceTrendRequestScopeKey(scope: PriceTrendRequestScope): string {
+    return [
+        `guest:${scope.numGuests}`,
+        `meal:${scope.mealType}`,
+        `room:${scope.roomType ?? "unspecified"}`
+    ].join("|");
 }
 
 async function refreshPriceTrendRecords(facilityCacheKey: string, analysisDate: string): Promise<void> {
@@ -13236,6 +13478,7 @@ function renderPriceTrendOverviewAtTarget(
         state.status,
         state.reason ?? "reason:none",
         state.errorMessage ?? "error:none",
+        formatPriceTrendBackgroundQueueSignature(),
         state.records.map((record) => record.recordKey).join("|"),
         roomTypeFilter ?? "room:any",
         mealTypeFilter ?? "meal:any"
@@ -13385,9 +13628,48 @@ function formatPriceTrendOverviewMeta(
         latestRecord === null ? null : `食事 ${mealTypeFilter === null ? "指定なし" : formatMealTypeForDisplay(mealTypeFilter)}`,
         latestRecord === null ? null : `公式更新 ${formatNullableDateTimeForDisplay(latestRecord.payload.latestSourceUpdatedAt)}`,
         latestRecord === null ? null : `保存 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
+        formatPriceTrendBackgroundQueueLabel(),
         `取得元 /api/v1/price_trends`
     ].filter((part): part is string => part !== null);
     return parts.join(" / ");
+}
+
+function formatPriceTrendBackgroundQueueSignature(): string {
+    return [
+        priceTrendBackgroundQueueState.status,
+        priceTrendBackgroundQueueState.total,
+        priceTrendBackgroundQueueState.processed,
+        priceTrendBackgroundQueueState.stored,
+        priceTrendBackgroundQueueState.skipped,
+        priceTrendBackgroundQueueState.errors,
+        priceTrendBackgroundQueueState.currentScope === null ? "current:none" : formatPriceTrendRequestScopeLabel(priceTrendBackgroundQueueState.currentScope),
+        priceTrendBackgroundQueueState.pauseReason ?? "reason:none"
+    ].join("|");
+}
+
+function formatPriceTrendBackgroundQueueLabel(): string | null {
+    const state = priceTrendBackgroundQueueState;
+    if (state.status === "idle" || state.total === 0) {
+        return null;
+    }
+    const base = [
+        `背景取得 ${state.processed} / ${state.total}`,
+        `保存 ${state.stored}`,
+        `skip ${state.skipped}`,
+        state.errors > 0 ? `失敗 ${state.errors}` : null,
+        state.currentScope === null ? null : `取得中 ${formatPriceTrendRequestScopeLabel(state.currentScope)}`,
+        state.status === "complete" ? "完了" : null,
+        state.status === "stopped" && state.pauseReason !== null ? `停止 ${state.pauseReason}` : null
+    ].filter((part): part is string => part !== null);
+    return base.join("・");
+}
+
+function formatPriceTrendRequestScopeLabel(scope: PriceTrendRequestScope): string {
+    return [
+        `${scope.numGuests}名`,
+        formatMealTypeForDisplay(scope.mealType),
+        formatPriceTrendRoomTypeForDisplay(scope.roomType)
+    ].join(" / ");
 }
 
 function formatPriceTrendEmptyText(state: PriceTrendUiState): string {
@@ -13434,7 +13716,7 @@ function selectPriceTrendRecordsForFilters(
     roomTypeFilter: string | null,
     mealTypeFilter: string | null
 ): PriceTrendRecord[] {
-    const hasSpecificRoomTypeRecords = records.some((record) => getPriceTrendRecordRoomTypeLabel(record) !== null);
+    const hasSpecificRoomTypeRecords = hasCompletePriceTrendSpecificRoomTypeRecords(records);
     return records.filter((record) => {
         const roomType = getPriceTrendRecordRoomTypeLabel(record);
         const roomTypeMatches = roomTypeFilter === null
@@ -13443,6 +13725,29 @@ function selectPriceTrendRecordsForFilters(
         const mealTypeMatches = mealTypeFilter === null || record.mealType === mealTypeFilter;
         return roomTypeMatches && mealTypeMatches;
     });
+}
+
+function hasCompletePriceTrendSpecificRoomTypeRecords(records: PriceTrendRecord[]): boolean {
+    const expectedRoomTypes = new Set(PRICE_TREND_ROOM_TYPE_REQUESTS.map((roomType) => formatPriceTrendRoomTypeForDisplay(roomType)));
+    const availableKeys = new Set<string>();
+    for (const record of records) {
+        const roomType = getPriceTrendRecordRoomTypeLabel(record);
+        if (roomType === null || !expectedRoomTypes.has(roomType)) {
+            continue;
+        }
+        availableKeys.add(`${record.numGuests}|${record.mealType}|${roomType}`);
+    }
+
+    for (const roomType of expectedRoomTypes) {
+        for (const mealType of PRICE_TREND_MEAL_TYPE_REQUESTS) {
+            for (const guestCount of PRICE_TREND_GUEST_COUNTS) {
+                if (!availableKeys.has(`${guestCount}|${mealType}|${roomType}`)) {
+                    return false;
+                }
+            }
+        }
+    }
+    return true;
 }
 
 function getPriceTrendRecordRoomTypeLabel(record: PriceTrendRecord): string | null {
