@@ -422,6 +422,164 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
+## Planned / Next
+
+### RAU-UX-02 React island 化したほうがよい UI surface を総点検する
+
+- 目的:
+  - 現在の userscript 実装のうち、素の DOM 操作を続けるより React component として分けたほうが保守しやすい UI surface を棚卸しする。
+  - UI / UX のブラッシュアップ対象を、技術的な興味だけではなく、状態管理、再描画、操作の分かりやすさ、検証しやすさの観点で優先順位付けする。
+- 背景:
+  - 料金調整候補 list、booking curve preview、rank 変更 pending、`様子見` / `対応不要` pending、warm cache indicator など、同じ候補や読み込み状態を複数の DOM 要素へ反映する UI が増えている。
+  - React を導入する場合、Tampermonkey へ入れる配布物は引き続き `dist/*.user.js` であり、React は userscript 側の独立した root または island として bundle する必要がある。
+  - レベニューアシスタント本体の React tree へ直接乗るのではなく、userscript 側で mount / unmount / remount の責務を持つ必要がある。
+- スコープ:
+  - `src/main.ts` の UI 生成関数、状態保持、event handler、CSS injection、MutationObserver による再同期を読み、React 化候補を surface 単位で分類する。
+  - 候補ごとに、入力データ、保持する UI 状態、利用者操作、出力 DOM、既存 API / IndexedDB / localStorage との境界を明記する。
+  - React island 化した場合の効果を、再描画の単純化、component 分割、状態の見通し、テスト容易性、CSS 衝突回避、bundle size、初期化コストで比較する。
+  - 導入する場合の最小構成を、`react` / `react-dom` の bundle 方針、JSX / TSX build 方針、mount root、Shadow DOM または CSS prefix、既存 DOM 実装との段階移行方針として整理する。
+  - 棚卸し結果から、実装に進める task を 1 つ以上に分割する。分割時は、最初の実装候補を「1つの主 UI surface + 1つの verify」で完了判定できる粒度にする。
+- 非目標:
+  - この task だけで React 依存を追加すること。
+  - `scripts/build.mjs`、`package.json`、lockfile、userscript metadata を変更すること。
+  - Runtime behavior、Revenue Assistant API request 範囲、write API、安全制約を変更すること。
+  - レベニューアシスタント本体の React component、private state、internal module へ依存すること。
+- 受け入れ条件:
+  - React 化候補が、候補名、対象ファイル / 関数、現在の入力、現在の UI 状態、利用者操作、出力 DOM、React 化した場合の効果、リスク、推奨判断つきで一覧化されている。
+  - `React 化する候補`、`今は素の DOM のままにする候補`、`先に設計または仕様確認が必要な候補` が分かれている。
+  - 最初に実装するならどの surface から始めるか、その理由、変えない公開挙動、最小 verify が書かれている。
+  - React 導入に進む場合の依存追加、bundle size、CSS 衝突、mount / remount、Tampermonkey 配布の確認観点が書かれている。
+  - 実装 task へ進む場合は、`Remaining Task Triage` に次の task ID と実行順が反映されている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_000_overview.md`, `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`:
+    - React を userscript 側の正式依存として持つか。
+    - React island の mount root と CSS 境界をどの surface で最初に試すか。
+    - 既存 DOM 実装と React 実装を一時的に併存させる期間と廃止条件をどう置くか。
+
+### RAU-UX-03 Tampermonkey に latest dist を正式反映して top 画面 smoke test を行う
+
+- 目的:
+  - 前回の GUI 確認は Chrome DevTools Protocol による latest `dist/revenue-assistant-userscript.user.js` の一時注入であり、Tampermonkey に保存されている userscript 本体が同じ挙動をすることは別に確認が必要である。
+  - 今後の GUI 確認を一時注入前提にしないため、通常 Chrome profile、Tampermonkey、Revenue Assistant のログイン済み状態で、配布物としての userscript を smoke test する。
+- スコープ:
+  - `npm run build` 済みの `dist/revenue-assistant-userscript.user.js` を Tampermonkey の対象 script へ反映する。
+  - Revenue Assistant top 画面を通常 Chrome で開き直し、CDP 一時注入を行わずに、料金調整候補 list の主要 UI が表示されることを確認する。
+  - 確認対象は、`データ` 列、raw source summary、booking curve `要点` popover、行内 rank select、rank 変更 pending、`様子見` / `対応不要` pending、取消、Revenue Assistant write API の送信が発生しないこととする。
+  - 確認後、検証で作成した browser-local decision record や localStorage / IndexedDB の一時状態があれば削除する。
+- 非目標:
+  - runtime behavior の変更。
+  - `src/`、`scripts/build.mjs`、`userscript.config.mjs`、package 依存の変更。
+  - 実務上不要な rank 変更 POST を送信すること。
+  - raw response body、HAR、Cookie、token、credential、非公開価格データを保存または Git 管理へ入れること。
+- 受け入れ条件:
+  - Tampermonkey へ latest `dist` を反映した手順、対象 script、反映後に開いた Revenue Assistant URL が記録されている。
+  - CDP 一時注入なしで、料金調整候補 list の追加 UI が表示されることを確認している。
+  - rank 変更 pending と decision pending の `取消` が動作し、Revenue Assistant write API の POST が 0 件であることを確認している。
+  - 検証で作成した browser-local decision record または一時 state の削除有無を記録している。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-WC-16 候補優先 raw source 取得の発火状態を GUI 確認する
+
+- 目的:
+  - `RAU-WC-14` で実装した `候補優先` 表示は、前回の実画面確認では表示中候補の raw source がすべて最新基準日ありだったため発火しなかった。
+  - 利用者が、料金調整候補に必要な raw source を優先取得中であること、取得後に候補が更新され得ること、skip / error が通常の未保存と区別されることを読めるか確認する。
+- スコープ:
+  - 通常 Chrome の Revenue Assistant top 画面で、表示中候補に一致する `currentRaw x roomGroup` task が warm cache queue に残る状態を探す、または安全な検証用状態を作る。
+  - warm cache indicator detail に `候補優先` の総数、処理済み件数、保存件数、skip 件数、失敗件数、現在取得中の対象が表示されるか確認する。
+  - 候補行の raw source 状態が `取得中` から `最新基準日あり`、`過去基準日あり`、`未保存`、または `取得失敗` へ変わるか確認する。
+  - 検証方法が実データで再現できない場合は、実データで確認できなかった理由、安全な fixture または synthetic IndexedDB state の作成条件、次に必要な確認を記録する。
+- 非目標:
+  - warm cache 対象期間、request 件数、request 間隔、同時取得数、停止条件の変更。
+  - Revenue Assistant write API の実行。
+  - raw trace、response body、Cookie、token、credential、非公開価格データの保存。
+- 受け入れ条件:
+  - `候補優先` が表示される状態、または表示できなかった理由が具体的に記録されている。
+  - 発火確認できた場合は、表示された総数、処理済み、保存、skip、失敗、現在取得中のラベルを記録している。
+  - 発火確認できなかった場合は、次に作るべき安全な検証 fixture の入力、処理、出力が記録されている。
+  - 確認中に request 範囲や write API を増やしていないことを確認している。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
+### RAU-CP-14 価格推移タブの初回表示優先 background queue を実装する
+
+- 目的:
+  - 価格推移タブでは、`mealType x roomType x guestCount` の組み合わせを広く取得するため、初回表示に必要な request と background 取得でよい request を分ける。
+  - 利用者が見ている条件の graph を先に表示し、残りの条件は読み込み中、完了、失敗を区別して後から補完する。
+- スコープ:
+  - 価格推移タブの現在 stay_date、表示中 guestCount、選択中 roomType、選択中 mealType に必要な `/api/v1/price_trends` request を先に実行する。
+  - 残りの `guestCount x roomType x mealType` は background queue として順番に取得し、既存 `price-trend-records` store へ保存する。
+  - background queue の indicator には、対象条件、完了数、skip 数、失敗数、現在取得中条件、停止または一時停止理由を表示する。
+  - document hidden、別タブ遷移、別 stay_date 遷移、施設変更、ログアウト、連続 error の停止条件を既存方針と整合させる。
+- 非目標:
+  - 取得対象の総組み合わせを増やすこと。
+  - 競合価格 snapshot store と価格推移 store の統合。
+  - 料金調整候補 scoring への価格推移データ接続。
+  - Revenue Assistant write API の追加。
+- 受け入れ条件:
+  - 初回表示に必要な条件が background queue より先に取得され、graph が描画される。
+  - background queue 中でも現在表示条件の graph が不要に揺れない。
+  - 保存済み record の scope と tooltip 表示が、選択中 roomType / mealType と一致している。
+  - queue の停止、完了、失敗が利用者に読める。
+  - `npm run check` と、通常 Chrome または CDP での価格推移タブ GUI 確認が通る。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-MP-02 月次実績画面の final graph 契約と読み込み状態を正本化する
+
+- 目的:
+  - 月次実績画面は snapshot prefetch と custom booking curve 表示があるが、final graph として何を表示し、どの読み込み状態を利用者へ見せるかが、価格推移タブや top list ほど明確ではない。
+  - 実装を増やす前に、現在表示月、比較月、過去 batch、日次差分、読み込み中、保存済み、失敗、対象外の表示契約を固定する。
+- スコープ:
+  - 月次実績画面で使う snapshot、cache key、基準日または取得時刻、保存済み state、読み込み中 state、error state を整理する。
+  - final graph の系列、軸、tooltip、表示密度、比較月の扱い、過去 batch との比較有無を決める。
+  - 現在表示月を先に描画し、比較月や future prefetch を background に回すかを判断する。
+  - 実装 task に進む場合は、1 画面 1 主成果物 1 verify の粒度へ分割する。
+- 非目標:
+  - この task だけで runtime behavior を変更すること。
+  - 月次 snapshot schema の migration。
+  - 料金調整候補 scoring への月次実績 graph 接続。
+  - raw response body、credential、非公開データの保存。
+- 受け入れ条件:
+  - 月次実績画面の final graph が、入力データ、比較対象、表示系列、tooltip、読み込み状態、失敗時表示まで説明されている。
+  - 現在表示月と background 取得対象の順序が分かれている。
+  - 実装に進む場合の Task ID、対象ファイル、変更しない公開挙動、最小 verify が書かれている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-RR-59 rank 変更 write guard の追加調査を行う
+
+- 目的:
+  - 行内 rank 変更は観測済み `/api/v1/lincoln/suggest` の単一行 custom rank path に限定しているが、実運用で安全に使うには write guard の境界をさらに明確にする必要がある。
+  - 送信直前 current rank 再取得、rank status 再取得、候補生成後の rank change 検出に加えて、同時操作、画面外変化、権限差、provider 差、失敗分類、反映未確認時の復旧表示を整理する。
+- スコープ:
+  - 現在の `rank-change-submit` flow、preflight、POST body、response status、post-submit status 確認、result 表示を read-only で棚卸しする。
+  - 追加すべき guard を、実装必須、実装候補、not-now、不要に分ける。
+  - guard ごとに、入力、確認するデータ、止める条件、利用者に出す表示、verify 方法を定義する。
+  - 未観測 provider、`price_ranks` 系 endpoint、bulk apply、自動反映、推奨レート金額変更は引き続き対象外として扱う。
+- 非目標:
+  - 新しい write endpoint の実行。
+  - bulk apply、自動反映、価格金額変更、人数別 / 食事条件別 / プラン別価格変更。
+  - rate limit 回避、bot 検知回避、認証回避。
+  - raw request / response body、Cookie、token、credential の保存。
+- 受け入れ条件:
+  - 現在の write guard が、送信前、送信中、送信後、反映未確認、失敗時に分けて説明されている。
+  - 追加 guard 候補が、実装必須、実装候補、not-now、不要に分類されている。
+  - 実装に進める場合は、最初の guard 実装 task が 1 つ以上に分割され、`Remaining Task Triage` に反映されている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Completed On 2026-05-30
 
 ### RAU-WC-12 データ読み込みルールと基準日時表示の画面別 UX 契約を正本化する
@@ -4022,22 +4180,26 @@
 
 Now:
 
-- なし。
+- `RAU-UX-03` Tampermonkey に latest dist を正式反映して top 画面 smoke test を行う。
 
 Next:
 
-- なし。
+- `RAU-WC-16` 候補優先 raw source 取得の発火状態を GUI 確認する。
 
 After Next:
 
-- なし。
+- `RAU-CP-14` 価格推移タブの初回表示優先 background queue を実装する。
 
 Later:
 
-- なし。
+- `RAU-MP-02` 月次実績画面の final graph 契約と読み込み状態を正本化する。
+- `RAU-RR-59` rank 変更 write guard の追加調査を行う。
+- `RAU-UX-02` React island 化したほうがよい UI surface を総点検する。
 
 統合判断:
 
+- 2026-05-30 に、前回完了報告で提案した follow-up を task 化した。CDP 一時注入ではなく Tampermonkey 反映後の配布物確認が以後の GUI 確認の前提になるため、`RAU-UX-03` を Now とする。`RAU-WC-16` は `RAU-WC-14` の未発火 GUI 確認であり、Tampermonkey 反映後に確認する。`RAU-CP-14` は `RAU-WC-15` で docs 設計した価格推移タブの background queue 実装であり、実装効果が大きいため After Next に置く。`RAU-MP-02` は実装前に final graph 契約を正本化する task であり、`RAU-RR-59` は write guard の追加調査である。`RAU-UX-02` は React island 化の棚卸しであり、依存追加判断を伴うため、配布物確認と未発火確認より後に回す。
+- 2026-05-30 に、React 導入の技術的関心と component ブラッシュアップのため、`RAU-UX-02` を追加した。既存の `RAU-UX-01` は competitor prices と団体系列の導入判断であり、React / component 化の棚卸しとは目的が異なるため重複しない。`RAU-UX-02` は依存追加や runtime behavior 変更を行わない docs-only の棚卸し task とし、実装に進む場合は棚卸し後に surface 単位の子 task へ分割する。
 - 2026-05-30 の読み込み UX 調査では、top list の `基準日` 表示と top candidate 用 raw source 優先取得は実装済みだが、利用者に「どのデータが取得中か」「候補用 raw source を優先取得しているか」「取得後に候補が更新されるか」が十分には見えないと判断した。そのため、`RAU-RR-54` から `RAU-RR-56` の行内操作 UX follow-up より先に、`RAU-WC-12` から `RAU-WC-14` で読み込み状態の UX 契約と top list 更新中表示を整える。`RAU-WC-15` は価格推移タブ、競合価格タブ、月次実績画面の重い取得を含むため、top list の読み込み UX を固めた後の Later とする。
 - 2026-05-30 に、`RAU-WC-12` から `RAU-WC-15`、`RAU-RR-54` から `RAU-RR-56` は実装または docs 設計まで完了した。通常 Chrome の Revenue Assistant top 画面に latest `dist/revenue-assistant-userscript.user.js` を Chrome DevTools Protocol で一時注入し、追加 UI の主要操作を確認した。`RAU-WC-14` の `候補優先` 発火表示は、表示中候補の raw source がすべて最新基準日ありだったため、実データでは未発火である。
 - `RAU-RR-01` は 2026-05-27 の docs-only 正本化で完了したため、Remaining Task Triage には含めない。

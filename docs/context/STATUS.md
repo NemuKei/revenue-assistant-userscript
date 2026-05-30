@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: 2026-05-30 時点で、`docs/tasks_backlog.md` の Remaining Task Triage に残っていた `RAU-WC-12` から `RAU-WC-15`、`RAU-RR-54` から `RAU-RR-56` は実装または docs 設計まで完了済みである。通常 Chrome の Revenue Assistant top 画面に latest `dist/revenue-assistant-userscript.user.js` を Chrome DevTools Protocol で一時注入し、追加 UI の主要操作を確認済みである。Analyze booking curve / competitor price bundle は `RAU-AF-11`、`RAU-CP-11`、`RAU-CP-12` まで実装済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。
+- 主対象: 2026-05-30 時点で、`docs/tasks_backlog.md` の Remaining Task Triage に残っていた `RAU-WC-12` から `RAU-WC-15`、`RAU-RR-54` から `RAU-RR-56` は実装または docs 設計まで完了済みである。通常 Chrome の Revenue Assistant top 画面に latest `dist/revenue-assistant-userscript.user.js` を Chrome DevTools Protocol で一時注入し、追加 UI の主要操作を確認済みである。前回完了報告の推奨 follow-up を `RAU-UX-03`、`RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59` として task 化した。React island 化と component ブラッシュアップの棚卸し task として `RAU-UX-02` も残している。Remaining Task Triage の Now は `RAU-UX-03`。Analyze booking curve / competitor price bundle は `RAU-AF-11`、`RAU-CP-11`、`RAU-CP-12` まで実装済み。`RAU-FC-01` から `RAU-FC-05` まで完了済み。`RAU-SALES-02` は docs 設計済み、`RAU-SALES-03` から `RAU-SALES-09` まで完了済み。
 - 完了済み Task ID:
   - `RAU-RR-01` rank recommendation signal spec を整備する
   - `RAU-RR-02` booking_curve raw source に sales / ADR を保存する
@@ -85,7 +85,12 @@
   - `RAU-WC-14` 料金調整候補向け raw source 優先取得の進行を見える化する
   - `RAU-WC-15` 重いタブ別取得の初回表示優先順位を見直す
 - 未実装 Task ID:
-  - なし
+  - `RAU-CP-14` 価格推移タブの初回表示優先 background queue を実装する
+  - `RAU-MP-02` 月次実績画面の final graph 契約と読み込み状態を正本化する
+  - `RAU-RR-59` rank 変更 write guard の追加調査を行う
+  - `RAU-UX-02` React island 化したほうがよい UI surface を総点検する
+  - `RAU-UX-03` Tampermonkey に latest dist を正式反映して top 画面 smoke test を行う
+  - `RAU-WC-16` 候補優先 raw source 取得の発火状態を GUI 確認する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -97,7 +102,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: なし`、`Next: なし`、`After Next: なし`、`Later: なし` である。次に進める場合は、通常 Chrome の Revenue Assistant GUI 確認、価格推移タブの background queue 化、月次実績画面の final graph 契約、または rank 変更 write guard の追加調査を新規 task として切る。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は `Now: RAU-UX-03`、`Next: RAU-WC-16`、`After Next: RAU-CP-14`、`Later: RAU-MP-02 / RAU-RR-59 / RAU-UX-02` である。まず Tampermonkey に latest `dist` を正式反映し、CDP 一時注入なしで top 画面の smoke test を行う。その後、`RAU-WC-16` で `候補優先` 表示の発火状態を確認する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -332,8 +337,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: なし`、`Next: なし`、`After Next: なし`、`Later: なし` であることを確認する。
-2. 新規 task を切る場合は、通常 Chrome の Revenue Assistant GUI 確認、価格推移タブの background queue 化、月次実績画面の final graph 契約、rank 変更 write guard の追加調査のいずれを先に扱うか決める。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が `Now: RAU-UX-03`、`Next: RAU-WC-16`、`After Next: RAU-CP-14`、`Later: RAU-MP-02 / RAU-RR-59 / RAU-UX-02` であることを確認する。
+2. `RAU-UX-03` では、Tampermonkey に latest `dist/revenue-assistant-userscript.user.js` を正式反映し、CDP 一時注入なしで top 画面の追加 UI、pending 取消、write API POST 0 件を確認する。
 3. Rank Recommendation Bundle を続ける場合は、forecast 数値、sales / ADR 数値、競合価格の金額または差額を top list へ直接表示しない契約と、未観測 provider や `price_ranks` 系 endpoint を確認済み仕様として扱わない契約を維持する。
 
 変更しない契約:
