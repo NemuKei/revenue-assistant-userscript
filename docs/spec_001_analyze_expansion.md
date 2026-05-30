@@ -291,6 +291,7 @@ Indicator:
 - トップカレンダーと Analyze 日付ページ上に、warm cache の状態を小さく表示する。
 - 最小表示は `待機中`、`取得中 完了日数 / 対象日数`、`一時停止中`、`クールダウン中`、`エラー n` を区別する。対象日数だけでは期間が分かりにくいため、最小表示にも `4/29〜5/29` のような対象日付範囲を含める。
 - 詳細表示では、対象月または対象範囲、取得順、完了済み stay_date 範囲、現在取得中の stay_date と scope、保存数、skip 数、エラー数、最終取得時刻を確認できるようにする。
+- 料金調整候補の表示中候補と一致する `currentRaw x roomGroup` task を優先処理している場合は、詳細表示に `候補優先` として総数、処理済み件数、保存件数、skip 件数、最終エラー件数、現在取得中の候補を表示する。この表示は既存 warm cache queue の並び替え結果を説明するためのものであり、取得対象期間、request 件数、request 間隔、同時取得数、停止条件は変更しない。
 - 対象範囲は月名だけではなく、`対象 2026-04-29〜2026-05-29` のように開始日と終了日を明示する。
 - 完了済み stay_date 範囲は、current raw source、reference source raw source、derived reference curve、同曜日 raw source がすべて揃った日付を、連続範囲として表示する。
 - トップカレンダーの各日付セルには、warm cache の stay_date 単位の状態をセル下端の細い色ラインとして表示する。現在 warm cache queue の対象になっている日付は、`raw source`、`reference curve`、`同曜日` の合計 `done / total` に応じた progress bar として表示する。部分的に取得済みの日付は青、完了した日付は緑の全幅、取得エラーがある日付は赤の全幅とする。日付セル内の販売室数、団体室数、差分表示とは重ねない。
@@ -303,6 +304,14 @@ Indicator:
 - 競合価格 snapshot の詳細表示では、対象 stay_date、検索条件 signature、最終保存時刻、前回 snapshot の取得時刻、保存時点の競合施設数を確認できるようにする。
 - `クールダウン中` の詳細表示では、自動再開までのおおよその残り時間を表示する。
 - Indicator は取得を開始したこと、停止したこと、上限に達したことを利用者が把握するための表示であり、初期実装では取得対象の細かい編集 UI は持たせない。
+
+画面別の読み込み状態契約:
+
+- Top の `料金調整候補` は、現在の月次カレンダー表示範囲に対する `/api/v1/suggest/output/current_settings`、rank ladder、rank status、browser-local decision、保存済み `booking_curve_raw_source:v2` を使う。`基準日` は候補の `asOfDate` であり、`宿泊まで` の日数と current settings の観測日を示す。保存済み raw source は、候補別に `最新基準日あり`、`過去基準日あり`、`未保存`、`取得中`、`取得失敗` の非数値状態として表示できる。`最新基準日あり` は候補と同じ `asOfDate` の raw source がある状態を指す。`過去基準日あり` は同じ stay_date と roomGroup の raw source はあるが、候補と同じ `asOfDate` ではない状態を指す。`取得中` は warm cache の現在 task または queue に、同じ stay_date と roomGroup の `currentRaw` task が残っている状態を指す。
+- Analyze 日付ページは、利用者が開いている stay_date を warm cache の最優先対象にする。表示上の基準日は `as_of_date` であり、indicator は `この日 raw`、`参考線`、`同曜日` の内訳を出す。保存済み raw source、derived reference curve、同曜日 raw source のいずれが不足しているかを分けて表示する。
+- 競合価格タブは、競合価格 snapshot の保存状態を booking curve warm cache とは別の状態として表示する。対象 stay_date、検索条件 signature、最終保存時刻、前回 snapshot の有無、競合施設数、skip 理由、保存失敗を区別する。競合価格 snapshot を booking curve warm cache の完了定義へ混ぜない。
+- 価格推移タブは、公式 `/api/v1/price_trends` から保存した `price-trend-records` を使う。初回表示に必要な record は、表示中 stay_date、既定人数、既定部屋タイプ、既定食事条件を優先する。`mealType x roomType x guestCount` の全組み合わせを取得する処理は、初回表示を塞がない background queue 化の候補とする。保存済み record は `fetchedAt` を取得時刻として表示できるようにし、89 日より先または `yads` 空配列は対象外理由として扱う。
+- 月次実績画面は、現在表示月の snapshot を初回表示の優先対象にし、比較月または future month の prefetch は background 扱いにする。GUI 確認と final graph 契約が未完了の間は、月次実績画面の読み込み表示は実装候補として扱い、Top または Analyze の安定済み契約と同等の完了済み公開挙動として扱わない。
 
 ### Sync Timing
 

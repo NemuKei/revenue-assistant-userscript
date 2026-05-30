@@ -422,7 +422,127 @@
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
-## Planned / Next
+## Completed On 2026-05-30
+
+### RAU-WC-12 データ読み込みルールと基準日時表示の画面別 UX 契約を正本化する
+
+- 目的:
+  - top、Analyze、競合価格タブ、価格推移タブ、月次実績画面で、どのデータをいつ読み、どの時点のデータとして表示しているかを誤読されないようにする。
+  - 読み込み時間が長い場合でも、利用者が「古いデータを見ているのか」「取得中なのか」「対象外または不足なのか」を区別できるよう、後続実装の表示契約を先に固定する。
+- 背景:
+  - top の `料金調整候補` は、現在の月次カレンダー表示範囲から `/api/v1/suggest/output/current_settings`、rank ladder、保存済み `booking_curve_raw_source:v2`、rank status、browser-local decision を組み合わせて候補を作る。
+  - top list meta には `RAU-RR-39` から `RAU-RR-41` で `基準日` と鮮度表示を追加済みである。ただし、候補生成に使う raw source が未保存、取得中、または過去 `asOfDate` 由来である場合の読み取り状態は、一覧上部だけでは十分に分からない。
+  - `RAU-SALES-06` で、表示中 top candidates と一致する `currentRaw x roomGroup` warm cache task を優先する処理は実装済みである。ただし、利用者には「候補用データを優先取得中であること」や「取得後に候補が更新されること」が明示されていない。
+  - 価格推移タブは、初回取得で `mealType x roomType x guestCount` の組み合わせを多く取得する。表示中の条件を先に出し、残りを background 化する余地がある。
+  - 月次実績画面は snapshot prefetch を行うが、GUI 確認と final graph 契約が未完了であり、読み込み中表示も主線の UX 契約としては未整理である。
+- スコープ:
+  - 画面別に、主要データ、cache key、基準日または取得時刻、読み込み中表示、保存済み表示、skip / error 表示、優先取得の有無を整理する。
+  - 更新対象は `docs/spec_001_analyze_expansion.md`、`docs/spec_003_rank_recommendation_signal.md`、必要なら `docs/context/DECISIONS.md` とする。
+  - top の `料金調整候補` については、既存の `基準日` 表示だけで足りる部分と、候補別または summary で追加表示すべき部分を分ける。
+  - 後続実装 task を、top candidate 表示、warm cache indicator、価格推移タブ、月次実績画面に分けて過不足を確認する。
+- 非目標:
+  - runtime behavior の変更。
+  - API request 範囲、request 件数、request 間隔の変更。
+  - Revenue Assistant の未確認 API を確認済み仕様として扱うこと。
+  - raw response body、HAR、Cookie、token、credential、非公開価格データを docs や Git 管理へ保存すること。
+- 受け入れ条件:
+  - 各画面について、表示に使うデータ、基準日または取得時刻、読み込み中状態、保存済み状態、skip / error 状態が文書上で説明されている。
+  - top の `料金調整候補` について、`基準日` 表示で足りる情報と、追加すべき読み込み状態が分けられている。
+  - 優先取得が必要な場合、どの queue を並び替えるのか、request 件数を増やすのか増やさないのかが明記されている。
+  - 後続 task の実装順が `Remaining Task Triage` に反映されている。
+- 実装内容:
+  - `docs/spec_001_analyze_expansion.md` に、Top、Analyze、競合価格タブ、価格推移タブ、月次実績画面の読み込み状態契約を追加した。
+  - `docs/spec_003_rank_recommendation_signal.md` に、料金調整候補の raw source 状態、候補優先 warm cache 表示、行内操作 UX の契約を追加した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-WC-13 料金調整候補にデータ基準と更新状態を表示する
+
+- 目的:
+  - top の `料金調整候補` で、候補がどの基準日の current settings と booking curve raw source をもとに作られているか、また不足データが取得中なのか未取得なのかを利用者が判断できるようにする。
+- スコープ:
+  - 既存の top list meta の `基準日` 表示を維持する。
+  - summary または候補行に、保存済み raw source の状態を `最新基準日あり`、`過去基準日あり`、`未保存`、`取得中`、`取得失敗` のような非数値表示で示す。
+  - 表示中 top candidates に一致する warm cache 優先対象がある場合、`候補データ更新中` のように、候補一覧が後から更新され得ることを表示する。
+  - current settings、rank ladder、rank status、decision record の取得失敗は、既存 statusText や diagnostics と重複しない形で整理する。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonFingerprint、rank order の変更。
+  - API request 範囲、request 件数、request 間隔の変更。
+  - forecast 数値、sales / ADR 数値、競合価格金額、推奨レート金額の表示。
+  - Revenue Assistant write / bulk apply の追加。
+- 受け入れ条件:
+  - `料金調整候補` の一覧上で、基準日と raw source 状態を区別して読める。
+  - raw source が未保存の候補は、単なる候補なしではなく、根拠データ不足として分かる。
+  - warm cache が候補用 raw source を処理中の場合、候補一覧が更新中であることが分かる。
+  - 追加表示により、既存の `優先度`、`確度`、`宿泊日`、`現ランク`、`推奨方向`、`操作` が読みにくくならない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- 実装内容:
+  - 料金調整候補の summary に raw source 状態の件数を追加した。
+  - 候補行に `データ` 列を追加し、候補別に `最新基準日あり`、`過去基準日あり`、`未保存`、`取得中`、`取得失敗` を表示できるようにした。
+  - roomGroup 単位で保存済み raw source が現在 `asOfDate` か過去 `asOfDate` かを判定する IndexedDB read helper を追加した。
+- GUI 確認:
+  - 実施済み。通常 Chrome の Revenue Assistant top 画面に latest `dist/revenue-assistant-userscript.user.js` を Chrome DevTools Protocol で一時注入し、`データ` 列、summary の `raw source 最新基準日あり 10件`、候補行の `最新基準日あり` 表示を確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-WC-14 料金調整候補向け raw source 優先取得の進行を見える化する
+
+- 目的:
+  - `RAU-SALES-06` で実装済みの top candidate 用 warm cache 優先処理について、利用者が「候補に必要な raw source を先に取りに行っている」と分かるようにする。
+- スコープ:
+  - 既存 warm cache queue の `currentRaw x roomGroup` task のうち、表示中 top candidates と一致する task を優先対象として数える。
+  - warm cache indicator detail に、候補優先対象の総数、完了数、skip 数、取得中の対象候補を追加表示する。
+  - 優先 task を新規取得した後に既存どおり `rank-recommendation-warm-cache` reason で calendar sync を強制再実行し、top list が保存済み raw source を読み直せる状態を維持する。
+- 非目標:
+  - warm cache 対象期間の拡張。
+  - request 件数、request 間隔、同時取得数、hidden tab pause、run limit、cooldown、連続エラー停止条件の変更。
+  - 競合価格 snapshot や価格推移 API を booking curve warm cache の完了定義へ混ぜること。
+- 受け入れ条件:
+  - top list 表示中に候補用 raw source の優先 task が残っている場合、indicator で候補優先取得の進行が分かる。
+  - skip 済み task は API request を発行せず、進行表示では skip として扱われる。
+  - 優先 task の取得後に top list が再同期され、`booking_curve_source_missing` が解消され得る候補は再評価される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通る。
+- 実装内容:
+  - warm cache state に候補優先 task の総数、処理済み、保存、skip、失敗を保持する field を追加した。
+  - warm cache indicator detail に `候補優先 n / n 保存 n skip n` と現在取得中の候補を表示するようにした。
+  - 既存の `rank-recommendation-warm-cache` reason による再同期は維持し、request 範囲、request 件数、request 間隔は変更していない。
+- GUI 確認:
+  - 部分確認済み。通常 Chrome の Revenue Assistant top 画面では表示中候補の raw source がすべて最新基準日ありで、候補優先取得中の task が残っていなかった。そのため `候補優先` の発火表示は実データでは未確認である。warm cache state、優先 task count、保存 / skip / 失敗 counter、indicator detail label の実装は `npm run check` と source review で確認した。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-WC-15 重いタブ別取得の初回表示優先順位を見直す
+
+- 目的:
+  - 競合価格タブ、価格推移タブ、月次実績画面で、初回表示に必要なデータと background 取得でよいデータを分け、利用者が見ている画面の表示待ちを短くする。
+- スコープ:
+  - 価格推移タブでは、表示中の宿泊日、既定人数、既定部屋タイプ、既定食事条件に必要な record を先に取得し、残りの `mealType x roomType x guestCount` は background queue 化する案を設計する。
+  - 競合価格タブでは、現在 stay_date の graph 表示に必要な snapshot と、同週・同月 background snapshot の表示優先度を再確認する。
+  - 月次実績画面では、現在表示月の snapshot と比較月 prefetch の順序、読み込み中表示、失敗時の表示を整理する。
+  - 既存 IndexedDB store の責務分離は維持する。
+- 非目標:
+  - 保存 schema の不要な migration。
+  - 競合価格 snapshot と価格推移 record の store 統合。
+  - 料金調整候補 scoring への価格推移データ接続。
+  - request 数を増やして体感速度を改善すること。
+- 受け入れ条件:
+  - 各タブで、初回表示に必要な request と background 取得でよい request が分かれている。
+  - background 取得中、停止、完了、失敗を利用者が区別できる表示方針がある。
+  - 既存の API boundary、非公開データ保存禁止、credential 非保存ルールを維持している。
+  - 実装に進む場合の verify 対象画面と確認観点が明記されている。
+- 実装内容:
+  - `docs/spec_001_analyze_expansion.md` に、価格推移タブ、競合価格タブ、月次実績画面で、初回表示に必要な request と background 取得候補を分ける方針を追加した。
+  - runtime behavior は変更していない。価格推移タブの background queue 化、競合価格タブの同週・同月取得優先度、月次実績画面の読み込み表示は、次に実装可否を判断する候補として残す。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
 
 ### RAU-RR-54 料金調整候補の行内で booking curve を確認できるようにする
 
@@ -441,6 +561,12 @@
   - 候補行で booking curve の要点を確認できる。
   - 詳細確認用の既存 `曲線` preview block は従来どおり開閉できる。
   - popover 操作が `Analyzeで確認`、rank 操作、`様子見`、`対応不要` を妨げない。
+- 実装内容:
+  - 候補行の操作 cell に `要点` popover を追加した。
+  - popover には raw source 状態、全体室数、選択中の `個人` または `団体` 室数、参考線の有無、不足診断を表示する。
+  - 既存の `曲線` preview block は残し、API request 範囲、request 件数、request 間隔は変更していない。
+- GUI 確認:
+  - 実施済み。通常 Chrome の Revenue Assistant top 画面に latest `dist/revenue-assistant-userscript.user.js` を Chrome DevTools Protocol で一時注入し、候補行の `要点` popover が表示され、`raw source`、全体室数、個人または団体室数、参考線、不足状態を読めることを確認した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -468,6 +594,12 @@
   - `反映する` 押下直後に同じ行へ `n秒後に送信` と `取消` が出る。
   - pending 終了後は同じ行で `反映中` が分かる。
   - current rank mismatch、候補生成後の rank change、送信失敗、反映未確認は既存 guard と同じ基準で止める、または結果表示する。
+- 実装内容:
+  - 候補行の操作 cell に、rank ladder 由来の rank select と `反映する` button を追加した。
+  - 初期値は recommended rank とし、select で別 rank を選んだ場合は同じ button の送信候補 rank code / rank name を更新する。
+  - 送信前 5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、反映確認は既存の rank change flow を再利用する。
+- GUI 確認:
+  - 実施済み。通常 Chrome の Revenue Assistant top 画面に latest `dist/revenue-assistant-userscript.user.js` を Chrome DevTools Protocol で一時注入し、rank select が rank ladder 由来の候補を持つこと、select 変更で送信候補 rank が変わること、`反映する` 押下で `rank変更: 5秒後に送信` が表示されること、`取消` で pending が消えることを確認した。検証中は `/api/v1/lincoln/suggest` の POST を監視し、送信件数が 0 件であることを確認した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -493,6 +625,12 @@
   - `取消` した場合、decision record は保存されない。
   - timer 満了後だけ従来どおり browser-local decision が保存される。
   - rank 変更 pending と同時に操作した場合、どちらの pending か誤読しない表示になる。
+- 実装内容:
+  - decision pending の wrapper に pending key を付与し、表示文言を `様子見: n秒後に確定`、`対応不要: n秒後に確定` に揃えた。
+  - rank 変更 pending の表示文言を `rank変更: n秒後に送信` にし、decision pending と同じ配置、色、取消 button の操作感に揃えた。
+  - 既存の遅延保存、取消時に IndexedDB へ保存しない挙動、timer 満了後だけ decision record を保存する挙動は変更していない。
+- GUI 確認:
+  - 実施済み。通常 Chrome の Revenue Assistant top 画面に latest `dist/revenue-assistant-userscript.user.js` を Chrome DevTools Protocol で一時注入し、`rank変更: 5秒後に送信` と `様子見: 5秒後に確定` が同じ候補行の操作 cell に即時表示され、`取消` で消えることを確認した。検証中に誤って作成された browser-local decision record は IndexedDB から削除し、Revenue Assistant write API の送信件数が 0 件であることを確認した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -3884,15 +4022,15 @@
 
 Now:
 
-- `RAU-RR-54` 料金調整候補の行内で booking curve を確認できるようにする。
+- なし。
 
 Next:
 
-- `RAU-RR-55` 推奨ランクを候補行で直接変更できるようにする。
+- なし。
 
 After Next:
 
-- `RAU-RR-56` 様子見 / 対応不要の pending UX を標準 UI に寄せる。
+- なし。
 
 Later:
 
@@ -3900,6 +4038,8 @@ Later:
 
 統合判断:
 
+- 2026-05-30 の読み込み UX 調査では、top list の `基準日` 表示と top candidate 用 raw source 優先取得は実装済みだが、利用者に「どのデータが取得中か」「候補用 raw source を優先取得しているか」「取得後に候補が更新されるか」が十分には見えないと判断した。そのため、`RAU-RR-54` から `RAU-RR-56` の行内操作 UX follow-up より先に、`RAU-WC-12` から `RAU-WC-14` で読み込み状態の UX 契約と top list 更新中表示を整える。`RAU-WC-15` は価格推移タブ、競合価格タブ、月次実績画面の重い取得を含むため、top list の読み込み UX を固めた後の Later とする。
+- 2026-05-30 に、`RAU-WC-12` から `RAU-WC-15`、`RAU-RR-54` から `RAU-RR-56` は実装または docs 設計まで完了した。通常 Chrome の Revenue Assistant top 画面に latest `dist/revenue-assistant-userscript.user.js` を Chrome DevTools Protocol で一時注入し、追加 UI の主要操作を確認した。`RAU-WC-14` の `候補優先` 発火表示は、表示中候補の raw source がすべて最新基準日ありだったため、実データでは未発火である。
 - `RAU-RR-01` は 2026-05-27 の docs-only 正本化で完了したため、Remaining Task Triage には含めない。
 - `RAU-RR-02` は 2026-05-27 に実装済みである。保存 schema version は `booking_curve_raw_source:v2`、保存方式は rooms / sales / ADR fields までの compact source 維持、IndexedDB database version は据え置きとしたため、Remaining Task Triage には含めない。
 - Rank Recommendation Bundle は、`RAU-FC-01` の rooms-only 予測モデル導入判断と重なるが、UI、候補 lifecycle、user decision、rank history、rank response、future bulk apply を含むため、独立 bundle として扱う。

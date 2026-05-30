@@ -30,6 +30,7 @@ export interface BookingCurveRawSourceRecord {
 }
 
 export type BookingCurveRawSourceStoredStayDateStatus = "currentAsOf" | "pastAsOf";
+export type BookingCurveRawSourceStoredRoomGroupStatus = "currentAsOf" | "pastAsOf" | "none";
 
 export function buildBookingCurveRawSourceCacheKey(parts: BookingCurveRawSourceKeyParts): string {
     return [
@@ -85,6 +86,25 @@ export async function readBookingCurveRawSourceStoredStayDateStatuses(
             .filter((result): result is { stayDate: string; status: BookingCurveRawSourceStoredStayDateStatus } => result.status !== null)
             .map((result) => [result.stayDate, result.status]));
     });
+}
+
+export async function readBookingCurveRawSourceStoredRoomGroupStatus(
+    facilityId: string,
+    stayDate: string,
+    currentAsOfDate: string,
+    roomGroupId: string
+): Promise<BookingCurveRawSourceStoredRoomGroupStatus> {
+    if (!isIndexedDbAvailable()) {
+        return "none";
+    }
+
+    return withBookingCurveRawSourceStore("readonly", (store) => getBookingCurveRawSourceStoredRoomGroupStatus(
+        store,
+        facilityId,
+        stayDate,
+        currentAsOfDate,
+        roomGroupId
+    ));
 }
 
 export async function writeBookingCurveRawSourceRecord(record: BookingCurveRawSourceRecord): Promise<void> {
@@ -199,6 +219,49 @@ function getBookingCurveRawSourceStoredStayDateStatus(
 
         request.onerror = () => {
             reject(request.error ?? new Error("failed to query booking curve raw source records for stay date"));
+        };
+    });
+}
+
+function getBookingCurveRawSourceStoredRoomGroupStatus(
+    store: IDBObjectStore,
+    facilityId: string,
+    stayDate: string,
+    currentAsOfDate: string,
+    roomGroupId: string
+): Promise<BookingCurveRawSourceStoredRoomGroupStatus> {
+    return new Promise((resolve, reject) => {
+        const index = store.index("facility-stay-scope");
+        const request = index.openCursor(IDBKeyRange.only([facilityId, stayDate, "roomGroup"]));
+        let hasPastAsOfRecord = false;
+
+        request.onsuccess = () => {
+            const cursor = request.result;
+            if (cursor === null) {
+                resolve(hasPastAsOfRecord ? "pastAsOf" : "none");
+                return;
+            }
+
+            const record = cursor.value as BookingCurveRawSourceRecord;
+            if (
+                record.schemaVersion !== BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION
+                || record.roomGroupId !== roomGroupId
+            ) {
+                cursor.continue();
+                return;
+            }
+
+            if (record.asOfDate === currentAsOfDate) {
+                resolve("currentAsOf");
+                return;
+            }
+
+            hasPastAsOfRecord = true;
+            cursor.continue();
+        };
+
+        request.onerror = () => {
+            reject(request.error ?? new Error("failed to query booking curve raw source records for room group"));
         };
     });
 }

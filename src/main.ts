@@ -44,8 +44,10 @@ import { createIntervalRequestScheduler } from "./requestScheduler";
 import {
     buildBookingCurveRawSourceCacheKey,
     buildBookingCurveRawSourceRecord,
+    readBookingCurveRawSourceStoredRoomGroupStatus,
     readBookingCurveRawSourceStoredStayDateStatuses,
     readBookingCurveRawSourceRecord,
+    type BookingCurveRawSourceStoredRoomGroupStatus,
     writeBookingCurveRawSourceRecord
 } from "./bookingCurveRawSourceStore";
 import {
@@ -162,9 +164,13 @@ const RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE = "data-ra-rank-recommendation-prio
 const RANK_RECOMMENDATION_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-action";
 const RANK_RECOMMENDATION_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-status";
 const RANK_RECOMMENDATION_HISTORY_ATTRIBUTE = "data-ra-rank-recommendation-history";
+const RANK_RECOMMENDATION_RAW_SOURCE_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-raw-source-status";
 const RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap";
 const RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap-trigger";
 const RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap-tooltip";
+const RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE = "data-ra-rank-recommendation-curve-popover";
+const RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE = "data-ra-rank-recommendation-inline-rank-change";
+const RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE = "data-ra-rank-recommendation-inline-rank-select";
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
 const RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-button-action";
 const RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE = "data-ra-rank-recommendation-stay-date";
@@ -453,6 +459,11 @@ interface SalesSettingWarmCacheState {
     cooldownUntil: number | null;
     lastFetchedAt: string | null;
     pauseReason: string | null;
+    rankRecommendationPriorityTotal: number;
+    rankRecommendationPriorityProcessed: number;
+    rankRecommendationPriorityFetched: number;
+    rankRecommendationPrioritySkipped: number;
+    rankRecommendationPriorityErrors: number;
 }
 
 type CompetitorPriceSnapshotStatus = "idle" | "saving" | "stored" | "skipped" | "error";
@@ -491,6 +502,7 @@ interface MonthlyCalendarCell {
 
 type SalesSettingWarmCacheStoredMarkerState = "stored-current" | "stored-past";
 type SalesSettingWarmCacheDateMarkerState = "partial" | "complete" | "error" | SalesSettingWarmCacheStoredMarkerState;
+type RankRecommendationRawSourceStatus = "currentAsOf" | "pastAsOf" | "missing" | "loading" | "error";
 
 interface SalesSettingCard {
     roomGroupName: string;
@@ -860,6 +872,7 @@ interface RankRecommendationCurvePreviewInfo {
     maxValue: number | null;
     currentOverallRoomCount: number | null;
     currentSecondaryRoomCount: number | null;
+    rawSourceStatus: RankRecommendationRawSourceStatus;
     segmentVariants: Partial<Record<SalesSettingBookingCurveSecondarySegment, RankRecommendationCurvePreviewSegmentVariant>>;
     diagnostics: string[];
     signature: string;
@@ -1535,6 +1548,10 @@ function schedulePendingRankRecommendationDecisionFromElement(element: HTMLEleme
         commitAt: Date.now() + RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS
     });
 
+    renderPendingRankRecommendationDecisionInline(
+        element,
+        pendingRankRecommendationDecisionByKey.get(draft.cacheKey) ?? null
+    );
     queueCalendarSync({ force: true, reason: `rank-recommendation-pending-${draft.decisionType}` });
 }
 
@@ -1551,6 +1568,7 @@ function cancelPendingRankRecommendationDecisionFromElement(element: HTMLElement
 
     window.clearTimeout(current.timeoutId);
     pendingRankRecommendationDecisionByKey.delete(cacheKey);
+    removePendingRankRecommendationDecisionInline(cacheKey);
     queueCalendarSync({ force: true, reason: `rank-recommendation-pending-cancel-${current.draft.decisionType}` });
 }
 
@@ -1559,6 +1577,9 @@ function clearPendingRankRecommendationDecisions(): void {
         window.clearTimeout(pending.timeoutId);
     }
     pendingRankRecommendationDecisionByKey.clear();
+    document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE}]`).forEach((element) => {
+        element.remove();
+    });
 }
 
 async function commitPendingRankRecommendationDecision(cacheKey: string): Promise<void> {
@@ -1568,6 +1589,7 @@ async function commitPendingRankRecommendationDecision(cacheKey: string): Promis
     }
 
     pendingRankRecommendationDecisionByKey.delete(cacheKey);
+    removePendingRankRecommendationDecisionInline(cacheKey);
     const record = buildRankRecommendationDecisionRecord({
         keyParts: pending.draft.keyParts,
         roomGroupName: pending.draft.roomGroupName,
@@ -1588,6 +1610,34 @@ async function commitPendingRankRecommendationDecision(cacheKey: string): Promis
     });
 
     queueCalendarSync({ force: true, reason: `rank-recommendation-${pending.draft.decisionType}` });
+}
+
+function renderPendingRankRecommendationDecisionInline(
+    sourceElement: HTMLElement,
+    pending: PendingRankRecommendationDecision | null
+): void {
+    if (pending === null) {
+        return;
+    }
+
+    const rowElement = findRankRecommendationCandidateRowFromElement(sourceElement);
+    const actionCellElement = rowElement?.lastElementChild;
+    if (!(actionCellElement instanceof HTMLTableCellElement)) {
+        return;
+    }
+
+    removePendingRankRecommendationDecisionInline(pending.draft.cacheKey);
+    actionCellElement.append(createRankRecommendationPendingDecisionElement(pending));
+}
+
+function removePendingRankRecommendationDecisionInline(cacheKey: string): void {
+    document
+        .querySelectorAll<HTMLElement>(
+            `[${RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE}][${RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE}="${cssEscapeAttributeValue(cacheKey)}"]`
+        )
+        .forEach((element) => {
+            element.remove();
+        });
 }
 
 function buildPendingRankRecommendationDecisionDraftFromElement(
@@ -3164,7 +3214,12 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
         runElapsedMs: 0,
         cooldownUntil: null,
         lastFetchedAt: null,
-        pauseReason: null
+        pauseReason: null,
+        rankRecommendationPriorityTotal: 0,
+        rankRecommendationPriorityProcessed: 0,
+        rankRecommendationPriorityFetched: 0,
+        rankRecommendationPrioritySkipped: 0,
+        rankRecommendationPriorityErrors: 0
     };
 }
 
@@ -3227,9 +3282,14 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
         && salesSettingWarmCacheState.asOfDate === batchDateKey
         && salesSettingWarmCacheState.priorityStayDate === priorityStayDate;
     if (sameContext && (salesSettingWarmCacheState.total > 0 || salesSettingWarmCacheState.status === "building")) {
+        const prioritizedQueue = prioritizeSalesSettingWarmCacheQueueForRankRecommendations(salesSettingWarmCacheState.queue);
         salesSettingWarmCacheState = {
             ...salesSettingWarmCacheState,
-            queue: prioritizeSalesSettingWarmCacheQueueForRankRecommendations(salesSettingWarmCacheState.queue)
+            queue: prioritizedQueue,
+            rankRecommendationPriorityTotal: Math.max(
+                salesSettingWarmCacheState.rankRecommendationPriorityTotal,
+                salesSettingWarmCacheState.rankRecommendationPriorityProcessed + countRankRecommendationWarmCachePriorityTasks(prioritizedQueue)
+            )
         };
         renderSalesSettingWarmCacheIndicator();
         if (canResumeSalesSettingWarmCache()) {
@@ -3265,6 +3325,11 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
                 dateProgress: buildSalesSettingWarmCacheDateProgress(queue),
                 ...getSalesSettingWarmCacheTargetBounds(queue, startDate),
                 total: queue.length,
+                rankRecommendationPriorityTotal: countRankRecommendationWarmCachePriorityTasks(queue),
+                rankRecommendationPriorityProcessed: 0,
+                rankRecommendationPriorityFetched: 0,
+                rankRecommendationPrioritySkipped: 0,
+                rankRecommendationPriorityErrors: 0,
                 pauseReason: null
             };
             renderSalesSettingWarmCacheIndicator();
@@ -3430,6 +3495,27 @@ function isRankRecommendationWarmCachePriorityTask(task: SalesSettingWarmCacheTa
             candidate.stayDate === task.stayDate
             && candidate.roomGroupId === task.roomGroupId
         ));
+}
+
+function countRankRecommendationWarmCachePriorityTasks(tasks: readonly SalesSettingWarmCacheTask[]): number {
+    return tasks.filter(isRankRecommendationWarmCachePriorityTask).length;
+}
+
+function markRankRecommendationWarmCachePriorityTask(task: SalesSettingWarmCacheTask, result: "fetched" | "skipped" | "error"): void {
+    if (!isRankRecommendationWarmCachePriorityTask(task)) {
+        return;
+    }
+
+    salesSettingWarmCacheState = {
+        ...salesSettingWarmCacheState,
+        rankRecommendationPriorityProcessed: Math.min(
+            salesSettingWarmCacheState.rankRecommendationPriorityTotal,
+            salesSettingWarmCacheState.rankRecommendationPriorityProcessed + 1
+        ),
+        rankRecommendationPriorityFetched: salesSettingWarmCacheState.rankRecommendationPriorityFetched + (result === "fetched" ? 1 : 0),
+        rankRecommendationPrioritySkipped: salesSettingWarmCacheState.rankRecommendationPrioritySkipped + (result === "skipped" ? 1 : 0),
+        rankRecommendationPriorityErrors: salesSettingWarmCacheState.rankRecommendationPriorityErrors + (result === "error" ? 1 : 0)
+    };
 }
 
 function buildSalesSettingWarmCacheTaskKey(task: SalesSettingWarmCacheTask): string {
@@ -3659,6 +3745,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
         const taskResult = await runSalesSettingWarmCacheTask(task, facilityId, asOfDate);
         const nextDelayMs = taskResult === "skipped" ? 0 : SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS;
         markSalesSettingWarmCacheDateProgress(task, false);
+        markRankRecommendationWarmCachePriorityTask(task, taskResult);
         salesSettingWarmCacheState = {
             ...salesSettingWarmCacheState,
             processed: salesSettingWarmCacheState.processed + 1,
@@ -3684,6 +3771,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
             salesSettingWarmCacheState.queue.push(retryTask);
         } else {
             markSalesSettingWarmCacheDateProgress(task, true);
+            markRankRecommendationWarmCachePriorityTask(task, "error");
         }
         salesSettingWarmCacheState = {
             ...salesSettingWarmCacheState,
@@ -3928,6 +4016,7 @@ function getSalesSettingWarmCacheDetailLabel(): string {
         getSalesSettingWarmCacheTargetRangeLabel(),
         `完了 ${completedDateRange}`,
         getSalesSettingWarmCachePriorityProgressLabel(),
+        getRankRecommendationWarmCachePriorityProgressLabel(),
         taskLabel,
         cooldownLabel,
         retryPendingCount > 0 ? `再試行待ち ${retryPendingCount}` : null,
@@ -3937,6 +4026,26 @@ function getSalesSettingWarmCacheDetailLabel(): string {
     ].filter((part): part is string => part !== null && part !== "");
 
     return parts.join(" / ");
+}
+
+function getRankRecommendationWarmCachePriorityProgressLabel(): string | null {
+    const total = salesSettingWarmCacheState.rankRecommendationPriorityTotal;
+    if (total <= 0) {
+        return null;
+    }
+
+    const currentTask = salesSettingWarmCacheState.currentTask;
+    const currentLabel = currentTask !== null && isRankRecommendationWarmCachePriorityTask(currentTask)
+        ? `・取得中 ${formatSalesSettingWarmCacheTaskLabel(currentTask)}`
+        : "";
+    return [
+        `候補優先 ${salesSettingWarmCacheState.rankRecommendationPriorityProcessed} / ${total}`,
+        `保存 ${salesSettingWarmCacheState.rankRecommendationPriorityFetched}`,
+        `skip ${salesSettingWarmCacheState.rankRecommendationPrioritySkipped}`,
+        salesSettingWarmCacheState.rankRecommendationPriorityErrors > 0
+            ? `失敗 ${salesSettingWarmCacheState.rankRecommendationPriorityErrors}`
+            : null
+    ].filter((part): part is string => part !== null).join(" ") + currentLabel;
 }
 
 function getCompetitorPriceSnapshotStatusLabel(): string | null {
@@ -6322,15 +6431,32 @@ async function readRankRecommendationCurvePreviewInfo(options: {
             });
             return undefined;
         });
+    const storedRoomGroupStatus = await readBookingCurveRawSourceStoredRoomGroupStatus(
+        options.facilityId,
+        options.candidate.stayDate,
+        options.asOfDate,
+        options.candidate.roomGroupId
+    ).catch((error: unknown) => {
+        console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation raw source status`, {
+            stayDate: options.candidate.stayDate,
+            asOfDate: options.asOfDate,
+            roomGroupId: options.candidate.roomGroupId,
+            error
+        });
+        return "none" as BookingCurveRawSourceStoredRoomGroupStatus;
+    });
 
     if (record === undefined) {
-        return buildMissingRankRecommendationCurvePreviewInfo(["booking_curve_source_missing"]);
+        return buildMissingRankRecommendationCurvePreviewInfo(
+            ["booking_curve_source_missing"],
+            convertBookingCurveRawSourceStoredStatus(storedRoomGroupStatus)
+        );
     }
 
     const response = record.response as BookingCurveResponse;
     const point = findLatestBookingCurvePoint(response, options.asOfDate);
     if (point === null) {
-        return buildMissingRankRecommendationCurvePreviewInfo(["booking_curve_point_missing"]);
+        return buildMissingRankRecommendationCurvePreviewInfo(["booking_curve_point_missing"], "currentAsOf");
     }
 
     const referenceData = await buildRankRecommendationCurvePreviewReferenceData({
@@ -6382,6 +6508,7 @@ async function readRankRecommendationCurvePreviewInfo(options: {
         maxValue: activeVariant.maxValue,
         currentOverallRoomCount,
         currentSecondaryRoomCount: activeVariant.currentSecondaryRoomCount,
+        rawSourceStatus: "currentAsOf",
         segmentVariants,
         diagnostics,
         signature: [
@@ -6396,16 +6523,34 @@ async function readRankRecommendationCurvePreviewInfo(options: {
     };
 }
 
-function buildMissingRankRecommendationCurvePreviewInfo(diagnostics: string[]): RankRecommendationCurvePreviewInfo {
+function buildMissingRankRecommendationCurvePreviewInfo(
+    diagnostics: string[],
+    rawSourceStatus: RankRecommendationRawSourceStatus = "missing"
+): RankRecommendationCurvePreviewInfo {
     return {
         curveData: null,
         maxValue: null,
         currentOverallRoomCount: null,
         currentSecondaryRoomCount: null,
+        rawSourceStatus,
         segmentVariants: {},
         diagnostics,
-        signature: `missing:${diagnostics.join("/")}`
+        signature: `missing:${diagnostics.join("/")}|raw:${rawSourceStatus}`
     };
+}
+
+function convertBookingCurveRawSourceStoredStatus(
+    status: BookingCurveRawSourceStoredRoomGroupStatus
+): RankRecommendationRawSourceStatus {
+    switch (status) {
+        case "currentAsOf":
+            return "currentAsOf";
+        case "pastAsOf":
+            return "pastAsOf";
+        case "none":
+        default:
+            return "missing";
+    }
 }
 
 async function buildRankRecommendationCurvePreviewReferenceData(options: {
@@ -7916,7 +8061,8 @@ function renderRankRecommendationList(
         options.statusText,
         options.hiddenSummary,
         options.viewMode ?? "all",
-        options.targetMonth ?? null
+        options.targetMonth ?? null,
+        options.curvePreviewInfoByKey
     );
 
     const viewModeControlElement = options.statusText === null
@@ -7946,7 +8092,7 @@ function renderRankRecommendationList(
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
     const headRowElement = document.createElement("tr");
-    for (const label of ["優先度", "確度", "宿泊日", "宿泊まで", "前回変更", "部屋タイプ", "現ランク", "推奨方向", "主要根拠", "状態", "操作"]) {
+    for (const label of ["優先度", "確度", "宿泊日", "宿泊まで", "データ", "前回変更", "部屋タイプ", "現ランク", "推奨方向", "主要根拠", "状態", "操作"]) {
         const cellElement = document.createElement("th");
         cellElement.scope = "col";
         cellElement.textContent = label;
@@ -7958,7 +8104,7 @@ function renderRankRecommendationList(
     if (candidates.length === 0) {
         const emptyRowElement = document.createElement("tr");
         const emptyCellElement = document.createElement("td");
-        emptyCellElement.colSpan = 11;
+        emptyCellElement.colSpan = 12;
         emptyCellElement.textContent = options.viewMode === undefined || options.viewMode === "all"
             ? "現在表示中のカレンダーに料金調整候補はありません"
             : "現在の表示条件に該当する料金調整候補はありません";
@@ -7969,7 +8115,12 @@ function renderRankRecommendationList(
             const displayInfoKey = buildRankRecommendationCandidateDisplayInfoKey(candidate);
             const displayInfo = options.displayInfoByKey?.get(displayInfoKey) ?? null;
             const curvePreviewInfo = options.curvePreviewInfoByKey?.get(displayInfoKey) ?? null;
-            bodyElement.append(...createRankRecommendationRows(candidate, displayInfo, curvePreviewInfo));
+            bodyElement.append(...createRankRecommendationRows(
+                candidate,
+                displayInfo,
+                curvePreviewInfo,
+                options.rankOrder?.ranksHighToLow ?? []
+            ));
         }
     }
     tableElement.append(headElement, bodyElement);
@@ -8166,7 +8317,8 @@ function formatRankRecommendationListMeta(
     statusText: string | null,
     hiddenSummary?: RankRecommendationHiddenSummary,
     viewMode: RankRecommendationViewMode = "all",
-    targetMonth: string | null = null
+    targetMonth: string | null = null,
+    curvePreviewInfoByKey?: ReadonlyMap<string, RankRecommendationCurvePreviewInfo>
 ): string {
     if (statusText !== null) {
         return statusText;
@@ -8177,6 +8329,7 @@ function formatRankRecommendationListMeta(
         formatRankRecommendationActionSummary(candidates),
         formatRankRecommendationPrioritySummary(candidates),
         formatRankRecommendationConfidenceSummary(candidates),
+        formatRankRecommendationRawSourceStatusSummary(candidates, curvePreviewInfoByKey),
         formatRankRecommendationCautionSummary(candidates),
         formatRankRecommendationTargetMonthSummary(hiddenSummary, targetMonth),
         formatRankRecommendationViewModeSummary(hiddenSummary, viewMode),
@@ -8323,6 +8476,82 @@ function formatRankRecommendationConfidenceSummary(candidates: readonly RankReco
     );
 }
 
+function formatRankRecommendationRawSourceStatusSummary(
+    candidates: readonly RankRecommendationCandidate[],
+    curvePreviewInfoByKey?: ReadonlyMap<string, RankRecommendationCurvePreviewInfo>
+): string | null {
+    return formatRankRecommendationCountSummary(
+        "raw source",
+        candidates.map((candidate) => getRankRecommendationRawSourceStatus(candidate, curvePreviewInfoByKey)),
+        ["currentAsOf", "pastAsOf", "missing", "loading", "error"],
+        formatRankRecommendationRawSourceStatus
+    );
+}
+
+function getRankRecommendationRawSourceStatus(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfoByKey?: ReadonlyMap<string, RankRecommendationCurvePreviewInfo>
+): RankRecommendationRawSourceStatus {
+    if (isRankRecommendationWarmCacheTaskPending(candidate)) {
+        return "loading";
+    }
+    if (hasRankRecommendationWarmCachePriorityError(candidate)) {
+        return "error";
+    }
+    const previewInfo = curvePreviewInfoByKey?.get(buildRankRecommendationCandidateDisplayInfoKey(candidate));
+    return previewInfo?.rawSourceStatus ?? (candidate.diagnostics.includes("booking_curve_source_missing") ? "missing" : "currentAsOf");
+}
+
+function isRankRecommendationWarmCacheTaskPending(candidate: RankRecommendationCandidate): boolean {
+    const matches = (task: SalesSettingWarmCacheTask | null): boolean => task !== null
+        && task.kind === "currentRaw"
+        && task.scope === "roomGroup"
+        && task.stayDate === candidate.stayDate
+        && task.roomGroupId === candidate.roomGroupId;
+    return matches(salesSettingWarmCacheState.currentTask)
+        || salesSettingWarmCacheState.queue.some(matches);
+}
+
+function hasRankRecommendationWarmCachePriorityError(candidate: RankRecommendationCandidate): boolean {
+    return salesSettingWarmCacheState.rankRecommendationPriorityErrors > 0
+        && candidate.diagnostics.includes("booking_curve_source_missing")
+        && !isRankRecommendationWarmCacheTaskPending(candidate);
+}
+
+function formatRankRecommendationRawSourceStatus(status: RankRecommendationRawSourceStatus): string {
+    switch (status) {
+        case "currentAsOf":
+            return "最新基準日あり";
+        case "pastAsOf":
+            return "過去基準日あり";
+        case "loading":
+            return "取得中";
+        case "error":
+            return "取得失敗";
+        case "missing":
+        default:
+            return "未保存";
+    }
+}
+
+function formatRankRecommendationRawSourceStatusTitle(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null
+): string {
+    const status = getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
+        ? undefined
+        : new Map([[buildRankRecommendationCandidateDisplayInfoKey(candidate), curvePreviewInfo]]));
+    const parts = [
+        `raw source: ${formatRankRecommendationRawSourceStatus(status)}`,
+        `基準日 ${formatCompactDateForDisplay(candidate.asOfDate)}`,
+        curvePreviewInfo?.diagnostics.length
+            ? `不足診断 ${curvePreviewInfo.diagnostics.map(formatRankRecommendationCurvePreviewDiagnostic).join(" / ")}`
+            : null,
+        status === "loading" ? "候補用データを優先取得中です" : null
+    ].filter((part): part is string => part !== null);
+    return parts.join("\n");
+}
+
 function formatRankRecommendationCautionSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
     return formatRankRecommendationCountSummary(
         "注意",
@@ -8369,7 +8598,8 @@ function formatRankRecommendationCountSummary<T extends string>(
 function createRankRecommendationRows(
     candidate: RankRecommendationCandidate,
     displayInfo: RankRecommendationDisplayInfo | null,
-    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null,
+    rankOptions: readonly { code: string; name: string }[]
 ): HTMLTableRowElement[] {
     const rowElement = document.createElement("tr");
     rowElement.setAttribute(RANK_RECOMMENDATION_ROW_ATTRIBUTE, "");
@@ -8395,6 +8625,13 @@ function createRankRecommendationRows(
         },
         { value: formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate) },
         { value: formatRankRecommendationLeadDays(candidate) },
+        {
+            value: formatRankRecommendationRawSourceStatus(getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
+                ? undefined
+                : new Map([[buildRankRecommendationCandidateDisplayInfoKey(candidate), curvePreviewInfo]]))),
+            title: formatRankRecommendationRawSourceStatusTitle(candidate, curvePreviewInfo),
+            attribute: RANK_RECOMMENDATION_RAW_SOURCE_STATUS_ATTRIBUTE
+        },
         {
             value: formatRankRecommendationLatestChangeCellText(displayInfo),
             title: formatRankRecommendationLatestChangeTitle(displayInfo),
@@ -8457,6 +8694,7 @@ function createRankRecommendationRows(
         event.stopPropagation();
         toggleRankRecommendationCurvePreviewFromElement(curvePreviewButtonElement);
     });
+    const curvePopoverElement = createRankRecommendationCurvePopover(candidate, curvePreviewInfo);
 
     const isRankChangePreviewOpen = isRankRecommendationRankChangePreviewOpen(candidate);
     const pendingRankChange = getPendingRankRecommendationRankChange(candidate);
@@ -8473,6 +8711,7 @@ function createRankRecommendationRows(
     rankChangeButtonElement.title = rankChangeProposal.enabled
         ? "Analyzeへ移動せずに、この候補のrank変更 preview を表示"
         : `rank調整不可: ${formatRankRecommendationRankChangeDisabledReasons(rankChangeProposal.disabledReasons)}`;
+    const inlineRankChangeElement = createRankRecommendationInlineRankChange(candidate, rankChangeProposal, rankOptions);
 
     const pendingDecision = getPendingRankRecommendationDecision(candidate);
     const hasPendingDecision = pendingDecision !== null;
@@ -8495,7 +8734,15 @@ function createRankRecommendationRows(
     dismissButtonElement.textContent = "対応不要";
     dismissButtonElement.disabled = hasPendingDecision || hasPendingRankChange;
 
-    actionCellElement.append(analyzeLinkElement, curvePreviewButtonElement, rankChangeButtonElement, snoozeButtonElement, dismissButtonElement);
+    actionCellElement.append(
+        analyzeLinkElement,
+        curvePreviewButtonElement,
+        curvePopoverElement,
+        rankChangeButtonElement,
+        inlineRankChangeElement,
+        snoozeButtonElement,
+        dismissButtonElement
+    );
     if (pendingDecision !== null) {
         actionCellElement.append(createRankRecommendationPendingDecisionElement(pendingDecision));
     }
@@ -8510,6 +8757,150 @@ function createRankRecommendationRows(
         createRankRecommendationCurvePreviewRow(candidate, curvePreviewInfo, isPreviewOpen),
         createRankRecommendationRankChangePreviewRow(candidate, rankChangeProposal, reasonText, cautionText, isRankChangePreviewOpen)
     ];
+}
+
+function createRankRecommendationCurvePopover(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null
+): HTMLElement {
+    const detailsElement = document.createElement("details");
+    detailsElement.setAttribute(RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE, "");
+
+    const summaryElement = document.createElement("summary");
+    summaryElement.textContent = "要点";
+    summaryElement.title = "候補行内でブッキングカーブの要点を確認";
+
+    const bodyElement = document.createElement("div");
+    bodyElement.append(...createRankRecommendationCurvePopoverItems(candidate, curvePreviewInfo));
+    detailsElement.append(summaryElement, bodyElement);
+    return detailsElement;
+}
+
+function createRankRecommendationCurvePopoverItems(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null
+): HTMLElement[] {
+    const rawStatus = getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
+        ? undefined
+        : new Map([[buildRankRecommendationCandidateDisplayInfoKey(candidate), curvePreviewInfo]]));
+    const items: Array<[string, string]> = [
+        ["raw source", formatRankRecommendationRawSourceStatus(rawStatus)],
+        ["全体", formatNullableRoomCount(curvePreviewInfo?.currentOverallRoomCount ?? null)],
+        [getSalesSettingBookingCurveSecondarySegment() === "group" ? "団体" : "個人", formatNullableRoomCount(curvePreviewInfo?.currentSecondaryRoomCount ?? null)],
+        ["参考線", formatRankRecommendationCurvePopoverReferenceStatus(curvePreviewInfo)],
+        ["不足", curvePreviewInfo?.diagnostics.length
+            ? curvePreviewInfo.diagnostics.map(formatRankRecommendationCurvePreviewDiagnostic).join(" / ")
+            : "なし"]
+    ];
+    return items.map(([label, value]) => {
+        const itemElement = document.createElement("div");
+        const labelElement = document.createElement("span");
+        labelElement.textContent = label;
+        const valueElement = document.createElement("strong");
+        valueElement.textContent = value;
+        itemElement.append(labelElement, valueElement);
+        return itemElement;
+    });
+}
+
+function formatNullableRoomCount(value: number | null): string {
+    return value === null ? "-" : `${value}室`;
+}
+
+function formatRankRecommendationCurvePopoverReferenceStatus(
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null
+): string {
+    if (curvePreviewInfo === null || curvePreviewInfo.curveData === null) {
+        return "未表示";
+    }
+    const hasReference = curvePreviewInfo.curveData.overall.recent !== null
+        || curvePreviewInfo.curveData.overall.seasonal !== null
+        || curvePreviewInfo.curveData.secondary.recent !== null
+        || curvePreviewInfo.curveData.secondary.seasonal !== null;
+    return hasReference ? "あり" : "不足";
+}
+
+function createRankRecommendationInlineRankChange(
+    candidate: RankRecommendationCandidate,
+    proposal: RankRecommendationRankChangeProposal,
+    rankOptions: readonly { code: string; name: string }[]
+): HTMLElement {
+    const wrapperElement = document.createElement("span");
+    wrapperElement.setAttribute(RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE, "");
+
+    const selectElement = document.createElement("select");
+    selectElement.setAttribute(RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE, "");
+    selectElement.title = "この候補行で反映候補にするrankを選ぶ";
+    selectElement.disabled = !proposal.enabled || getPendingRankRecommendationRankChange(candidate) !== null || rankOptions.length === 0;
+    for (const rank of rankOptions) {
+        const optionElement = document.createElement("option");
+        optionElement.value = rank.code;
+        optionElement.textContent = rank.name;
+        optionElement.dataset.rankName = rank.name;
+        selectElement.append(optionElement);
+    }
+    if (proposal.targetRankCode !== null && rankOptions.some((rank) => rank.code === proposal.targetRankCode)) {
+        selectElement.value = proposal.targetRankCode;
+    }
+
+    const submitButtonElement = createRankRecommendationRankChangeSubmitButton(proposal, "反映する");
+    submitButtonElement.disabled = !proposal.enabled || getPendingRankRecommendationRankChange(candidate) !== null || selectElement.value === "";
+    syncRankRecommendationInlineRankChangeButton(submitButtonElement, selectElement);
+    selectElement.addEventListener("change", () => {
+        syncRankRecommendationInlineRankChangeButton(submitButtonElement, selectElement);
+    });
+
+    wrapperElement.append(selectElement, submitButtonElement);
+    return wrapperElement;
+}
+
+function syncRankRecommendationInlineRankChangeButton(buttonElement: HTMLButtonElement, selectElement: HTMLSelectElement): void {
+    const selectedOption = selectElement.selectedOptions[0];
+    if (selectedOption === undefined) {
+        buttonElement.disabled = true;
+        return;
+    }
+
+    buttonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_CODE_ATTRIBUTE, selectedOption.value);
+    buttonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_NAME_ATTRIBUTE, selectedOption.dataset.rankName ?? selectedOption.textContent ?? selectedOption.value);
+}
+
+function createRankRecommendationRankChangeSubmitButton(
+    proposal: RankRecommendationRankChangeProposal,
+    label: string
+): HTMLButtonElement {
+    const submitButtonElement = document.createElement("button");
+    submitButtonElement.type = "button";
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-change-submit");
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, proposal.stayDate);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE, proposal.asOfDate);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, proposal.roomGroupId);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, proposal.roomGroupName);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, proposal.reasonFingerprint);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE, proposal.confidenceLevel);
+    submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_GENERATED_AT_ATTRIBUTE, proposal.generatedAt);
+    if (proposal.currentRankCode !== null) {
+        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_CODE_ATTRIBUTE, proposal.currentRankCode);
+    }
+    if (proposal.currentRankName !== null) {
+        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_NAME_ATTRIBUTE, proposal.currentRankName);
+    }
+    if (proposal.targetRankCode !== null) {
+        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_CODE_ATTRIBUTE, proposal.targetRankCode);
+    }
+    if (proposal.targetRankName !== null) {
+        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_NAME_ATTRIBUTE, proposal.targetRankName);
+    }
+    submitButtonElement.setAttribute(
+        RANK_RECOMMENDATION_RANK_CHANGE_DISABLED_REASONS_ATTRIBUTE,
+        proposal.disabledReasons.join(",")
+    );
+    submitButtonElement.textContent = label;
+    submitButtonElement.title = proposal.enabled
+        ? "5秒の送信待ちに入る"
+        : `送信不可: ${formatRankRecommendationRankChangeDisabledReasons(proposal.disabledReasons)}`;
+    return submitButtonElement;
 }
 
 function createRankRecommendationRankGapCellContent(
@@ -8625,7 +9016,7 @@ function createRankRecommendationCurvePreviewRow(
     rowElement.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE, buildRankRecommendationCurvePreviewKey(candidate));
     rowElement.hidden = !isOpen;
     const cellElement = document.createElement("td");
-    cellElement.colSpan = 11;
+    cellElement.colSpan = 12;
     cellElement.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE, "");
     cellElement.replaceChildren(...createRankRecommendationCurvePreviewCellChildren(candidate, curvePreviewInfo));
 
@@ -8676,7 +9067,7 @@ function createRankRecommendationRankChangePreviewRow(
     rowElement.hidden = !isOpen;
 
     const cellElement = document.createElement("td");
-    cellElement.colSpan = 11;
+    cellElement.colSpan = 12;
     cellElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_CELL_ATTRIBUTE, "");
 
     const sectionElement = document.createElement("section");
@@ -8702,37 +9093,7 @@ function createRankRecommendationRankChangePreviewRow(
     const noteElement = document.createElement("p");
     noteElement.textContent = "送信直前に現在rankと変更履歴を再取得し、候補表示時から変わっていた場合は送信しません。5秒の送信待ち中は取消できます。";
 
-    const submitButtonElement = document.createElement("button");
-    submitButtonElement.type = "button";
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "rank-change-submit");
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, proposal.stayDate);
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE, proposal.asOfDate);
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, proposal.roomGroupId);
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, proposal.roomGroupName);
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, proposal.reasonFingerprint);
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_CONFIDENCE_LEVEL_ATTRIBUTE, proposal.confidenceLevel);
-    submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_GENERATED_AT_ATTRIBUTE, proposal.generatedAt);
-    if (proposal.currentRankCode !== null) {
-        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_CODE_ATTRIBUTE, proposal.currentRankCode);
-    }
-    if (proposal.currentRankName !== null) {
-        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_CURRENT_NAME_ATTRIBUTE, proposal.currentRankName);
-    }
-    if (proposal.targetRankCode !== null) {
-        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_CODE_ATTRIBUTE, proposal.targetRankCode);
-    }
-    if (proposal.targetRankName !== null) {
-        submitButtonElement.setAttribute(RANK_RECOMMENDATION_RANK_CHANGE_TARGET_NAME_ATTRIBUTE, proposal.targetRankName);
-    }
-    submitButtonElement.setAttribute(
-        RANK_RECOMMENDATION_RANK_CHANGE_DISABLED_REASONS_ATTRIBUTE,
-        proposal.disabledReasons.join(",")
-    );
-    submitButtonElement.textContent = "反映する";
-    submitButtonElement.title = proposal.enabled
-        ? "5秒の送信待ちに入る"
-        : `送信不可: ${formatRankRecommendationRankChangeDisabledReasons(proposal.disabledReasons)}`;
+    const submitButtonElement = createRankRecommendationRankChangeSubmitButton(proposal, "反映する");
     submitButtonElement.disabled = !proposal.enabled || getPendingRankRecommendationRankChange(candidate) !== null;
 
     const result = getRankRecommendationRankChangeResult(candidate);
@@ -8924,10 +9285,11 @@ function createRankRecommendationPendingDecisionElement(
 ): HTMLDivElement {
     const wrapperElement = document.createElement("div");
     wrapperElement.setAttribute(RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE, "");
+    wrapperElement.setAttribute(RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE, pendingDecision.draft.cacheKey);
 
     const labelElement = document.createElement("span");
     const secondsUntilCommit = Math.max(1, Math.ceil((pendingDecision.commitAt - Date.now()) / 1000));
-    labelElement.textContent = `${formatRankRecommendationDecisionType(pendingDecision.draft.decisionType)}を${secondsUntilCommit}秒後に確定`;
+    labelElement.textContent = `${formatRankRecommendationDecisionType(pendingDecision.draft.decisionType)}: ${secondsUntilCommit}秒後に確定`;
 
     const cancelButtonElement = document.createElement("button");
     cancelButtonElement.type = "button";
@@ -8974,7 +9336,7 @@ function createRankRecommendationPendingRankChangeElement(
 
     const labelElement = document.createElement("span");
     const secondsUntilCommit = Math.max(1, Math.ceil((pendingRankChange.commitAt - Date.now()) / 1000));
-    labelElement.textContent = `${secondsUntilCommit}秒後に送信`;
+    labelElement.textContent = `rank変更: ${secondsUntilCommit}秒後に送信`;
 
     const cancelButtonElement = document.createElement("button");
     cancelButtonElement.type = "button";
@@ -16114,6 +16476,93 @@ function ensureGroupRoomStyles(): void {
 
         [${RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_CELL_ATTRIBUTE}] {
             background: #f6f8fb;
+        }
+
+        [${RANK_RECOMMENDATION_RAW_SOURCE_STATUS_ATTRIBUTE}] {
+            color: #33445a;
+            font-size: 11px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] {
+            position: relative;
+            display: inline-block;
+            margin-right: 6px;
+            vertical-align: top;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] summary {
+            display: inline-flex;
+            align-items: center;
+            min-height: 26px;
+            padding: 4px 8px;
+            border: 1px solid #b7c4d3;
+            border-radius: 5px;
+            background: #ffffff;
+            color: #243245;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.2;
+            cursor: pointer;
+            list-style: none;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] summary::-webkit-details-marker {
+            display: none;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] > div {
+            position: absolute;
+            z-index: 20;
+            top: calc(100% + 4px);
+            right: 0;
+            min-width: 260px;
+            padding: 8px 10px;
+            border: 1px solid #c9d4e2;
+            border-radius: 6px;
+            background: #ffffff;
+            box-shadow: 0 8px 20px rgba(31, 44, 61, 0.16);
+            color: #33445a;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] > div > div {
+            display: grid;
+            grid-template-columns: max-content minmax(0, 1fr);
+            gap: 4px 10px;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] span {
+            color: #5b6b7d;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] strong {
+            min-width: 0;
+            color: #243245;
+            font-weight: 800;
+            white-space: normal;
+        }
+
+        [${RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            margin-right: 6px;
+            vertical-align: top;
+        }
+
+        [${RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE}] {
+            max-width: 96px;
+            min-height: 26px;
+            border: 1px solid #b7c4d3;
+            border-radius: 5px;
+            background: #ffffff;
+            color: #243245;
+            font-size: 12px;
+            font-weight: 700;
         }
 
         [data-ra-rank-recommendation-rank-change-preview] {
