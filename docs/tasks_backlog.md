@@ -4245,19 +4245,113 @@
   - Analyze URL `https://ra.jalan.net/analyze/2026-06-07` の `価格推移` tab では、`競合価格 最安値推移（90日版）`、初期 16 件の `/api/v1/price_trends` GET、続く background queue 表示 `背景取得 3 / 112`、合計 19 件の `/api/v1/price_trends` GET、監視対象 write API POST 0 件を確認した。
   - raw response body、HAR、Cookie、token、credential、非公開価格データは保存していない。
 
+## Planned From 2026-05-30 Recommendation Taskization
+
+### RAU-RR-60 rank 変更後の `reflection_unconfirmed` と再取得失敗分類を実装する
+
+- 目的:
+  - `RAU-RR-59` で必須候補にした write guard follow-up を実装し、rank 変更 POST success 後に Revenue Assistant 画面または API 再取得で反映確認できない状態を、送信失敗とは別の状態として表示する。
+  - current settings または rank status の再取得失敗を、401、403、その他 HTTP error、network error に分類し、利用者がログイン切れ、権限不足、サーバー応答、通信失敗を区別できるようにする。
+- スコープ:
+  - 対象は、既存の 1 行 rank 変更導線と観測済み `POST /api/v1/lincoln/suggest` 後の確認表示である。
+  - 送信後の再取得が成功し、期待 rank へ変わった場合は既存の成功扱いを維持する。
+  - 送信 POST は success だが再取得で期待 rank を確認できない場合は `reflection_unconfirmed` として表示し、再確認や手動確認が必要であることを示す。
+  - 再取得失敗時は、HTTP 401、HTTP 403、その他 HTTP status、network error を利用者向け表示と diagnostics に分けて残す。
+- 非目標:
+  - 新しい write endpoint、`price_ranks` 系 endpoint、bulk apply、自動反映、`reflection_allow` の推測利用は扱わない。
+  - Revenue Assistant の rank を実務上不要に変更する検証は行わない。
+  - raw response body、Cookie、token、credential、非公開価格データを保存しない。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - 送信後確認の state と表示が `success`、`reflection_unconfirmed`、401、403、その他 HTTP error、network error に分かれている。
+  - 既存の pending 取消、送信前 guard、観測済み `/api/v1/lincoln/suggest` 限定の write 境界が維持されている。
+  - 通常 Chrome または CDP 接続付き Chrome で、実 POST を伴わない範囲の UI 表示と、監視対象 write API POST 0 件を確認している。実 POST が必要な確認は、利用者が明示的に実務上変更してよい対象を指定した場合だけ行う。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-MP-03 月次実績画面の current-month-first graph と loading state を実装する
+
+- 目的:
+  - `RAU-MP-02` で正本化した月次実績画面の final graph 契約に従い、現在表示月を先に描画し、future month と比較月は background queue として取得状態を表示する。
+  - 月次実績画面で、取得中、比較不足、取得失敗、対象外の状態を利用者が区別できるようにする。
+- スコープ:
+  - 対象は月次実績画面の graph 描画順、background queue、loading state 表示である。
+  - 現在表示月の graph を最優先で描画し、future month と比較月の取得は画面表示を止めない低優先度処理として扱う。
+  - 取得状態は、表示中、保存済み、保存済みだが比較不足、取得失敗、対象外を区別する。
+- 非目標:
+  - 月次実績画面の final graph 契約を変更しない。
+  - 価格推移 tab、競合価格 tab、top 料金調整候補 list の挙動を変更しない。
+  - 追加の外部 API、PMS データ、外部 DB は使わない。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - 通常 Chrome の月次実績画面で、現在表示月 graph が先に描画されることを確認している。
+  - future month または比較月の取得中、比較不足、取得失敗の表示が確認できる。実データで発火しない状態は、安全な fixture または限定的な browser-local state で確認し、raw response body、Cookie、token、credential、非公開データを保存しない。
+  - 価格推移 tab の `背景取得 ... / 112` と top 料金調整候補 list の write 境界に影響しない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-UX-04 料金調整候補 list / row actions の React island 導入可否を実装前に設計する
+
+- 目的:
+  - `RAU-UX-02` の棚卸し結果に基づき、料金調整候補 list と row actions だけを対象に、React island を導入するかどうかを実装前に判断できる設計メモを作る。
+  - React を正式依存にする前に、mount root、CSS 境界、state 境界、bundle size、段階移行方法、verify 方法、撤退条件を固定する。
+- スコープ:
+  - 対象 surface は top 料金調整候補 list、row actions、pending 表示、booking curve preview、rank 変更 preview に限定する。
+  - 設計では、既存 vanilla DOM 実装から置き換える単位、置き換えない単位、既存 helper を再利用する境界を明示する。
+  - 実装へ進む場合に必要な子 task と、依存追加の承認ポイントを分ける。
+- 非目標:
+  - この task では `react`、`react-dom`、関連 bundler plugin を追加しない。
+  - runtime behavior、候補件数、scoring、Revenue Assistant API request 範囲、write guard、pending 秒数を変更しない。
+  - UI 実装を始めない。
+- 受け入れ条件:
+  - `docs/tasks_backlog.md` または対象 spec に、React island 導入判断、対象外、必要な依存、移行順、verify 方法が記録されている。
+  - 依存追加を行う場合の承認ポイントと、見送る場合の理由が明示されている。
+  - 実装へ進む場合の最初の子 task が 1 つ以上に分割されている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-WC-17 候補優先 raw source 取得の安全 fixture を作り、indicator 発火を確認する
+
+- 目的:
+  - `RAU-WC-16` で実データでは未発火だった `候補優先` warm cache 表示を、安全な検証条件で再現する。
+  - 表示中候補に必要な raw source を優先取得していること、取得後に候補表示が更新され得ること、skip / error が通常の未保存と区別されることを確認する。
+- スコープ:
+  - 対象は top 料金調整候補 list の raw source state 表示と warm cache indicator である。
+  - 検証用 profile、限定的な IndexedDB fixture、または安全に削除可能な browser-local state を使って、`候補優先` queue が残る状態を作る。
+  - indicator の total、processed、stored、skip、failed、current と、候補行 raw source state の変化を確認する。
+- 非目標:
+  - 本番 profile の raw trace、response body、Cookie、token、credential、非公開価格データを保存しない。
+  - API request 範囲、request interval、candidate scoring、rank write 挙動を変更しない。
+  - fixture を Git 管理へ入れる場合は合成データだけにし、実データを含めない。
+- 受け入れ条件:
+  - `npm run check` が通過する。
+  - 通常 Chrome または CDP 接続付き Chrome で、`候補優先` indicator の発火、進行、完了または skip / error 表示を確認している。
+  - 検証用に作った browser-local state の削除有無を記録している。
+  - raw response body、HAR、Cookie、token、credential、非公開データを保存していない。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+
 ## Remaining Task Triage
 
 Now:
 
-- なし。
+- `RAU-RR-60` rank 変更後の `reflection_unconfirmed` と再取得失敗分類を実装する。
 
 Next:
 
-- なし。
+- `RAU-MP-03` 月次実績画面の current-month-first graph と loading state を実装する。
 
 After Next:
 
-  - なし。
+- `RAU-UX-04` 料金調整候補 list / row actions の React island 導入可否を実装前に設計する。
+- `RAU-WC-17` 候補優先 raw source 取得の安全 fixture を作り、indicator 発火を確認する。
 
 Later:
 
@@ -4266,6 +4360,7 @@ Later:
 統合判断:
 
 - 2026-05-30 に、開始時点で Remaining Task Triage にあった `RAU-WC-16`、`RAU-CP-14`、`RAU-MP-02`、`RAU-RR-59`、`RAU-UX-02`、および追加で戻した `RAU-UX-05` は閉じた。`RAU-CP-14` は実装済み、`RAU-MP-02` と `RAU-RR-59` は対象 spec に正本化済み、`RAU-UX-02` は依存追加なしの棚卸し済み、`RAU-WC-16` は通常 Chrome 実データで未発火理由と安全な fixture 条件を記録済みである。`RAU-UX-05` は、利用者本人が Tampermonkey dashboard から latest `dist/revenue-assistant-userscript.user.js` を手動更新した後に完了した。CDP 一時注入なしの top smoke では料金調整候補 list 10 行、pending 取消、監視対象 write API POST 0 件を確認した。Analyze `価格推移` tab では `競合価格 最安値推移（90日版）`、初期 16 件の `/api/v1/price_trends` GET、`背景取得 3 / 112`、合計 19 件の `/api/v1/price_trends` GET、監視対象 write API POST 0 件を確認した。2026-05-30 時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
+- 2026-05-30 に、完了報告で推奨した 4 件を task 化した。`RAU-RR-60` は rank write 後の確認不能状態と再取得失敗分類であり、既に実送信導線が存在するため安全性と誤読防止の効果が大きい。`RAU-MP-03` は `RAU-MP-02` の正本化済み契約に続く実装 task であり、月次実績画面の first render と loading state を改善する。`RAU-UX-04` は React 依存追加前の設計 task であり、runtime behavior を変更しない。`RAU-WC-17` は実データで未発火だった indicator を安全 fixture で確認する検証 task である。この順序により、write safety、画面価値、依存追加判断、未発火 fixture 検証の順で進める。
 - 2026-05-30 に、前回完了報告で提案した follow-up を task 化した。当時は CDP 一時注入ではなく Tampermonkey 反映後の配布物確認が以後の GUI 確認の前提になるため、`RAU-UX-03` を Now とした。`RAU-WC-16` は `RAU-WC-14` の未発火 GUI 確認であり、Tampermonkey 反映後に確認する task とした。`RAU-CP-14` は `RAU-WC-15` で docs 設計した価格推移タブの background queue 実装であり、実装効果が大きいため After Next に置いた。`RAU-MP-02` は実装前に final graph 契約を正本化する task であり、`RAU-RR-59` は write guard の追加調査である。`RAU-UX-02` は React island 化の棚卸しであり、依存追加判断を伴うため、配布物確認と未発火確認より後に回した。
 - 2026-05-30 に、React 導入の技術的関心と component ブラッシュアップのため、`RAU-UX-02` を追加した。既存の `RAU-UX-01` は competitor prices と団体系列の導入判断であり、React / component 化の棚卸しとは目的が異なるため重複しない。`RAU-UX-02` は依存追加や runtime behavior 変更を行わない docs-only の棚卸し task とし、実装に進む場合は棚卸し後に surface 単位の子 task へ分割する。
 - 2026-05-30 の読み込み UX 調査では、top list の `基準日` 表示と top candidate 用 raw source 優先取得は実装済みだが、利用者に「どのデータが取得中か」「候補用 raw source を優先取得しているか」「取得後に候補が更新されるか」が十分には見えないと判断した。そのため、`RAU-RR-54` から `RAU-RR-56` の行内操作 UX follow-up より先に、`RAU-WC-12` から `RAU-WC-14` で読み込み状態の UX 契約と top list 更新中表示を整える。`RAU-WC-15` は価格推移タブ、競合価格タブ、月次実績画面の重い取得を含むため、top list の読み込み UX を固めた後の Later とする。
@@ -4277,20 +4372,8 @@ Later:
 - `RAU-RR-03` は 2026-05-28 に実施済みである。current rank と rank ladder 候補は確認済みだが、当時は `rank_sequences[].default_sequence` の扱いを未確定としていた。`rank_sequences[].default_sequence` の扱いは `RAU-RR-12` で確認済みに更新した。
 - rank price table と現在販売中価格は、`RAU-RR-36` の追加確認後も、推奨レート金額を導出できる入力としては未確認として残している。rank 反映 API の request shape と安全制約も未確認として残している。
 
-## Proposed Next Task Candidates
+## Completed / Reference Task Notes
 
-- `RAU-UX-04` 料金調整候補 list / row actions の React island 導入可否を実装前に設計する。
-  - 目的: React を正式依存にする前に、候補 list だけを対象に mount root、CSS 境界、bundle size、段階移行方法、verify 方法を固定する。
-  - 非目標: この task では `react` / `react-dom` を追加しない。Revenue Assistant API request 範囲、scoring、write guard、pending 秒数を変えない。
-- `RAU-MP-03` 月次実績画面の current-month-first graph と loading state を実装する。
-  - 目的: `RAU-MP-02` で正本化した契約に従い、現在表示月を先に描画し、future month と比較月は background queue として取得状態を表示する。
-  - 最小 verify: `npm run check` と通常 Chrome の月次実績画面で、現在表示月 graph、取得中、比較不足、取得失敗表示を確認する。
-- `RAU-RR-60` rank 変更後の `reflection_unconfirmed` と再取得失敗分類を実装する。
-  - 目的: POST success 後に反映確認できない状態を送信失敗と分け、current settings / rank status 再取得の 401、403、その他 HTTP error、network error を利用者が区別できる表示へ変える。
-  - 非目標: 新しい write endpoint、bulk apply、自動反映、`reflection_allow` の推測利用は扱わない。
-- `RAU-WC-17` 候補優先 raw source 取得の安全 fixture を作り、indicator 発火を確認する。
-  - 目的: 実データでは未発火だった `候補優先` 表示を、検証用 profile または限定的な IndexedDB fixture で再現し、表示の total / processed / stored / skip / failed / current と候補行 raw source state の変化を確認する。
-  - 非目標: 本番 profile の raw trace、response body、Cookie、token、credential、非公開価格データを保存しない。
 - `RAU-RR-04` は実装済みである。トップ画面に `stayDate x roomGroup` 単位の候補リスト shell を追加し、current settings の current rank、remaining、max を使う仮候補生成を `src/rankRecommendation.ts` に分離した。`Analyzeで確認` は URL 導線として表示し、`様子見` と `対応不要` は `RAU-RR-07` まで disabled button として置く。
 - `RAU-RR-05` は実装済みである。`booking_curve_raw_source:v2` の roomGroup raw source から asOfDate 時点の this_year rooms と過去年 rooms 平均を読み、`all`、`transient`、`group` ごとに reference deviation を計算する。欠損は推測で埋めず `reference不足` として出す。group が上振れ主因で transient が上振れていない場合は、個人価格 rank の上げ検討を抑制する。
 - `RAU-RR-06` は実装済みである。`Analyzeで確認` click 時に pending focus を `sessionStorage` へ保存し、Analyze 表示時に対象 roomGroup card を開く、scroll する、highlight する。対象が見つからない場合は通常 Analyze 表示を維持し、console warning へ診断を出す。
