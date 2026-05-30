@@ -500,6 +500,42 @@
 
 ## Recently Implemented / GUI Unconfirmed
 
+### RAU-RR-57 現ランク tooltip に各部屋タイプの OH/キャパを追加する
+
+- 目的:
+  - 料金調整候補の `現ランク` tooltip で、同一宿泊日の各部屋タイプについて、rank 差だけでなく予約済み室数とキャパシティも確認できるようにする。
+- スコープ:
+  - 既存の `現ランク` tooltip に `OH/キャパ` 列を追加する。
+  - `OH` は `On Hand`、ここでは `/api/v1/suggest/output/current_settings` の `max_num_room - remaining_num_room` で計算する予約済み室数を指す。
+  - `キャパ` は同じ response の `max_num_room` を指す。
+  - 値は `OH / キャパ` の形式で表示する。
+  - 既存 current settings response だけを使い、追加 API request は発生させない。
+- 非目標:
+  - tooltip の既存列、rank 差、備考の意味を変えること。
+  - candidate scoring、priority、confidence、reasonFingerprint、rank order、user decision、resolved 判定を変えること。
+  - Revenue Assistant write API を実行すること。
+- 受け入れ条件:
+  - `現ランク` tooltip に `OH/キャパ` 列が表示される。
+  - 各部屋タイプの値が `OH / キャパ` 形式で表示される。
+  - `remaining_num_room` または `max_num_room` が取れない場合は `- / -` と表示し、備考に `OH未取得` を表示する。
+  - tooltip が通常の候補操作、`Analyzeで確認`、`曲線`、`rank調整`、`様子見`、`対応不要` を妨げない。
+- 実装内容:
+  - `RankRecommendationRankGapEntry` に `occupancyCapacity` を追加した。
+  - `buildRankRecommendationRankGapContextByScope()` で、current settings response の `remaining_num_room` と `max_num_room` から `OH = max_num_room - remaining_num_room` を計算する。
+  - tooltip table に `OH/キャパ` 列を追加し、既存の `formatSalesSettingCapacity()` で `OH / キャパ` 形式へ整形する。
+  - `OH/キャパ` は UI 表示用の signature に含め、同じ宿泊日と部屋タイプの OH またはキャパが変わった場合に表示更新対象になるようにした。
+- verify:
+  - `npm run typecheck`: passed
+  - `npm run lint`: passed
+  - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
+  - `git diff --check`: passed
+- GUI 確認:
+  - 未実施。Codex アプリ内ブラウザの現在ページには RAU top list が注入されておらず、`data-ra-rank-recommendation-row` と `data-ra-rank-recommendation-rank-gap-trigger` が 0 件だったため、この surface では `OH/キャパ` tooltip を確認できなかった。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: during-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ### RAU-WC-08 カレンダー下線を現在取得中の progress bar として表示する
 
 - 目的:

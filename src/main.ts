@@ -69,6 +69,7 @@ import {
     type RankRecommendationAction,
     type RankRecommendationCandidate,
     type RankRecommendationCurveEvidence,
+    type RankRecommendationCurrentSettingRoomGroup,
     type RankRecommendationCurrentSettingsResponse,
     type RankRecommendationForecastSignal,
     type RankRecommendationPriority,
@@ -838,6 +839,7 @@ interface RankRecommendationRankGapEntry {
     roomGroupId: string;
     roomGroupName: string;
     currentRankName: string | null;
+    occupancyCapacity: SalesSettingRoomCapacity | null;
     rankOrderIndex: number | null;
     relativeStep: number | null;
     isTarget: boolean;
@@ -7434,10 +7436,12 @@ function buildRankRecommendationRankGapContextByScope(
             const currentRankCode = normalizeRankRecommendationElementText(roomGroup.latest_current?.price_rank_code ?? null);
             const currentRankName = normalizeRankRecommendationElementText(roomGroup.latest_current?.price_rank_name ?? null);
             const rankOrderIndex = resolveRankRecommendationRankOrderIndex(rankOrder, currentRankCode, currentRankName);
+            const occupancyCapacity = resolveRankRecommendationRankGapOccupancyCapacity(roomGroup);
             return [{
                 roomGroupId,
                 roomGroupName,
                 currentRankName,
+                occupancyCapacity,
                 rankOrderIndex
             }];
         });
@@ -7458,11 +7462,15 @@ function buildRankRecommendationRankGapContextByScope(
                 if (targetRankOrderIndex === null) {
                     diagnostics.push("target_rank_order_missing");
                 }
+                if (roomGroup.occupancyCapacity === null) {
+                    diagnostics.push("occupancy_capacity_missing");
+                }
 
                 return {
                     roomGroupId: roomGroup.roomGroupId,
                     roomGroupName: roomGroup.roomGroupName,
                     currentRankName: roomGroup.currentRankName,
+                    occupancyCapacity: roomGroup.occupancyCapacity,
                     rankOrderIndex: roomGroup.rankOrderIndex,
                     relativeStep: rankOrder.source === "unresolved" || roomGroup.rankOrderIndex === null || targetRankOrderIndex === null
                         ? null
@@ -7483,6 +7491,7 @@ function buildRankRecommendationRankGapContextByScope(
                         entry.roomGroupId,
                         entry.roomGroupName,
                         entry.currentRankName ?? "-",
+                        entry.occupancyCapacity === null ? "-/-" : `${entry.occupancyCapacity.currentValue}/${entry.occupancyCapacity.maxValue}`,
                         entry.rankOrderIndex ?? "-",
                         entry.relativeStep ?? "-",
                         entry.isTarget ? "target" : "other",
@@ -7498,6 +7507,28 @@ function buildRankRecommendationRankGapContextByScope(
 
 function buildRankRecommendationRankGapContextScopeKey(stayDate: string, roomGroupId: string): string {
     return `${stayDate}:${roomGroupId}`;
+}
+
+function resolveRankRecommendationRankGapOccupancyCapacity(
+    roomGroup: RankRecommendationCurrentSettingRoomGroup
+): SalesSettingRoomCapacity | null {
+    const maxValue = roomGroup.max_num_room;
+    const remainingValue = roomGroup.remaining_num_room;
+    if (
+        typeof maxValue !== "number"
+        || typeof remainingValue !== "number"
+        || !Number.isFinite(maxValue)
+        || !Number.isFinite(remainingValue)
+        || maxValue <= 0
+        || remainingValue < 0
+    ) {
+        return null;
+    }
+
+    return {
+        currentValue: Math.max(0, Math.min(maxValue, maxValue - remainingValue)),
+        maxValue
+    };
 }
 
 function resolveRankRecommendationRankOrderIndex(
@@ -8335,7 +8366,7 @@ function createRankRecommendationRankGapCellContent(
     const tableElement = document.createElement("table");
     const headElement = document.createElement("thead");
     const headRowElement = document.createElement("tr");
-    for (const label of ["部屋タイプ", "現ランク", "対象候補との差", "備考"]) {
+    for (const label of ["部屋タイプ", "現ランク", "OH/キャパ", "対象候補との差", "備考"]) {
         const cellElement = document.createElement("th");
         cellElement.scope = "col";
         cellElement.textContent = label;
@@ -8353,6 +8384,7 @@ function createRankRecommendationRankGapCellContent(
         for (const value of [
             entry.roomGroupName,
             entry.currentRankName ?? "-",
+            formatRankRecommendationRankGapOccupancyCapacity(entry),
             formatRankRecommendationRankGapRelativeStep(entry),
             formatRankRecommendationRankGapNote(entry, context)
         ]) {
@@ -8383,6 +8415,10 @@ function formatRankRecommendationRankGapRelativeStep(entry: RankRecommendationRa
         : `対象より${absoluteStep}ランク低い`;
 }
 
+function formatRankRecommendationRankGapOccupancyCapacity(entry: RankRecommendationRankGapEntry): string {
+    return formatSalesSettingCapacity(entry.occupancyCapacity);
+}
+
 function formatRankRecommendationRankGapNote(
     entry: RankRecommendationRankGapEntry,
     context: RankRecommendationRankGapContext
@@ -8396,6 +8432,9 @@ function formatRankRecommendationRankGapNote(
     }
     if (context.rankOrderSource === "unresolved" || entry.relativeStep === null) {
         notes.push("順序未確認");
+    }
+    if (entry.diagnostics.includes("occupancy_capacity_missing")) {
+        notes.push("OH未取得");
     }
 
     return notes.length === 0 ? "-" : Array.from(new Set(notes)).join(" / ");
