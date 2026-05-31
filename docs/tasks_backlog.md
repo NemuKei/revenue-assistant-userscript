@@ -5223,6 +5223,257 @@
   - `spec-checkpoint`: none
   - `target-spec`: なし
 
+### RAU-UX-27 React 化の最終ゴールと非対象を正本化する
+
+- 目的:
+  - React 化を「Revenue Assistant 本体を React app として置き換えること」ではなく、「userscript が追加する UI の状態管理と副作用境界を分けること」として明確にする。
+  - 長期化しても、どの UI surface を React island 化するか、どの UI surface を今は対象外にするかを誤読なく判断できる状態にする。
+- スコープ:
+  - 対象は `docs/tasks_backlog.md`、必要に応じて `docs/context/DECISIONS.md` または関連 spec の方針記述である。
+  - React 化する候補、React 化しない候補、先に仕様確認が必要な候補を、入力、UI 状態、利用者操作、出力 DOM、副作用境界で分類する。
+  - `data-ra-*` selector、Tampermonkey 配布、CDP / Chrome smoke、監視対象 write API POST 0 件確認を維持する前提を書く。
+- 非目標:
+  - runtime behavior、React component、依存関係、build 設定、userscript metadata は変更しない。
+  - UI ライブラリの採用可否はこの task では決めない。
+- 受け入れ条件:
+  - React 化のゴール、非対象、維持する selector、維持する副作用境界、verify 観点が正本文書に記録されている。
+  - `INTENT.md` の判断原則を変える必要があるかを確認し、変更不要ならその理由を task 本文または完了メモに記録している。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-28 現行 React island の責務境界を再点検する
+
+- 目的:
+  - 料金調整候補 React list が、UI 表示と UI 状態だけを扱い、candidate generation、scoring、IndexedDB、Revenue Assistant API adapter、write guard を component に取り込んでいないことを確認する。
+- スコープ:
+  - 対象は `src/rankRecommendationReactIsland.tsx`、関連 view model、mount / unmount / sync 関数である。
+  - component props、state、event handler、side effect 呼び出しを読み、責務境界の逸脱があれば小さな follow-up task に分ける。
+- 非目標:
+  - UI ライブラリ導入、見た目変更、rank 反映条件、API request 範囲、IndexedDB schema は変更しない。
+- 受け入れ条件:
+  - component が直接扱う入力、UI state、出力 event、呼び出してよい adapter が整理されている。
+  - 境界逸脱がある場合、実装変更ではなく追加 task として分割されている。
+  - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-29 React component の状態モデルを整理する
+
+- 目的:
+  - 表示 mode、表示件数、preview open state、pending state、rank select state、loading / error state を分け、UI ライブラリ導入前に状態の責務を明確にする。
+- スコープ:
+  - 対象は料金調整候補 list の React component state と props である。
+  - 状態を `derived from snapshot`、`browser-local UI state`、`pending write state`、`temporary display state` に分類する。
+  - 必要なら type 名または helper 名を調整する。ただし public selector と外部 contract は維持する。
+- 非目標:
+  - UI ライブラリ導入、rank 反映 API、pending 秒数、表示件数の仕様変更は行わない。
+- 受け入れ条件:
+  - state の分類が task 本文またはコード上の型境界で確認できる。
+  - 既存の top smoke selector、pending cancel、preview 表示が維持されている。
+  - `npm run check`、`npm run react:doctor -- --diff false`、必要に応じた top smoke、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-30 React Doctor 残診断のうち UI component に近いものだけを処理する
+
+- 目的:
+  - `RAU-UX-26` 後に残る React Doctor 診断から、React component または mount logic に近く、挙動を変えずに直せるものだけを処理する。
+- スコープ:
+  - 対象は React island、React component、mount / sync / unmount 周辺の診断である。
+  - `flushSync` の扱いは、Revenue Assistant 側再描画への追従と pending 表示の安定性を確認できる場合だけ検討する。
+- 非目標:
+  - React Doctor の設定変更、診断抑制、dependency 更新、広い async concurrency 変更は行わない。
+- 受け入れ条件:
+  - 処理した診断、残した診断、残した理由が記録されている。
+  - React component、mount、state 管理に関係する変更をした場合は、`npm run check`、`npm run react:doctor -- --diff false`、top smoke、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-31 UI ライブラリ導入候補の評価基準を決める
+
+- 目的:
+  - UI ライブラリを導入する前に、何を比較し、何を採用条件にし、何を不採用条件にするかを固定する。
+- スコープ:
+  - 比較軸は bundle size、CSS 衝突、unstyled / headless 対応、keyboard 操作、accessibility、Tampermonkey 配布、既存 selector 維持、供給網リスク、version pin、license、install script の有無である。
+  - UI ライブラリは、見た目の theme 全面導入ではなく、必要な UI primitive だけを取り込む前提で評価する。
+- 非目標:
+  - dependency 追加、runtime behavior 変更、UI component 置き換えは行わない。
+- 受け入れ条件:
+  - UI ライブラリ候補を比較する表または箇条書きが正本文書に追加されている。
+  - 導入前に利用者承認が必要な項目と、承認なしで調査できる項目が分かれている。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-32 UI ライブラリ候補を比較する
+
+- 目的:
+  - `RAU-UX-31` の評価基準に従い、React island に入れられる UI ライブラリ候補を比較し、採用候補、保留候補、不採用候補を分ける。
+- スコープ:
+  - 候補は headless / unstyled 系を優先し、Radix UI、Ariakit、React Aria、Headless UI などを調査対象にする。
+  - 公式 docs、package metadata、license、bundle impact、CSS injection の有無、peer dependency、install / postinstall script を確認する。
+- 非目標:
+  - dependency 追加、UI component 置き換え、見た目変更は行わない。
+- 受け入れ条件:
+  - 各候補について、使える component、使わない component、供給網上の注意、Tampermonkey userscript での懸念が記録されている。
+  - 1 つだけ試す候補を選ぶか、導入しない判断を記録している。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-33 UI primitive 導入方針を正本化する
+
+- 目的:
+  - UI ライブラリを使う場合でも、どの component をライブラリに寄せ、どの component を自前のままにするかを固定する。
+- スコープ:
+  - 対象は tooltip、popover、segmented control、tabs、modal / confirmation、select / menu、pending status のうち、最初に扱う 1 から 2 種類である。
+  - CSS theme 全面導入を非目標とし、既存 `data-ra-*` selector と smoke selector を維持する方針を書く。
+- 非目標:
+  - dependency 追加、runtime behavior 変更、UI component 置き換えは行わない。
+- 受け入れ条件:
+  - 最初に導入する UI primitive と、後回しにする UI primitive が理由つきで記録されている。
+  - write API に近い操作を最初の導入対象から外すか、外さない場合は追加の safety check が定義されている。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-34 小さい表示部品で UI primitive を試す
+
+- 目的:
+  - UI ライブラリまたは自前 UI primitive を、write API に近くない小さい表示部品で試し、Tampermonkey 配布と既存 selector への影響を確認する。
+- スコープ:
+  - 対象候補は tooltip、popover、segmented control、tabs のうち 1 種類だけである。
+  - dependency を追加する場合は、利用者承認、version pin、lockfile 更新、bundle size 差分、license、install script 確認を同じ task で行う。
+- 非目標:
+  - rank 反映 button、pending confirmation、API request、IndexedDB schema、Revenue Assistant 本体 UI は変更しない。
+- 受け入れ条件:
+  - 対象 UI primitive が 1 箇所で動作し、keyboard 操作、focus、既存 selector、表示崩れの有無を確認している。
+  - `npm run check`、`npm run react:doctor -- --diff false`、top smoke、監視対象 write API POST 0 件確認、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-35 UI primitive 導入後の smoke checklist を追加する
+
+- 目的:
+  - UI primitive 導入後に確認すべき観点を、実装者の記憶ではなく command と checklist に寄せる。
+- スコープ:
+  - 対象は README または `smoke:distribution` の出力項目である。
+  - 確認項目は top row、React marker、主要 control、preview、pending cancel、keyboard 操作、console / page error、監視対象 write API POST 0 件である。
+- 非目標:
+  - UI component の置き換え、UI ライブラリ導入、Revenue Assistant 自動ログインは行わない。
+- 受け入れ条件:
+  - UI primitive 導入後の確認手順が、top 画面 smoke と手動確認項目に分かれて記録されている。
+  - `npm run check` と `git diff --check` が通過する。docs-only の場合は `git diff --check` と対象文言確認でよい。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-36 料金調整候補 list の低リスク操作部品を段階的に置き換える
+
+- 目的:
+  - UI primitive の適用範囲を、write API から遠い操作部品へ広げ、見た目と操作の一貫性を上げる。
+- スコープ:
+  - 対象候補は表示 mode、表示件数、rank order control のように、API write を直接発火しない操作部品である。
+  - 1 task では 1 種類の操作部品だけを置き換える。複数種類を扱う場合は子 task に分ける。
+- 非目標:
+  - rank 反映 button、`様子見`、`対応不要`、pending confirmation、API request 範囲は変更しない。
+- 受け入れ条件:
+  - 対象操作部品の click / keyboard 操作、表示状態、既存 selector、top smoke、監視対象 write API POST 0 件を確認している。
+  - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-37 pending / confirmation UI を統一する
+
+- 目的:
+  - `反映する`、`様子見`、`対応不要`、rank change の pending 表示を共通 component に寄せ、利用者が取り消し可能な状態を読み違えないようにする。
+- スコープ:
+  - 対象は pending 表示、cancel button、disabled / loading 表示、結果 message の component 化である。
+  - 送信条件、write guard、pending 秒数、POST endpoint は維持する。
+- 非目標:
+  - 自動反映、bulk apply、rank 反映 API の変更、送信回数の増加は行わない。
+- 受け入れ条件:
+  - 各 row action の pending 表示が共通 component または共通 props で説明できる。
+  - decision pending cancel と rank pending cancel を Chrome / CDP で確認し、監視対象 write API POST 0 件または意図した操作以外 0 件を記録している。
+  - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-38 preview UI の開閉と focus を整理する
+
+- 目的:
+  - booking curve preview と rank change preview の開閉、focus、閉じる操作を整理し、row 内で複数 preview がある状態を扱いやすくする。
+- スコープ:
+  - 対象は preview host、preview open state、close 操作、focus 戻し、keyboard 操作である。
+  - graph 描画本体は既存実装を使い、preview container と操作だけを整理する。
+- 非目標:
+  - booking curve graph、rank change adapter、API request 範囲、derived cache schema は変更しない。
+- 受け入れ条件:
+  - preview の開閉、閉じる操作、focus 戻し、既存 chart / SVG 表示、監視対象 write API POST 0 件を確認している。
+  - `npm run check`、`npm run react:doctor -- --diff false`、top smoke、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-39 月次実績画面の React 化候補を再評価する
+
+- 目的:
+  - 月次実績画面のうち、日次差分 compact view、summary、filter 操作が React island に向くかを再評価する。
+- スコープ:
+  - 対象は `/monthly-progress/YYYY-MM` の日次差分 section、summary、将来の filter / expand 操作である。
+  - 月次 graph 本体、tooltip、snapshot schema、API request 範囲は別判断にする。
+- 非目標:
+  - この task だけで React 依存追加、UI component 置き換え、monthly snapshot schema 変更は行わない。
+- 受け入れ条件:
+  - 月次実績画面で React 化する候補、素の DOM のままにする候補、先に仕様確認が必要な候補が分かれている。
+  - 実装に進む場合、最初の子 task と verify 観点が Remaining Task Triage に反映されている。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-UX-40 UI モダン化の見た目調整を最後に行う
+
+- 目的:
+  - React 化と UI primitive の導入後に、spacing、button、control density、状態表示、table の読みやすさを整え、操作 UI としての一貫性を上げる。
+- スコープ:
+  - 対象は userscript が追加する UI の CSS、React component の表示密度、button / control の状態表現である。
+  - 機能変更、API request、write guard、pending 秒数、selector contract は維持する。
+- 非目標:
+  - Revenue Assistant 本体の theme 変更、全面的なデザイン刷新、外部 CSS framework の全面導入は行わない。
+- 受け入れ条件:
+  - 主要 viewport または通常 Chrome 表示で、text overlap、button overflow、preview と table の重なりがないことを確認している。
+  - top smoke、必要に応じた monthly / price-trends smoke、監視対象 write API POST 0 件、console / page error 0 件を確認している。
+  - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Remaining Task Triage
 
 Now:
@@ -5235,14 +5486,28 @@ Next:
 
 After Next:
 
-- なし。
+- `RAU-UX-26` React Doctor 残診断の次の安全な performance 修正を行う。
 
 Later:
 
-- `RAU-UX-26` React Doctor 残診断の次の安全な performance 修正を行う。
+- `RAU-UX-27` React 化の最終ゴールと非対象を正本化する。
+- `RAU-UX-28` 現行 React island の責務境界を再点検する。
+- `RAU-UX-29` React component の状態モデルを整理する。
+- `RAU-UX-30` React Doctor 残診断のうち UI component に近いものだけを処理する。
+- `RAU-UX-31` UI ライブラリ導入候補の評価基準を決める。
+- `RAU-UX-32` UI ライブラリ候補を比較する。
+- `RAU-UX-33` UI primitive 導入方針を正本化する。
+- `RAU-UX-34` 小さい表示部品で UI primitive を試す。
+- `RAU-UX-35` UI primitive 導入後の smoke checklist を追加する。
+- `RAU-UX-36` 料金調整候補 list の低リスク操作部品を段階的に置き換える。
+- `RAU-UX-37` pending / confirmation UI を統一する。
+- `RAU-UX-38` preview UI の開閉と focus を整理する。
+- `RAU-UX-39` 月次実績画面の React 化候補を再評価する。
+- `RAU-UX-40` UI モダン化の見た目調整を最後に行う。
 
 統合判断:
 
+- 2026-05-31 に、React 化と UI ライブラリ活用による長期的な UI モダン化を `RAU-UX-27` から `RAU-UX-40` として task 化した。既存の未実装 task は、配布版 top smoke の前提診断 `RAU-UX-25`、月次実績の日次差分 compact view `RAU-MP-08`、React Doctor 残診断 `RAU-UX-26` の順で維持する。理由は、配布版 smoke の失敗切り分けを先に整えないと、以後の UI 変更で配布版確認が不安定になるためである。React / UI ライブラリの長期 task は、React 化のゴール正本化、責務境界、状態モデル、診断処理、UI ライブラリ評価、UI primitive 試験、低リスク操作部品、pending、preview、月次画面再評価、最後の見た目調整の順に置く。write API に近い操作ほど後ろへ置き、各段階で `npm run check`、必要に応じた `npm run react:doctor -- --diff false`、Chrome / CDP smoke、監視対象 write API POST 0 件確認を挟むためである。
 - 2026-05-31 に、開始時点で未着手だった `RAU-UX-24`、`RAU-MP-07`、`RAU-CP-17`、`RAU-UX-23` を閉じた。追加で見えた次の task 化候補は 4 件だった。このうち `RAU-CP-18` は、Tampermonkey dashboard を `0.1.0.341` へ更新し、fixture ではない通常価格推移 graph を `--version-policy fail` 付きで確認したため同日に完了した。残りの実行順は、`RAU-UX-25` は配布版 top smoke が selector 0 件で失敗したときの切り分け情報がまだ不足しているため Now、`RAU-MP-08` は日次差分を現在表示月だけに絞っても fixture では 45 行残るため Next、`RAU-UX-26` は React Doctor 残診断の安全な performance 修正候補だが runtime bug ではないため Later とした。
 - 2026-05-31 に、未着手だった `RAU-UX-21`、`RAU-UX-22`、`RAU-MP-06`、`RAU-CP-16` を閉じた。追加で見えた次の task 化候補は 4 件である。`RAU-UX-24` は smoke helper が主要 selector と POST 件数を出力できるようになった直後に、完了扱いにできない条件を exit code へ反映するため Now とした。`RAU-MP-07` は `RAU-MP-06` の fixture 確認で日次差分 row が多くなることが分かったため Next とした。`RAU-CP-17` は `RAU-CP-16` で long-run 進行と skip fixture は確認したが、complete と failure fixture の追加確認が残るため After Next とした。`RAU-UX-23` は React Doctor 診断のうち安全に直せる performance 系だけを小分けに扱う候補だが、runtime bug ではないため Later とした。
 - 2026-05-31 に、前回完了報告で推奨した 4 件を task 化した。`RAU-UX-21` は React Doctor 導入直後の既存診断を分類し、次の React UI 変更で無関係な警告に引きずられないようにするため Now とした。`RAU-UX-22` は配布版 smoke helper を top 以外の重要画面へ広げ、今後の GUI 確認を同じ基準で実行できるようにするため Next とした。`RAU-MP-06` は `RAU-MP-05` で採用した月次実績画面の実装候補であり、仕様影響を確認してから進めるため After Next とした。`RAU-CP-16` は価格推移 background queue の短時間確認後に残る long-run と failure 表示の確認であり、現時点で緊急の修正は見つかっていないため Later とした。
