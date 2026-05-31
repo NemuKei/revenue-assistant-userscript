@@ -56,6 +56,10 @@ if (chromeState.revenueAssistantPages.length === 0) {
     console.log("Revenue Assistant pages:");
     for (const page of chromeState.revenueAssistantPages) {
         console.log(`- ${page.title} | ${page.url}`);
+        console.log(`  login form candidate: ${page.diagnostics.loginFormCandidate}`);
+        console.log(`  calendar candidate: ${page.diagnostics.calendarCandidate}`);
+        console.log(`  RAU userscript root count: ${page.diagnostics.rauUserscriptRootCount}`);
+        console.log(`  React marker mounted: ${page.diagnostics.reactMarkerMounted}`);
     }
 }
 console.log(`opened Revenue Assistant URL: ${openUrl ?? "none"}`);
@@ -88,13 +92,38 @@ async function readChromeState(endpoint, urlToOpen) {
             if (!url.startsWith(REVENUE_ASSISTANT_ORIGIN)) {
                 continue;
             }
+            await page.waitForLoadState("domcontentloaded", { timeout: 5000 }).catch(() => {});
             let title = "(title unavailable)";
+            let diagnostics = {
+                loginFormCandidate: "unknown",
+                calendarCandidate: "unknown",
+                rauUserscriptRootCount: "unknown",
+                reactMarkerMounted: "unknown"
+            };
             try {
                 title = await page.title();
             } catch {
                 title = "(title unavailable)";
             }
-            revenueAssistantPages.push({ title, url });
+            try {
+                diagnostics = await page.evaluate(() => {
+                    const doc = globalThis.document;
+                    return {
+                        loginFormCandidate: doc.querySelector("input[type=\"password\"], form[action*=\"login\" i], [data-testid*=\"login\" i]") !== null ? "yes" : "no",
+                        calendarCandidate: doc.querySelector("[data-testid*=\"calendar\" i], [class*=\"calendar\" i], a[href^=\"/analyze/\"], a[href*=\"/analyze/\"]") !== null ? "yes" : "no",
+                        rauUserscriptRootCount: String(doc.querySelectorAll("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]").length),
+                        reactMarkerMounted: doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null ? "yes" : "no"
+                    };
+                });
+            } catch {
+                diagnostics = {
+                    loginFormCandidate: "unknown",
+                    calendarCandidate: "unknown",
+                    rauUserscriptRootCount: "unknown",
+                    reactMarkerMounted: "unknown"
+                };
+            }
+            revenueAssistantPages.push({ title, url, diagnostics });
         }
         return { reachable: true, error: null, revenueAssistantPages };
     } finally {

@@ -59,6 +59,9 @@ console.log(`duration seconds: ${seconds}`);
 for (const [label, value] of Object.entries(smokeResult.modeMetrics)) {
     console.log(`${label}: ${value}`);
 }
+for (const message of assessment.preflightMessages) {
+    console.log(`preflight: ${message}`);
+}
 console.log(`console error count: ${smokeResult.consoleErrorCount}`);
 console.log(`page error count: ${smokeResult.pageErrorCount}`);
 console.log(`write endpoints: ${WRITE_ENDPOINTS.join(", ")}`);
@@ -197,7 +200,34 @@ function assessSmokeResult(options) {
         warnings.push(`smoke mode ${options.mode} does not match requested URL ${options.targetUrl}`);
     }
 
-    return { failures, warnings };
+    const preflightMessages = buildPreflightMessages({
+        metrics,
+        installedVersion: options.installedVersion,
+        publishedVersion: options.publishedVersionResult.version
+    });
+
+    return { failures, warnings, preflightMessages };
+}
+
+function buildPreflightMessages(options) {
+    const messages = [
+        `page title=${options.metrics["page title"] ?? "unknown"}, login form candidate=${options.metrics["login form candidate"] ?? "unknown"}, calendar candidate=${options.metrics["calendar candidate"] ?? "unknown"}, RAU userscript root count=${options.metrics["RAU userscript root count"] ?? "unknown"}, React marker mounted=${options.metrics["React marker mounted"] ?? "unknown"}, installed version=${options.installedVersion}`
+    ];
+    const rootCount = Number(options.metrics["RAU userscript root count"]);
+    const loginCandidate = options.metrics["login form candidate"];
+    const calendarCandidate = options.metrics["calendar candidate"];
+    if (loginCandidate === "yes") {
+        messages.push("login form candidate is present; confirm Revenue Assistant login before treating selector failures as userscript failures.");
+    } else if (rootCount === 0 && calendarCandidate === "yes") {
+        messages.push(`calendar candidate is present but RAU userscript root count is 0; confirm Tampermonkey is enabled on ra.jalan.net, installed version ${options.installedVersion} matches published version ${options.publishedVersion}, and update the script from the Tampermonkey dashboard if needed.`);
+    } else if (rootCount === 0) {
+        messages.push("RAU userscript root count is 0; confirm requested URL, Revenue Assistant login state, Tampermonkey enabled state, and installed userscript version.");
+    } else if (options.metrics["React marker mounted"] !== "yes") {
+        messages.push("RAU userscript root exists but React marker is not mounted; check installed build freshness and userscript runtime errors.");
+    } else {
+        messages.push("Revenue Assistant page, RAU root, and React marker are present.");
+    }
+    return messages;
 }
 
 function assessModeMetrics(mode, metrics, options) {
@@ -307,7 +337,9 @@ async function collectModeMetrics(page, mode) {
             "page title": doc.title || "none",
             "login form candidate": doc.querySelector("input[type=\"password\"], form[action*=\"login\" i], [data-testid*=\"login\" i]") !== null ? "yes" : "no",
             "calendar candidate": doc.querySelector("[data-testid*=\"calendar\" i], [class*=\"calendar\" i], a[href^=\"/analyze/\"], a[href*=\"/analyze/\"]") !== null ? "yes" : "no",
-            "RAU userscript root": doc.querySelector("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]") !== null ? "yes" : "no"
+            "RAU userscript root": doc.querySelector("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]") !== null ? "yes" : "no",
+            "RAU userscript root count": doc.querySelectorAll("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]").length,
+            "React marker mounted": doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null ? "yes" : "no"
         });
         if (selectedMode === "top") {
             return {
@@ -325,6 +357,7 @@ async function collectModeMetrics(page, mode) {
         }
         if (selectedMode === "price-trends") {
             return {
+                ...commonPageDiagnostics(),
                 "price trends tab": doc.querySelector("[data-testid=\"tab-priceTrends\"]") !== null ? "yes" : "no",
                 "price trends content": doc.querySelector("[data-testid=\"price-trends-content\"]") !== null ? "yes" : "no",
                 "price trends overview count": doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview]").length,
@@ -334,6 +367,7 @@ async function collectModeMetrics(page, mode) {
             };
         }
         return {
+            ...commonPageDiagnostics(),
             "monthly preview root count": doc.querySelectorAll("[data-ra-monthly-progress-preview-root]").length,
             "monthly preview panel count": doc.querySelectorAll("[data-ra-monthly-progress-preview-panel]").length,
             "monthly preview svg count": doc.querySelectorAll("[data-ra-monthly-progress-preview-svg]").length,

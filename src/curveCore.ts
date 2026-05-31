@@ -1470,6 +1470,16 @@ function buildSeasonalRatioByLt(
 ): Map<number, SeasonalRatioBucket> {
     const ratioByLt = new Map<number, SeasonalRatioBucket>();
     const numericTicks = ticks.filter((tick): tick is number => typeof tick === "number");
+    const numericObservationsByStayDate = new Map<string, Map<number, CurveObservation>>();
+    for (const [stayDate, observations] of observationsByStayDate) {
+        const observationsByLt = new Map<number, CurveObservation>();
+        for (const observation of observations) {
+            if (typeof observation.rooms === "number" && !observationsByLt.has(observation.lt)) {
+                observationsByLt.set(observation.lt, observation);
+            }
+        }
+        numericObservationsByStayDate.set(stayDate, observationsByLt);
+    }
 
     for (const tick of numericTicks) {
         if (tick === 0) {
@@ -1482,8 +1492,7 @@ function buildSeasonalRatioByLt(
 
         const ratios: number[] = [];
         for (const [stayDate, finalRooms] of finalRoomsByStayDate) {
-            const observation = observationsByStayDate.get(stayDate)
-                ?.find((candidate) => candidate.lt === tick && typeof candidate.rooms === "number");
+            const observation = numericObservationsByStayDate.get(stayDate)?.get(tick);
             const rooms = observation?.rooms;
             if (typeof rooms !== "number") {
                 continue;

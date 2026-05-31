@@ -5786,7 +5786,7 @@
 ### RAU-UX-45 Tampermonkey 実行版の健全性診断を smoke 前提として整理する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 2026-05-31 の確認では、Revenue Assistant 画面はログイン済みに見えた一方で、Tampermonkey 経由の RAU userscript root が表示されず、installed version は `manual-check-required` になった。
   - 配布版 smoke を始める前に、local `dist`、GitHub Pages 公開版、Tampermonkey installed version、Revenue Assistant 画面上で実行中の userscript root の状態を分けて確認できるようにする。
@@ -5804,6 +5804,13 @@
   - RAU userscript root が 0 件の場合でも、ログイン画面らしい状態か、ログイン済み画面らしい状態か、Tampermonkey 実行版の確認が必要な状態かを説明できる。
   - Tampermonkey dashboard を Codex が保存操作しないこと、利用者が手動更新する場合に確認すべき対象 script と期待 version を README または helper output で示せる。
   - `npm run check`、`git diff --check` が通過する。helper だけを変更する場合でも、通常 Chrome または CDP 接続で診断 output を 1 回確認する。
+- 実装内容:
+  - `scripts/check-userscript-version.mjs` の Revenue Assistant page 診断に、login form candidate、calendar candidate、RAU userscript root count、React marker mounted を追加した。
+  - DOM 診断前に `domcontentloaded` を短時間待ち、読み込み中タブでも可能な範囲で画面状態を取得するようにした。
+  - Chrome extension storage、Tampermonkey 内部 storage、Revenue Assistant の認証情報、Cookie、token を直接読む処理は追加していない。
+- 確認:
+  - `npm run userscript:version-check` で、通常 Chrome の Revenue Assistant root に対し、login form candidate `no`、calendar candidate `yes`、RAU userscript root count `3`、React marker mounted `yes` を出力することを確認した。
+  - Tampermonkey installed version は引き続き `manual-check-required` として出力し、dashboard の保存操作は行っていない。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -5812,7 +5819,7 @@
 ### RAU-UX-46 `smoke:distribution` の RAU root 0 件 preflight を原因別に表示する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 現在の `smoke:distribution` は主要 selector が 0 件の場合に fail できるが、RAU userscript root が出ない原因を十分に分けて説明できない。
   - `RAU-UX-45` の診断結果を踏まえ、配布版 smoke の失敗時に、利用者が次に行うべき確認を読み取れる preflight message を出す。
@@ -5829,6 +5836,14 @@
   - 既存の pass / fail 条件は維持され、RAU root 0 件を pass にしない。
   - README に、RAU root 0 件時の次アクションとして、ログイン確認、Tampermonkey installed version 確認、GitHub Pages published version 反映待ち、必要なら Tampermonkey 手動更新の順序が書かれている。
   - `npm run check`、`git diff --check` が通過する。可能であれば、RAU root 0 件の失敗 output を通常 Chrome または CDP 接続で 1 回確認する。
+- 実装内容:
+  - `scripts/run-distribution-smoke.mjs` の全 mode 共通 output に、page title、login form candidate、calendar candidate、RAU userscript root count、React marker mounted、preflight message を追加した。
+  - RAU userscript root count が `0` かつ calendar candidate がある場合は、ログイン済み画面らしいが userscript が発火していない、または Tampermonkey 実行版の確認が必要であることを表示する。
+  - 主要 selector 0 件、console / page error、監視対象 write API POST、URL mismatch の fail 条件は緩めていない。
+  - README に、RAU root 0 件時の確認順序として、ログイン状態、Tampermonkey installed version、GitHub Pages published version、Tampermonkey dashboard 更新要否を追加した。
+- 確認:
+  - `npm run smoke:distribution -- --mode top --seconds 10` は expected fail になり、RAU userscript root count `0`、calendar candidate `yes`、login form candidate `no`、preflight message、監視対象 write API POST 0 件、console / page error 0 件を出力した。
+  - fail 条件は従来どおり top row、React marker、target month select、control 類の 0 件を non-zero exit として扱った。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -5837,7 +5852,7 @@
 ### RAU-UX-47 React Doctor の lookup / index 系診断を 1 family だけ処理する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 2026-05-31 時点の React Doctor は 61 issues で、`js-set-map-lookups` 7 件、`js-index-maps` 2 件、`js-combine-iterations` 12 件などが残っている。
   - 次の保守 task では、request 順序、保存順序、画面状態へ影響し得る async 系や `flushSync` には触らず、lookup / index 系のうち 1 family だけを安全に処理する。
@@ -5854,6 +5869,15 @@
   - 1 回の task で変更した診断 family は 1 種類だけである。
   - 入力、比較条件、出力順序、selector contract、監視対象 write API POST 条件が変わっていないことを説明できる。
   - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+- 実装内容:
+  - 対象 family は `react-doctor/js-index-maps` だけとした。
+  - `src/main.ts` の reference curve hydration では、現在の sales setting card を収集した後、room group name の `Map` を作って参照するようにした。重複名がある場合は従来の `find()` と同じく先に見つかった card を使う。
+  - `src/curveCore.ts` の seasonal ratio 計算では、stay date ごとに numeric rooms observation を LT 別 `Map` にしてから参照するようにした。各 stay date 内で同じ LT が複数ある場合は、従来の `find()` と同じく先に見つかった observation を使う。
+  - 入力、比較条件、出力順序、selector contract、監視対象 write API POST 条件は変更していない。
+- 確認:
+  - 修正前の `npm run react:doctor -- --verbose --diff false` では 61 issues で、`react-doctor/js-index-maps` は 2 件だった。
+  - 修正後の `npm run react:doctor -- --diff false` は 59 issues になった。
+  - 修正後の詳細確認では `react-doctor/js-index-maps` は出力されなくなった。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -5863,11 +5887,11 @@
 
 Now:
 
-- `RAU-UX-45` Tampermonkey 実行版の健全性診断を smoke 前提として整理する。
+- なし。
 
 Next:
 
-- `RAU-UX-46` `smoke:distribution` の RAU root 0 件 preflight を原因別に表示する。
+- なし。
 
 After Next:
 
@@ -5875,10 +5899,11 @@ After Next:
 
 Later:
 
-- `RAU-UX-47` React Doctor の lookup / index 系診断を 1 family だけ処理する。
+- なし。
 
 統合判断:
 
+- 2026-05-31 に、未着手だった `RAU-UX-45`、`RAU-UX-46`、`RAU-UX-47` を完了した。`RAU-UX-45` では `userscript:version-check` に Revenue Assistant 画面上の login form candidate、calendar candidate、RAU userscript root count、React marker mounted を追加した。`RAU-UX-46` では `smoke:distribution` の全 mode 共通 preflight message を追加し、RAU userscript root count `0` かつ calendar candidate ありの場合に Tampermonkey 実行版確認を案内するようにした。`RAU-UX-47` では React Doctor の `js-index-maps` family だけを処理し、診断件数を 61 件から 59 件へ減らした。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 2026-05-31 に、完了報告で推奨した 3 件を task 化した。`RAU-UX-45` は、Revenue Assistant 画面がログイン済みに見えても Tampermonkey 経由の RAU root が出ない状態を、配布版 smoke の前提崩れとして診断できるようにするため Now とする。`RAU-UX-46` は、`RAU-UX-45` で切り分ける値を `smoke:distribution` の fail output へ接続する task であり、診断の土台が決まった後に進めるため Next とする。`RAU-UX-47` は React Doctor 残診断の保守改善だが、runtime bug ではなく、async 系や `flushSync` より低リスクな lookup / index 系だけを 1 family ずつ扱うため Later とする。
 - 2026-05-31 に、未着手だった `RAU-UX-42`、`RAU-UX-41`、`RAU-UX-43`、`RAU-UX-44` を完了した。`RAU-UX-42` では月次 smoke helper の出力に主 table row、details row、details summary、details 初期 open / closed を追加した。`RAU-UX-41` では `Escape` による preview close と focus return を追加した。`RAU-UX-43` では React Doctor の `js-cache-property-access` だけを処理し、診断を 62 件から 61 件へ減らした。`RAU-UX-44` では外部 UI ライブラリを今は導入しない判断と再評価 trigger を `docs/spec_003_rank_recommendation_signal.md` に残した。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 2026-05-31 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-42` は月次 compact view の主 table と details の分離を smoke helper の出力で確認できるようにする検証補助であり、次の GUI 変更前に確認基準を増やすため Now とする。`RAU-UX-41` は `RAU-UX-38` で残した preview の focus 戻しと keyboard close であり、利用者の直接操作に関わるため Next とする。`RAU-UX-43` は React Doctor 残診断を risk 別に分ける保守 task だが、runtime bug ではなく、1 family ずつ処理する必要があるため After Next とする。`RAU-UX-44` は UI primitive がさらに増えた後に外部 UI ライブラリ導入要否を再評価する判断 task であり、現時点で dependency 追加を行わないため Later とする。

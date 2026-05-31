@@ -10562,8 +10562,13 @@ function hydrateOpenSalesSettingRoomReferenceCurves(
                     return;
                 }
 
-                const currentCard = collectSalesSettingCards()
-                    .find((card) => card.roomGroupName === metric.roomGroupName) ?? metric.card;
+                const currentCardsByRoomGroupName = new Map<string, SalesSettingCard>();
+                for (const card of collectSalesSettingCards()) {
+                    if (!currentCardsByRoomGroupName.has(card.roomGroupName)) {
+                        currentCardsByRoomGroupName.set(card.roomGroupName, card);
+                    }
+                }
+                const currentCard = currentCardsByRoomGroupName.get(metric.roomGroupName) ?? metric.card;
                 const currentMetrics = metric.metrics;
                 if (
                     !currentCard.cardElement.isConnected
