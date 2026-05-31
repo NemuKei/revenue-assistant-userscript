@@ -339,6 +339,10 @@ async function collectModeMetrics(page, mode) {
             "monthly preview svg count": doc.querySelectorAll("[data-ra-monthly-progress-preview-svg]").length,
             "monthly daily diff count": doc.querySelectorAll("[data-ra-monthly-progress-daily-diff]").length,
             "monthly daily diff rows": doc.querySelectorAll("[data-ra-monthly-progress-daily-diff-row]").length,
+            "monthly daily diff main rows": doc.querySelectorAll("[data-ra-monthly-progress-daily-diff] > table [data-ra-monthly-progress-daily-diff-row]").length,
+            "monthly daily diff details rows": doc.querySelectorAll("[data-ra-monthly-progress-daily-diff] details [data-ra-monthly-progress-daily-diff-row]").length,
+            "monthly daily diff details summary": textFrom("[data-ra-monthly-progress-daily-diff] details summary"),
+            "monthly daily diff details initially open": doc.querySelector("[data-ra-monthly-progress-daily-diff] details")?.open === true ? "yes" : "no",
             "monthly status text": textFrom("[data-ra-monthly-progress-preview-status]")
         };
     }, mode);

@@ -5655,7 +5655,7 @@
 ### RAU-UX-41 preview UI の focus 戻しと keyboard close を整理する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-UX-38` では、preview button と preview row の関係を `aria-controls` で示すところまで実装した。次は、keyboard 操作で preview を閉じる経路と、閉じた後に focus が予測できる位置へ戻る経路を整理する。
   - 利用者が mouse ではなく keyboard で `曲線` preview または `rank調整` preview を開閉した場合でも、候補 row 内の現在位置を見失わないようにする。
@@ -5671,6 +5671,15 @@
   - preview を閉じた後、focus が開いた button へ戻る、または同じ row 内の次に操作すべき button へ移ることが明示的に確認されている。
   - 既存 chart / SVG 表示、rank change preview の内容表示、top smoke、監視対象 write API POST 0 件を確認している。
   - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+- 実装内容:
+  - document-level の `keydown` handler を追加し、`Escape` が `曲線` preview button、`rank調整` preview button、または開いている preview row 内で押された場合だけ、該当 preview を閉じるようにした。
+  - 閉じた後の focus は、該当 preview を開いた `aria-controls` 対応の button へ戻す。
+  - `docs/spec_003_rank_recommendation_signal.md` に、`曲線` preview と `rank調整` preview の `Escape` close、focus return、非対象を追記した。
+- 確認:
+  - CDP 接続付き通常 Chrome へ local `dist/revenue-assistant-userscript.user.js` を一時注入し、top 料金調整候補 row 10 件、React marker、`曲線` button 10 件、`rank調整` button 10 件を確認した。
+  - `曲線` preview は開いた状態で SVG 2 件を表示し、preview 内 focus から `Escape` で閉じた後、`aria-expanded=false`、preview row hidden、focus が `曲線` button へ戻ることを確認した。
+  - `rank調整` preview は内容表示ありの状態から `Escape` で閉じた後、`aria-expanded=false`、preview row hidden、focus が `rank調整` button へ戻ることを確認した。
+  - 同じ確認で監視対象 write API POST 0 件、console error 0 件、page error 0 件だった。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -5679,7 +5688,7 @@
 ### RAU-UX-42 smoke:distribution に月次 compact view の主 table / details 行数を追加する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 現在の `smoke:distribution --mode monthly-progress` は月次実績画面の日次差分 row を確認できるが、compact view の主 table 行数と details 行数を分けて出力していない。
   - 主 table が `増加` / `減少` だけを表示し、`変化なし` / `未観測` が details 側へ分離されているかを、自動 smoke の出力だけで読み取れるようにする。
@@ -5694,6 +5703,13 @@
   - `npm run smoke:distribution -- --mode monthly-progress` の出力から、日次差分の総 row 数、主 table 行数、details table 行数、details summary、details の初期 open / closed 状態を区別できる。
   - 既存の monthly smoke の pass / fail assessment は維持されている。
   - `npm run check`、`git diff --check` が通過する。runtime source を変更しない場合でも、helper の実行結果を確認する。
+- 実装内容:
+  - `scripts/run-distribution-smoke.mjs` の `monthly-progress` mode に、`monthly daily diff main rows`、`monthly daily diff details rows`、`monthly daily diff details summary`、`monthly daily diff details initially open` を追加した。
+  - 既存の monthly preview root、panel、SVG、日次差分 section、日次差分 total row の pass / fail 条件は維持した。新しい fail 条件は追加していない。
+  - README の配布版 smoke 説明に、月次 mode が total row、主 table row、details table row、details summary、details 初期 open / closed を出力することを追記した。
+- 確認:
+  - `npm run smoke:distribution -- --mode monthly-progress --url https://ra.jalan.net/monthly-progress/2026-05 --seconds 5` は、現在の通常 Chrome で Tampermonkey 経由の RAU root が表示されないため pass しなかった。ただし、追加した出力項目は command output に表示され、失敗理由は既存の主要 selector 0 件判定だった。
+  - CDP 接続付き通常 Chrome へ local `dist/revenue-assistant-userscript.user.js` を一時注入し、月次 preview root 1 件、panel 2 件、SVG 2 件、日次差分 section 1 件、total row 45 件、主 table row 37 件、details row 8 件、details summary `変化なし / 未観測 8件`、details 初期 closed、監視対象 write API POST 0 件、console error 0 件、page error 0 件を確認した。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -5702,7 +5718,7 @@
 ### RAU-UX-43 React Doctor 残診断を risk 別に分けて次の安全修正候補を処理する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-UX-26` 完了後も React Doctor の診断は 62 件残っている。残診断は同じ危険度ではないため、まとめて直さず、出力が変わりにくい局所的な loop / lookup の改善と、挙動差が出やすい async concurrency や `flushSync` の扱いを分ける。
   - 次の安全修正候補を 1 family だけ処理し、診断件数を減らすことより、既存 UI と userscript 挙動を変えないことを優先する。
@@ -5718,6 +5734,18 @@
   - 1 回の task で変更した診断 family は 1 種類だけである。
   - 入力、比較条件、出力順序、selector contract、監視対象 write API POST 条件が変わっていないことを説明できる。
   - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+- 分類:
+  - `deslop/unused-file` 16 件は、userscript build entry と generated `dist` を React Doctor が通常 app の entry point として追跡できないことによる既存誤検知として扱う。
+  - `no-flush-sync` 1 件は、userscript が Revenue Assistant DOM へ同期差し込みするための即時反映要件があるため、今回も保留する。
+  - `async-defer-await`、`async-await-in-loop`、`server-sequential-independent-await` は、request 順序、保存順序、rate limit、画面状態と関係する可能性があるため、今回の安全修正対象にしない。
+  - `js-combine-iterations`、`js-set-map-lookups`、`js-index-maps`、`js-min-max-loop`、`js-cache-property-access`、`js-batch-dom-css` は、局所的な performance 修正候補として扱う。
+- 実装内容:
+  - 今回処理した family は `react-doctor/js-cache-property-access` だけである。
+  - `hydrateOpenSalesSettingRoomReferenceCurves()` 内で `metric.metrics` を loop 先頭の `metrics` const に保持し、同じ object の deep property access を減らした。
+  - 入力、比較条件、出力順序、selector contract、監視対象 write API POST endpoint は変更していない。
+- 確認:
+  - 実装前の `npm run react:doctor -- --verbose --diff false` は 62 issues だった。内訳は Performance 43、Dead Code 16、Server 3 である。
+  - 実装後の同 command は 61 issues だった。`react-doctor/js-cache-property-access` が 1 件減り、他 family は残した。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -5726,7 +5754,7 @@
 ### RAU-UX-44 UI primitive 拡張後に外部 UI ライブラリ導入を再評価する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-UX-31` から `RAU-UX-33` では、現時点で外部 UI ライブラリを導入せず、自前の小さい UI primitive を維持する判断にした。
   - preview focus、pending 表示、button、details、popover、menu などの操作部品が増え、手作業で維持する keyboard / focus / disabled / aria 状態が増えた時点で、同じ評価基準に基づいて導入要否を再評価する。
@@ -5742,6 +5770,14 @@
   - 外部 UI ライブラリ導入を再評価する trigger が満たされているかを判断し、採用する場合も見送る場合も理由を記録している。
   - 採用方向へ進む場合は、dependency 追加の明示承認、version pin、bundle size 差分、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を含む子 task を `Remaining Task Triage` に追加する。
   - `git diff --check` が通過する。
+- 判断:
+  - 現在の自前 UI primitive と操作部品は、button、pending notice、React row actions、preview row、booking curve 要点 popover、現ランク tooltip、rank select、details 系操作である。
+  - 手動で維持している accessibility 状態は、`aria-expanded`、`aria-controls`、focus return、keyboard close、disabled、`aria-pressed`、hover / focus tooltip、details open / closed である。
+  - 現時点では外部 UI ライブラリを導入しない。理由は、既存 `data-ra-*` selector と delegated event handler を維持する制約が強く、外部 UI ライブラリへ置き換えると Tampermonkey 配布 bundle size、CSS 衝突、focus 管理の再検証範囲が増えるためである。
+  - 採用方向の子 task は追加しない。dependency 追加、lockfile 変更、runtime UI 置換は行っていない。
+  - 再評価 trigger は、modal / menu / tabs のいずれかを新規に追加する場合、または preview / popover / details の focus 管理が複数箇所で重複し、同じ keyboard close、focus return、disabled、aria-expanded、aria-controls を保つための実装が 3 箇所以上に分散した場合とする。
+- 反映先:
+  - `docs/spec_003_rank_recommendation_signal.md` の UI primitive 導入方針へ追記した。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -5751,22 +5787,23 @@
 
 Now:
 
-- `RAU-UX-42` smoke:distribution に月次 compact view の主 table / details 行数を追加する。
+- なし。
 
 Next:
 
-- `RAU-UX-41` preview UI の focus 戻しと keyboard close を整理する。
+- なし。
 
 After Next:
 
-- `RAU-UX-43` React Doctor 残診断を risk 別に分けて次の安全修正候補を処理する。
+- なし。
 
 Later:
 
-- `RAU-UX-44` UI primitive 拡張後に外部 UI ライブラリ導入を再評価する。
+- なし。
 
 統合判断:
 
+- 2026-05-31 に、未着手だった `RAU-UX-42`、`RAU-UX-41`、`RAU-UX-43`、`RAU-UX-44` を完了した。`RAU-UX-42` では月次 smoke helper の出力に主 table row、details row、details summary、details 初期 open / closed を追加した。`RAU-UX-41` では `Escape` による preview close と focus return を追加した。`RAU-UX-43` では React Doctor の `js-cache-property-access` だけを処理し、診断を 62 件から 61 件へ減らした。`RAU-UX-44` では外部 UI ライブラリを今は導入しない判断と再評価 trigger を `docs/spec_003_rank_recommendation_signal.md` に残した。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 2026-05-31 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-42` は月次 compact view の主 table と details の分離を smoke helper の出力で確認できるようにする検証補助であり、次の GUI 変更前に確認基準を増やすため Now とする。`RAU-UX-41` は `RAU-UX-38` で残した preview の focus 戻しと keyboard close であり、利用者の直接操作に関わるため Next とする。`RAU-UX-43` は React Doctor 残診断を risk 別に分ける保守 task だが、runtime bug ではなく、1 family ずつ処理する必要があるため After Next とする。`RAU-UX-44` は UI primitive がさらに増えた後に外部 UI ライブラリ導入要否を再評価する判断 task であり、現時点で dependency 追加を行わないため Later とする。
 - 2026-05-31 に、React 化と UI ライブラリ活用による長期的な UI モダン化を `RAU-UX-27` から `RAU-UX-40` として task 化した。既存の未実装 task は、配布版 top smoke の前提診断 `RAU-UX-25`、月次実績の日次差分 compact view `RAU-MP-08`、React Doctor 残診断 `RAU-UX-26` の順で維持する。理由は、配布版 smoke の失敗切り分けを先に整えないと、以後の UI 変更で配布版確認が不安定になるためである。React / UI ライブラリの長期 task は、React 化のゴール正本化、責務境界、状態モデル、診断処理、UI ライブラリ評価、UI primitive 試験、低リスク操作部品、pending、preview、月次画面再評価、最後の見た目調整の順に置く。write API に近い操作ほど後ろへ置き、各段階で `npm run check`、必要に応じた `npm run react:doctor -- --diff false`、Chrome / CDP smoke、監視対象 write API POST 0 件確認を挟むためである。
 - 2026-05-31 に、`RAU-UX-25`、`RAU-MP-08`、`RAU-UX-26`、`RAU-UX-27` から `RAU-UX-40` を完了した。配布版 top smoke の前提状態診断、月次実績の日次差分 compact view、React Doctor 診断の 1 件削減、React island / UI primitive 方針、外部 UI ライブラリ比較、自前 button primitive、pending notice primitive、preview の `aria-controls`、README checklist、button hover / focus-visible style を追加した。Remaining Task Triage は空である。

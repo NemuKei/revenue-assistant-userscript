@@ -1357,6 +1357,13 @@ function installInteractionHooks(): void {
         event.stopPropagation();
         setRankRecommendationTargetMonthFromElement(targetMonthSelect);
     });
+
+    document.addEventListener("keydown", (event) => {
+        if (handleRankRecommendationPreviewKeydown(event)) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+    });
 }
 
 function scheduleInteractionSync(): void {
@@ -1885,6 +1892,50 @@ function toggleRankRecommendationRankChangePreviewFromElement(element: HTMLEleme
     );
     if (previewRowElement !== null && previewRowElement !== undefined) {
         previewRowElement.hidden = !nextOpen;
+    }
+}
+
+function handleRankRecommendationPreviewKeydown(event: KeyboardEvent): boolean {
+    if (event.key !== "Escape" || !(event.target instanceof Element)) {
+        return false;
+    }
+
+    const previewButton = event.target.closest<HTMLButtonElement>(
+        `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="curve-preview-toggle"],`
+        + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-change-preview-toggle"]`
+    );
+    if (previewButton !== null && previewButton.getAttribute("aria-expanded") === "true") {
+        closeRankRecommendationPreviewFromButton(previewButton);
+        previewButton.focus();
+        return true;
+    }
+
+    const previewRowElement = event.target.closest<HTMLTableRowElement>(
+        `tr[${RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE}],`
+        + `tr[${RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE}]`
+    );
+    if (previewRowElement === null || previewRowElement.id === "") {
+        return false;
+    }
+
+    const controller = document.querySelector<HTMLButtonElement>(
+        `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][aria-controls="${cssEscapeAttributeValue(previewRowElement.id)}"]`
+    );
+    if (controller === null || controller.getAttribute("aria-expanded") !== "true") {
+        return false;
+    }
+
+    closeRankRecommendationPreviewFromButton(controller);
+    controller.focus();
+    return true;
+}
+
+function closeRankRecommendationPreviewFromButton(element: HTMLButtonElement): void {
+    const action = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE);
+    if (action === "curve-preview-toggle") {
+        toggleRankRecommendationCurvePreviewFromElement(element);
+    } else if (action === "rank-change-preview-toggle") {
+        toggleRankRecommendationRankChangePreviewFromElement(element);
     }
 }
 
@@ -10490,11 +10541,12 @@ function hydrateOpenSalesSettingRoomReferenceCurves(
     rankHistoryByRoomGroupName: Map<string, SalesSettingRankHistoryEvent[]>
 ): void {
     for (const metric of preparedData.cardMetrics) {
+        const metrics = metric.metrics;
         if (
-            metric.metrics === null
+            metrics === null
             || metric.rmRoomGroupId === undefined
-            || metric.metrics.bookingCurveData === null
-            || metric.metrics.referenceCurveData !== null
+            || metrics.bookingCurveData === null
+            || metrics.referenceCurveData !== null
             || !isSalesSettingBookingCurveOpen(metric.roomGroupName)
         ) {
             continue;
@@ -10512,22 +10564,27 @@ function hydrateOpenSalesSettingRoomReferenceCurves(
 
                 const currentCard = collectSalesSettingCards()
                     .find((card) => card.roomGroupName === metric.roomGroupName) ?? metric.card;
-                if (!currentCard.cardElement.isConnected || metric.metrics === null || metric.metrics.bookingCurveData === null) {
+                const currentMetrics = metric.metrics;
+                if (
+                    !currentCard.cardElement.isConnected
+                    || currentMetrics === null
+                    || currentMetrics.bookingCurveData === null
+                ) {
                     return;
                 }
 
-                metric.metrics.referenceCurveData = referenceCurveData;
+                currentMetrics.referenceCurveData = referenceCurveData;
                 renderSalesSettingBookingCurveCard(
                     currentCard,
-                    metric.metrics.allMetrics.currentValue,
+                    currentMetrics.allMetrics.currentValue,
                     resolveSalesSettingBookingCurveSecondaryCurrentRoomCount(
-                        metric.metrics.privateMetrics.currentValue,
-                        metric.metrics.groupMetrics.currentValue
+                        currentMetrics.privateMetrics.currentValue,
+                        currentMetrics.groupMetrics.currentValue
                     ),
                     buildSalesSettingBookingCurveRenderData(
-                        metric.metrics.bookingCurveData,
+                        currentMetrics.bookingCurveData,
                         referenceCurveData,
-                        metric.metrics.sameWeekdayCurveData,
+                        currentMetrics.sameWeekdayCurveData,
                         analysisDate,
                         batchDateKey,
                         rankHistoryByRoomGroupName.get(metric.roomGroupName) ?? []

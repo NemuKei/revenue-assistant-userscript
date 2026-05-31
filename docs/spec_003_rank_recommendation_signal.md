@@ -576,9 +576,10 @@ rank response dataset の first contract:
 - 主要根拠。cell 本体には reason code の非数値要約だけを表示し、hover tooltip では同じ主要根拠と、不足または注意の種類を非数値で表示する。これは利用者が根拠欄を読む流れのまま、booking curve / forecast / sales / ADR / 同曜日 / 競合価格対応 / 団体主因 / 小キャパ / 隣接ランク制約の注意を確認できるようにするためである。
 - 状態。
 - `Analyzeで確認`。
-- `曲線`。押下すると、同じ `stayDate x roomGroup` の booking curve preview を候補 row 直下に開く。もう一度押すと閉じる。preview は Analyze 画面へ遷移せずに見るための表示補助であり、candidate scoring、priority、confidence、reasonFingerprint、rank order、user decision、resolved 判定、API request 範囲、Revenue Assistant write / bulk apply は変更しない。
+- `曲線`。押下すると、同じ `stayDate x roomGroup` の booking curve preview を候補 row 直下に開く。もう一度押すと閉じる。preview 内または開いた button 上で `Escape` を押した場合も閉じる。閉じた後の focus は、preview を開いた `曲線` button へ戻す。preview は Analyze 画面へ遷移せずに見るための表示補助であり、candidate scoring、priority、confidence、reasonFingerprint、rank order、user decision、resolved 判定、API request 範囲、Revenue Assistant write / bulk apply は変更しない。
 - booking curve 要点 popover。`RAU-RR-54` では、既存の `曲線` preview block を残したまま、候補行内に hover / focus / click で開ける小型 popover を追加する。popover は保存済み `booking_curve_raw_source:v2` と既存 preview 用 data を使い、新規 API request 範囲、request 件数、request 間隔を増やさない。表示内容は、詳細 chart 全体ではなく、判断に必要な要約、全体 / 個人 / 団体の現在値、reference curve との差分の非数値要約、不足 diagnostics に限定する。forecast 数値、sales / ADR 数値、競合価格金額、推奨レート金額は表示しない。
 - 行内 rank 変更。`RAU-RR-55` では、既存の `rank調整` preview block を残したまま、候補行の `推奨` 付近または action cell に、推奨 rank を初期値にした rank select と `反映する` button を追加する。利用者は任意 rank を選べるが、送信対象は観測済み `/api/v1/lincoln/suggest` の単一行 custom rank path に限定する。押下後は既存の 5 秒 pending、`取消`、送信直前 current rank 再取得、rank status 再取得、反映確認を再利用し、行内で `反映する`、`取消`、`反映中`、成功または未確認結果を表示する。
+- `rank調整` preview。押下すると、同じ `stayDate x roomGroup x reasonFingerprint` の rank 変更 preview を候補 row 直下に開く。もう一度押すと閉じる。preview 内または開いた button 上で `Escape` を押した場合も閉じる。閉じた後の focus は、preview を開いた `rank調整` button へ戻す。この keyboard close は表示状態だけを変え、rank select の選択値、送信前 pending、送信済み結果、Revenue Assistant write API は変更しない。
 - 行内 rank 変更の rank select は、rank ladder の全候補から作る。初期値は recommended rank とし、利用者が別 rank を選んだ場合は、その rank code と rank name を送信候補として pending に渡す。select の変更は表示上の送信候補だけを変え、candidate scoring、recommendedRank、reasonFingerprint は変更しない。
 - `様子見`。
 - `対応不要`。
@@ -648,6 +649,7 @@ UI primitive 導入方針:
 - 最初に扱う primitive は、button と pending notice とする。理由は、既存 selector と delegated event handler を維持したまま、操作部品の属性、disabled、title、aria を集約でき、write API に近い rank 変更 adapter を component へ取り込まないためである。
 - tooltip、popover、segmented control、tabs、modal / confirmation、select / menu は後回しにする。特に pending / confirmation と preview は、write guard と focus への影響があるため、button primitive の smoke が通った後に扱う。
 - 外部 UI ライブラリを使う場合でも、CSS theme 全面導入は行わない。必要な UI primitive だけを取り込み、既存 `data-ra-*` selector、Tampermonkey 配布、Chrome / CDP smoke、監視対象 write API POST 0 件確認を維持する。
+- 2026-05-31 の再評価では、現在の自前 UI primitive は button、pending notice、React row actions、preview row、booking curve 要点 popover、現ランク tooltip、rank select、details 系操作に広がっている。一方で、操作状態の大半は既存 `data-ra-*` selector と delegated event handler に結び付いており、外部 UI ライブラリへ置き換えると Tampermonkey 配布 bundle size、CSS 衝突、focus 管理の再検証範囲が増える。現時点では外部 UI ライブラリを導入せず、自前 primitive を継続する。再評価 trigger は、modal / menu / tabs のいずれかを新規に追加する場合、または preview / popover / details の focus 管理が複数箇所で重複し、同じ keyboard close、focus return、disabled、aria-expanded、aria-controls を保つための実装が 3 箇所以上に分散した場合とする。
 - write API に近い操作へ primitive を適用する場合は、送信条件、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、反映確認、同一 `stayDate x roomGroup` pending block を維持する。
 
 UI ライブラリ候補の評価基準:
