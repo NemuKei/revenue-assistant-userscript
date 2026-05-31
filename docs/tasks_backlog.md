@@ -5580,6 +5580,7 @@
 - 実装内容:
   - `曲線` preview と `rank調整` preview の button に `aria-controls` を追加し、preview row に対応する `id` を付与した。
   - 既存の `aria-expanded`、preview open state、chart 描画、rank change adapter、API request 範囲、derived cache schema は変更していない。
+  - preview row の cell 内容を流し込む hydration は、React root を DOM へ挿入した後に実行する順序へ直した。これにより、初回描画直後の preview row も空 cell のまま残らない。
   - focus 戻しの実装変更は、現在の row action / preview 構造への影響が大きいため、この task では `aria-controls` による関係明示までに限定した。
 - verify:
   - `npm run typecheck`: passed。

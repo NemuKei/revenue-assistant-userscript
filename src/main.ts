@@ -8646,6 +8646,11 @@ function renderRankRecommendationList(
         rankOptions: options.rankOrder?.ranksHighToLow ?? []
     });
 
+    if (rootElement.parentElement !== host.parentElement || rootElement.previousElementSibling !== host.insertAfterElement) {
+        rootElement.remove();
+        host.parentElement.insertBefore(rootElement, host.insertAfterElement.nextSibling);
+    }
+
     syncRankRecommendationReactList(rootElement, {
         signature: options.signature,
         mode: options.signature.startsWith("fixture:") ? "fixture" : "live",
@@ -8671,11 +8676,6 @@ function renderRankRecommendationList(
         rows: viewModel.rows.map(buildRankRecommendationReactRowSnapshot)
     });
     hydrateRankRecommendationReactPreviewRows(viewModel);
-
-    if (rootElement.parentElement !== host.parentElement || rootElement.previousElementSibling !== host.insertAfterElement) {
-        rootElement.remove();
-        host.parentElement.insertBefore(rootElement, host.insertAfterElement.nextSibling);
-    }
 }
 
 function buildRankRecommendationListViewModel(
