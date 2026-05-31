@@ -352,9 +352,20 @@ function buildPriceTrendRecord(options: {
         payload: {
             stayDate: normalizeApiStayDate(options.apiResponse.stay_date, options.stayDate),
             latestSourceUpdatedAt: normalizeNullableString(options.apiResponse.latest_source_updated_at),
-            yads: (options.apiResponse.yads ?? []).map(normalizePriceTrendYad).filter((yad) => yad.yadNo !== "")
+            yads: normalizePriceTrendYads(options.apiResponse.yads ?? [])
         }
     };
+}
+
+function normalizePriceTrendYads(apiYads: PriceTrendApiYad[]): PriceTrendYadSeries[] {
+    const yads: PriceTrendYadSeries[] = [];
+    for (const apiYad of apiYads) {
+        const yad = normalizePriceTrendYad(apiYad);
+        if (yad.yadNo !== "") {
+            yads.push(yad);
+        }
+    }
+    return yads;
 }
 
 function normalizePriceTrendYad(apiYad: PriceTrendApiYad): PriceTrendYadSeries {

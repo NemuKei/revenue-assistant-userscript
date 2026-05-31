@@ -1344,6 +1344,19 @@ function createMonthlyProgressDailyDiffSection(
         ? "対象月なし"
         : formatMonthlyProgressDailyDiffSummary(displayMonth.dailyDiffItems);
 
+    const allItems = displayMonth?.dailyDiffItems ?? [];
+    const changedItems = allItems.filter((item) => item.direction === "increase" || item.direction === "decrease");
+    const unchangedItems = allItems.filter((item) => item.direction === "flat" || item.direction === "unobserved");
+    const table = createMonthlyProgressDailyDiffTable(
+        changedItems,
+        "増加または減少の行はありません。変化なしと未観測は下の展開欄で確認できます。"
+    );
+    const hiddenDetails = createMonthlyProgressDailyDiffDetails(unchangedItems);
+    section.replaceChildren(title, description, summary, table, hiddenDetails);
+    return section;
+}
+
+function createMonthlyProgressDailyDiffTable(items: MonthlyProgressDailyDiffItem[], emptyMessage: string): HTMLTableElement {
     const table = document.createElement("table");
     const head = document.createElement("thead");
     const headRow = document.createElement("tr");
@@ -1355,29 +1368,50 @@ function createMonthlyProgressDailyDiffSection(
     head.append(headRow);
 
     const body = document.createElement("tbody");
-    for (const item of displayMonth?.dailyDiffItems ?? []) {
+    if (items.length === 0) {
         const row = document.createElement("tr");
-        row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE, "");
-        row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE, item.direction);
-
-        const tickCell = document.createElement("td");
-        tickCell.textContent = formatMonthlyProgressTooltipTickLabel(item.tick);
-
-        const dateCell = document.createElement("td");
-        dateCell.textContent = item.dateKey === null ? "-" : formatDateKey(item.dateKey);
-
-        const stateCell = document.createElement("td");
-        stateCell.textContent = formatMonthlyProgressDailyDiffDirection(item);
-
-        const deltaCell = document.createElement("td");
-        deltaCell.textContent = formatMonthlyProgressDailyDiffDelta(item);
-
-        row.replaceChildren(tickCell, dateCell, stateCell, deltaCell);
+        const cell = document.createElement("td");
+        cell.colSpan = 4;
+        cell.textContent = emptyMessage;
+        row.append(cell);
         body.append(row);
+    } else {
+        for (const item of items) {
+            body.append(createMonthlyProgressDailyDiffRow(item));
+        }
     }
     table.append(head, body);
-    section.replaceChildren(title, description, summary, table);
-    return section;
+    return table;
+}
+
+function createMonthlyProgressDailyDiffDetails(items: MonthlyProgressDailyDiffItem[]): HTMLDetailsElement {
+    const details = document.createElement("details");
+    const summary = document.createElement("summary");
+    summary.textContent = `変化なし / 未観測 ${items.length}件`;
+    const table = createMonthlyProgressDailyDiffTable(items, "変化なしまたは未観測の行はありません。");
+    details.replaceChildren(summary, table);
+    return details;
+}
+
+function createMonthlyProgressDailyDiffRow(item: MonthlyProgressDailyDiffItem): HTMLTableRowElement {
+    const row = document.createElement("tr");
+    row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE, "");
+    row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE, item.direction);
+
+    const tickCell = document.createElement("td");
+    tickCell.textContent = formatMonthlyProgressTooltipTickLabel(item.tick);
+
+    const dateCell = document.createElement("td");
+    dateCell.textContent = item.dateKey === null ? "-" : formatDateKey(item.dateKey);
+
+    const stateCell = document.createElement("td");
+    stateCell.textContent = formatMonthlyProgressDailyDiffDirection(item);
+
+    const deltaCell = document.createElement("td");
+    deltaCell.textContent = formatMonthlyProgressDailyDiffDelta(item);
+
+    row.replaceChildren(tickCell, dateCell, stateCell, deltaCell);
+    return row;
 }
 
 function formatMonthlyProgressDailyDiffSummary(items: MonthlyProgressDailyDiffItem[]): string {
@@ -2003,6 +2037,19 @@ function ensureMonthlyProgressPreviewStyles(): void {
                 font-size: 10px;
                 font-weight: 800;
                 line-height: 1.4;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] details {
+                margin-top: 8px;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] summary {
+                cursor: pointer;
+                color: #456784;
+                font-size: 10px;
+                font-weight: 800;
+                line-height: 1.4;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] details table {
+                margin-top: 6px;
             }
             [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] table {
                 width: 100%;

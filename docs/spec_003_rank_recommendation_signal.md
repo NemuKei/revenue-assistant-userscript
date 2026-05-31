@@ -614,6 +614,74 @@ Analyze 画面では、該当日付の候補一覧と部屋タイプ別 signal d
 
 forecast 実装前は、Analyze detail に forecast 数値を表示しない。評価後に表示する場合も、最初は Analyze detail の diagnostics として扱い、top list への簡易表示とは別 task で判断する。表示する場合は、current、reference curve、forecast の入力、処理、出力を区別できる label と missing diagnostics を持たせる。
 
+## React Island And UI Primitive Contract
+
+React 化の目的は、Revenue Assistant 本体を React application として置き換えることではない。目的は、userscript が追加する UI の入力、UI state、利用者操作、出力 DOM、副作用呼び出しを分け、候補 list の表示と操作を保守しやすくすることである。
+
+React 化する候補:
+
+- 料金調整候補 list の summary、controls、table、row、cell、row actions、preview row。
+- 候補 list 内の read-only 表示部品。例: 確度、主要根拠、現ランク tooltip、booking curve 要点 popover。
+- 候補 list 内の browser-local UI state。例: 表示 mode、表示件数、target month、preview open state、rank select state。
+- 候補 list 内の pending 表示。例: `様子見`、`対応不要`、rank 変更の送信前取消可能状態。
+
+React 化しない候補:
+
+- Revenue Assistant 本体の routing、標準 UI、標準 table、標準 graph。
+- candidate generation、priority / confidence scoring、reasonFingerprint 作成。
+- IndexedDB adapter、Revenue Assistant API adapter、write guard、request queue、background queue。
+- Tampermonkey metadata、配布版生成、Chrome DevTools Protocol smoke helper。
+
+React component が扱ってよい入力、状態、出力:
+
+- 入力は、`RankRecommendationReactListSnapshot` と、その中の行、cell、button、control、preview placeholder snapshot に限定する。
+- `derived from snapshot` は、候補 row、表示文言、tooltip 内容、button title、disabled 状態、preview placeholder key である。component 内で再計算しない。
+- `browser-local UI state` は、React component 内で持ってよい。対象は `InlineRankChange` の選択中 rank code のように、送信候補の表示だけを変える一時 state に限定する。
+- `pending write state` は、main module が管理し、React component は snapshot に含まれる pending label と cancel button を表示するだけにする。
+- `temporary display state` は、preview open state、popover / details open state、focus state である。Revenue Assistant API request、IndexedDB write、rank change POST は component 内で直接行わない。
+- 出力は既存 `data-ra-*` selector、button attribute、link href、aria attribute、preview placeholder DOM とする。既存 smoke selector は維持する。
+- 利用者操作は既存 delegated event handler に届く `data-ra-rank-recommendation-button-action` などの属性で表す。React component から API adapter を直接呼ばない。
+
+UI primitive 導入方針:
+
+- 初期方針は、外部 UI ライブラリを追加せず、自前の小さい React component を UI primitive として使う。
+- 最初に扱う primitive は、button と pending notice とする。理由は、既存 selector と delegated event handler を維持したまま、操作部品の属性、disabled、title、aria を集約でき、write API に近い rank 変更 adapter を component へ取り込まないためである。
+- tooltip、popover、segmented control、tabs、modal / confirmation、select / menu は後回しにする。特に pending / confirmation と preview は、write guard と focus への影響があるため、button primitive の smoke が通った後に扱う。
+- 外部 UI ライブラリを使う場合でも、CSS theme 全面導入は行わない。必要な UI primitive だけを取り込み、既存 `data-ra-*` selector、Tampermonkey 配布、Chrome / CDP smoke、監視対象 write API POST 0 件確認を維持する。
+- write API に近い操作へ primitive を適用する場合は、送信条件、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、反映確認、同一 `stayDate x roomGroup` pending block を維持する。
+
+UI ライブラリ候補の評価基準:
+
+- bundle size と tree-shaking 可能性。Tampermonkey userscript の配布 bundle に入るため、必要 component だけを取り込めることを優先する。
+- CSS 衝突。Revenue Assistant 本体 DOM と同じ page に挿入されるため、global CSS や theme class の前提が強い候補は避ける。
+- unstyled / headless 対応。RAU 側の既存 CSS と `data-ra-*` selector を維持できることを優先する。
+- keyboard 操作と accessibility。button、popover、dialog、menu、tabs、select の focus、Escape、aria 属性を確認する。
+- Tampermonkey 配布との相性。Portal の挿入先、z-index、Shadow DOM 非利用、CSP、bundle size を確認する。
+- 供給網リスク。license、repository、maintainer、dependencies、install / postinstall script、version pin、lockfile 差分、`npm audit` を確認する。
+- 承認なしでできるのは、公式 docs、npm metadata、package size、license、dependencies、install script 有無の調査までである。dependency 追加、lockfile 更新、UI component 置き換えは利用者承認後に行う。
+
+2026-05-31 時点の候補比較:
+
+| 候補 | 使える component | 使わない component | 供給網上の注意 | Tampermonkey userscript での懸念 | 判断 |
+| --- | --- | --- | --- | --- | --- |
+| Radix UI `@radix-ui/react-popover` | Popover、Dialog、Tooltip、Select を個別 package で検討できる | CSS theme、全面的な component suite 置き換え | npm metadata では `@radix-ui/react-popover` は MIT、15 dependencies、unpacked size 91.3 kB、version `1.1.15` | Portal と z-index、既存 details / tooltip との event 競合、複数 Radix package を入れた場合の依存増加 | 保留候補。popover だけを試す価値はあるが、最初の task では依存追加しない |
+| Ariakit `@ariakit/react` | Dialog、Popover、Menu、Select、Combobox などの headless component | 全面的な toolkit 導入 | npm metadata では MIT、1 dependency、unpacked size 273 kB、version `0.4.18` | API 面は広いが、userscript で必要な部品より大きくなりやすい | 保留候補。dependency 数は少ないが、最初の primitive には過剰 |
+| React Aria Components `react-aria-components` | Button、Popover、Dialog、Select、Tabs など accessibility 重視の unstyled component | 国際化や日付系を含む広い component 群 | npm metadata では Apache-2.0、29 dependencies、unpacked size 4.39 MB、version `1.12.1` | internationalization 依存と package size が大きく、Tampermonkey 配布に対して初期導入が重い | 不採用寄りの保留。accessibility は強いが、今回の小さい primitive 試験には重い |
+| Headless UI `@headlessui/react` | Dialog、Popover、Menu、Tabs など | Tailwind 前提の例をそのまま使うこと | npm metadata では MIT、5 dependencies、unpacked size 1.01 MB、version `2.2.7` | Tailwind と組み合わせる説明が多く、RAU の既存 CSS へ最小導入するには検証が必要 | 保留候補。Tailwind を入れない前提では最初の候補にしない |
+
+調査出典:
+
+- Radix UI `@radix-ui/react-popover`: `https://www.npmjs.com/package/@radix-ui/react-popover`
+- Ariakit `@ariakit/react`: `https://www.npmjs.com/package/@ariakit/react`
+- React Aria Components: `https://www.npmjs.com/package/react-aria-components`
+- Headless UI `@headlessui/react`: `https://www.npmjs.com/package/@headlessui/react`
+
+月次実績画面の React 化候補:
+
+- React 化候補は、`日次差分` compact view の summary、展開状態、将来の filter / expand 操作である。これらは入力が月次 preview model に閉じ、Revenue Assistant API adapter や monthly snapshot schema を component に入れずに表現できる。
+- 素の DOM のままにする候補は、現行の `LTブッキングカーブ` SVG graph、tooltip、background prefetch status である。理由は、chart 本体と tooltip は既に月次 module 内で完結しており、React 化すると snapshot 読み取りと描画 timing の責務境界を再設計する必要があるためである。
+- 先に仕様確認が必要な候補は、月次 graph 本体、過去 batch 履歴比較、月次実績を料金調整候補 scoring へ接続する処理である。これらは入力、保存世代、出力の契約が未確定であり、React 化の前に spec を固定する。
+
 ## Lifecycle
 
 status は次を持つ。

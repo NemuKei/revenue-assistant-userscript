@@ -25,6 +25,7 @@ const RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE = "data-ra-rank-recommend
 const RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE = "data-ra-rank-recommendation-inline-rank-select";
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
 const RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-button-action";
+const RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE = "data-ra-rank-recommendation-ui-primitive";
 const RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE = "data-ra-rank-recommendation-pending-decision";
 const RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE = "data-ra-rank-recommendation-pending-decision-key";
 const RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-preview-row";
@@ -389,11 +390,19 @@ function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellS
 
 function RankRecommendationReactRowActions(props: { row: RankRecommendationReactRowSnapshot }): React.ReactElement {
     const row = props.row;
+    const curvePreviewId = buildRankRecommendationPreviewRowId("curve", row.curvePreview.key);
+    const rankChangePreviewId = buildRankRecommendationPreviewRowId("rank-change", row.rankChangePreview.key);
     return React.createElement("td", null,
         renderAnalyzeLink(row.analyzeLink),
-        renderButton(row.curvePreviewButton, { "aria-expanded": row.curvePreviewButton.expanded ? "true" : "false" }),
+        renderButton(row.curvePreviewButton, {
+            "aria-expanded": row.curvePreviewButton.expanded ? "true" : "false",
+            "aria-controls": curvePreviewId
+        }),
         renderCurvePopover(row.curvePopoverItems),
-        renderButton(row.rankChangeButton, { "aria-expanded": row.rankChangeButton.expanded ? "true" : "false" }),
+        renderButton(row.rankChangeButton, {
+            "aria-expanded": row.rankChangeButton.expanded ? "true" : "false",
+            "aria-controls": rankChangePreviewId
+        }),
         React.createElement(InlineRankChange, { inlineRankChange: row.inlineRankChange }),
         renderButton(row.snoozeButton),
         renderButton(row.dismissButton),
@@ -408,6 +417,7 @@ function RankRecommendationReactPreviewRows(props: { row: RankRecommendationReac
     return [
         React.createElement("tr", {
             key: "curve",
+            id: buildRankRecommendationPreviewRowId("curve", row.curvePreview.key),
             [RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE]: "",
             [RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE]: row.curvePreview.key,
             hidden: !row.curvePreview.open
@@ -417,6 +427,7 @@ function RankRecommendationReactPreviewRows(props: { row: RankRecommendationReac
         })),
         React.createElement("tr", {
             key: "rankChange",
+            id: buildRankRecommendationPreviewRowId("rank-change", row.rankChangePreview.key),
             [RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE]: "",
             [RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE]: row.rankChangePreview.key,
             hidden: !row.rankChangePreview.open
@@ -436,10 +447,19 @@ function renderAnalyzeLink(link: RankRecommendationReactButtonSnapshot & { href:
 }
 
 function renderButton(button: RankRecommendationReactButtonSnapshot, extraAttrs: Record<string, string> = {}): React.ReactElement {
+    return React.createElement(RankRecommendationButtonPrimitive, { button, extraAttrs });
+}
+
+function RankRecommendationButtonPrimitive(props: {
+    button: RankRecommendationReactButtonSnapshot;
+    extraAttrs?: Record<string, string>;
+}): React.ReactElement {
+    const { button, extraAttrs = {} } = props;
     return React.createElement("button", {
         type: "button",
         title: button.title,
         disabled: button.disabled,
+        [RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE]: "button",
         ...button.attrs,
         ...extraAttrs
     }, button.text);
@@ -502,10 +522,10 @@ function renderPendingDecision(pendingDecision: RankRecommendationReactRowSnapsh
     return React.createElement("div", {
         [RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE]: "",
         [RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE]: pendingDecision.key
-    },
-        React.createElement("span", null, pendingDecision.label),
-        renderButton(pendingDecision.cancelButton)
-    );
+    }, React.createElement(RankRecommendationPendingNotice, {
+        label: pendingDecision.label,
+        cancelButton: pendingDecision.cancelButton
+    }));
 }
 
 function renderPendingRankChange(pendingRankChange: RankRecommendationReactRowSnapshot["pendingRankChange"]): React.ReactElement | null {
@@ -516,9 +536,19 @@ function renderPendingRankChange(pendingRankChange: RankRecommendationReactRowSn
     return React.createElement("div", {
         [RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE]: "",
         [RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE]: pendingRankChange.key
-    },
-        React.createElement("span", null, pendingRankChange.label),
-        renderButton(pendingRankChange.cancelButton)
+    }, React.createElement(RankRecommendationPendingNotice, {
+        label: pendingRankChange.label,
+        cancelButton: pendingRankChange.cancelButton
+    }));
+}
+
+function RankRecommendationPendingNotice(props: {
+    label: string;
+    cancelButton: RankRecommendationReactButtonSnapshot;
+}): React.ReactElement {
+    return React.createElement(React.Fragment, null,
+        React.createElement("span", null, props.label),
+        renderButton(props.cancelButton)
     );
 }
 
@@ -531,4 +561,8 @@ function renderRankChangeResult(result: RankRecommendationReactRowSnapshot["rank
         [RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE]: result.status,
         title: result.title
     }, result.message);
+}
+
+function buildRankRecommendationPreviewRowId(kind: "curve" | "rank-change", key: string): string {
+    return `ra-rank-recommendation-${kind}-${key.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
 }

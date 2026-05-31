@@ -101,6 +101,25 @@ node .\scripts\build.mjs
 | 月次実績画面 | `/monthly-progress/YYYY-MM` を reload | `LTブッキングカーブ`、2 panel、日次差分、loading / background state が表示される | URL、preview root 件数、panel / SVG 件数、日次差分 row 件数、status text、console error 件数 |
 | Warm cache indicator | Top または Analyze で detail を開く | 対象期間、保存、skip、失敗、候補優先が発火する場合の進行状態が読める | indicator text、対象期間、保存 / skip / 失敗件数 |
 
+UI primitive、React component、React mount、React state 管理を変更した後は、top smoke と手動確認を分けて確認します。
+
+top smoke で確認する項目:
+
+- 料金調整候補 row が 1 件以上表示されること。
+- `data-ra-rank-recommendation-react-island="mounted"` があること。
+- 対象月 select、表示 mode、表示上限、rank order control があること。
+- `曲線` button、`rank調整` button、`様子見` / `対応不要` button があること。
+- console / page error が 0 件であること。
+- 監視対象 write API POST が 0 件であること。
+
+手動または Chrome DevTools Protocol で確認する項目:
+
+- UI primitive を適用した button が hover、focus-visible、disabled、selected または `aria-pressed` の各状態で読めること。
+- keyboard の Tab 移動で、対象 button、select、details summary、pending cancel button に到達できること。
+- `曲線` と `rank調整` の preview button が、同じ button で開閉でき、button focus が予期せず失われないこと。
+- decision pending と rank change pending の cancel button が表示され、cancel で pending 表示が消えること。
+- preview、popover、table、tooltip が重ならず、横幅が狭い場合も文字が隣の UI と重ならないこと。
+
 標準 smoke では実送信を行いません。監視対象 write API は次の POST です。
 
 - `/api/v1/lincoln/suggest`
@@ -124,7 +143,7 @@ npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --
 npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode monthly-progress --url https://ra.jalan.net/monthly-progress/YYYY-MM --seconds 30
 ```
 
-この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、`--mode` ごとの主要 selector、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。`--mode top` は top 料金調整候補 row 件数、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button を出力します。`--mode price-trends` は価格推移 tab / content、RAU overview、panel、SVG、background status を出力します。`--mode monthly-progress` は月次 preview root、panel、SVG、日次差分 section、日次差分 row、status text を出力します。いずれの mode でも、監視対象 write API POST が 1 件以上、console / page error が 1 件以上、対象画面の主要 selector が 0 件、または `--mode` と最終 URL が対応しない場合は、command は non-zero exit で失敗します。Tampermonkey dashboard の更新操作は行いません。
+この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、`--mode` ごとの主要 selector、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。`--mode top` は、page title、ログイン画面らしい selector の有無、カレンダーらしい selector の有無、RAU userscript root の有無、top 料金調整候補 row 件数、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button を出力します。`--mode price-trends` は価格推移 tab / content、RAU overview、panel、SVG、background status を出力します。`--mode monthly-progress` は月次 preview root、panel、SVG、日次差分 section、日次差分 row、status text を出力します。いずれの mode でも、監視対象 write API POST が 1 件以上、console / page error が 1 件以上、対象画面の主要 selector が 0 件、または `--mode` と最終 URL が対応しない場合は、command は non-zero exit で失敗します。Tampermonkey dashboard の更新操作は行いません。
 
 version の扱いは `--version-policy warn | fail` で指定します。既定は `warn` です。local build は GitHub Pages 配布時の run number を含まないことがあるため、local version と published version の不一致は常に warning として出力します。配布版として完了扱いにする確認では、Tampermonkey dashboard で更新した後に `--version-policy fail` を付けます。この場合、published version が取得できない、または手入力した installed version と published version が一致しないと command は失敗します。意図的に installed version の不一致を許容する一時確認では、既定の `warn` のまま実行するか、`--allow-version-mismatch` を明示します。
 

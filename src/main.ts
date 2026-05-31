@@ -17305,6 +17305,16 @@ function ensureGroupRoomStyles(): void {
             cursor: pointer;
         }
 
+        [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}]:hover:not([disabled]) {
+            border-color: #8fa4bf;
+            background: #f3f7fb;
+        }
+
+        [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}]:focus-visible {
+            outline: 2px solid #2f6fbb;
+            outline-offset: 2px;
+        }
+
         [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][aria-pressed="true"] {
             border-color: #315b8d;
             background: #e8f1fb;

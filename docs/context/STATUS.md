@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: 2026-05-31 に、未着手だった `RAU-UX-24`、`RAU-MP-07`、`RAU-CP-17`、`RAU-UX-23` を完了し、追加確認として `RAU-CP-18` も完了した。その後、React 化と UI ライブラリ活用による長期的な UI モダン化を `RAU-UX-27` から `RAU-UX-40` として task 化した。Remaining Task Triage は、Now `RAU-UX-25`、Next `RAU-MP-08`、After Next `RAU-UX-26`、Later `RAU-UX-27` から `RAU-UX-40` である。
+- 主対象: 2026-05-31 に、未着手だった `RAU-UX-25`、`RAU-MP-08`、`RAU-UX-26`、`RAU-UX-27` から `RAU-UX-40` までを完了した。Remaining Task Triage は空である。配布版 Tampermonkey 更新後の最終 smoke と commit / push は、この STATUS 更新後に行う。
 - `RAU-UX-20` では、`react-doctor@0.2.14` を exact devDependency として `package.json` と `package-lock.json` に固定し、`npm run react:doctor` を追加した。導入時の npm audit は 0 vulnerabilities だった。transitive dependency `ini@7.0.0` は Node `^22.22.2 || ^24.15.0 || >=26.0.0` を要求し、Node `24.13.0` では `EBADENGINE` warning が出る。現時点では command 実行が通るため採用するが、install failure または CI failure へ変わった場合は React 診断を停止し、Node runtime 更新または別 fixed version への差し替えを判断する。
 - `RAU-UX-18` では、料金調整候補 React list を mount marker、summary、controls、table、row、cell、row actions、preview rows へ責務分割した。`syncRankRecommendationReactList()`、snapshot 型、`data-ra-rank-recommendation-*` selector、button action、preview host selector、pending 表示 selector は維持した。
 - `RAU-UX-19` では、配布版 smoke helper `npm run smoke:distribution` を追加した。helper は local `dist` version、GitHub Pages 公開版 version、手入力した Tampermonkey installed version、Revenue Assistant URL、top 主要 selector、価格推移 overview、console / page error、監視対象 write API POST 件数を出力する。Tampermonkey dashboard の更新操作は行わない。
@@ -19,8 +19,10 @@
 - `RAU-CP-17` では、価格推移 skip fixture と failure fixture を CDP 接続付き通常 Chrome で確認した。skip fixture は `背景取得 3 / 3・保存 0・skip 3・完了`、failure fixture は `背景取得 3 / 3・保存 0・skip 0・失敗 3・停止 fixture failure` を表示し、どちらも監視対象 write API POST 0 件、console / page error 0 件だった。fixture key は確認後に削除した。
 - `RAU-UX-23` では、latest snapshot / latest price trend record の選択を全件 sort 後の先頭取得から single pass reduce へ変更した。対象は `src/monthlyProgressIndexedDb.ts`、`src/competitorPriceSnapshotStore.ts`、`src/main.ts` である。比較条件は従来と同じ `batchDateKey` / `fetchedAt` で、records の昇順返却など既存出力を維持した。React Doctor は 63 件まで減った。
 - `RAU-CP-18` では、Tampermonkey dashboard の `Revenue Assistant Userscript` を `0.1.0.341` へ更新し、GitHub Pages published version と installed version が一致することを確認した。fixture なしの `smoke:distribution --mode price-trends --version-policy fail` では、overview 1 件、panel 4 件、SVG 4 件、background status 表示、監視対象 write API POST 0 件、console / page error 0 件、smoke result pass を確認した。
-- 新規 follow-up として、`RAU-UX-25`、`RAU-MP-08`、`RAU-UX-26` を `docs/tasks_backlog.md` に残した。`RAU-CP-18` は同日に完了済みである。
-- React 化と UI ライブラリ活用による長期的な UI モダン化は、`RAU-UX-27` から `RAU-UX-40` として task 化した。実行順は、React 化のゴール正本化、現行 React island の責務境界点検、状態モデル整理、React Doctor の UI component 近傍診断、UI ライブラリ評価基準、候補比較、UI primitive 方針、低リスクな小部品試験、smoke checklist、低リスク操作部品、pending / confirmation、preview、月次画面再評価、最後の見た目調整である。write API に近い操作ほど後ろへ置く。
+- `RAU-UX-25` では、`smoke:distribution --mode top` の前提状態診断に page title、login form candidate、calendar candidate、RAU userscript root を追加した。selector 0 件や監視対象 write API POST の fail 判定は緩めていない。
+- `RAU-MP-08` では、月次実績の日次差分を compact view にした。初期表示は `増加` と `減少` を主 table に出し、`変化なし` と `未観測` は件数 summary と展開 table で確認する。monthly snapshot schema、API request 範囲、background prefetch、過去 batch 履歴比較、料金調整候補 scoring は変更していない。
+- `RAU-UX-26` では、公式価格推移 API response の `yads[]` 正規化を 1 回の loop にし、React Doctor の combine iterations 診断を 1 件減らした。React Doctor は 63 件から 62 件になった。`flushSync`、async concurrency、広い refactor、React Doctor 設定変更、診断抑制、dependency 更新は行っていない。
+- `RAU-UX-27` から `RAU-UX-40` では、React island の目的、非対象、状態分類、UI ライブラリ評価基準、候補比較、外部 UI ライブラリを今は導入しない判断、自前 button primitive、pending notice primitive、preview の `aria-controls`、README smoke checklist、button hover / focus-visible style を追加した。write API に近い送信条件、rank change adapter、pending 秒数、POST endpoint は維持した。
 - 2026-05-30 時点で Remaining Task Triage に残っていた task は完了済みである。`RAU-UX-09` から `RAU-UX-14` では、料金調整候補 list の描画を React component へ移し、view model 生成、controls、row、preview host、browser-local decision pending、rank change pending、React list 正規 path 化まで完了した。`RAU-UX-15` から `RAU-UX-17` では、配布版 version 確認 helper、通常 Chrome smoke checklist、監視対象 write API POST 0 件確認 helper を追加した。
 - 2026-05-31 の前段完了時点では、GitHub Pages 配布物 `@version 0.1.0.336` と Tampermonkey dashboard の `Revenue Assistant Userscript 0.1.0.336` を使い、CDP 一時注入なしの通常 Chrome top smoke で候補 row 10 件、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` preview、`rank調整` preview、decision pending cancel、rank pending cancel、監視対象 write API POST 0 件を確認していた。`RAU-CP-18` では、同 task の確認時点で GitHub Pages 配布物と Tampermonkey dashboard を `0.1.0.341` に揃えて価格推移 normal graph smoke を実行した。
 - 追加 follow-up の `RAU-UX-08`、`RAU-RR-61`、`RAU-MP-04`、`RAU-UX-06`、`RAU-UX-07` も完了済みである。`RAU-UX-08` では GitHub Pages の公開配布物 `@version 0.1.0.330` を確認し、利用者本人の Tampermonkey 手動更新後に通常 Chrome の Revenue Assistant で配布版が実行されることを確認した。`RAU-RR-61` では POST 成功後の `反映確認中` 状態と同一 `facilityId x stayDate x roomGroupId` の二重送信 block を実装した。`RAU-MP-04` では月次実績画面の合成 fixture mode と空状態表示を追加した。`RAU-UX-06` では料金調整候補 list の view model と fixture render path を抽出した。`RAU-UX-07` では利用者承認に基づいて `react` と `react-dom` を追加し、料金調整候補 section 内の最小 React island mount marker を導入した。
@@ -143,7 +145,6 @@
   - `RAU-CP-17` 価格推移 background queue の完了条件と failure fixture を追加検証する
   - `RAU-UX-23` React Doctor の高確度 performance 診断を小分けに解消する
   - `RAU-CP-18` 最新配布版で価格推移 normal graph smoke を再実行する
-- 未実装 Task ID:
   - `RAU-UX-25` 配布版 top smoke の前提状態診断を追加する
   - `RAU-MP-08` 月次実績の日次差分を変化あり優先の compact view にする
   - `RAU-UX-26` React Doctor 残診断の次の安全な performance 修正を行う
@@ -161,6 +162,8 @@
   - `RAU-UX-38` preview UI の開閉と focus を整理する
   - `RAU-UX-39` 月次実績画面の React 化候補を再評価する
   - `RAU-UX-40` UI モダン化の見た目調整を最後に行う
+- 未実装 Task ID:
+  - なし
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -173,7 +176,7 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now `RAU-UX-25`、Next `RAU-MP-08`、After Next `RAU-UX-26`、Later `RAU-UX-27` から `RAU-UX-40` である。`RAU-UX-24`、`RAU-MP-07`、`RAU-CP-17`、`RAU-UX-23`、`RAU-CP-18` は完了済みである。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は空である。次に進む場合は、今回の完了報告で提案する新規観点から利用者が採用したものを task 化する。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -408,9 +411,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage を確認し、Now の `RAU-UX-25` から着手する。
-2. `RAU-UX-25` では、`smoke:distribution --mode top` が selector 0 件で失敗したときの切り分け情報を増やす。selector 0 件を pass に緩めず、final URL、page title、ログインらしき状態、calendar らしき状態、userscript marker の有無を非公開データなしで出力する。
-3. `RAU-UX-25` の後は、Next `RAU-MP-08`、After Next `RAU-UX-26`、Later `RAU-UX-27` から `RAU-UX-40` の順に進める。React component、React mount、React state 管理を追加または変更する場合は、`npm run check` に加え、固定済み repo-local command の `npm run react:doctor -- --diff false` を実行する。UI ライブラリまたは UI primitive を導入する場合は、依存追加の承認、version pin、bundle size 差分、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を行う。導入時点では transitive dependency の Node engine warning があるため、install failure または CI failure へ変わった場合は React 診断を停止し、Node runtime 更新または別 fixed version への差し替えを判断する。
+1. `docs/tasks_backlog.md` の Remaining Task Triage が空であることを確認する。
+2. 次に進む場合は、完了報告で提案する新規観点から採用するものを task 化し、`docs/tasks_backlog.md` と `docs/context/STATUS.md` を同時に更新する。
+3. React component、React mount、React state 管理を追加または変更する場合は、`npm run check` に加え、固定済み repo-local command の `npm run react:doctor -- --diff false` を実行する。UI ライブラリまたは UI primitive を導入する場合は、依存追加の承認、version pin、bundle size 差分、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を行う。
 
 変更しない契約:
 

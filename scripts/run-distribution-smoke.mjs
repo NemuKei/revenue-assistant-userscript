@@ -303,8 +303,15 @@ async function collectModeMetrics(page, mode) {
     return await page.evaluate((selectedMode) => {
         const doc = globalThis.document;
         const textFrom = (selector) => doc.querySelector(selector)?.textContent?.trim() ?? "none";
+        const commonPageDiagnostics = () => ({
+            "page title": doc.title || "none",
+            "login form candidate": doc.querySelector("input[type=\"password\"], form[action*=\"login\" i], [data-testid*=\"login\" i]") !== null ? "yes" : "no",
+            "calendar candidate": doc.querySelector("[data-testid*=\"calendar\" i], [class*=\"calendar\" i], a[href^=\"/analyze/\"], a[href*=\"/analyze/\"]") !== null ? "yes" : "no",
+            "RAU userscript root": doc.querySelector("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]") !== null ? "yes" : "no"
+        });
         if (selectedMode === "top") {
             return {
+                ...commonPageDiagnostics(),
                 "top row count": doc.querySelectorAll("[data-ra-rank-recommendation-row]").length,
                 "React marker mounted": doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null ? "yes" : "no",
                 "target month select": doc.querySelector("[data-ra-rank-recommendation-target-month]") !== null ? "yes" : "no",
