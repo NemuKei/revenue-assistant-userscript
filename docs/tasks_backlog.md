@@ -6547,28 +6547,129 @@
   - `spec-checkpoint`: none
   - `target-spec`: なし
 
+### RAU-UX-73 配布後の実利用で top list UI の視認性を観察して改善候補を分類する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-UX-70` から `RAU-UX-72` で刷新したトップ料金調整候補 list を、実際の Revenue Assistant 利用中に読み取り、比較、操作の観点で観察し、すぐ実装する修正と追加調査が必要な論点を分ける。
+  - 画面をさらに変更する前に、候補 row 10 件、長い roomGroup 名、tooltip、popover、booking curve preview、rank change preview、pending 表示が、実務上どこで読みづらいかを具体的に記録する。
+- スコープ:
+  - 対象は通常 Chrome の Revenue Assistant top page に表示される RAU top list の視認性、表示密度、折り返し、preview 展開、pending / warning / error 表示、主要操作 button の見つけやすさである。
+  - 観察結果は、修正候補、仕様確認が必要な候補、対応しない候補に分ける。
+  - 記録する場合は、個人情報、顧客情報、予約情報、価格や在庫の非公開データ、Cookie、token、raw trace、HAR、response body を含めない。
+- 非目標:
+  - この task では runtime UI、candidate scoring、rank recommendation logic、API request 範囲、Revenue Assistant write API を変更しない。
+  - 実データのスクリーンショット、HAR、Chrome DevTools Protocol raw trace、response body sample を repo に保存しない。
+  - 観察中に見つけた別件を同じ task で広く実装しない。
+- 受け入れ条件:
+  - 観察対象、観察した状態、読みづらさまたは問題なしの判断、次に切るべき task 候補が repo 内正本に記録されている。
+  - 実装へ進める候補は、入力、比較対象、判断、出力、非目標、verify 方法が分かる粒度へ分けられている。
+  - 機密情報、個人情報、価格や在庫の非公開データ、認証情報、raw trace、HAR、request body、response body を commit していない。
+  - docs-only で閉じる場合は `git diff --check` と `docs/tasks_backlog.md` / `docs/context/STATUS.md` の整合確認が通過している。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-74 React Doctor performance family を 1 種類だけ選んで安全に処理する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - React Doctor に残っている performance warning のうち、runtime bug として扱う必要がないものを 1 rule family だけ選び、挙動を変えずに小さく減らす。
+  - React Doctor の残診断を一度に広く直そうとして、候補生成、表示状態、preview、pending、API adapter の責務境界を崩すことを避ける。
+- スコープ:
+  - 対象は `npm run react:doctor -- --diff false` で確認できる performance warning のうち、1 rule family だけである。
+  - 修正前に対象 family、対象 file、変更する入力、処理、出力、保持する挙動を確認する。
+  - 変更後は診断件数の変化と、候補生成、表示、preview、pending、write guard に影響がないことを確認する。
+- 非目標:
+  - dead code family、server family、`flushSync`、async concurrency、React Doctor 設定変更、診断抑制、dependency 追加または更新は扱わない。
+  - 複数 rule family を同時に処理しない。
+  - UI redesign、spec 変更、Revenue Assistant API request 範囲の変更を行わない。
+- 受け入れ条件:
+  - 対象にした React Doctor rule family と、対象外にした family が記録されている。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過している。
+  - React Doctor 診断件数の before / after が記録され、意図しない新規診断が増えていない。
+  - runtime UI、candidate scoring、API request 範囲、Revenue Assistant write API を変更していないことが差分から説明できる。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-75 UI component marker smoke を GitHub Actions で扱う条件を検討する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-UX-71` で追加した UI component marker smoke を、GitHub Actions 上でどこまで自動確認できるかを整理し、通常 Chrome、Tampermonkey、Revenue Assistant 実ログイン状態が必要な確認と分離する。
+  - CI で確認できる fixture / build / selector 契約と、ローカルまたは通常 Chrome でしか確認できない配布版実行契約を混同しない。
+- スコープ:
+  - 対象は UI component marker、React marker、RAU root、主要 selector、build artifact、dev-only fixture gallery、GitHub Actions workflow の path filter と実行条件である。
+  - GitHub Actions で扱える確認、扱えない確認、扱わない確認を分ける。
+  - 実装へ進める場合は、credential、Cookie、Revenue Assistant login、Tampermonkey dashboard、通常 Chrome profile に依存しない範囲に限定する。
+- 非目標:
+  - GitHub Actions に Revenue Assistant 認証情報、Cookie、token、Tampermonkey storage、Chrome profile を入れない。
+  - 通常 Chrome の実ログイン状態、Tampermonkey installed version、GitHub Pages published version の一致確認を CI だけで完了扱いにしない。
+  - screenshot baseline service、visual diff service、外部 SaaS、依存追加を同時に導入しない。
+- 受け入れ条件:
+  - CI で確認する項目、ローカル配布版 smoke で確認する項目、手動または CDP で確認する項目が repo 内正本に分けて記録されている。
+  - 実装する場合は、GitHub Actions workflow の変更対象、path filter、fail 条件、secret を使わない理由が記録されている。
+  - docs-only で閉じる場合は `git diff --check` が通過している。workflow を変更する場合は、対象 workflow の構文確認または dry-run 可能な確認を行っている。
+  - CI で扱えない確認を完了扱いにしないことが明記されている。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-76 top list の数値非表示契約を維持した判断補助追加を調査する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - top list へ推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を直接表示しない契約を維持したまま、利用者が料金調整候補を判断しやすくなる補助表示を追加できるかを調査する。
+  - 追加候補を、何のデータを使うか、何を比較するか、何を判断するか、何を出力するかの単位で整理し、実装へ進めるものと進めないものを分ける。
+- スコープ:
+  - 対象は top list の非数値 confidence、主要根拠、注意表示、tooltip、meta summary、booking curve preview、rank change preview に追加できる判断補助である。
+  - 候補ごとに、入力データ、比較対象、判断条件、表示文言、表示場所、数値非表示契約への影響、verify 方法を整理する。
+  - 既存の `docs/spec_003_rank_recommendation_signal.md` と `docs/context/INTENT.md` の契約に照らして、実装候補を残すかを判断する。
+- 非目標:
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を top list に直接表示しない。
+  - 新しい未調査 API、OTA または第三者サイトの hidden API、background prefetch、Revenue Assistant write API、自動反映、bulk apply を追加しない。
+  - candidate scoring、priority order、confidence calculation を実装前調査だけで変更しない。
+- 受け入れ条件:
+  - 実装候補ごとに、入力、比較対象、判断、出力、非目標、数値非表示契約への影響が記録されている。
+  - 実装しない候補は、契約違反、情報不足、負荷、検証不能、または効果が低いなどの理由を記録している。
+  - 実装へ進める候補がある場合は、新規 task として分割され、対象 spec、acceptance、verify 方法が明記されている。
+  - docs-only で閉じる場合は `git diff --check` と `docs/tasks_backlog.md` / `docs/context/STATUS.md` の整合確認が通過している。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Remaining Task Triage
 
 Now:
 
-- なし
+- `RAU-UX-73` 配布後の実利用で top list UI の視認性を観察して改善候補を分類する
 
 Next:
 
-- なし
+- `RAU-UX-76` top list の数値非表示契約を維持した判断補助追加を調査する
 
 After Next:
 
-- なし
+- `RAU-UX-75` UI component marker smoke を GitHub Actions で扱う条件を検討する
 
 Later:
 
-- なし
+- `RAU-UX-74` React Doctor performance family を 1 種類だけ選んで安全に処理する
 
 統合判断:
 
+- 2026-06-01 に、完了報告で推奨した 4 件を `RAU-UX-73` から `RAU-UX-76` として task 化した。`RAU-UX-73` は、配布後の実利用でしか分からない視認性を確認してから次の UI 変更を決めるため Now とする。`RAU-UX-76` は、top list に金額、差額、percent、forecast 数値、sales / ADR 数値を直接表示しない契約を維持したまま判断補助を増やせるかを調べる task であり、利用者の料金調整判断に近いため Next とする。`RAU-UX-75` は、UI component marker smoke の一部を GitHub Actions へ寄せられるかを検討する検証基盤 task だが、通常 Chrome、Tampermonkey、Revenue Assistant 実ログイン状態が必要な確認と分離する必要があるため After Next とする。`RAU-UX-74` は React Doctor の performance warning を小分けに減らす保守 task であり、runtime bug ではないため Later とする。
+- `RAU-UX-73` から `RAU-UX-76` は、実装対象を広げる task ではなく、UI overhaul 配布後の観察、数値非表示契約を守った判断補助の調査、検証基盤の CI 化可否、React Doctor performance warning の小分け処理に分ける。Revenue Assistant write API、自動反映、bulk apply、未調査 API、推奨レート金額、forecast 数値、sales / ADR 数値の top list 直接表示は、今回追加した task の対象外である。
 - 2026-06-01 に、未着手だった `RAU-UX-59` から `RAU-UX-72` を完了した。Publish Userscript workflow は path filter で docs-only push を起動対象外にし、`smoke:distribution` は状態待ちと UI component marker 検査を持つようにした。React Doctor の残診断は performance、dead code、server に分類し、今回の bundle では runtime bug として扱う追加修正は行わない。bundle size と dependency 予算は、新しい package を追加しない判断と、追加する場合の確認項目として正本化した。Vite fixture は dev-only UI regression gallery になり、runtime のトップ料金調整候補 list は RAU root 限定 design token、component marker、9 列 row layout、responsive block layout、統一された pending / warning / error 表示を持つ。Publish Userscript run `26717274182` は success で、GitHub Pages published version と Tampermonkey installed version は `0.1.0.356` に揃えた。
-- 次に task 化すべき候補は、配布後の実利用で分かる UI 改善をすぐ追加実装へ進めるのではなく、候補を分けて判断する。候補は、実画面での視認性観察を数日分ためる task、React Doctor の performance family を 1 種類だけ処理する task、UI marker smoke を GitHub Actions でどう扱うかを検討する task、top list の数値非表示契約を維持したまま判断補助を増やせるかを調査する task である。
 - 2026-06-01 に、UI ライブラリを導入して全面的に進化させたいという利用者方針を、`RAU-UX-63` から `RAU-UX-72` として task 化した。新規 task は、`RAU-UX-59` と `RAU-UX-60` の publish / smoke 安定化を先に進めた後、`RAU-UX-63` で対象と非対象を再定義し、`RAU-UX-62` と `RAU-UX-64` で bundle size と追加 package 採用条件を固定し、`RAU-UX-65` で dev-only regression gallery を用意してから runtime UI へ進める順序にした。`RAU-UX-66` から `RAU-UX-70` は実装面の段階移行であり、design token、操作部品、control、状態表示、候補 row 情報設計の順に分ける。`RAU-UX-71` と `RAU-UX-72` は、配布版 smoke と通常 Chrome / Tampermonkey 実画面確認を、UI overhaul の完了条件として独立させる。
 - `RAU-UX-63` から `RAU-UX-72` は既存の `RAU-UX-59` から `RAU-UX-62` を置き換えない。docs-only push による Publish Userscript 連鎖、Tampermonkey 更新直後の smoke 不安定、React Doctor 残診断、bundle size / dependency 予算は、UI ライブラリ全面移行を安全に進める前提条件として扱う。
 - 2026-05-31 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-59` は docs-only closeout commit 後に Publish Userscript が走り、公開版 version と Tampermonkey installed version の再同期が必要になった実害を減らすため Now とする。`RAU-UX-60` は Tampermonkey 更新直後の smoke が固定 15 秒では RAU root 0 件になり、30 秒では pass したため、次の配布確認を安定させる検証補助として Next とする。`RAU-UX-61` は React Doctor 残 62 件の分類 task であり、runtime bug と保守改善を分ける必要があるため After Next とする。`RAU-UX-62` は Vite / Radix 後の size と dependency 追加判断の基準作りであり、直近 runtime bug ではないため Later とする。
