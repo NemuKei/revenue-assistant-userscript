@@ -74,10 +74,20 @@ export async function readLatestMonthlyBookingCurveSnapshot(
     return withMonthlyBookingCurveStore("readonly", async (store) => {
         const index = store.index("facility-year-month");
         const snapshots = await getSnapshotRecordsByFacilityAndYearMonth(index, facilityCacheKey, yearMonth);
-        return snapshots
-            .slice()
-            .sort((left, right) => right.batchDateKey.localeCompare(left.batchDateKey) || right.fetchedAt.localeCompare(left.fetchedAt))[0];
+        return snapshots.reduce<MonthlyBookingCurveSnapshotRecord | undefined>((latest, snapshot) => {
+            if (latest === undefined) {
+                return snapshot;
+            }
+            return compareMonthlyBookingCurveSnapshotRecency(snapshot, latest) > 0 ? snapshot : latest;
+        }, undefined);
     });
+}
+
+function compareMonthlyBookingCurveSnapshotRecency(
+    left: MonthlyBookingCurveSnapshotRecord,
+    right: MonthlyBookingCurveSnapshotRecord
+): number {
+    return left.batchDateKey.localeCompare(right.batchDateKey) || left.fetchedAt.localeCompare(right.fetchedAt);
 }
 
 function buildMonthlyBookingCurveSnapshotKey(

@@ -57,6 +57,7 @@ const MONTHLY_PROGRESS_SECONDARY_METRIC_STORAGE_KEY = "preview-secondary-metric"
 const MONTHLY_PROGRESS_FIXTURE_MODE_STORAGE_KEY = "revenue-assistant:monthly-progress:v1:fixture-mode";
 const MONTHLY_PROGRESS_PREVIEW_EMPTY_ATTRIBUTE = "data-ra-monthly-progress-preview-empty";
 const MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE = "data-ra-monthly-progress-daily-diff";
+const MONTHLY_PROGRESS_DAILY_DIFF_SUMMARY_ATTRIBUTE = "data-ra-monthly-progress-daily-diff-summary";
 const MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE = "data-ra-monthly-progress-daily-diff-row";
 const MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE = "data-ra-monthly-progress-daily-diff-tone";
 const MONTHLY_PROGRESS_RESERVATION_CHART_TEST_ID = "chart-content-numberOfRoomsSold-dateOfReservationBasis";
@@ -1088,7 +1089,10 @@ function renderMonthlyProgressPreview(options: {
                 controls: createMonthlyProgressSecondaryMetricGroup(options.context, options.previewModel.secondaryMetric)
             })
         );
-        grid.append(createMonthlyProgressDailyDiffSection(options.previewModel.focusMonths));
+        grid.append(createMonthlyProgressDailyDiffSection(
+            options.previewModel.focusMonths,
+            options.context.routeState.yearMonth
+        ));
     } else {
         const emptyElement = document.createElement("div");
         emptyElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_EMPTY_ATTRIBUTE, "");
@@ -1317,20 +1321,33 @@ function createMonthlyProgressPanel(panel: MonthlyProgressPanelModel): HTMLEleme
     return panelElement;
 }
 
-function createMonthlyProgressDailyDiffSection(focusMonths: MonthlyProgressFocusMonthPreview[]): HTMLElement {
+function createMonthlyProgressDailyDiffSection(
+    focusMonths: MonthlyProgressFocusMonthPreview[],
+    currentYearMonth: string
+): HTMLElement {
     const section = document.createElement("section");
     section.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE, "");
+
+    const displayMonth = focusMonths.find((month) => month.yearMonth === currentYearMonth) ?? focusMonths[0] ?? null;
 
     const title = document.createElement("div");
     title.textContent = "日次差分";
 
     const description = document.createElement("p");
-    description.textContent = "販売客室数の現年系列を、隣り合う LT bucket 同士で比較する。未観測 bucket は差分計算から除外する。";
+    description.textContent = displayMonth === null
+        ? "現在表示月の販売客室数の現年系列を、隣り合う LT bucket 同士で比較する。"
+        : `${displayMonth.label} の販売客室数の現年系列を、隣り合う LT bucket 同士で比較する。未来月は graph と tooltip で確認する。`;
+
+    const summary = document.createElement("div");
+    summary.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_SUMMARY_ATTRIBUTE, "");
+    summary.textContent = displayMonth === null
+        ? "対象月なし"
+        : formatMonthlyProgressDailyDiffSummary(displayMonth.dailyDiffItems);
 
     const table = document.createElement("table");
     const head = document.createElement("thead");
     const headRow = document.createElement("tr");
-    for (const label of ["対象月", "LT", "対象日", "状態", "差分"]) {
+    for (const label of ["LT", "対象日", "状態", "差分"]) {
         const cell = document.createElement("th");
         cell.textContent = label;
         headRow.append(cell);
@@ -1338,34 +1355,47 @@ function createMonthlyProgressDailyDiffSection(focusMonths: MonthlyProgressFocus
     head.append(headRow);
 
     const body = document.createElement("tbody");
-    for (const month of focusMonths) {
-        for (const item of month.dailyDiffItems) {
-            const row = document.createElement("tr");
-            row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE, "");
-            row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE, item.direction);
+    for (const item of displayMonth?.dailyDiffItems ?? []) {
+        const row = document.createElement("tr");
+        row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE, "");
+        row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE, item.direction);
 
-            const monthCell = document.createElement("td");
-            monthCell.textContent = month.label;
+        const tickCell = document.createElement("td");
+        tickCell.textContent = formatMonthlyProgressTooltipTickLabel(item.tick);
 
-            const tickCell = document.createElement("td");
-            tickCell.textContent = formatMonthlyProgressTooltipTickLabel(item.tick);
+        const dateCell = document.createElement("td");
+        dateCell.textContent = item.dateKey === null ? "-" : formatDateKey(item.dateKey);
 
-            const dateCell = document.createElement("td");
-            dateCell.textContent = item.dateKey === null ? "-" : formatDateKey(item.dateKey);
+        const stateCell = document.createElement("td");
+        stateCell.textContent = formatMonthlyProgressDailyDiffDirection(item);
 
-            const stateCell = document.createElement("td");
-            stateCell.textContent = formatMonthlyProgressDailyDiffDirection(item);
+        const deltaCell = document.createElement("td");
+        deltaCell.textContent = formatMonthlyProgressDailyDiffDelta(item);
 
-            const deltaCell = document.createElement("td");
-            deltaCell.textContent = formatMonthlyProgressDailyDiffDelta(item);
-
-            row.replaceChildren(monthCell, tickCell, dateCell, stateCell, deltaCell);
-            body.append(row);
-        }
+        row.replaceChildren(tickCell, dateCell, stateCell, deltaCell);
+        body.append(row);
     }
     table.append(head, body);
-    section.replaceChildren(title, description, table);
+    section.replaceChildren(title, description, summary, table);
     return section;
+}
+
+function formatMonthlyProgressDailyDiffSummary(items: MonthlyProgressDailyDiffItem[]): string {
+    const counts = items.reduce<Record<MonthlyProgressDailyDiffDirection, number>>((accumulator, item) => {
+        accumulator[item.direction] += 1;
+        return accumulator;
+    }, {
+        increase: 0,
+        decrease: 0,
+        flat: 0,
+        unobserved: 0
+    });
+    return [
+        `増加 ${counts.increase}`,
+        `減少 ${counts.decrease}`,
+        `変化なし ${counts.flat}`,
+        `未観測 ${counts.unobserved}`
+    ].join(" / ");
 }
 
 function formatMonthlyProgressDailyDiffDirection(item: MonthlyProgressDailyDiffItem): string {
@@ -1964,6 +1994,16 @@ function ensureMonthlyProgressPreviewStyles(): void {
                 font-weight: 700;
                 line-height: 1.5;
             }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_SUMMARY_ATTRIBUTE}] {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                margin: 0 0 8px;
+                color: #31506f;
+                font-size: 10px;
+                font-weight: 800;
+                line-height: 1.4;
+            }
             [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] table {
                 width: 100%;
                 border-collapse: collapse;
@@ -1979,8 +2019,8 @@ function ensureMonthlyProgressPreviewStyles(): void {
             }
             [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] th:first-child,
             [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] td:first-child,
-            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] th:nth-child(4),
-            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] td:nth-child(4) {
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] th:nth-child(3),
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] td:nth-child(3) {
                 text-align: left;
             }
             [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] th {

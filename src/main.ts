@@ -13987,9 +13987,7 @@ function formatPriceTrendOverviewMeta(
     roomTypeFilter: string | null,
     mealTypeFilter: string | null
 ): string {
-    const latestRecord = records
-        .slice()
-        .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
+    const latestRecord = selectLatestPriceTrendRecord(records);
     const parts = [
         state.stayDate === null ? null : `対象宿泊日 ${formatCompactDateForDisplay(state.stayDate)}`,
         latestRecord === null ? null : `部屋タイプ ${roomTypeFilter === null ? "全部屋タイプから最安値" : formatPriceTrendRoomTypeForDisplay(roomTypeFilter)}`,
@@ -14135,9 +14133,7 @@ function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTren
         minimumPointsByGuestCount.set(guestCount, new Map());
     }
 
-    const latestRecord = records
-        .slice()
-        .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
+    const latestRecord = selectLatestPriceTrendRecord(records);
     const facilities = buildPriceTrendFacilities(latestRecord);
 
     for (const record of records) {
@@ -14179,6 +14175,15 @@ function buildPriceTrendGuestChartSeries(records: PriceTrendRecord[]): PriceTren
         facilities,
         pointsByGuestCount
     };
+}
+
+function selectLatestPriceTrendRecord(records: PriceTrendRecord[]): PriceTrendRecord | null {
+    return records.reduce<PriceTrendRecord | null>((latest, record) => {
+        if (latest === null) {
+            return record;
+        }
+        return record.fetchedAt.localeCompare(latest.fetchedAt) > 0 ? record : latest;
+    }, null);
 }
 
 function buildPriceTrendFacilities(record: PriceTrendRecord | null): CompetitorPriceFacilitySeries[] {

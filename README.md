@@ -124,7 +124,11 @@ npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --
 npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode monthly-progress --url https://ra.jalan.net/monthly-progress/YYYY-MM --seconds 30
 ```
 
-この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、`--mode` ごとの主要 selector、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。`--mode top` は top 料金調整候補 row 件数、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button を出力します。`--mode price-trends` は価格推移 tab / content、RAU overview、panel、SVG、background status を出力します。`--mode monthly-progress` は月次 preview root、panel、SVG、日次差分 section、日次差分 row、status text を出力します。いずれの mode でも POST count が 0 でない場合、console / page error が出た場合、または対象画面の主要 selector が 0 件の場合は、配布版 smoke を完了扱いにしません。Tampermonkey dashboard の更新操作は行いません。local / published / installed version が一致しない場合は、配布版 smoke を完了扱いにせず、Tampermonkey の通常 UI から更新してから再実行します。
+この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、`--mode` ごとの主要 selector、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。`--mode top` は top 料金調整候補 row 件数、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button を出力します。`--mode price-trends` は価格推移 tab / content、RAU overview、panel、SVG、background status を出力します。`--mode monthly-progress` は月次 preview root、panel、SVG、日次差分 section、日次差分 row、status text を出力します。いずれの mode でも、監視対象 write API POST が 1 件以上、console / page error が 1 件以上、対象画面の主要 selector が 0 件、または `--mode` と最終 URL が対応しない場合は、command は non-zero exit で失敗します。Tampermonkey dashboard の更新操作は行いません。
+
+version の扱いは `--version-policy warn | fail` で指定します。既定は `warn` です。local build は GitHub Pages 配布時の run number を含まないことがあるため、既定では local / published / installed version の不一致を warning として出力し、selector、console、page error、write API POST、mode 不一致だけを exit code の失敗条件にします。配布版として完了扱いにする確認では、Tampermonkey dashboard で更新した後に `--version-policy fail` を付けます。この場合、published version が取得できない、local version と published version が一致しない、または手入力した installed version と published version が一致しないと command は失敗します。意図的に version 不一致を許容する一時確認では、既定の `warn` のまま実行するか、`--allow-version-mismatch` を明示します。
+
+価格推移の failure / skip fixture のように、graph panel と SVG が出ないこと自体を確認したい場合だけ、`--allow-empty-price-trends` を付けます。この option は `--mode price-trends` の tab、content、RAU overview の存在確認は維持し、panel と SVG の 0 件だけを許可します。通常の配布版 smoke ではこの option を使わず、価格推移 graph が描画されることを確認します。
 
 ## 現在の実装状態
 

@@ -8,6 +8,7 @@ const DEFAULT_PUBLISHED_URL = "https://nemukei.github.io/revenue-assistant-users
 const DEFAULT_URL = "https://ra.jalan.net/";
 const DEFAULT_SECONDS = 20;
 const SMOKE_MODES = new Set(["top", "price-trends", "monthly-progress"]);
+const VERSION_POLICIES = new Set(["warn", "fail"]);
 const WRITE_ENDPOINTS = [
     "/api/v1/lincoln/suggest",
     "/api/v1/lincoln/price_ranks",
@@ -23,6 +24,8 @@ const installedVersion = args["installed-version"] ?? "manual-check-required";
 const mode = parseMode(args.mode ?? "top");
 const targetUrl = args["url"] ?? DEFAULT_URL;
 const seconds = parsePositiveInteger(args["seconds"], DEFAULT_SECONDS);
+const versionPolicy = parseVersionPolicy(args["version-policy"] ?? (args["allow-version-mismatch"] === "true" ? "warn" : "warn"));
+const allowEmptyPriceTrends = args["allow-empty-price-trends"] === "true";
 
 const localText = await readFile(resolve(distPath), "utf8");
 const localVersion = extractUserscriptMetadata(localText, "version") ?? "unknown";
@@ -30,6 +33,16 @@ const localUpdateUrl = extractUserscriptMetadata(localText, "updateURL") ?? "non
 const localDownloadUrl = extractUserscriptMetadata(localText, "downloadURL") ?? "none";
 const publishedVersionResult = await readPublishedVersion(publishedUrl);
 const smokeResult = await runChromeSmoke({ cdpUrl, targetUrl, seconds, mode });
+const assessment = assessSmokeResult({
+    localVersion,
+    publishedVersionResult,
+    installedVersion,
+    mode,
+    targetUrl,
+    smokeResult,
+    versionPolicy,
+    allowEmptyPriceTrends
+});
 
 console.log(`local version: ${localVersion}`);
 console.log(`published version: ${publishedVersionResult.version}`);
@@ -52,6 +65,18 @@ console.log(`write endpoints: ${WRITE_ENDPOINTS.join(", ")}`);
 console.log(`POST count: ${smokeResult.writePostCount}`);
 for (const request of smokeResult.writePosts) {
     console.log(`- ${request.method} ${request.url} at ${request.observedAt}`);
+}
+for (const warning of assessment.warnings) {
+    console.log(`warning: ${warning}`);
+}
+if (assessment.failures.length > 0) {
+    console.log("smoke result: fail");
+    for (const failure of assessment.failures) {
+        console.log(`failure: ${failure}`);
+    }
+    process.exitCode = 1;
+} else {
+    console.log("smoke result: pass");
 }
 console.log(`confirmed at: ${new Date().toISOString()}`);
 
@@ -129,6 +154,134 @@ async function runChromeSmoke(options) {
     } finally {
         await browser.close();
     }
+}
+
+function assessSmokeResult(options) {
+    const failures = [];
+    const warnings = [];
+    const metrics = options.smokeResult.modeMetrics;
+
+    if (options.smokeResult.writePostCount > 0) {
+        failures.push(`write API POST count must be 0, got ${options.smokeResult.writePostCount}`);
+    }
+    if (options.smokeResult.consoleErrorCount > 0) {
+        failures.push(`console error count must be 0, got ${options.smokeResult.consoleErrorCount}`);
+    }
+    if (options.smokeResult.pageErrorCount > 0) {
+        failures.push(`page error count must be 0, got ${options.smokeResult.pageErrorCount}`);
+    }
+
+    for (const failure of assessModeMetrics(options.mode, metrics, {
+        allowEmptyPriceTrends: options.allowEmptyPriceTrends
+    })) {
+        failures.push(failure);
+    }
+
+    const versionFailures = assessVersionRelationship({
+        localVersion: options.localVersion,
+        publishedVersionResult: options.publishedVersionResult,
+        installedVersion: options.installedVersion
+    });
+    if (options.versionPolicy === "fail") {
+        failures.push(...versionFailures);
+    } else {
+        warnings.push(...versionFailures);
+    }
+
+    if (!isExpectedModeUrl(options.mode, options.smokeResult.url)) {
+        failures.push(`smoke mode ${options.mode} does not match final URL ${options.smokeResult.url}`);
+    }
+
+    if (!isExpectedModeUrl(options.mode, options.targetUrl)) {
+        warnings.push(`smoke mode ${options.mode} does not match requested URL ${options.targetUrl}`);
+    }
+
+    return { failures, warnings };
+}
+
+function assessModeMetrics(mode, metrics, options) {
+    if (mode === "top") {
+        return [
+            minCountFailure("top row count", metrics["top row count"], 1),
+            yesFailure("React marker mounted", metrics["React marker mounted"]),
+            yesFailure("target month select", metrics["target month select"]),
+            minCountFailure("view mode buttons", metrics["view mode buttons"], 1),
+            minCountFailure("display limit buttons", metrics["display limit buttons"], 1),
+            yesFailure("rank order control", metrics["rank order control"]),
+            minCountFailure("curve preview buttons", metrics["curve preview buttons"], 1),
+            minCountFailure("rank change buttons", metrics["rank change buttons"], 1),
+            minCountFailure("decision buttons", metrics["decision buttons"], 1)
+        ].filter((failure) => failure !== null);
+    }
+    if (mode === "price-trends") {
+        const failures = [
+            yesFailure("price trends tab", metrics["price trends tab"]),
+            yesFailure("price trends content", metrics["price trends content"]),
+            minCountFailure("price trends overview count", metrics["price trends overview count"], 1)
+        ].filter((failure) => failure !== null);
+        if (options.allowEmptyPriceTrends) {
+            return failures;
+        }
+        return [
+            ...failures,
+            minCountFailure("price trends panel count", metrics["price trends panel count"], 1),
+            minCountFailure("price trends svg count", metrics["price trends svg count"], 1)
+        ].filter((failure) => failure !== null);
+    }
+    return [
+        minCountFailure("monthly preview root count", metrics["monthly preview root count"], 1),
+        minCountFailure("monthly preview panel count", metrics["monthly preview panel count"], 1),
+        minCountFailure("monthly preview svg count", metrics["monthly preview svg count"], 1),
+        minCountFailure("monthly daily diff count", metrics["monthly daily diff count"], 1),
+        minCountFailure("monthly daily diff rows", metrics["monthly daily diff rows"], 1)
+    ].filter((failure) => failure !== null);
+}
+
+function assessVersionRelationship(options) {
+    const failures = [];
+    if (options.publishedVersionResult.error !== null) {
+        failures.push(`published version is unavailable: ${options.publishedVersionResult.error}`);
+    } else if (options.localVersion !== "unknown" && options.publishedVersionResult.version !== "unknown" && options.localVersion !== options.publishedVersionResult.version) {
+        failures.push(`local version ${options.localVersion} differs from published version ${options.publishedVersionResult.version}`);
+    }
+
+    const installedVersionKnown = options.installedVersion !== "manual-check-required" && options.installedVersion !== "unknown";
+    if (installedVersionKnown && options.publishedVersionResult.version !== "unavailable" && options.installedVersion !== options.publishedVersionResult.version) {
+        failures.push(`installed version ${options.installedVersion} differs from published version ${options.publishedVersionResult.version}`);
+    }
+
+    return failures;
+}
+
+function minCountFailure(label, value, minimum) {
+    const count = Number(value);
+    if (Number.isFinite(count) && count >= minimum) {
+        return null;
+    }
+    return `${label} must be at least ${minimum}, got ${value}`;
+}
+
+function yesFailure(label, value) {
+    return value === "yes" ? null : `${label} must be yes, got ${value}`;
+}
+
+function isExpectedModeUrl(mode, value) {
+    let url;
+    try {
+        url = new URL(value);
+    } catch {
+        return false;
+    }
+    if (url.origin !== "https://ra.jalan.net") {
+        return false;
+    }
+    if (mode === "top") {
+        return url.pathname === "/" || url.pathname === "";
+    }
+    if (mode === "price-trends") {
+        return /^\/analyze\/\d{4}-\d{2}-\d{2}$/.test(url.pathname);
+    }
+    return /^\/monthly-progress\/\d{4}-\d{2}$/.test(url.pathname);
 }
 
 async function prepareMode(page, mode) {
@@ -228,6 +381,13 @@ function parseMode(value) {
         return value;
     }
     throw new Error(`unsupported smoke mode: ${value}. Expected one of: ${[...SMOKE_MODES].join(", ")}`);
+}
+
+function parseVersionPolicy(value) {
+    if (VERSION_POLICIES.has(value)) {
+        return value;
+    }
+    throw new Error(`unsupported version policy: ${value}. Expected one of: ${[...VERSION_POLICIES].join(", ")}`);
 }
 
 function parseArgs(values) {

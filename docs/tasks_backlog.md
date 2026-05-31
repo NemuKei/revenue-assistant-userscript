@@ -5042,6 +5042,15 @@
   - 監視対象 write API POST が 1 件以上の場合、command が失敗する。
   - local build version と published / installed version の不一致を、失敗、警告、明示許可のいずれとして扱うか README に書かれている。
   - `npm run check` と `git diff --check` が通過する。
+- 実装内容:
+  - `scripts/run-distribution-smoke.mjs` に pass / fail assessment を追加し、監視対象 write API POST、console error、page error、mode 別 selector、`--mode` と最終 URL の不一致を non-zero exit の条件にした。
+  - version mismatch は `--version-policy warn | fail` で扱う。既定は `warn` とし、local build が GitHub Pages の run number を含まない状態でも開発中 smoke を止めない。配布版完了確認では `--version-policy fail` を使う。
+  - 価格推移の failure / skip fixture では graph panel と SVG が 0 件になること自体を確認するため、`--allow-empty-price-trends` を追加した。この option は price-trends tab、content、RAU overview の確認は維持し、panel / SVG だけを必須から外す。
+  - README の配布版 smoke 手順に、exit code の失敗条件、version policy、fixture 用 option の使い分けを追記した。
+- verify:
+  - `npm run check`: passed
+  - `git diff --check`: passed
+  - `npm run smoke:distribution -- --installed-version 0.1.0.336 --mode price-trends --url https://ra.jalan.net/analyze/2026-06-05 --seconds 8 --allow-empty-price-trends`: skip fixture と failure fixture の両方で passed。version mismatch は warning として出力した。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -5062,6 +5071,16 @@
   - fixture mode で、日次差分の表示行数、増加 / 減少 / 変化なし / 未観測の見え方、既存 graph との重なりが確認できる。
   - 既存の月次 graph、tooltip、loading state、空状態を壊さない。
   - `npm run check` と `git diff --check` が通過する。
+- 実装内容:
+  - `docs/spec_001_analyze_expansion.md` に、日次差分 table は route の現在表示月だけを行として表示し、未来月と比較月は graph / tooltip で確認する契約を追加した。
+  - 月次実績画面の日次差分 table は、現在表示月だけを表示対象にし、行ごとの `対象月` 列を削除した。
+  - table 上部に `増加`、`減少`、`変化なし`、`未観測` の件数 summary を追加した。
+- GUI 確認:
+  - CDP 接続付き通常 Chrome で `localStorage["revenue-assistant:monthly-progress:v1:fixture-mode"] = "current-only"` を設定し、local `dist/revenue-assistant-userscript.user.js` を一時注入して `https://ra.jalan.net/monthly-progress/2026-05` を確認した。
+  - preview root 1 件、panel 2 件、SVG 2 件、日次差分 section 1 件、日次差分 row 45 件、summary `増加 42 / 減少 1 / 変化なし 1 / 未観測 1`、監視対象 write API POST 0 件を確認した。fixture key は確認後に削除した。
+- verify:
+  - `npm run check`: passed
+  - `git diff --check`: passed
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -5082,6 +5101,15 @@
   - complete 表示、または保存済み record による skip 表示のどちらかを、内部 count と画面表示の両方で確認している。
   - failure fixture が、保存済み record の有無に影響されず失敗表示として読めることを確認している。
   - 監視対象 write API POST 0 件、console / page error 件数を記録している。
+- 確認内容:
+  - `localStorage["revenue-assistant:price-trends:v1:background-fixture"] = "skip"` を設定し、CDP 接続付き通常 Chrome の Analyze `価格推移` tab を `npm run smoke:distribution -- --mode price-trends --allow-empty-price-trends` で確認した。
+  - skip fixture では、RAU overview 1 件、background text `背景取得 3 / 3・保存 0・skip 3・完了`、監視対象 write API POST 0 件、console error 0 件、page error 0 件を確認した。
+  - `localStorage["revenue-assistant:price-trends:v1:background-fixture"] = "failure"` を設定し、同じ手順で failure fixture を確認した。
+  - failure fixture では、RAU overview 1 件、background text `背景取得 3 / 3・保存 0・skip 0・失敗 3・停止 fixture failure`、監視対象 write API POST 0 件、console error 0 件、page error 0 件を確認した。
+  - fixture mode では graph panel と SVG が 0 件になるため、通常 graph smoke とは分けて `--allow-empty-price-trends` を明示した。fixture key は確認後に削除した。
+- verify:
+  - `npm run check`: passed
+  - `git diff --check`: passed
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -5100,6 +5128,89 @@
 - 受け入れ条件:
   - 変更前後で該当 helper の出力が同じであることを、既存テストまたは局所 fixture / source-level 確認で示している。
   - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+- 実装内容:
+  - `src/monthlyProgressIndexedDb.ts` の latest monthly snapshot 選択を、全件 sort 後の先頭取得から、`batchDateKey` と `fetchedAt` の同じ比較式を使う single pass reduce へ変更した。
+  - `src/competitorPriceSnapshotStore.ts` の latest / previous snapshot 選択を、全件 sort 後の先頭取得から、`fetchedAt` の同じ比較式を使う single pass reduce へ変更した。戻り値の records は従来どおり `fetchedAt` 昇順に保った。
+  - `src/main.ts` の price trends latest record 選択を、全件 sort 後の先頭取得から、`fetchedAt` の同じ比較式を使う single pass reduce へ変更した。
+  - いずれも選択条件は従来の `sort(...)[0]` と同じで、入力配列の順序変更を避ける挙動も維持している。
+- verify:
+  - `npm run check`: passed
+  - `npm run react:doctor -- --diff false`: passed。診断は Performance 44 件、Dead Code 16 件、Server 3 件の合計 63 件。`RAU-UX-21` 時点の 69 件から 6 件減った。残りは `flushSync`、unused-file 誤検知、より広い loop / lookup / await 最適化候補を含むため、この task では追加変更しない。
+  - `git diff --check`: passed
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-25 配布版 top smoke の前提状態診断を追加する
+
+- 目的:
+  - `smoke:distribution --mode top` が selector 0 件で失敗した場合に、配布版が古いのか、Revenue Assistant の表示状態が前提と違うのか、ログインまたは月次表示状態が違うのかを切り分けやすくする。
+- スコープ:
+  - 対象は `scripts/run-distribution-smoke.mjs` の top mode diagnostics と README の smoke 手順である。
+  - 失敗時に、page title、final URL、login form らしき selector の有無、RAU userscript root / marker の有無、calendar らしき selector の有無を、非公開データを含まない範囲で出力する。
+  - selector 0 件を pass に緩めるのではなく、失敗理由の切り分け情報を増やす。
+- 非目標:
+  - Revenue Assistant の自動ログイン、Tampermonkey dashboard 更新、write API 実行は行わない。
+  - raw response body、Cookie、token、credential、顧客情報、予約情報、価格や在庫の非公開データを保存しない。
+- 受け入れ条件:
+  - top mode が selector 0 件で失敗したとき、少なくとも final URL、page title、ログインらしき状態、calendar らしき状態、userscript marker の有無が出力される。
+  - 正常時の exit code 判定は `RAU-UX-24` の契約を維持する。
+  - `npm run check` と `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-MP-08 月次実績の日次差分を変化あり優先の compact view にする
+
+- 目的:
+  - `RAU-MP-07` で日次差分 table を現在表示月だけに絞っても、fixture では row が 45 件残るため、利用者が増加または減少の要点を先に読めるようにする。
+- スコープ:
+  - 対象は `/monthly-progress/YYYY-MM` の日次差分 section と fixture mode である。
+  - 初期表示では、増加または減少の row を先に表示し、変化なしと未観測は summary で確認できるようにする案を検討する。
+  - 変化なしと未観測を完全に隠す場合は、展開操作または件数確認の入口を用意する。
+- 非目標:
+  - monthly snapshot schema、API request 範囲、background prefetch、過去 batch 履歴比較、料金調整候補 scoring は変更しない。
+- 受け入れ条件:
+  - fixture mode で、増加 / 減少の row が先に読めること、変化なし / 未観測の件数が失われないこと、既存 graph と tooltip に重ならないことを確認している。
+  - `npm run check` と `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-CP-18 最新配布版で価格推移 normal graph smoke を再実行する
+
+- 目的:
+  - `RAU-CP-17` では fixture の skip / failure 表示を確認したため、次は fixture を使わない通常 data path で、最新版 Tampermonkey 配布物の `価格推移` graph と background queue 表示を確認する。
+- スコープ:
+  - 対象は GitHub Pages 公開版、Tampermonkey installed version、Analyze `価格推移` tab、`smoke:distribution --mode price-trends` である。
+  - commit / push 後、公開版 version と installed version を合わせた状態で `--version-policy fail` を使う。
+- 非目標:
+  - request 対象範囲を広げない。
+  - 料金調整候補 scoring へ価格推移 data を接続しない。
+  - raw trace、HAR、request body、response body を Git 管理へ入れない。
+- 受け入れ条件:
+  - `--mode price-trends` が fixture なし、`--allow-empty-price-trends` なし、`--version-policy fail` で通過する。
+  - price trends overview、panel、SVG、background status、監視対象 write API POST 0 件、console / page error 0 件を記録している。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-26 React Doctor 残診断の次の安全な performance 修正を行う
+
+- 目的:
+  - `RAU-UX-23` 後に残った React Doctor 診断 63 件のうち、挙動を変えずに小分けで直せる performance 診断をもう一段減らす。
+- スコープ:
+  - 対象候補は `src/priceTrendStore.ts`、`src/rankRecommendation.ts`、`src/monthlyProgress.ts` の局所的な lookup / loop / cache property access である。
+  - 変更前後で同じ入力から同じ出力になることを source-level または fixture で確認できる箇所だけ扱う。
+- 非目標:
+  - `flushSync` の置き換え、async concurrency 変更、広い `curveCore.ts` refactor、React Doctor の設定変更、診断抑制、dependency 更新は扱わない。
+- 受け入れ条件:
+  - `npm run check`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+  - どの診断を解消し、どれを残したかを task 本文または `STATUS.md` に記録している。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -5109,22 +5220,23 @@
 
 Now:
 
-- `RAU-UX-24` `smoke:distribution` に pass / fail の終了条件を実装する。
+- `RAU-UX-25` 配布版 top smoke の前提状態診断を追加する。
 
 Next:
 
-- `RAU-MP-07` 月次実績の日次差分表示密度を調整する。
+- `RAU-MP-08` 月次実績の日次差分を変化あり優先の compact view にする。
 
 After Next:
 
-- `RAU-CP-17` 価格推移 background queue の完了条件と failure fixture を追加検証する。
+- `RAU-CP-18` 最新配布版で価格推移 normal graph smoke を再実行する。
 
 Later:
 
-- `RAU-UX-23` React Doctor の高確度 performance 診断を小分けに解消する。
+- `RAU-UX-26` React Doctor 残診断の次の安全な performance 修正を行う。
 
 統合判断:
 
+- 2026-05-31 に、開始時点で未着手だった `RAU-UX-24`、`RAU-MP-07`、`RAU-CP-17`、`RAU-UX-23` を閉じた。追加で見えた次の task 化候補は 4 件である。`RAU-UX-25` は、配布版 top smoke が selector 0 件で失敗したときの切り分け情報がまだ不足しているため Now とした。`RAU-MP-08` は、日次差分を現在表示月だけに絞っても fixture では 45 行残るため Next とした。`RAU-CP-18` は、fixture ではなく最新版 Tampermonkey 配布物の通常価格推移 graph を version policy fail 付きで確認するため After Next とした。`RAU-UX-26` は React Doctor 残診断の安全な performance 修正候補だが、runtime bug ではないため Later とした。
 - 2026-05-31 に、未着手だった `RAU-UX-21`、`RAU-UX-22`、`RAU-MP-06`、`RAU-CP-16` を閉じた。追加で見えた次の task 化候補は 4 件である。`RAU-UX-24` は smoke helper が主要 selector と POST 件数を出力できるようになった直後に、完了扱いにできない条件を exit code へ反映するため Now とした。`RAU-MP-07` は `RAU-MP-06` の fixture 確認で日次差分 row が多くなることが分かったため Next とした。`RAU-CP-17` は `RAU-CP-16` で long-run 進行と skip fixture は確認したが、complete と failure fixture の追加確認が残るため After Next とした。`RAU-UX-23` は React Doctor 診断のうち安全に直せる performance 系だけを小分けに扱う候補だが、runtime bug ではないため Later とした。
 - 2026-05-31 に、前回完了報告で推奨した 4 件を task 化した。`RAU-UX-21` は React Doctor 導入直後の既存診断を分類し、次の React UI 変更で無関係な警告に引きずられないようにするため Now とした。`RAU-UX-22` は配布版 smoke helper を top 以外の重要画面へ広げ、今後の GUI 確認を同じ基準で実行できるようにするため Next とした。`RAU-MP-06` は `RAU-MP-05` で採用した月次実績画面の実装候補であり、仕様影響を確認してから進めるため After Next とした。`RAU-CP-16` は価格推移 background queue の短時間確認後に残る long-run と failure 表示の確認であり、現時点で緊急の修正は見つかっていないため Later とした。
 - 2026-05-31 に、開始時点で Remaining Task Triage に残っていた `RAU-UX-20`、`RAU-UX-18`、`RAU-UX-19`、`RAU-MP-05`、`RAU-CP-15` を閉じた。`RAU-UX-20` では `react-doctor@0.2.14` を exact devDependency として lockfile に固定し、`npm run react:doctor` を追加した。`RAU-UX-18` では React list を mount marker、summary、controls、table、row、cell、row actions、preview rows へ責務分割した。`RAU-UX-19` では配布版 smoke helper `npm run smoke:distribution` を追加した。`RAU-MP-05` では月次実績画面の次段階候補を比較し、最初に実装する候補を `日次差分表示` と判断した。`RAU-CP-15` では通常 Chrome の Tampermonkey installed version `0.1.0.336` で価格推移 background queue の停止、復帰、表示安定性を確認した。

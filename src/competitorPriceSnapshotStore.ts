@@ -178,9 +178,7 @@ export async function readLatestCompetitorPriceSnapshot(
     return withCompetitorPriceSnapshotStore("readonly", async (store) => {
         const index = store.index("facility-condition");
         const snapshots = await getSnapshotRecordsByFacilityAndCondition(index, facilityId, conditionSignature);
-        return snapshots
-            .slice()
-            .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0];
+        return selectLatestCompetitorPriceSnapshotRecord(snapshots);
     });
 }
 
@@ -218,9 +216,9 @@ function buildCompetitorPriceSnapshotSeries(snapshots: CompetitorPriceSnapshotRe
     const records = snapshots
         .slice()
         .sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt));
-    const latestRecord = records
-        .filter(isUnspecifiedCompetitorPriceSnapshotRecord)
-        .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0]
+    const latestRecord = selectLatestCompetitorPriceSnapshotRecord(
+        records.filter(isUnspecifiedCompetitorPriceSnapshotRecord)
+    )
         ?? records[records.length - 1]
         ?? null;
     if (latestRecord === null) {
@@ -231,18 +229,29 @@ function buildCompetitorPriceSnapshotSeries(snapshots: CompetitorPriceSnapshotRe
         };
     }
 
-    const previousRecord = records
-        .filter((snapshot) => (
+    const previousRecord = selectLatestCompetitorPriceSnapshotRecord(
+        records.filter((snapshot) => (
             snapshot.snapshotKey !== latestRecord.snapshotKey
             && snapshot.conditionSignature === latestRecord.conditionSignature
         ))
-        .sort((left, right) => right.fetchedAt.localeCompare(left.fetchedAt))[0] ?? null;
+    ) ?? null;
 
     return {
         records,
         latestRecord,
         previousRecord
     };
+}
+
+function selectLatestCompetitorPriceSnapshotRecord(
+    records: CompetitorPriceSnapshotRecord[]
+): CompetitorPriceSnapshotRecord | undefined {
+    return records.reduce<CompetitorPriceSnapshotRecord | undefined>((latest, record) => {
+        if (latest === undefined) {
+            return record;
+        }
+        return record.fetchedAt.localeCompare(latest.fetchedAt) > 0 ? record : latest;
+    }, undefined);
 }
 
 function isUnspecifiedCompetitorPriceSnapshotRecord(record: CompetitorPriceSnapshotRecord): boolean {
