@@ -5883,26 +5883,298 @@
   - `spec-checkpoint`: none
   - `target-spec`: なし
 
+### RAU-UX-48 React + Vite + UI ライブラリ完全移行の完了定義を正本化する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 利用者が明示した「React + Vite + UI ライブラリに完全移行する」前提を、実装前に誤読されない形の完了定義へ変換する。
+  - 完全移行が指す対象画面、置き換える build 経路、採用する UI ライブラリの役割、維持する userscript 配布契約、移行を止める条件を分けて決める。
+  - `RAU-UX-44` の「現時点では外部 UI ライブラリを導入しない」という完了済み判断を、今回の新しい前提に合わせて、長期レーンの初期判断へ置き換える。ただし、過去 task の記録は当時の判断として残す。
+- スコープ:
+  - 対象は、トップ料金調整候補 list、preview、pending / confirmation UI、月次実績画面の日次差分、価格推移 supplement、Analyze focus supplement のうち、React + Vite + UI ライブラリへ移す候補範囲である。
+  - 完全移行の完了条件として、残す vanilla DOM 操作、React component 化する表示、Vite に移す build / dev preview、UI ライブラリが担う部品、配布版 smoke 条件を明記する。
+  - `dist/*.user.js` を手編集しない契約、Tampermonkey 配布版を `dist` 正として扱う契約、Revenue Assistant write API を自動実行しない契約を維持する。
+- 非目標:
+  - この task だけで Vite、`@vitejs/plugin-react`、UI ライブラリ、追加 CSS framework を install しない。
+  - `scripts/build.mjs` の置き換え、`dist/*.user.js` の生成方式変更、runtime UI の変更、Tampermonkey dashboard 更新は行わない。
+  - UI ライブラリ名を根拠なしに確定しない。
+- 受け入れ条件:
+  - 完全移行の対象、対象外、段階、停止条件、配布版 smoke 条件が `docs/spec_000_overview.md`、対象 `spec`、または `docs/context/DECISIONS.md` のいずれかに正本化されている。
+  - 移行段階が、設計、dev-only preview、fixture、UI ライブラリ試験、並走 build、配布版 smoke、正規 build 切替の順に分かれている。
+  - 依存追加、build 切替、runtime UI 置換、Tampermonkey 配布版更新をこの task の外に置くことが明記されている。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_000_overview.md`, `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-49 Vite build lane を userscript 配布契約と分離して設計する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Vite を導入する前に、開発用 preview、fixture 確認、production userscript build、Tampermonkey 配布版の関係を分けて設計する。
+  - Vite の開発体験を得る段階と、`dist/revenue-assistant-userscript.user.js` の正規生成経路を切り替える段階を同じ task に混ぜない。
+- スコープ:
+  - 対象は、Vite dev server、React fixture preview、userscript metadata 注入、source map、CSS 出力、`scripts/build.mjs` との並走条件、GitHub Pages 公開版 version 確認である。
+  - 既存の `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check`、`npm run smoke:distribution` のどれを維持し、どの段階で Vite command を追加するかを決める。
+  - Vite build を既定にしない並走期間の終了条件を決める。
+- 非目標:
+  - この task だけで Vite を install しない。
+  - production userscript の生成方式を変更しない。
+  - `dist/*.user.js`、Tampermonkey dashboard、GitHub Pages 配布物を変更しない。
+- 受け入れ条件:
+  - Vite を dev-only preview として先に使う条件、production build へ接続する条件、正規 build へ切り替える条件が分かれている。
+  - userscript metadata、`@version`、`@match`、`@grant`、`dist` 出力名、GitHub Pages 公開版との関係が設計に含まれている。
+  - 既存 `scripts/build.mjs` を残す期間と廃止候補条件が明記されている。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_000_overview.md`
+
+### RAU-UX-50 UI ライブラリ候補を完全移行前提で再評価する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-UX-44` では、現時点の自前 UI primitive と既存 selector 制約を理由に外部 UI ライブラリを導入しない判断をした。
+  - 今回は「完全移行する」前提に変わったため、短期導入可否ではなく、長期的に React component と Vite preview を正規 path にする場合の候補を比較する。
+- スコープ:
+  - 候補は、headless component library、style 付き component library、utility CSS 併用、既存自前 primitive 継続のいずれかとして比較する。
+  - 評価軸は、bundle size、CSS 衝突、Tampermonkey userscript への組み込みやすさ、keyboard / focus / aria 実装、license、install script、version pin、React との相性、Vite build との相性、既存 `data-ra-*` selector との共存である。
+  - 最初に試す部品候補を、tooltip、popover、dialog、select、tabs、menu、button の中から 1 種類だけに絞る。
+- 非目標:
+  - この task だけで UI ライブラリを install しない。
+  - production runtime UI を置き換えない。
+  - design system、theme、CSS reset を一括導入しない。
+- 受け入れ条件:
+  - 採用候補、保留候補、採用しない候補が理由付きで整理されている。
+  - 最初の試験対象 component と、試験を dev fixture に閉じる理由が明記されている。
+  - 採用方向へ進む場合の次 task が、依存追加の明示承認、version pin、bundle size 差分、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を含む形で定義されている。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-51 Vite fixture preview を runtime 非接続で追加する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Vite の導入価値を、Revenue Assistant runtime、Tampermonkey 配布版、`dist/*.user.js` へ接続しない状態で確認する。
+  - React component の開発速度、fixture 確認、表示状態の再現性を先に得る。
+- スコープ:
+  - 対象は、既存 React component を使う dev-only fixture preview、Vite command、preview 用 entry、合成 fixture data である。
+  - production userscript build から参照しない dev-only path として追加する。
+  - 依存追加が必要な場合は、作業開始前に Vite と関連 package の version pin、install script、lockfile 変更範囲を明示して承認を得る。
+- 非目標:
+  - `scripts/build.mjs` を置き換えない。
+  - Tampermonkey 配布版、GitHub Pages 公開版、Revenue Assistant runtime UI を変更しない。
+  - UI ライブラリを同じ task で追加しない。
+- 受け入れ条件:
+  - dev-only fixture preview が、料金調整候補 list の代表状態を Revenue Assistant ログインなしで表示できる。
+  - production `dist` の出力契約が変わっていないことを確認している。
+  - `npm run check`、追加した Vite preview 関連 command、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-52 Vite fixture に主要 UI state を追加する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Vite fixture preview を、単一の happy path 表示ではなく、今後の UI ライブラリ試験と React 化確認に使える状態確認入口にする。
+- スコープ:
+  - 対象 state は、候補あり、候補なし、current settings 401 / 403、user decision による非表示、rank change pending、preview open / closed、月次日次差分の compact view、価格推移 supplement の loading / empty / failure である。
+  - 各 state は実 API response ではなく、秘密情報を含まない合成 fixture data で再現する。
+- 非目標:
+  - Revenue Assistant API request を追加しない。
+  - IndexedDB、localStorage、Tampermonkey storage、認証状態へ依存しない。
+  - production runtime UI を変更しない。
+- 受け入れ条件:
+  - Vite fixture preview から主要 state を選んで表示できる。
+  - fixture data に実施設名、顧客情報、価格や在庫の非公開データ、Cookie、token が含まれていないことを確認している。
+  - `npm run check`、追加した preview command、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-53 UI ライブラリを 1 部品だけ dev fixture で試す
+
+- 状態:
+  - 未着手。
+- 目的:
+  - UI ライブラリの採用可否を、production userscript へ接続する前に、1 種類の部品と dev fixture だけで検証する。
+  - bundle size、CSS 衝突、keyboard / focus / aria、既存 selector との共存を小さい差分で確認する。
+- スコープ:
+  - 対象 component は `RAU-UX-50` で選んだ 1 種類だけである。
+  - 試験場所は Vite fixture preview に限定し、production `dist` へ接続しない。
+  - 依存追加は、明示承認、version pin、license 確認、install script 確認、lockfile 差分確認を行ってから実施する。
+- 非目標:
+  - 複数 component を同時に試さない。
+  - CSS reset、theme、design token を一括導入しない。
+  - Tampermonkey 配布版を更新しない。
+- 受け入れ条件:
+  - 追加 dependency と lockfile 差分の理由が説明されている。
+  - dev fixture 上で keyboard 操作、focus 表示、aria 状態、disabled 状態、hover / click 操作が確認されている。
+  - production userscript build に影響がない、または影響がある場合は bundle size 差分と配布版 smoke 条件が記録されている。
+  - `npm run check`、preview command、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-54 UI ライブラリ採用部品の production 接続条件を決める
+
+- 状態:
+  - 未着手。
+- 目的:
+  - dev fixture で試した UI ライブラリ component を、どの条件で production userscript UI へ接続するかを決める。
+  - 「dev fixture で動いた」ことを、Tampermonkey 配布版で使ってよい判断と混同しない。
+- スコープ:
+  - 対象は、最初に production 接続する 1 component、接続先画面、既存 selector 維持、CSS 影響範囲、bundle size 上限、配布版 smoke 条件である。
+  - 監視対象 write API POST 0 件確認、Revenue Assistant ログイン状態、Tampermonkey installed version、GitHub Pages published version の確認順序を含める。
+- 非目標:
+  - この task だけで production UI を置き換えない。
+  - Vite build を正規 userscript build に切り替えない。
+  - 複数画面へ同時展開しない。
+- 受け入れ条件:
+  - production 接続対象、接続しない対象、rollback 条件、smoke 条件が文書化されている。
+  - UI ライブラリを production へ接続する次 task が、1 component、1 画面、1 verify bundle に分割されている。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-55 userscript build を Vite へ切替可能にする並走 build を作る
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Vite を正規 build に切り替える前に、現行 `scripts/build.mjs` と Vite build の出力を比較できる並走経路を作る。
+  - 生成物の metadata、出力名、bundle size、CSS、source map、runtime 初期化順序を確認できるようにする。
+- スコープ:
+  - 対象は、Vite production build candidate、userscript metadata 注入、`dist` とは別の candidate 出力、比較 script または確認手順である。
+  - 現行 `npm run build` は正規 build のまま維持し、Vite candidate build を別 command にする。
+- 非目標:
+  - Vite build を正規配布 path にしない。
+  - Tampermonkey dashboard へ candidate build を投入しない。
+  - runtime UI を同時に置き換えない。
+- 受け入れ条件:
+  - 現行 build と Vite candidate build の metadata、version、match、grant、bundle size、entry 初期化順序の比較結果を記録している。
+  - Vite candidate build が正規 `dist/revenue-assistant-userscript.user.js` を上書きしない。
+  - `npm run check`、現行 `npm run build`、Vite candidate build command、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_000_overview.md`
+
+### RAU-UX-56 Vite build を配布版 smoke で並走検証する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Vite candidate build が、現行 build と同じ userscript 配布契約を満たすかを、正規切替前に通常 Chrome と Tampermonkey 前提の smoke で確認する。
+- スコープ:
+  - 対象は、Vite candidate build の一時投入、通常 Chrome の Revenue Assistant、Tampermonkey 実行版、配布版 smoke helper、監視対象 write API POST 0 件確認である。
+  - Tampermonkey dashboard へ candidate build を入れる場合は、対象 script、期待 version、戻し方を明示してから行う。
+- 非目標:
+  - この task だけで Vite build を正規配布 path にしない。
+  - Revenue Assistant write API の送信、bulk apply、自動反映を行わない。
+  - UI ライブラリ component の追加置換を同時に行わない。
+- 受け入れ条件:
+  - top、価格推移、月次実績のうち、対象 scope に必要な `smoke:distribution` が pass または expected fail として理由付きで記録されている。
+  - local version、published version、installed version、RAU userscript root count、React marker、主要 selector、監視対象 write API POST 件数が確認されている。
+  - 切替前に戻せる手順が記録されている。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-57 React + UI ライブラリ化を top rank recommendation surface へ段階接続する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - dev fixture と Vite candidate build で確認した React + UI ライブラリ component を、最初の production surface としてトップ料金調整候補 list へ小さく接続する。
+  - userscript runtime での実挙動、既存 selector、pending、preview、write guard を維持したまま置き換える。
+- スコープ:
+  - 対象は、`RAU-UX-54` で決めた 1 component または 1 interaction だけである。
+  - 既存の `data-ra-*` selector、delegated event handler、pending 秒数、decision storage、rank change guard、監視対象 write API POST 条件を維持する。
+  - Chrome拡張または Chrome DevTools Protocol を使い、通常 Chrome の Revenue Assistant と Tampermonkey 前提で確認する。
+- 非目標:
+  - 複数 component や複数画面を同時に置き換えない。
+  - scoring、candidate generation、API request 範囲、Revenue Assistant write endpoint を変更しない。
+  - Vite build の正規切替を同時に行わない。
+- 受け入れ条件:
+  - 対象 component の置き換え前後で、入力、表示件数、selector contract、pending / cancel、preview、監視対象 write API POST 条件が維持されている。
+  - `npm run check`、`npm run react:doctor -- --diff false`、`npm run build`、必要な `smoke:distribution`、`git diff --check` が通過する。
+  - 通常 Chrome または CDP 接続で、page error 0 件、console error 0 件、監視対象 write API POST 0 件を確認している。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-58 Vite build を正規配布 path へ切り替える
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 並走 build と配布版 smoke で十分に確認した後、正規 userscript build を Vite build へ切り替える。
+  - 切替時点で、旧 `scripts/build.mjs` を残すか、廃止するか、fallback として一時維持するかを決める。
+- スコープ:
+  - 対象は、正規 `npm run build`、`npm run check`、`dist/revenue-assistant-userscript.user.js`、GitHub Pages 公開版、Tampermonkey installed version、README の build / smoke 手順である。
+  - 切替直後の rollback 手順、旧 build との差分確認、CI または local verify 条件を含める。
+- 非目標:
+  - 切替と同時に UI を大きく置き換えない。
+  - Revenue Assistant API request 範囲、write API、bulk apply、自動反映を変更しない。
+  - 旧 build 廃止条件が未確定のまま削除しない。
+- 受け入れ条件:
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check`、`npm run react:doctor -- --diff false`、必要な `smoke:distribution`、`git diff --check` が通過する。
+  - local `dist`、GitHub Pages published version、Tampermonkey installed version の関係を確認している。
+  - top、価格推移、月次実績のうち対象 scope の主要 selector、React marker、監視対象 write API POST 0 件、console / page error 0 件を確認している。
+  - 旧 build へ戻す手順、または旧 build を廃止した理由が README または `docs/context/DECISIONS.md` に記録されている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_000_overview.md`
+
 ## Remaining Task Triage
 
 Now:
 
-- なし。
+- `RAU-UX-48` React + Vite + UI ライブラリ完全移行の完了定義を正本化する
 
 Next:
 
-- なし。
+- `RAU-UX-49` Vite build lane を userscript 配布契約と分離して設計する
 
 After Next:
 
-- なし。
+- `RAU-UX-50` UI ライブラリ候補を完全移行前提で再評価する
 
 Later:
 
-- なし。
+- `RAU-UX-51` Vite fixture preview を runtime 非接続で追加する
+- `RAU-UX-52` Vite fixture に主要 UI state を追加する
+- `RAU-UX-53` UI ライブラリを 1 部品だけ dev fixture で試す
+- `RAU-UX-54` UI ライブラリ採用部品の production 接続条件を決める
+- `RAU-UX-55` userscript build を Vite へ切替可能にする並走 build を作る
+- `RAU-UX-56` Vite build を配布版 smoke で並走検証する
+- `RAU-UX-57` React + UI ライブラリ化を top rank recommendation surface へ段階接続する
+- `RAU-UX-58` Vite build を正規配布 path へ切り替える
 
 統合判断:
 
+- 2026-05-31 に、利用者が React + Vite + UI ライブラリへ完全移行する前提を明示したため、長期レーンとして `RAU-UX-48` から `RAU-UX-58` を追加した。`RAU-UX-48` から `RAU-UX-50` は、依存追加、build 切替、runtime UI 置換の前に、完了定義、build lane、UI ライブラリ候補を正本化する docs-first task である。`RAU-UX-51` から `RAU-UX-53` は、Vite と UI ライブラリの価値を dev-only fixture に閉じて検証する。`RAU-UX-54` から `RAU-UX-58` は、production 接続条件、並走 build、配布版 smoke、top surface への段階接続、正規 build 切替の順に置く。理由は、Tampermonkey 配布版、Revenue Assistant の実ログイン状態、監視対象 write API POST 0 件確認、`dist/*.user.js` の正規生成契約を壊さずに移行するためである。
+- `RAU-UX-44` の「現時点では外部 UI ライブラリを導入しない」判断は、当時の自前 UI primitive と既存 selector 制約に対する完了済み判断として残す。今回の長期レーンは、利用者が新しく示した完全移行前提に基づく追加 task 群であり、過去 task を未完了へ戻すものではない。
 - 2026-05-31 に、未着手だった `RAU-UX-45`、`RAU-UX-46`、`RAU-UX-47` を完了した。`RAU-UX-45` では `userscript:version-check` に Revenue Assistant 画面上の login form candidate、calendar candidate、RAU userscript root count、React marker mounted を追加した。`RAU-UX-46` では `smoke:distribution` の全 mode 共通 preflight message を追加し、RAU userscript root count `0` かつ calendar candidate ありの場合に Tampermonkey 実行版確認を案内するようにした。`RAU-UX-47` では React Doctor の `js-index-maps` family だけを処理し、診断件数を 61 件から 59 件へ減らした。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
 - 2026-05-31 に、完了報告で推奨した 3 件を task 化した。`RAU-UX-45` は、Revenue Assistant 画面がログイン済みに見えても Tampermonkey 経由の RAU root が出ない状態を、配布版 smoke の前提崩れとして診断できるようにするため Now とする。`RAU-UX-46` は、`RAU-UX-45` で切り分ける値を `smoke:distribution` の fail output へ接続する task であり、診断の土台が決まった後に進めるため Next とする。`RAU-UX-47` は React Doctor 残診断の保守改善だが、runtime bug ではなく、async 系や `flushSync` より低リスクな lookup / index 系だけを 1 family ずつ扱うため Later とする。
 - 2026-05-31 に、未着手だった `RAU-UX-42`、`RAU-UX-41`、`RAU-UX-43`、`RAU-UX-44` を完了した。`RAU-UX-42` では月次 smoke helper の出力に主 table row、details row、details summary、details 初期 open / closed を追加した。`RAU-UX-41` では `Escape` による preview close と focus return を追加した。`RAU-UX-43` では React Doctor の `js-cache-property-access` だけを処理し、診断を 62 件から 61 件へ減らした。`RAU-UX-44` では外部 UI ライブラリを今は導入しない判断と再評価 trigger を `docs/spec_003_rank_recommendation_signal.md` に残した。この時点で Remaining Task Triage の Now / Next / After Next / Later は空である。
