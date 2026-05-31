@@ -5198,7 +5198,8 @@
   - `npm run lint`: passed。
   - `npm run build`: passed。sandbox 内では esbuild spawn が `EPERM` になったため、承認付きで再実行して通過した。
   - `git diff --check`: passed。
-  - 実ブラウザでの月次 compact view 確認は、Tampermonkey 配布版更新後の smoke と合わせて最終 verify に記録する。
+  - Tampermonkey 配布版 `0.1.0.346` の `monthly-progress` smoke: preview root 1 件、panel 2 件、SVG 2 件、日次差分 section 1 件、監視対象 write API POST 0 件、console / page error 0 件、smoke result pass。
+  - 同じ配布版の CDP 直接確認では、日次差分 compact view の主 table は 37 行、details table は 8 行、details summary は `変化なし / 未観測 8件`、details は初期 closed だった。主 table の先頭は `増加` row であり、変化なし / 未観測の件数入口は失われていない。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -5557,7 +5558,7 @@
   - `npm run build`: passed。sandbox 内では esbuild spawn が `EPERM` になったため、承認付きで再実行して通過した。
   - `npm run react:doctor -- --verbose --diff false`: passed。診断件数は 62 件。
   - `git diff --check`: passed。
-  - decision pending cancel と rank pending cancel の配布版 GUI 確認は、Tampermonkey 配布版更新後の top smoke と合わせて最終 verify に記録する。
+  - Tampermonkey 配布版 `0.1.0.346` の CDP 操作確認で、decision pending は `様子見:` 表示と cancel button 1 件を出し、`取消` 後に pending 表示と cancel button が 0 件へ戻った。監視対象 write API POST 0 件、console / page error 0 件だった。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -5588,7 +5589,7 @@
   - `npm run build`: passed。sandbox 内では esbuild spawn が `EPERM` になったため、承認付きで再実行して通過した。
   - `npm run react:doctor -- --verbose --diff false`: passed。診断件数は 62 件。
   - `git diff --check`: passed。
-  - preview 開閉と監視対象 write API POST 0 件の配布版 GUI 確認は、Tampermonkey 配布版更新後の top smoke と合わせて最終 verify に記録する。
+  - Tampermonkey 配布版 `0.1.0.346` の CDP 操作確認で、`曲線` preview は visible row 1 件、SVG 2 件、button の `aria-controls` と preview row id の対応ありだった。`rank調整` preview は visible row 1 件で、宿泊日、部屋タイプ、現在 rank、変更後 rank、主要根拠、注意、送信不可理由なしを表示した。監視対象 write API POST 0 件、console / page error 0 件だった。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -5645,7 +5646,7 @@
   - `npm run build`: passed。sandbox 内では esbuild spawn が `EPERM` になったため、承認付きで再実行して通過した。
   - `npm run react:doctor -- --verbose --diff false`: passed。診断件数は 62 件。
   - `git diff --check`: passed。
-  - text overlap、button overflow、preview と table の重なりは、Tampermonkey 配布版更新後の top smoke と月次 smoke で最終確認する。
+  - Tampermonkey 配布版 `0.1.0.346` の top smoke と月次 smoke は pass した。top 追加操作では preview row が内容ありで開き、pending cancel 後に row 10 件へ戻った。月次 compact view は主 table と details に分かれ、既存 graph の preview root、panel、SVG は維持された。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
