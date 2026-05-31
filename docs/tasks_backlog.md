@@ -6647,18 +6647,46 @@
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-UX-77 料金調整候補画面の冗長な表示を減らす調査を行う
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 料金調整候補画面が冗長に感じられる原因を、表示項目、項目名、並び、重複説明、tooltip、popover、preview、meta summary、button 文言、余白量に分けて調査する。
+  - どの情報を常時表示するか、どの情報を hover / popover / preview へ退避するか、どの情報を削るかを整理し、次の実装 task で迷わない形にする。
+- スコープ:
+  - 対象は通常 Chrome の Revenue Assistant top page に表示される RAU の料金調整候補画面である。具体的には、候補 row、9 列 layout、meta summary、表示 mode / 表示上限 / rank order control、主要根拠、確度、状態、操作、tooltip、popover、booking curve preview、rank change preview を扱う。
+  - 調査では、常時表示する情報、畳む情報、削る情報、文言を短くする情報、操作前だけ見せる情報を分ける。
+  - 表示項目ごとに、使うデータ、判断に必要な理由、現状の冗長さ、簡素化案、削った場合のリスク、実装候補 task を記録する。
+  - desktop 幅では scan と比較を優先し、narrow 幅では縦積みや折り返しで text overlap と操作不能を避ける案を出す。
+- 非目標:
+  - 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を top list に直接表示しない。
+  - 新しい未調査 API、OTA または第三者サイトの hidden API、background prefetch、Revenue Assistant write API、自動反映、bulk apply を追加しない。
+  - この task では runtime UI、candidate scoring、priority order、confidence calculation、user decision、cooldown、rank change POST endpoint、pending 秒数を変更しない。
+  - UI library の追加 dependency、visual diff service、screenshot baseline service を導入しない。
+- 受け入れ条件:
+  - 料金調整候補画面の表示項目一覧を作り、各項目について `常時表示する`、`畳む`、`削る`、`文言を短くする`、`操作時だけ表示する`、`判断保留` のいずれかを記録している。
+  - 冗長に感じる原因を、情報重複、説明文の長さ、視線移動の多さ、操作 button の多さ、tooltip / popover / preview の役割重複、余白量のいずれかに分類している。
+  - 次に実装する候補がある場合は、表示項目、変更理由、保持する契約、非目標、verify 方法を持つ新規 task へ分割している。
+  - docs-only で閉じるため、`git diff --check` と `docs/tasks_backlog.md` / `docs/context/STATUS.md` の整合確認が通過している。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Remaining Task Triage
 
 Now:
 
-- `RAU-UX-73` 配布後の実利用で top list UI の視認性を観察して改善候補を分類する
+- `RAU-UX-77` 料金調整候補画面の冗長な表示を減らす調査を行う
 
 Next:
 
-- `RAU-UX-76` top list の数値非表示契約を維持した判断補助追加を調査する
+- `RAU-UX-73` 配布後の実利用で top list UI の視認性を観察して改善候補を分類する
 
 After Next:
 
+- `RAU-UX-76` top list の数値非表示契約を維持した判断補助追加を調査する
 - `RAU-UX-75` UI component marker smoke を GitHub Actions で扱う条件を検討する
 
 Later:
@@ -6667,6 +6695,7 @@ Later:
 
 統合判断:
 
+- 2026-06-01 に、利用者が「料金調整候補画面にフォーカスしてよい」「今は冗長なので、どうシンプルにできるかを主眼に調査 task を切ってから進めたい」と明示したため、`RAU-UX-77` を追加し、Remaining Task Triage の Now に置いた。`RAU-UX-77` は実装 task ではなく、料金調整候補画面の表示項目、項目名、並び、重複説明、tooltip、popover、preview、meta summary、button 文言、余白量を棚卸しし、常時表示、畳む、削る、短くする、操作時だけ表示する、判断保留に分ける調査 task である。`RAU-UX-73` は配布後の広い視認性観察であり、`RAU-UX-77` より焦点が広いため Next へ下げる。`RAU-UX-76` は数値非表示契約を維持した判断補助の追加調査であり、画面をシンプルにする方向性が決まった後に扱う。
 - 2026-06-01 に、完了報告で推奨した 4 件を `RAU-UX-73` から `RAU-UX-76` として task 化した。`RAU-UX-73` は、配布後の実利用でしか分からない視認性を確認してから次の UI 変更を決めるため Now とする。`RAU-UX-76` は、top list に金額、差額、percent、forecast 数値、sales / ADR 数値を直接表示しない契約を維持したまま判断補助を増やせるかを調べる task であり、利用者の料金調整判断に近いため Next とする。`RAU-UX-75` は、UI component marker smoke の一部を GitHub Actions へ寄せられるかを検討する検証基盤 task だが、通常 Chrome、Tampermonkey、Revenue Assistant 実ログイン状態が必要な確認と分離する必要があるため After Next とする。`RAU-UX-74` は React Doctor の performance warning を小分けに減らす保守 task であり、runtime bug ではないため Later とする。
 - `RAU-UX-73` から `RAU-UX-76` は、実装対象を広げる task ではなく、UI overhaul 配布後の観察、数値非表示契約を守った判断補助の調査、検証基盤の CI 化可否、React Doctor performance warning の小分け処理に分ける。Revenue Assistant write API、自動反映、bulk apply、未調査 API、推奨レート金額、forecast 数値、sales / ADR 数値の top list 直接表示は、今回追加した task の対象外である。
 - 2026-06-01 に、未着手だった `RAU-UX-59` から `RAU-UX-72` を完了した。Publish Userscript workflow は path filter で docs-only push を起動対象外にし、`smoke:distribution` は状態待ちと UI component marker 検査を持つようにした。React Doctor の残診断は performance、dead code、server に分類し、今回の bundle では runtime bug として扱う追加修正は行わない。bundle size と dependency 予算は、新しい package を追加しない判断と、追加する場合の確認項目として正本化した。Vite fixture は dev-only UI regression gallery になり、runtime のトップ料金調整候補 list は RAU root 限定 design token、component marker、9 列 row layout、responsive block layout、統一された pending / warning / error 表示を持つ。Publish Userscript run `26717274182` は success で、GitHub Pages published version と Tampermonkey installed version は `0.1.0.356` に揃えた。
