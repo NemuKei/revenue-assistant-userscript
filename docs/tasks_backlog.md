@@ -6297,6 +6297,256 @@
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_000_overview.md`, `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-UX-63 UI ライブラリ全面移行の対象と非対象を再定義する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 利用者が UI ライブラリを導入して全面的に進化させたいと明示したため、既存の Radix Popover 1 component 導入を、料金調整候補 surface 全体の段階移行計画へ拡張する。
+  - 「全面移行」を全 DOM や全画面の一括置換として扱わず、userscript の責務、Revenue Assistant 標準 UI との共存、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を維持したまま、どの surface から UI library component へ置き換えるかを決める。
+- スコープ:
+  - 対象はトップ料金調整候補 list、行内操作、tooltip / popover、select / segmented control、pending / confirmation / error 表示、fixture preview の範囲定義である。
+  - `docs/spec_003_rank_recommendation_signal.md` の UI 契約、`docs/spec_000_overview.md` の build / distribution 契約、`docs/tasks_backlog.md` の実行順を確認する。
+  - 移行対象、移行しない対象、移行順、各段階で保持する selector と smoke 条件を明記する。
+- 非目標:
+  - この task だけで runtime source、dependency、CSS、dist を変更しない。
+  - Revenue Assistant 標準画面全体の style を置き換えない。
+  - write API、bulk apply、自動反映、未調査 API、認証、Tampermonkey dashboard 更新手順を変更しない。
+- 受け入れ条件:
+  - UI ライブラリ全面移行で扱う surface と扱わない surface が、具体的な DOM 領域または component 名で列挙されている。
+  - 料金調整候補 list の既存 selector、React marker、監視対象 write API POST 0 件確認をどの段階でも維持することが明記されている。
+  - 依存追加が必要な段階と、既存 Radix Popover / CSS / 自前 primitive だけで進める段階が分かれている。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_000_overview.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-64 UI ライブラリ追加 package の採用条件を固定する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Radix Popover 以外の UI library package を増やす前に、候補 package、採用理由、bundle size 増加、version pin、lockfile 差分、install script、license、供給網 risk、rollback 条件を同じ形式で判断できるようにする。
+  - `RAU-UX-62` の bundle size と dependency 予算を、具体的な追加 package 採用判断へ接続する。
+- スコープ:
+  - 対象は追加候補 package の比較、既存 `@radix-ui/react-popover@1.1.15` との関係、package-lock 差分確認、採用または不採用理由の記録先である。
+  - 候補は UI library component に限定し、date picker、chart、table virtualization など別カテゴリの大型依存は別 task として扱う。
+  - 採用条件には、利用する component 名、代替できる既存実装、size 増加、Tampermonkey 配布版 smoke、Chrome 実画面確認要否を含める。
+- 非目標:
+  - `RAU-UX-62` の予算判断が未完了のまま、新しい package を追加しない。
+  - package を便利そうという理由だけでまとめて追加しない。
+  - dependency update、React / Vite / Radix 既存 version の更新、lockfile の広範囲な更新を同時に行わない。
+- 受け入れ条件:
+  - 追加 package ごとに、用途、置き換える UI、採用理由、代替案、size / dependency 差分、version pin、install script、license、rollback 条件を確認する項目が定義されている。
+  - 採用する場合は package name と exact version が決まり、採用しない場合は `not-now`、`policy-reject`、`security-reject`、`cost-reject` のいずれかで理由が記録されている。
+  - `RAU-UX-62` の bundle size / dependency 予算と矛盾しない。
+  - `git diff --check` が通過する。package を追加した場合は `npm run check`、`npm run build`、必要な `smoke:distribution` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_000_overview.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-65 Vite fixture を UI regression gallery にする
+
+- 状態:
+  - 未着手。
+- 目的:
+  - UI library component を実画面へつなぐ前に、主要状態を fixture で一覧確認できる場所を作る。
+  - 候補 row、popover、select、pending、error、空状態、loading、確認前、確認後を同じ画面で見比べ、見た目変更と runtime API 変更を分離する。
+- スコープ:
+  - 対象は Vite fixture preview の route、fixture data、storybook ではない軽量 gallery、主要 selector の確認補助である。
+  - gallery は dev-only とし、userscript 配布版の runtime entry へ不要な UI 状態データを混ぜない。
+  - mobile 相当幅、Revenue Assistant の横幅に近い desktop 幅、長い roomGroup 名、候補数 0 / 1 / 10 件、pending と error を確認できる fixture を用意する。
+- 非目標:
+  - Revenue Assistant 実画面の DOM を fixture で完全再現しない。
+  - Storybook、Chromatic、外部 snapshot SaaS など新しい運用基盤を同時に導入しない。
+  - 実データ、認証情報、API response body、価格や在庫の非公開データを fixture に保存しない。
+- 受け入れ条件:
+  - fixture gallery で確認する状態一覧、入力 fixture、期待する selector が明記されている。
+  - gallery は dev-only であり、配布版 userscript の実行 path と区別できる。
+  - `npm run check`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+  - GUI 確認を行う場合は、アプリ内ブラウザまたは Playwright screenshot で desktop / narrow 幅の重なり、はみ出し、操作不能がないことを確認する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-66 design token を userscript root 配下だけに導入する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - UI library component と既存 React surface の色、余白、border、focus ring、文字サイズを揃える。
+  - Revenue Assistant 標準 UI へ global style を漏らさず、RAU userscript root 配下だけで design token を使える状態にする。
+- スコープ:
+  - 対象は RAU root 配下の CSS custom properties、component class、focus-visible、disabled、pending、danger / warning / success / neutral の状態色である。
+  - `data-ra-*` selector と smoke helper が使う主要 selector は維持する。
+  - 色と余白は dashboard / operational tool として読み取りやすい密度を優先し、装飾目的の大きな gradient、hero 表現、説明文追加は行わない。
+- 非目標:
+  - Revenue Assistant 本体の body、global button、global select、global table へ style を当てない。
+  - design token 導入と同時に component 構造や操作仕様を広く変えない。
+  - CSS framework や theme runtime を新規導入しない。
+- 受け入れ条件:
+  - token の適用範囲が RAU userscript root 配下に限定され、標準画面の既存要素へ意図せず style が漏れない。
+  - focus-visible、disabled、pending、error、success の見た目が component 間で揃っている。
+  - `npm run check`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+  - 必要に応じて `smoke:distribution --mode top` で主要 selector、React marker、監視対象 write API POST 0 件、console / page error 0 件を確認する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-67 Button / Tooltip / Popover の操作感を統一する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 料金調整候補 list 内の `曲線`、`rank調整`、`様子見`、`対応不要`、取消、booking curve 要点 popover、現ランク tooltip などの操作部品を、見た目、focus、keyboard、disabled、pending 表示の観点で揃える。
+  - UI library component を増やす場合でも、Revenue Assistant 標準 UI を押しのけず、行内操作の誤操作を増やさない。
+- スコープ:
+  - 対象は RAU React list 内の button、tooltip trigger、popover trigger、popover content、focus return、Escape close、outside click close である。
+  - 既存の pending 秒数、送信直前 guard、decision 保存条件、rank change adapter、監視対象 write API endpoint は維持する。
+  - アイコンを使う場合は、意味が不明にならないよう accessible label と tooltip を用意する。
+- 非目標:
+  - rank change の write behavior、pending 秒数、保存条件、API request 範囲を変更しない。
+  - すべての文言をアイコンだけへ置き換えない。
+  - Tooltip / Popover の内部に長い説明文を増やし、候補 row の読み取り密度を落とさない。
+- 受け入れ条件:
+  - Button / Tooltip / Popover の focus-visible、keyboard close、focus return、disabled、pending 中表示の期待挙動が確認できる。
+  - `曲線` preview、`rank調整` preview、booking curve 要点 popover、現ランク tooltip の既存 selector と表示内容が保持されている。
+  - `npm run check`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+  - 実画面確認が必要な場合は、通常 Chrome または Chrome DevTools Protocol で監視対象 write API POST 0 件、console / page error 0 件を確認する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-68 Select / Segmented Control を整理する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 対象月 select、表示 mode、表示上限、rank order control など、候補 list 上部の操作部品を読み取りやすく、誤操作しにくい構造にする。
+  - UI library を使う場合も、既存の filter 順序、候補生成、表示上限 reset、preview close の契約を維持する。
+- スコープ:
+  - 対象は top rank recommendation surface の select、segmented control、表示上限 control、rank order control の配置、label、状態表示である。
+  - 対象月変更時に表示上限を初期値へ戻し、開いている booking curve preview と rank change preview を閉じる既存挙動を保持する。
+  - mobile 相当幅と Revenue Assistant desktop 幅で、control が折り返しても row 本文と重ならないようにする。
+- 非目標:
+  - filter の意味、候補生成条件、scoring、rank order source、manual override 保存仕様を変更しない。
+  - Revenue Assistant 標準の calendar control を置き換えない。
+  - 新しい検索、multi-select、保存済み view preset を追加しない。
+- 受け入れ条件:
+  - 対象月、表示 mode、表示上限、rank order control の current value と操作対象が視覚的に区別できる。
+  - filter 変更後の候補数、preview close、表示上限 reset が既存契約どおりである。
+  - `npm run check`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+  - 必要に応じて fixture gallery と配布版 top smoke で主要 selector、React marker、監視対象 write API POST 0 件を確認する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-69 pending / confirmation / error 表示を統一する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `様子見`、`対応不要`、rank 変更、API 取得失敗、current settings 取得失敗、配布版 smoke で見える前提崩れなどの状態表示を、利用者が次に何をすればよいか分かる形へ揃える。
+  - pending、confirmation、error を同じ色と文言規則で扱い、成功、警告、失敗、取消可能状態を混同しない。
+- スコープ:
+  - 対象は top list row 内、list meta、preview 内、current settings 取得失敗 status、pending cancel 表示の文言と visual state である。
+  - 既存の `反映確認中`、5 秒 pending、取消、HTTP 401 / 403 / 500 系 status、version / login / RAU root preflight message の意味を維持する。
+  - state 表示は候補行の読解を邪魔しない密度で配置する。
+- 非目標:
+  - pending 秒数、保存タイミング、rank change POST endpoint、API retry、background prefetch を変更しない。
+  - 失敗時の自動再送信、自動ログイン、自動 Tampermonkey 更新を追加しない。
+  - error を曖昧な成功表示へ丸めない。
+- 受け入れ条件:
+  - pending、confirmation、warning、error、empty の表示規則が component 間で揃っている。
+  - HTTP 401、HTTP 403、その他 HTTP status、status 不明の区別が失われていない。
+  - `npm run check`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+  - 実画面確認が必要な場合は、通常 Chrome または Chrome DevTools Protocol で監視対象 write API POST 0 件、console / page error 0 件を確認する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-70 料金調整候補 row の情報設計を刷新する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 現在の候補 row は、優先度、確度、宿泊日、部屋タイプ、現ランク、推奨方向、主要根拠、状態、操作が増えているため、UI library と design token を使って、比較、判断、操作の順に読みやすい構造へ整理する。
+  - 表示密度を保ちながら、金額、比率、forecast 数値、sales / ADR 数値を直接表示しない既存契約を維持する。
+- スコープ:
+  - 対象は top rank recommendation row の列構成、row header、meta、主要根拠 cell、確度 cell、現ランク tooltip、操作 cell、preview 展開位置である。
+  - desktop 幅では scanning と比較を優先し、narrow 幅では折り返しや縦積みで text overlap を避ける。
+  - 行内 preview、booking curve 要点 popover、rank change preview、pending 表示との位置関係を確認する。
+- 非目標:
+  - scoring、priority order、confidence calculation、candidate lifecycle、API request 範囲、write behavior を変更しない。
+  - 金額、差額、percent、forecast 数値、sales / ADR 数値を top list に直接表示しない。
+  - Revenue Assistant 標準 UI の table や calendar を置き換えない。
+- 受け入れ条件:
+  - 候補 row で、比較に使う情報、判断根拠、操作 button が視覚的に区別できる。
+  - 長い roomGroup 名、候補 row 10 件、preview open、pending、error、empty の各状態で text overlap と操作不能がない。
+  - `npm run check`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過する。
+  - fixture gallery と通常 Chrome または Chrome DevTools Protocol の top smoke で、候補 row、React marker、主要 selector、監視対象 write API POST 0 件、console / page error 0 件を確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-71 配布版 smoke に UI library component の検査を追加する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - UI library component を production surface へ増やした後、配布版 `dist/*.user.js`、GitHub Pages published version、Tampermonkey installed version、Revenue Assistant 実画面で主要 component が実際に mount しているかを同じ手順で確認できるようにする。
+  - 見た目変更を行ったのに配布版 smoke が selector だけを見て通過する状態を減らす。
+- スコープ:
+  - 対象は `scripts/run-distribution-smoke.mjs` の top mode 出力、UI library component marker、popover / tooltip / control / pending / row selector の検査である。
+  - 既存の RAU root、React marker、主要 selector、version policy、console / page error、監視対象 write API POST 件数の fail 条件は維持する。
+  - UI library component ごとに、mount 確認、表示確認、keyboard または click の最小確認が必要かを分ける。
+- 非目標:
+  - Tampermonkey dashboard 更新操作を自動化しない。
+  - Chrome extension storage、Tampermonkey internal storage、Cookie、token、Revenue Assistant 認証情報を直接読まない。
+  - visual diff service や screenshot baseline 管理を同時に導入しない。
+- 受け入れ条件:
+  - smoke output で UI library component の検査結果が、既存 selector と区別して読める。
+  - component marker が不足した場合、Tampermonkey 未更新、userscript 未発火、React hydration 未完了、component 実装漏れを切り分けやすい message が出る。
+  - `npm run check`、対象 mode の `npm run smoke:distribution`、`git diff --check` が通過する。
+  - 実画面確認が必要な場合は、通常 Chrome の Tampermonkey installed version と GitHub Pages published version を記録する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-72 実画面で top list UI overhaul を配布確認する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - UI library component、design token、control 整理、pending / error 表示、候補 row 情報設計の変更を、fixture だけでなく通常 Chrome の Revenue Assistant 実ログイン状態と Tampermonkey 配布版で確認する。
+  - 実画面で、候補 row 10 件、popover / tooltip、preview、pending cancel、監視対象 write API POST 0 件、console / page error 0 件が維持されていることを確認する。
+- スコープ:
+  - 対象は GitHub Pages published version、Tampermonkey installed version、通常 Chrome の Revenue Assistant top page、`smoke:distribution --mode top`、必要な手動操作確認である。
+  - Chrome拡張または Chrome DevTools Protocol を使い、通常 Chrome profile、Tampermonkey、ログイン済み Revenue Assistant を前提に確認する。
+  - 確認対象は top list UI overhaul の配布版挙動であり、未接続画面や未変更画面は必要な範囲だけ見る。
+- 非目標:
+  - Revenue Assistant write API の実送信確認を行わない。送信を伴う確認が必要になった場合は別 task として利用者承認を取る。
+  - raw trace、HAR、request body、response body、Cookie、token、価格や在庫の非公開データを repo に保存しない。
+  - 実画面確認中に見つけた別件を同じ task で広く修正しない。
+- 受け入れ条件:
+  - GitHub Pages published version と Tampermonkey installed version の一致、または一致していない理由と次操作が記録されている。
+  - 通常 Chrome の Revenue Assistant top page で、RAU root、React marker、候補 row、主要 control、popover / tooltip、preview、pending cancel を確認している。
+  - 監視対象 write API POST 0 件、console / page error 0 件を確認している。
+  - `npm run smoke:distribution -- --mode top`、必要な build / check、`git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
 ## Remaining Task Triage
 
 Now:
@@ -6306,17 +6556,29 @@ Now:
 Next:
 
 - `RAU-UX-60` `smoke:distribution` の Tampermonkey 更新直後待機を固定秒数から状態待ちへ変える
+- `RAU-UX-63` UI ライブラリ全面移行の対象と非対象を再定義する
 
 After Next:
 
 - `RAU-UX-61` Vite / Radix 導入後の React Doctor 残診断を再分類する
+- `RAU-UX-62` Vite / Radix 後の bundle size と dependency 予算を決める
+- `RAU-UX-64` UI ライブラリ追加 package の採用条件を固定する
+- `RAU-UX-65` Vite fixture を UI regression gallery にする
 
 Later:
 
-- `RAU-UX-62` Vite / Radix 後の bundle size と dependency 予算を決める
+- `RAU-UX-66` design token を userscript root 配下だけに導入する
+- `RAU-UX-67` Button / Tooltip / Popover の操作感を統一する
+- `RAU-UX-68` Select / Segmented Control を整理する
+- `RAU-UX-69` pending / confirmation / error 表示を統一する
+- `RAU-UX-70` 料金調整候補 row の情報設計を刷新する
+- `RAU-UX-71` 配布版 smoke に UI library component の検査を追加する
+- `RAU-UX-72` 実画面で top list UI overhaul を配布確認する
 
 統合判断:
 
+- 2026-06-01 に、UI ライブラリを導入して全面的に進化させたいという利用者方針を、`RAU-UX-63` から `RAU-UX-72` として task 化した。新規 task は、`RAU-UX-59` と `RAU-UX-60` の publish / smoke 安定化を先に進めた後、`RAU-UX-63` で対象と非対象を再定義し、`RAU-UX-62` と `RAU-UX-64` で bundle size と追加 package 採用条件を固定し、`RAU-UX-65` で dev-only regression gallery を用意してから runtime UI へ進める順序にした。`RAU-UX-66` から `RAU-UX-70` は実装面の段階移行であり、design token、操作部品、control、状態表示、候補 row 情報設計の順に分ける。`RAU-UX-71` と `RAU-UX-72` は、配布版 smoke と通常 Chrome / Tampermonkey 実画面確認を、UI overhaul の完了条件として独立させる。
+- `RAU-UX-63` から `RAU-UX-72` は既存の `RAU-UX-59` から `RAU-UX-62` を置き換えない。docs-only push による Publish Userscript 連鎖、Tampermonkey 更新直後の smoke 不安定、React Doctor 残診断、bundle size / dependency 予算は、UI ライブラリ全面移行を安全に進める前提条件として扱う。
 - 2026-05-31 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-59` は docs-only closeout commit 後に Publish Userscript が走り、公開版 version と Tampermonkey installed version の再同期が必要になった実害を減らすため Now とする。`RAU-UX-60` は Tampermonkey 更新直後の smoke が固定 15 秒では RAU root 0 件になり、30 秒では pass したため、次の配布確認を安定させる検証補助として Next とする。`RAU-UX-61` は React Doctor 残 62 件の分類 task であり、runtime bug と保守改善を分ける必要があるため After Next とする。`RAU-UX-62` は Vite / Radix 後の size と dependency 追加判断の基準作りであり、直近 runtime bug ではないため Later とする。
 - 2026-05-31 に、未着手だった `RAU-UX-48` から `RAU-UX-58` を完了した。Vite は正規 build と dev-only fixture preview と candidate build に導入し、UI ライブラリは Radix UI `@radix-ui/react-popover@1.1.15` の Popover 1 component だけをトップ料金調整候補 list の booking curve 要点 popover へ接続した。旧 esbuild build は `npm run build:legacy` として rollback 候補に残した。Remaining Task Triage は空である。
 - 2026-05-31 に、利用者が React + Vite + UI ライブラリへ完全移行する前提を明示したため、長期レーンとして `RAU-UX-48` から `RAU-UX-58` を追加した。`RAU-UX-48` から `RAU-UX-50` は、依存追加、build 切替、runtime UI 置換の前に、完了定義、build lane、UI ライブラリ候補を正本化する docs-first task である。`RAU-UX-51` から `RAU-UX-53` は、Vite と UI ライブラリの価値を dev-only fixture に閉じて検証する。`RAU-UX-54` から `RAU-UX-58` は、production 接続条件、並走 build、配布版 smoke、top surface への段階接続、正規 build 切替の順に置く。理由は、Tampermonkey 配布版、Revenue Assistant の実ログイン状態、監視対象 write API POST 0 件確認、`dist/*.user.js` の正規生成契約を壊さずに移行するためである。
