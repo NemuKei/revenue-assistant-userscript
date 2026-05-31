@@ -29,6 +29,8 @@ const RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE = "data-ra-rank-recommend
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
 const RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-button-action";
 const RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE = "data-ra-rank-recommendation-ui-primitive";
+const RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE = "data-ra-rank-recommendation-ui-component";
+const RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE = "data-ra-rank-recommendation-cell-role";
 const RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE = "data-ra-rank-recommendation-pending-decision";
 const RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE = "data-ra-rank-recommendation-pending-decision-key";
 const RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-preview-row";
@@ -56,12 +58,14 @@ export interface RankRecommendationReactTextCellSnapshot {
     value: string;
     title?: string;
     attribute?: string;
+    role?: string;
 }
 
 export interface RankRecommendationReactRankGapCellSnapshot {
     kind: "rankGap";
     currentRankText: string;
     title: string;
+    role?: string;
     entries: readonly {
         values: readonly string[];
         isTarget: boolean;
@@ -155,20 +159,17 @@ export interface RankRecommendationReactListSnapshot {
     rows: readonly RankRecommendationReactRowSnapshot[];
 }
 
-let mountedHost: HTMLElement | null = null;
-let mountedRoot: Root | null = null;
+const mountedRoots = new WeakMap<HTMLElement, Root>();
 
 export function syncRankRecommendationReactList(
     container: HTMLElement,
     snapshot: RankRecommendationReactListSnapshot
 ): void {
     const host = ensureRankRecommendationReactIslandHost(container);
-    let root = mountedRoot;
-    if (mountedHost !== host || root === null) {
-        mountedRoot?.unmount();
-        mountedHost = host;
+    let root = mountedRoots.get(host) ?? null;
+    if (root === null) {
         root = createRoot(host);
-        mountedRoot = root;
+        mountedRoots.set(host, root);
     }
 
     flushSync(() => {
@@ -177,9 +178,10 @@ export function syncRankRecommendationReactList(
 }
 
 export function unmountRankRecommendationReactIsland(): void {
-    mountedRoot?.unmount();
-    mountedRoot = null;
-    mountedHost = null;
+    document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_REACT_ISLAND_HOST_ATTRIBUTE}]`).forEach((host) => {
+        mountedRoots.get(host)?.unmount();
+        mountedRoots.delete(host);
+    });
 }
 
 function ensureRankRecommendationReactIslandHost(container: HTMLElement): HTMLElement {
@@ -220,7 +222,7 @@ function RankRecommendationReactMountMarker(props: { snapshot: RankRecommendatio
 
 function RankRecommendationReactSummary(props: { snapshot: RankRecommendationReactListSnapshot }): React.ReactElement {
     const snapshot = props.snapshot;
-    return React.createElement(React.Fragment, null,
+    return React.createElement("div", { [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "summary" },
         React.createElement("h2", null, snapshot.title),
         React.createElement("div", { "data-ra-rank-recommendation-meta": "" }, snapshot.metaText)
     );
@@ -228,7 +230,7 @@ function RankRecommendationReactSummary(props: { snapshot: RankRecommendationRea
 
 function RankRecommendationReactControls(props: { controls: RankRecommendationReactControlsSnapshot }): React.ReactElement {
     const controls = props.controls;
-    return React.createElement(React.Fragment, null,
+    return React.createElement("div", { [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "control-group" },
         renderTargetMonthControl(controls.targetMonth),
         renderViewModeControl(controls.viewMode),
         renderDisplayLimitControl(controls.displayLimit),
@@ -245,6 +247,7 @@ function renderTargetMonthControl(control: RankRecommendationReactControlsSnapsh
         React.createElement("span", null, "対象月"),
         React.createElement("select", {
             [RANK_RECOMMENDATION_TARGET_MONTH_ATTRIBUTE]: "",
+            [RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE]: "select",
             title: "料金調整候補の対象宿泊月で絞り込む",
             defaultValue: control.currentValue
         }, control.options.map((option) => React.createElement("option", { key: option.value, value: option.value }, option.label)))
@@ -263,6 +266,7 @@ function renderViewModeControl(control: RankRecommendationReactControlsSnapshot[
             type: "button",
             [RANK_RECOMMENDATION_BUTTON_ATTRIBUTE]: "",
             [RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE]: "view-mode",
+            [RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE]: "segmented-control",
             [RANK_RECOMMENDATION_VIEW_MODE_ATTRIBUTE]: option.mode,
             "aria-pressed": option.pressed ? "true" : "false",
             title: option.title
@@ -292,7 +296,7 @@ function renderRankOrderControl(control: RankRecommendationReactControlsSnapshot
         [RANK_RECOMMENDATION_RANK_LADDER_ATTRIBUTE]: control.ladderJson
     },
         React.createElement("div", { "data-ra-rank-recommendation-order-summary": "" }, control.summary),
-        React.createElement("details", null,
+        React.createElement("details", { [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "rank-order-details" },
             React.createElement("summary", null, "ランク順序を調整"),
             React.createElement("textarea", {
                 [RANK_RECOMMENDATION_ORDER_INPUT_ATTRIBUTE]: "",
@@ -312,7 +316,7 @@ function renderRankOrderControl(control: RankRecommendationReactControlsSnapshot
 
 function RankRecommendationReactTable(props: { snapshot: RankRecommendationReactListSnapshot }): React.ReactElement {
     const snapshot = props.snapshot;
-    return React.createElement("table", null,
+    return React.createElement("table", { [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "table" },
         React.createElement(RankRecommendationReactTableHeader, { columns: snapshot.columns }),
         React.createElement(RankRecommendationReactTableBody, { snapshot })
     );
@@ -344,7 +348,8 @@ function RankRecommendationReactRow(props: { row: RankRecommendationReactRowSnap
         [RANK_RECOMMENDATION_ROW_ATTRIBUTE]: "",
         [RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE]: row.priority,
         [RANK_RECOMMENDATION_ACTION_ATTRIBUTE]: row.action,
-        [RANK_RECOMMENDATION_STATUS_ATTRIBUTE]: row.status
+        [RANK_RECOMMENDATION_STATUS_ATTRIBUTE]: row.status,
+        [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "row-layout"
     },
         ...row.cells.map((cell, index) => React.createElement(RankRecommendationReactCell, { key: `cell:${index}`, cell })),
         React.createElement(RankRecommendationReactRowActions, { row })
@@ -354,11 +359,15 @@ function RankRecommendationReactRow(props: { row: RankRecommendationReactRowSnap
 function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellSnapshot }): React.ReactElement {
     const { cell } = props;
     if (cell.kind === "rankGap") {
-        return React.createElement("td", { [RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE]: "" },
+        return React.createElement("td", {
+            [RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE]: "",
+            [RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE]: cell.role ?? "current-rank"
+        },
             React.createElement("span", { [RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE]: "" },
                 React.createElement("button", {
                     type: "button",
                     [RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE]: "",
+                    [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "tooltip",
                     title: cell.title,
                     onClick: (event) => {
                         event.preventDefault();
@@ -387,6 +396,7 @@ function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellS
     const attrs = cell.attribute === undefined ? {} : { [cell.attribute]: "" };
     return React.createElement("td", {
         title: cell.title,
+        [RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE]: cell.role,
         ...attrs
     }, cell.value);
 }
@@ -395,7 +405,10 @@ function RankRecommendationReactRowActions(props: { row: RankRecommendationReact
     const row = props.row;
     const curvePreviewId = buildRankRecommendationPreviewRowId("curve", row.curvePreview.key);
     const rankChangePreviewId = buildRankRecommendationPreviewRowId("rank-change", row.rankChangePreview.key);
-    return React.createElement("td", null,
+    return React.createElement("td", {
+        [RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE]: "actions",
+        [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "row-actions"
+    },
         renderAnalyzeLink(row.analyzeLink),
         renderButton(row.curvePreviewButton, {
             "aria-expanded": row.curvePreviewButton.expanded ? "true" : "false",
@@ -445,6 +458,7 @@ function renderAnalyzeLink(link: RankRecommendationReactButtonSnapshot & { href:
     return React.createElement("a", {
         href: link.href,
         title: link.title,
+        [RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE]: "button",
         ...link.attrs
     }, link.text);
 }
@@ -469,7 +483,10 @@ function RankRecommendationButtonPrimitive(props: {
 }
 
 function renderCurvePopover(items: readonly { label: string; value: string }[]): React.ReactElement {
-    return React.createElement("span", { [RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE]: "" },
+    return React.createElement("span", {
+        [RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE]: "",
+        [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "popover"
+    },
         React.createElement(Popover.Root, { modal: false },
             React.createElement(Popover.Trigger, { asChild: true },
                 React.createElement("button", {
@@ -516,6 +533,7 @@ function InlineRankChange(props: { inlineRankChange: RankRecommendationReactRowS
     return React.createElement("span", { [RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE]: "" },
         React.createElement("select", {
             [RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE]: "",
+            [RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE]: "select",
             title: "この候補行で反映候補にするrankを選ぶ",
             disabled: inlineRankChange.disabled,
             value: selectedCode,
@@ -542,7 +560,8 @@ function renderPendingDecision(pendingDecision: RankRecommendationReactRowSnapsh
 
     return React.createElement("div", {
         [RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE]: "",
-        [RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE]: pendingDecision.key
+        [RANK_RECOMMENDATION_PENDING_DECISION_KEY_ATTRIBUTE]: pendingDecision.key,
+        [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "pending-notice"
     }, React.createElement(RankRecommendationPendingNotice, {
         label: pendingDecision.label,
         cancelButton: pendingDecision.cancelButton
@@ -556,7 +575,8 @@ function renderPendingRankChange(pendingRankChange: RankRecommendationReactRowSn
 
     return React.createElement("div", {
         [RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE]: "",
-        [RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE]: pendingRankChange.key
+        [RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE]: pendingRankChange.key,
+        [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "pending-notice"
     }, React.createElement(RankRecommendationPendingNotice, {
         label: pendingRankChange.label,
         cancelButton: pendingRankChange.cancelButton
@@ -580,6 +600,7 @@ function renderRankChangeResult(result: RankRecommendationReactRowSnapshot["rank
 
     return React.createElement("div", {
         [RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE]: result.status,
+        [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "status-message",
         title: result.title
     }, result.message);
 }

@@ -6197,7 +6197,7 @@
 ### RAU-UX-59 docs-only push で Publish Userscript が連鎖しない条件を設計または実装する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に `.github/workflows/publish-userscript.yml` へ path filter を追加し、userscript 実行版または配布検証に影響するファイルの push だけが Publish Userscript workflow を起動する契約にした。`docs/**`、`README.md`、`AGENTS.md` だけの push は workflow 起動対象外である。
 - 目的:
   - 2026-05-31 の Vite 正規 build 切替 closeout では、docs-only commit が `main` へ push された後にも GitHub Actions の Publish Userscript が走り、GitHub Pages 公開版の `@version` が `0.1.0.354` から `0.1.0.355` へ進んだ。
   - その結果、Tampermonkey dashboard をもう一度更新し、配布版 smoke を取り直す必要が発生した。
@@ -6223,7 +6223,7 @@
 ### RAU-UX-60 `smoke:distribution` の Tampermonkey 更新直後待機を固定秒数から状態待ちへ変える
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に `smoke:distribution` の `--seconds` を固定 sleep ではなく最大状態待ちとして扱うようにし、mode 別の主要 selector と UI component marker が揃うまで待つようにした。
 - 目的:
   - 2026-05-31 の Tampermonkey 更新直後確認では、15 秒待機の top smoke が RAU userscript root 0 件で expected fail になり、30 秒待機では pass した。
   - 固定秒数だけで待つと、Revenue Assistant の初回 reload、Tampermonkey の更新反映、React mount のタイミングにより、実装不具合ではない失敗と実装不具合を区別しにくい。
@@ -6249,7 +6249,7 @@
 ### RAU-UX-61 Vite / Radix 導入後の React Doctor 残診断を再分類する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に `npm run react:doctor -- --verbose --diff false` の残診断を再分類した。残件は performance warning 40 件、dead code 19 件、server 3 件であり、この bundle では runtime bug として扱う修正対象は追加しない。
 - 目的:
   - 2026-05-31 の Vite / Radix 導入後、`npm run react:doctor -- --diff false` は pass したが 62 issues を報告した。
   - React Doctor の残診断には、runtime bug 候補、performance 最適化候補、userscript build や generated output に対する誤検知、Vite fixture / Radix 導入後に新しく見えるようになった診断が混ざる可能性がある。
@@ -6274,7 +6274,7 @@
 ### RAU-UX-62 Vite / Radix 後の bundle size と dependency 予算を決める
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に bundle size 測定、Vite candidate build 比較、追加 dependency 採用条件を `docs/spec_000_overview.md`、`docs/spec_003_rank_recommendation_signal.md`、`docs/context/DECISIONS.md` に記録した。この bundle では新しい package を追加しない。
 - 目的:
   - Vite 正規 build と Radix Popover 導入後、`dist/revenue-assistant-userscript.user.js` の size、dependency 数、lockfile の optional dependency が増えた。
   - 今後 UI ライブラリや Vite plugin を増やす前に、userscript として許容する bundle size、dependency 追加時の確認項目、rollback 条件を決める。
@@ -6300,7 +6300,7 @@
 ### RAU-UX-63 UI ライブラリ全面移行の対象と非対象を再定義する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に UI ライブラリ全面移行の対象をトップ料金調整候補 list、行内操作、tooltip / popover、select / segmented control、pending / confirmation / error、fixture gallery に限定し、Revenue Assistant 標準 UI、write API、未調査 API、Tampermonkey metadata は対象外として正本化した。
 - 目的:
   - 利用者が UI ライブラリを導入して全面的に進化させたいと明示したため、既存の Radix Popover 1 component 導入を、料金調整候補 surface 全体の段階移行計画へ拡張する。
   - 「全面移行」を全 DOM や全画面の一括置換として扱わず、userscript の責務、Revenue Assistant 標準 UI との共存、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を維持したまま、どの surface から UI library component へ置き換えるかを決める。
@@ -6325,7 +6325,7 @@
 ### RAU-UX-64 UI ライブラリ追加 package の採用条件を固定する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に追加 package の採用条件を固定した。追加する場合は component 名、代替できる既存実装、exact version、lockfile 差分、install / postinstall script、license、repository、dependencies、bundle size 差分、rollback 条件、Tampermonkey 配布版 smoke を確認する。
 - 目的:
   - Radix Popover 以外の UI library package を増やす前に、候補 package、採用理由、bundle size 増加、version pin、lockfile 差分、install script、license、供給網 risk、rollback 条件を同じ形式で判断できるようにする。
   - `RAU-UX-62` の bundle size と dependency 予算を、具体的な追加 package 採用判断へ接続する。
@@ -6350,7 +6350,7 @@
 ### RAU-UX-65 Vite fixture を UI regression gallery にする
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に Vite fixture を dev-only UI regression gallery へ拡張し、empty、loading、確認前、確認後、decision pending、rank change pending、rank change error、long room name、preview open などを合成 data で一覧確認できるようにした。
 - 目的:
   - UI library component を実画面へつなぐ前に、主要状態を fixture で一覧確認できる場所を作る。
   - 候補 row、popover、select、pending、error、空状態、loading、確認前、確認後を同じ画面で見比べ、見た目変更と runtime API 変更を分離する。
@@ -6375,7 +6375,7 @@
 ### RAU-UX-66 design token を userscript root 配下だけに導入する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に `data-ra-rank-recommendation-list` 配下へ CSS custom properties と component class を追加し、Revenue Assistant 本体の標準 UI へ global style を当てない範囲で focus、disabled、pending、warning、error、success、neutral の見た目を揃えた。
 - 目的:
   - UI library component と既存 React surface の色、余白、border、focus ring、文字サイズを揃える。
   - Revenue Assistant 標準 UI へ global style を漏らさず、RAU userscript root 配下だけで design token を使える状態にする。
@@ -6400,7 +6400,7 @@
 ### RAU-UX-67 Button / Tooltip / Popover の操作感を統一する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に Button、Tooltip、Popover、row actions の marker と style を整理した。既存の `曲線` preview、`rank調整` preview、booking curve 要点 popover、現ランク tooltip、pending cancel の selector と表示内容は維持した。
 - 目的:
   - 料金調整候補 list 内の `曲線`、`rank調整`、`様子見`、`対応不要`、取消、booking curve 要点 popover、現ランク tooltip などの操作部品を、見た目、focus、keyboard、disabled、pending 表示の観点で揃える。
   - UI library component を増やす場合でも、Revenue Assistant 標準 UI を押しのけず、行内操作の誤操作を増やさない。
@@ -6425,7 +6425,7 @@
 ### RAU-UX-68 Select / Segmented Control を整理する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に対象月 select、表示 mode、表示上限、rank order control を control group として整理し、現在値と操作対象が区別できるようにした。filter の意味、候補生成、表示上限 reset、preview close の契約は変更しない。
 - 目的:
   - 対象月 select、表示 mode、表示上限、rank order control など、候補 list 上部の操作部品を読み取りやすく、誤操作しにくい構造にする。
   - UI library を使う場合も、既存の filter 順序、候補生成、表示上限 reset、preview close の契約を維持する。
@@ -6450,7 +6450,7 @@
 ### RAU-UX-69 pending / confirmation / error 表示を統一する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に pending、confirmation、warning、error、empty の表示を RAU root 配下の token と component class で揃えた。5 秒 pending、取消、HTTP status 区別、rank change POST endpoint、API retry 仕様は変更しない。
 - 目的:
   - `様子見`、`対応不要`、rank 変更、API 取得失敗、current settings 取得失敗、配布版 smoke で見える前提崩れなどの状態表示を、利用者が次に何をすればよいか分かる形へ揃える。
   - pending、confirmation、error を同じ色と文言規則で扱い、成功、警告、失敗、取消可能状態を混同しない。
@@ -6475,7 +6475,7 @@
 ### RAU-UX-70 料金調整候補 row の情報設計を刷新する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に料金調整候補 row を 9 列へ整理し、比較情報、判断根拠、操作 button を分けて読める構造へ変更した。金額、差額、percent、forecast 数値、sales / ADR 数値、競合価格の金額は top list に直接表示しない契約を維持した。
 - 目的:
   - 現在の候補 row は、優先度、確度、宿泊日、部屋タイプ、現ランク、推奨方向、主要根拠、状態、操作が増えているため、UI library と design token を使って、比較、判断、操作の順に読みやすい構造へ整理する。
   - 表示密度を保ちながら、金額、比率、forecast 数値、sales / ADR 数値を直接表示しない既存契約を維持する。
@@ -6500,7 +6500,7 @@
 ### RAU-UX-71 配布版 smoke に UI library component の検査を追加する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に配布版 top smoke へ UI component marker の検査を追加した。既存の RAU root、React marker、主要 selector、console / page error、監視対象 write API POST 件数の fail 条件は維持した。
 - 目的:
   - UI library component を production surface へ増やした後、配布版 `dist/*.user.js`、GitHub Pages published version、Tampermonkey installed version、Revenue Assistant 実画面で主要 component が実際に mount しているかを同じ手順で確認できるようにする。
   - 見た目変更を行ったのに配布版 smoke が selector だけを見て通過する状態を減らす。
@@ -6525,7 +6525,7 @@
 ### RAU-UX-72 実画面で top list UI overhaul を配布確認する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に通常 Chrome と Tampermonkey 配布版での top list UI overhaul 確認をこの bundle の closeout 対象にした。GitHub Pages published version と Tampermonkey installed version の一致、top smoke、監視対象 write API POST 0 件、console / page error 0 件は最終 verify に記録する。
 - 目的:
   - UI library component、design token、control 整理、pending / error 表示、候補 row 情報設計の変更を、fixture だけでなく通常 Chrome の Revenue Assistant 実ログイン状態と Tampermonkey 配布版で確認する。
   - 実画面で、候補 row 10 件、popover / tooltip、preview、pending cancel、監視対象 write API POST 0 件、console / page error 0 件が維持されていることを確認する。
@@ -6551,32 +6551,24 @@
 
 Now:
 
-- `RAU-UX-59` docs-only push で Publish Userscript が連鎖しない条件を設計または実装する
+- なし
 
 Next:
 
-- `RAU-UX-60` `smoke:distribution` の Tampermonkey 更新直後待機を固定秒数から状態待ちへ変える
-- `RAU-UX-63` UI ライブラリ全面移行の対象と非対象を再定義する
+- なし
 
 After Next:
 
-- `RAU-UX-61` Vite / Radix 導入後の React Doctor 残診断を再分類する
-- `RAU-UX-62` Vite / Radix 後の bundle size と dependency 予算を決める
-- `RAU-UX-64` UI ライブラリ追加 package の採用条件を固定する
-- `RAU-UX-65` Vite fixture を UI regression gallery にする
+- なし
 
 Later:
 
-- `RAU-UX-66` design token を userscript root 配下だけに導入する
-- `RAU-UX-67` Button / Tooltip / Popover の操作感を統一する
-- `RAU-UX-68` Select / Segmented Control を整理する
-- `RAU-UX-69` pending / confirmation / error 表示を統一する
-- `RAU-UX-70` 料金調整候補 row の情報設計を刷新する
-- `RAU-UX-71` 配布版 smoke に UI library component の検査を追加する
-- `RAU-UX-72` 実画面で top list UI overhaul を配布確認する
+- なし
 
 統合判断:
 
+- 2026-06-01 に、未着手だった `RAU-UX-59` から `RAU-UX-72` を完了した。Publish Userscript workflow は path filter で docs-only push を起動対象外にし、`smoke:distribution` は状態待ちと UI component marker 検査を持つようにした。React Doctor の残診断は performance、dead code、server に分類し、今回の bundle では runtime bug として扱う追加修正は行わない。bundle size と dependency 予算は、新しい package を追加しない判断と、追加する場合の確認項目として正本化した。Vite fixture は dev-only UI regression gallery になり、runtime のトップ料金調整候補 list は RAU root 限定 design token、component marker、9 列 row layout、responsive block layout、統一された pending / warning / error 表示を持つ。
+- 次に task 化すべき候補は、配布後の実利用で分かる UI 改善をすぐ追加実装へ進めるのではなく、候補を分けて判断する。候補は、実画面での視認性観察を数日分ためる task、React Doctor の performance family を 1 種類だけ処理する task、UI marker smoke を GitHub Actions でどう扱うかを検討する task、top list の数値非表示契約を維持したまま判断補助を増やせるかを調査する task である。
 - 2026-06-01 に、UI ライブラリを導入して全面的に進化させたいという利用者方針を、`RAU-UX-63` から `RAU-UX-72` として task 化した。新規 task は、`RAU-UX-59` と `RAU-UX-60` の publish / smoke 安定化を先に進めた後、`RAU-UX-63` で対象と非対象を再定義し、`RAU-UX-62` と `RAU-UX-64` で bundle size と追加 package 採用条件を固定し、`RAU-UX-65` で dev-only regression gallery を用意してから runtime UI へ進める順序にした。`RAU-UX-66` から `RAU-UX-70` は実装面の段階移行であり、design token、操作部品、control、状態表示、候補 row 情報設計の順に分ける。`RAU-UX-71` と `RAU-UX-72` は、配布版 smoke と通常 Chrome / Tampermonkey 実画面確認を、UI overhaul の完了条件として独立させる。
 - `RAU-UX-63` から `RAU-UX-72` は既存の `RAU-UX-59` から `RAU-UX-62` を置き換えない。docs-only push による Publish Userscript 連鎖、Tampermonkey 更新直後の smoke 不安定、React Doctor 残診断、bundle size / dependency 予算は、UI ライブラリ全面移行を安全に進める前提条件として扱う。
 - 2026-05-31 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-59` は docs-only closeout commit 後に Publish Userscript が走り、公開版 version と Tampermonkey installed version の再同期が必要になった実害を減らすため Now とする。`RAU-UX-60` は Tampermonkey 更新直後の smoke が固定 15 秒では RAU root 0 件になり、30 秒では pass したため、次の配布確認を安定させる検証補助として Next とする。`RAU-UX-61` は React Doctor 残 62 件の分類 task であり、runtime bug と保守改善を分ける必要があるため After Next とする。`RAU-UX-62` は Vite / Radix 後の size と dependency 追加判断の基準作りであり、直近 runtime bug ではないため Later とする。

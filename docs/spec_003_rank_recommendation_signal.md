@@ -653,6 +653,18 @@ UI primitive 導入方針:
 - Radix Popover は Portal を使うため、CSS は content 自体の data attribute へ当てる。Revenue Assistant 本体 DOM へ global theme、CSS reset、design token を注入しない。
 - write API に近い操作へ primitive を適用する場合は、送信条件、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、反映確認、同一 `stayDate x roomGroup` pending block を維持する。
 
+2026-06-01 UI overhaul 契約:
+
+- トップ料金調整候補 list の design token は、`data-ra-rank-recommendation-list` 配下の CSS custom properties と component class に限定する。Revenue Assistant 本体の `body`、標準 button、標準 select、標準 table、標準 calendar へ global style、CSS reset、theme class を当てない。
+- `data-ra-rank-recommendation-ui-component` は、配布版 smoke と fixture 確認で UI 実装漏れを検出するための marker として使う。対象は summary、control group、table、row layout、row actions、popover、tooltip、pending notice、status message である。既存の `data-ra-rank-recommendation-react-island`、row、button action、preview host selector は維持する。
+- 候補 row は、desktop 幅では `優先度`、`判断`、`宿泊日`、`部屋タイプ`、`現ランク`、`推奨`、`根拠`、`状態`、`操作` の 9 列を基本にする。従来の `宿泊まで`、`データ`、`前回変更` は一覧上の独立列から外すが、title、tooltip、meta text として保持する。
+- narrow 幅では、row を block layout にし、各 cell の `data-ra-rank-recommendation-cell-role` から表示 label を出す。目的は、長い roomGroup 名、pending、error、preview open の状態で text overlap と操作不能を避けることである。
+- Select と Segmented Control は、既存 native select と自前 control primitive を使う。新しい UI library package はこの契約では追加しない。追加 package が必要になった場合は、用途、置き換える UI、採用理由、代替案、exact version、lockfile 差分、license、repository、dependencies、install / postinstall script、bundle size 差分、rollback 条件、Tampermonkey 配布版 smoke を同じ判断単位で確認する。
+- pending、confirmation、warning、error、empty の表示は、RAU root 配下の token と component class で揃える。ただし、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、HTTP 401 / 403 / その他 status の区別は変更しない。
+- top list 本文には、金額、差額、percent、forecast 数値、sales / ADR 数値、競合価格の金額を直接表示しない。これらを表示候補に戻す場合は、入力データ、比較対象、判断に使う条件、誤読を避ける表示単位を別 task で先に決める。
+- Vite fixture は dev-only UI regression gallery として、empty、loading、確認前、確認後、decision pending、rank change pending、rank change error、long room name、preview open などの合成状態を並べて確認する。実データ、認証情報、API response body、価格や在庫の非公開データは fixture へ保存しない。
+- 配布版 smoke の top mode は、RAU root、React marker、候補 row、主要 control、UI component marker、console / page error 0 件、監視対象 write API POST 0 件を確認する。UI marker が不足する場合は、Tampermonkey 未更新、userscript 未発火、React hydration 未完了、component 実装漏れを分けて確認する。
+
 UI ライブラリ候補の評価基準:
 
 - bundle size と tree-shaking 可能性。Tampermonkey userscript の配布 bundle に入るため、必要 component だけを取り込めることを優先する。

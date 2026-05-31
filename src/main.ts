@@ -185,6 +185,8 @@ const RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE = "data-ra-rank-recommend
 const RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE = "data-ra-rank-recommendation-inline-rank-select";
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
 const RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE = "data-ra-rank-recommendation-button-action";
+const RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE = "data-ra-rank-recommendation-ui-component";
+const RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE = "data-ra-rank-recommendation-cell-role";
 const RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE = "data-ra-rank-recommendation-stay-date";
 const RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE = "data-ra-rank-recommendation-as-of-date";
 const RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE = "data-ra-rank-recommendation-room-group-id";
@@ -8739,7 +8741,7 @@ function buildRankRecommendationListViewModel(
     }
 ): RankRecommendationListViewModel {
     return {
-        columns: ["優先度", "確度", "宿泊日", "宿泊まで", "データ", "前回変更", "部屋タイプ", "現ランク", "推奨方向", "主要根拠", "状態", "操作"],
+        columns: ["優先度", "判断", "宿泊日", "部屋タイプ", "現ランク", "推奨", "根拠", "状態", "操作"],
         rows: candidates.map((candidate) => {
             const displayInfoKey = buildRankRecommendationCandidateDisplayInfoKey(candidate);
             const rankChangeProposal = buildRankRecommendationRankChangeProposal({
@@ -8943,37 +8945,45 @@ function buildRankRecommendationReactCells(
     cautionText: string
 ): RankRecommendationReactCellSnapshot[] {
     return [
-        { kind: "text", value: formatRankRecommendationPriority(candidate.priority) },
+        { kind: "text", value: formatRankRecommendationPriority(candidate.priority), role: "priority" },
         {
             kind: "text",
             value: formatRankRecommendationConfidenceCellText(candidate, cautionText),
-            title: formatRankRecommendationConfidenceTitle(candidate)
-        },
-        { kind: "text", value: formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate) },
-        { kind: "text", value: formatRankRecommendationLeadDays(candidate) },
-        {
-            kind: "text",
-            value: formatRankRecommendationRawSourceStatus(getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
-                ? undefined
-                : new Map([[buildRankRecommendationCandidateDisplayInfoKey(candidate), curvePreviewInfo]]))),
-            title: formatRankRecommendationRawSourceStatusTitle(candidate, curvePreviewInfo),
-            attribute: RANK_RECOMMENDATION_RAW_SOURCE_STATUS_ATTRIBUTE
+            title: [
+                formatRankRecommendationConfidenceTitle(candidate),
+                `宿泊まで: ${formatRankRecommendationLeadDays(candidate)}`,
+                `データ: ${formatRankRecommendationRawSourceStatus(getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
+                    ? undefined
+                    : new Map([[buildRankRecommendationCandidateDisplayInfoKey(candidate), curvePreviewInfo]])))}`,
+                `前回変更: ${formatRankRecommendationLatestChangeCellText(displayInfo)}`
+            ].join("\n"),
+            role: "decision-summary"
         },
         {
             kind: "text",
-            value: formatRankRecommendationLatestChangeCellText(displayInfo),
-            title: formatRankRecommendationLatestChangeTitle(displayInfo),
-            attribute: RANK_RECOMMENDATION_HISTORY_ATTRIBUTE
+            value: formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate),
+            title: `宿泊まで: ${formatRankRecommendationLeadDays(candidate)}`,
+            role: "stay-date"
         },
-        { kind: "text", value: candidate.roomGroupName },
+        {
+            kind: "text",
+            value: candidate.roomGroupName,
+            title: [
+                candidate.roomGroupName,
+                `データ: ${formatRankRecommendationRawSourceStatusTitle(candidate, curvePreviewInfo)}`,
+                `前回変更: ${formatRankRecommendationLatestChangeTitle(displayInfo)}`
+            ].join("\n"),
+            role: "room-group"
+        },
         buildRankRecommendationReactRankGapCell(candidate, displayInfo?.rankGapContext ?? null),
-        { kind: "text", value: actionLabel },
+        { kind: "text", value: actionLabel, role: "recommended-action" },
         {
             kind: "text",
             value: reasonText,
-            title: formatRankRecommendationReasonTitle(candidate)
+            title: formatRankRecommendationReasonTitle(candidate),
+            role: "reason"
         },
-        { kind: "text", value: formatRankRecommendationStatus(candidate.status) }
+        { kind: "text", value: formatRankRecommendationStatus(candidate.status), role: "status" }
     ];
 }
 
@@ -8986,6 +8996,7 @@ function buildRankRecommendationReactRankGapCell(
             kind: "rankGap",
             currentRankText: candidate.currentRankName ?? "-",
             title: "同一宿泊日の全部屋タイプの現ランクを取得できませんでした",
+            role: "current-rank",
             entries: []
         };
     }
@@ -8994,6 +9005,7 @@ function buildRankRecommendationReactRankGapCell(
         kind: "rankGap",
         currentRankText: candidate.currentRankName ?? "-",
         title: "同一宿泊日の全部屋タイプの現ランクを表示",
+        role: "current-rank",
         entries: context.entries.map((entry) => ({
             values: [
                 entry.roomGroupName,
@@ -16941,13 +16953,28 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] {
+            --ra-ui-bg: #f7f9fc;
+            --ra-ui-surface: #ffffff;
+            --ra-ui-surface-muted: #eef3f8;
+            --ra-ui-border: #cdd8e6;
+            --ra-ui-border-strong: #aabbd0;
+            --ra-ui-text: #243245;
+            --ra-ui-muted: #5b6b7d;
+            --ra-ui-accent: #315b8d;
+            --ra-ui-focus: #2f6fbb;
+            --ra-ui-success-bg: #ecf8ef;
+            --ra-ui-success-text: #17663a;
+            --ra-ui-warning-bg: #fff7df;
+            --ra-ui-warning-text: #5c4300;
+            --ra-ui-error-bg: #fff0f0;
+            --ra-ui-error-text: #8b2f2f;
             margin: 12px 0 14px;
             padding: 12px;
-            border: 1px solid #cfd8e3;
+            border: 1px solid var(--ra-ui-border);
             border-radius: 6px;
-            background: #f8fafc;
+            background: var(--ra-ui-bg);
             box-shadow: 0 1px 3px rgba(24, 39, 75, 0.08);
-            color: #243245;
+            color: var(--ra-ui-text);
             font-family: inherit;
         }
 
@@ -16966,14 +16993,22 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.4;
         }
 
+        [${RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE}="control-group"] {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 8px 12px;
+            margin: 0 0 10px;
+        }
+
         [${RANK_RECOMMENDATION_TARGET_MONTH_CONTROL_ATTRIBUTE}],
         [${RANK_RECOMMENDATION_VIEW_MODE_CONTROL_ATTRIBUTE}] {
             display: flex;
             align-items: center;
             gap: 6px;
             flex-wrap: wrap;
-            margin: 0 0 8px;
-            color: #5b6b7d;
+            margin: 0;
+            color: var(--ra-ui-muted);
             font-size: 12px;
             font-weight: 800;
         }
@@ -16981,10 +17016,10 @@ function ensureGroupRoomStyles(): void {
         [${RANK_RECOMMENDATION_TARGET_MONTH_CONTROL_ATTRIBUTE}] select {
             min-width: 150px;
             padding: 4px 8px;
-            border: 1px solid #b7c4d3;
+            border: 1px solid var(--ra-ui-border-strong);
             border-radius: 5px;
-            background: #ffffff;
-            color: #243245;
+            background: var(--ra-ui-surface);
+            color: var(--ra-ui-text);
             font: inherit;
             font-weight: 700;
         }
@@ -16994,7 +17029,7 @@ function ensureGroupRoomStyles(): void {
             gap: 6px;
             flex-wrap: wrap;
             justify-content: flex-start;
-            margin: 0 0 8px;
+            margin: 0;
         }
 
         [${RANK_RECOMMENDATION_ORDER_CONTROL_ATTRIBUTE}] {
@@ -17004,7 +17039,7 @@ function ensureGroupRoomStyles(): void {
             padding: 8px 10px;
             border: 1px solid #d9e1ea;
             border-radius: 5px;
-            background: #ffffff;
+            background: var(--ra-ui-surface);
             font-size: 12px;
             line-height: 1.45;
         }
@@ -17058,24 +17093,41 @@ function ensureGroupRoomStyles(): void {
 
         [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] th,
         [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] td {
-            padding: 7px 8px;
+            padding: 8px 9px;
             border-top: 1px solid #e1e7ef;
             text-align: left;
-            vertical-align: middle;
-            white-space: nowrap;
+            vertical-align: top;
+            white-space: normal;
         }
 
         [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] th {
             color: #50627a;
             font-weight: 800;
+            white-space: nowrap;
         }
 
-        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="high"] td:first-child {
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"],
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="decision-summary"],
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="stay-date"],
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="current-rank"],
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"],
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="status"] {
+            white-space: nowrap;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="room-group"],
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="reason"] {
+            min-width: 120px;
+            max-width: 240px;
+            overflow-wrap: anywhere;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="high"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"] {
             color: #b54646;
             font-weight: 800;
         }
 
-        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="medium"] td:first-child {
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="medium"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"] {
             color: #91620d;
             font-weight: 800;
         }
@@ -17162,12 +17214,12 @@ function ensureGroupRoomStyles(): void {
             font-weight: 800;
         }
 
-        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="raise_watch"] td:nth-child(8) {
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="raise_watch"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] {
             color: #0c7a43;
             font-weight: 800;
         }
 
-        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="lower_watch"] td:nth-child(8) {
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="lower_watch"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] {
             color: #b54646;
             font-weight: 800;
         }
@@ -17345,13 +17397,14 @@ function ensureGroupRoomStyles(): void {
         [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
+            justify-content: center;
             min-height: 26px;
-            margin-right: 6px;
+            margin: 0 6px 6px 0;
             padding: 4px 8px;
-            border: 1px solid #b7c4d3;
+            border: 1px solid var(--ra-ui-border-strong);
             border-radius: 5px;
-            background: #ffffff;
-            color: #243245;
+            background: var(--ra-ui-surface);
+            color: var(--ra-ui-text);
             font-size: 12px;
             font-weight: 800;
             line-height: 1.2;
@@ -17365,7 +17418,7 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}]:focus-visible {
-            outline: 2px solid #2f6fbb;
+            outline: 2px solid var(--ra-ui-focus);
             outline-offset: 2px;
         }
 
@@ -17384,13 +17437,14 @@ function ensureGroupRoomStyles(): void {
         [${RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
+            width: fit-content;
             gap: 6px;
             margin-top: 6px;
             padding: 4px 6px;
             border: 1px solid #d8b247;
             border-radius: 5px;
-            background: #fff7df;
-            color: #5c4300;
+            background: var(--ra-ui-warning-bg);
+            color: var(--ra-ui-warning-text);
             font-size: 11px;
             font-weight: 800;
             line-height: 1.3;
@@ -17400,13 +17454,14 @@ function ensureGroupRoomStyles(): void {
         [${RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
+            width: fit-content;
             gap: 6px;
             margin-top: 6px;
             padding: 4px 6px;
             border: 1px solid #d8b247;
             border-radius: 5px;
-            background: #fff7df;
-            color: #5c4300;
+            background: var(--ra-ui-warning-bg);
+            color: var(--ra-ui-warning-text);
             font-size: 11px;
             font-weight: 800;
             line-height: 1.3;
@@ -17438,8 +17493,8 @@ function ensureGroupRoomStyles(): void {
 
         [${RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE}="success"] {
             border: 1px solid #9bc7aa;
-            background: #ecf8ef;
-            color: #17663a;
+            background: var(--ra-ui-success-bg);
+            color: var(--ra-ui-success-text);
         }
 
         [${RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE}="confirming"] {
@@ -17451,8 +17506,8 @@ function ensureGroupRoomStyles(): void {
         [${RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE}="blocked"],
         [${RANK_RECOMMENDATION_RANK_CHANGE_STATUS_ATTRIBUTE}="failed"] {
             border: 1px solid #e1b1b1;
-            background: #fff0f0;
-            color: #8b2f2f;
+            background: var(--ra-ui-error-bg);
+            color: var(--ra-ui-error-text);
         }
 
         [${RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE}] {
@@ -17510,6 +17565,74 @@ function ensureGroupRoomStyles(): void {
 
             [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] {
                 overflow-x: auto;
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] table,
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] thead,
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] tbody,
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] tr,
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] th,
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] td {
+                display: block;
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] thead {
+                display: none;
+            }
+
+            [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] {
+                padding: 8px 0;
+                border-top: 1px solid #e1e7ef;
+            }
+
+            [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] td {
+                display: grid;
+                grid-template-columns: minmax(86px, max-content) minmax(0, 1fr);
+                gap: 6px;
+                padding: 4px 0;
+                border-top: 0;
+            }
+
+            [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] td::before {
+                color: var(--ra-ui-muted);
+                font-weight: 800;
+                content: attr(data-ra-rank-recommendation-cell-role);
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"]::before {
+                content: "優先度";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="decision-summary"]::before {
+                content: "判断";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="stay-date"]::before {
+                content: "宿泊日";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="room-group"]::before {
+                content: "部屋タイプ";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="current-rank"]::before {
+                content: "現ランク";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"]::before {
+                content: "推奨";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="reason"]::before {
+                content: "根拠";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="status"]::before {
+                content: "状態";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="actions"]::before {
+                content: "操作";
             }
         }
 

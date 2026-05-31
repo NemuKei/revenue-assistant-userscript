@@ -142,9 +142,12 @@ async function runChromeSmoke(options) {
             await page.reload({ waitUntil: "domcontentloaded" });
         }
         await prepareMode(page, options.mode);
-        await page.waitForTimeout(options.seconds * 1000);
-
-        const modeMetrics = await collectModeMetrics(page, options.mode);
+        const waitResult = await waitForModeReady(page, options.mode, options.seconds);
+        const modeMetrics = {
+            ...waitResult.metrics,
+            "state wait satisfied": waitResult.ready ? "yes" : "no",
+            "state wait elapsed ms": waitResult.elapsedMs
+        };
 
         return {
             url: page.url(),
@@ -241,7 +244,11 @@ function assessModeMetrics(mode, metrics, options) {
             yesFailure("rank order control", metrics["rank order control"]),
             minCountFailure("curve preview buttons", metrics["curve preview buttons"], 1),
             minCountFailure("rank change buttons", metrics["rank change buttons"], 1),
-            minCountFailure("decision buttons", metrics["decision buttons"], 1)
+            minCountFailure("decision buttons", metrics["decision buttons"], 1),
+            minCountFailure("UI component markers", metrics["UI component markers"], 1),
+            minCountFailure("UI control markers", metrics["UI control markers"], 1),
+            minCountFailure("UI row layout markers", metrics["UI row layout markers"], 1),
+            minCountFailure("UI popover markers", metrics["UI popover markers"], 1)
         ].filter((failure) => failure !== null);
     }
     if (mode === "price-trends") {
@@ -329,6 +336,25 @@ async function prepareMode(page, mode) {
     }
 }
 
+async function waitForModeReady(page, mode, seconds) {
+    const startedAt = Date.now();
+    const timeoutAt = startedAt + seconds * 1000;
+    let metrics = await collectModeMetrics(page, mode);
+    while (!isModeReady(mode, metrics) && Date.now() < timeoutAt) {
+        await page.waitForTimeout(1000);
+        metrics = await collectModeMetrics(page, mode);
+    }
+    return {
+        ready: isModeReady(mode, metrics),
+        elapsedMs: Date.now() - startedAt,
+        metrics
+    };
+}
+
+function isModeReady(mode, metrics) {
+    return assessModeMetrics(mode, metrics, { allowEmptyPriceTrends: false }).length === 0;
+}
+
 async function collectModeMetrics(page, mode) {
     return await page.evaluate((selectedMode) => {
         const doc = globalThis.document;
@@ -352,7 +378,12 @@ async function collectModeMetrics(page, mode) {
                 "rank order control": doc.querySelector("[data-ra-rank-recommendation-order-control]") !== null ? "yes" : "no",
                 "curve preview buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"curve-preview-toggle\"]").length,
                 "rank change buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"]").length,
-                "decision buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"snooze\"], [data-ra-rank-recommendation-button-action=\"dismiss\"]").length
+                "decision buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"snooze\"], [data-ra-rank-recommendation-button-action=\"dismiss\"]").length,
+                "UI component markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component]").length,
+                "UI control markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"control-group\"]").length,
+                "UI row layout markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"row-layout\"]").length,
+                "UI popover markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"popover\"]").length,
+                "UI pending markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"pending-notice\"]").length
             };
         }
         if (selectedMode === "price-trends") {

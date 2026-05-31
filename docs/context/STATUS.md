@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 主対象: 2026-06-01 に、UI ライブラリを導入して全面的に進化させたいという利用者方針を `RAU-UX-63` から `RAU-UX-72` として task 化した。`RAU-UX-63` は UI ライブラリ全面移行の対象と非対象を再定義する task、`RAU-UX-64` は追加 package の採用条件を固定する task、`RAU-UX-65` は Vite fixture を UI regression gallery にする task である。`RAU-UX-66` から `RAU-UX-70` は design token、Button / Tooltip / Popover、Select / Segmented Control、pending / confirmation / error、料金調整候補 row の情報設計を段階的に刷新する task である。`RAU-UX-71` は配布版 smoke に UI library component の検査を追加する task、`RAU-UX-72` は通常 Chrome の Revenue Assistant 実ログイン状態と Tampermonkey 配布版で top list UI overhaul を確認する task である。既存の `RAU-UX-59` から `RAU-UX-62` は、publish / smoke / React Doctor / bundle size と dependency 予算の前提整備として残す。Remaining Task Triage は Now `RAU-UX-59`、Next `RAU-UX-60` と `RAU-UX-63`、After Next `RAU-UX-61`、`RAU-UX-62`、`RAU-UX-64`、`RAU-UX-65`、Later `RAU-UX-66` から `RAU-UX-72` である。
+- 主対象: 2026-06-01 に、未着手だった `RAU-UX-59` から `RAU-UX-72` を完了した。Publish Userscript workflow は path filter により docs-only push を起動対象外にした。`smoke:distribution` は固定秒数 sleep ではなく、RAU root、React marker、mode 別主要 selector、UI component marker が揃うまでの状態待ちへ変更した。React Doctor 残診断は performance warning 40 件、dead code 19 件、server 3 件に分類し、今回の bundle では runtime bug として扱う追加修正を行わない判断にした。bundle size と dependency 予算は、新しい package を追加しない判断と、追加する場合の確認項目として正本化した。Vite fixture は dev-only UI regression gallery へ拡張し、トップ料金調整候補 list は RAU root 限定 design token、UI component marker、9 列 row layout、responsive block layout、統一された pending / warning / error 表示を持つ。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 主対象: 2026-05-31 に、完了報告で推奨した 4 件を `RAU-UX-59` から `RAU-UX-62` として task 化した。`RAU-UX-59` は docs-only closeout commit 後に Publish Userscript が走り、公開版 version と Tampermonkey installed version の再同期が必要になる状態を減らす task である。`RAU-UX-60` は Tampermonkey 更新直後の `smoke:distribution` を固定秒数待ちから状態待ちへ変える task である。`RAU-UX-61` は Vite / Radix 導入後の React Doctor 残診断 62 件を再分類する task である。`RAU-UX-62` は Vite / Radix 後の bundle size と dependency 追加判断の予算を決める task である。
 - 主対象: 2026-05-31 に、未着手だった `RAU-UX-48` から `RAU-UX-58` を完了した。Vite は正規配布 build、dev-only fixture preview、candidate build に導入した。UI ライブラリは Radix UI `@radix-ui/react-popover@1.1.15` の Popover 1 component だけをトップ料金調整候補 list の booking curve 要点 popover へ接続した。旧 esbuild build は `npm run build:legacy` として rollback 候補に残した。GitHub Actions の Publish Userscript は docs-only closeout commit 後の run `26714363970` で success になり、GitHub Pages 公開版と Tampermonkey installed version は `0.1.0.355` に揃えた。完了時点の Remaining Task Triage は Now / Next / After Next / Later すべて空であった。
 - 主対象: 2026-05-31 に、未着手だった `RAU-UX-45`、`RAU-UX-46`、`RAU-UX-47` を完了した。Remaining Task Triage は Now / Next / After Next / Later すべて空である。`RAU-UX-45` と `RAU-UX-46` では、配布版 smoke の前提診断として local version、published version、installed version または `manual-check-required`、Revenue Assistant URL、login form candidate、calendar candidate、RAU userscript root count、React marker、preflight message を分けて出すようにした。`RAU-UX-47` では React Doctor の `js-index-maps` family だけを処理し、診断件数を 61 件から 59 件へ減らした。userscript runtime UI、rank recommendation scoring、API request 範囲、Revenue Assistant write API、Tampermonkey dashboard は変更していない。
@@ -189,20 +189,7 @@
   - `RAU-UX-57` React + UI ライブラリ化を top rank recommendation surface へ段階接続する
   - `RAU-UX-58` Vite build を正規配布 path へ切り替える
 - 未実装 Task ID:
-  - `RAU-UX-59` docs-only push で Publish Userscript が連鎖しない条件を設計または実装する
-  - `RAU-UX-60` `smoke:distribution` の Tampermonkey 更新直後待機を固定秒数から状態待ちへ変える
-  - `RAU-UX-61` Vite / Radix 導入後の React Doctor 残診断を再分類する
-  - `RAU-UX-62` Vite / Radix 後の bundle size と dependency 予算を決める
-  - `RAU-UX-63` UI ライブラリ全面移行の対象と非対象を再定義する
-  - `RAU-UX-64` UI ライブラリ追加 package の採用条件を固定する
-  - `RAU-UX-65` Vite fixture を UI regression gallery にする
-  - `RAU-UX-66` design token を userscript root 配下だけに導入する
-  - `RAU-UX-67` Button / Tooltip / Popover の操作感を統一する
-  - `RAU-UX-68` Select / Segmented Control を整理する
-  - `RAU-UX-69` pending / confirmation / error 表示を統一する
-  - `RAU-UX-70` 料金調整候補 row の情報設計を刷新する
-  - `RAU-UX-71` 配布版 smoke に UI library component の検査を追加する
-  - `RAU-UX-72` 実画面で top list UI overhaul を配布確認する
+  - なし。2026-06-01 時点の Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -215,10 +202,9 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now `RAU-UX-59`、Next `RAU-UX-60` と `RAU-UX-63`、After Next `RAU-UX-61`、`RAU-UX-62`、`RAU-UX-64`、`RAU-UX-65`、Later `RAU-UX-66`、`RAU-UX-67`、`RAU-UX-68`、`RAU-UX-69`、`RAU-UX-70`、`RAU-UX-71`、`RAU-UX-72` である。
-  - 次の 1 task は `RAU-UX-59` である。目的は、docs-only closeout commit や backlog taskization commit が userscript 実行版を変えていない場合に、Publish Userscript が不要に走り、GitHub Pages 公開版 version と Tampermonkey installed version の再同期が必要になる状態を減らすことである。
-  - `RAU-UX-48` から `RAU-UX-58` は完了済みである。Vite の正規配布 build、dev-only fixture preview、candidate build、Radix Popover 1 component の production 接続、旧 esbuild build の rollback 経路を現行契約として扱う。
-  - `RAU-UX-63` から `RAU-UX-72` は、UI ライブラリ全面移行を一括置換ではなく段階移行として扱うための新規 task 群である。対象と非対象、追加 package 採用条件、fixture regression gallery、design token、操作部品、control、状態表示、候補 row 情報設計、配布版 smoke、実画面確認の順に進める。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now / Next / After Next / Later すべて空である。未完了 task ID は残っていない。
+  - 次に task 化すべき候補は、配布後の実利用で分かる視認性観察、React Doctor の performance family の小分け改善、UI marker smoke の GitHub Actions 化、top list の数値非表示契約を維持した判断補助追加の調査である。新規 task として切る場合は、どの候補を先に進めるかを利用者判断または次回の task-add-and-triage で決める。
+  - `RAU-UX-48` から `RAU-UX-72` は完了済みである。Vite の正規配布 build、dev-only fixture preview、candidate build、Radix Popover 1 component の production 接続、旧 esbuild build の rollback 経路、Publish Userscript path filter、状態待ち配布版 smoke、UI regression gallery、RAU root 限定 design token、9 列 row layout、UI component marker を現行契約として扱う。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
   - `RAU-FC-04` では、`src/curveCore.ts` に first forecast model `recent_deviation_adjusted_seasonal:v1` と baseline `seasonal_ratio_baseline:v1` を追加済みである。
@@ -453,8 +439,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-01 時点では、Now は `RAU-UX-59`、Next は `RAU-UX-60` と `RAU-UX-63`、After Next は `RAU-UX-61`、`RAU-UX-62`、`RAU-UX-64`、`RAU-UX-65`、Later は `RAU-UX-66` から `RAU-UX-72` である。
-2. 次に進める場合は、まず `RAU-UX-59` で docs-only closeout commit や backlog taskization commit が Publish Userscript を不要に走らせる条件を減らす。その後、`RAU-UX-60` で Tampermonkey 更新直後の `smoke:distribution` を状態待ちにし、`RAU-UX-63` で UI ライブラリ全面移行の対象と非対象を確定する。
+1. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-01 時点では、Now / Next / After Next / Later はすべて空である。
+2. 次に進める場合は、今回の完了報告で提案した候補から新規 task を切る。候補は、配布後の実利用で分かる視認性観察、React Doctor の performance family の小分け改善、UI marker smoke の GitHub Actions 化、top list の数値非表示契約を維持した判断補助追加の調査である。
 3. 配布版 smoke で RAU userscript root count が `0` の場合は、`smoke:distribution` の preflight message に従い、ログイン状態、Tampermonkey installed version、GitHub Pages published version、Tampermonkey dashboard 更新要否を順に確認する。
 4. React component、React mount、React state 管理を追加または変更する場合は、`npm run check` に加え、固定済み repo-local command の `npm run react:doctor -- --diff false` を実行する。UI ライブラリまたは UI primitive を追加導入する場合は、依存追加の承認、version pin、bundle size 差分、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を行う。
 

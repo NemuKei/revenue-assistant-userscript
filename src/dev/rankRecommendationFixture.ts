@@ -11,7 +11,10 @@ type FixtureState =
     | "current-settings-401"
     | "current-settings-403"
     | "decision-hidden"
+    | "decision-pending"
     | "rank-change-pending"
+    | "rank-change-error"
+    | "long-room-name"
     | "preview-open"
     | "monthly-compact"
     | "price-trends-loading"
@@ -24,7 +27,10 @@ const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
     { value: "current-settings-401", label: "current settings 401" },
     { value: "current-settings-403", label: "current settings 403" },
     { value: "decision-hidden", label: "利用者判断で非表示" },
+    { value: "decision-pending", label: "判断 pending" },
     { value: "rank-change-pending", label: "rank change pending" },
+    { value: "rank-change-error", label: "rank change error" },
+    { value: "long-room-name", label: "長い部屋タイプ名" },
     { value: "preview-open", label: "preview open" },
     { value: "monthly-compact", label: "月次 compact view" },
     { value: "price-trends-loading", label: "価格推移 loading" },
@@ -34,20 +40,24 @@ const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
 
 const rootElement = document.getElementById("rank-fixture-root");
 const secondaryRootElement = document.getElementById("rank-fixture-secondary-root");
+const galleryRootElement = document.getElementById("rank-fixture-gallery-root");
 const stateSelectElement = document.getElementById("rank-fixture-state");
 
 if (!(rootElement instanceof HTMLElement)
     || !(secondaryRootElement instanceof HTMLElement)
+    || !(galleryRootElement instanceof HTMLElement)
     || !(stateSelectElement instanceof HTMLSelectElement)) {
     throw new Error("Rank recommendation fixture root is missing.");
 }
 
 const fixtureRootElement = rootElement;
 const fixtureSecondaryRootElement = secondaryRootElement;
+const fixtureGalleryRootElement = galleryRootElement;
 
 installFixtureStyles();
 installStateOptions(stateSelectElement);
 renderFixture("candidates");
+renderGallery();
 
 stateSelectElement.addEventListener("change", () => {
     renderFixture(stateSelectElement.value as FixtureState);
@@ -67,6 +77,21 @@ function renderFixture(state: FixtureState): void {
     renderSecondaryFixtureState(fixtureSecondaryRootElement, state);
 }
 
+function renderGallery(): void {
+    const galleryCards = FIXTURE_STATES.map((state) => {
+        const card = document.createElement("article");
+        card.setAttribute("data-ra-fixture-gallery-card", "");
+        const heading = document.createElement("h3");
+        heading.textContent = state.label;
+        const mount = document.createElement("section");
+        mount.setAttribute("data-ra-rank-recommendation-list", "");
+        card.append(heading, mount);
+        syncRankRecommendationReactList(mount, buildFixtureSnapshot(state.value));
+        return card;
+    });
+    fixtureGalleryRootElement.replaceChildren(...galleryCards);
+}
+
 function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListSnapshot {
     const rows = buildRowsForState(state);
     const emptyText = getEmptyTextForState(state);
@@ -75,7 +100,7 @@ function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListS
         mode: "fixture",
         title: "料金調整候補",
         metaText: buildMetaText(state, rows.length),
-        columns: ["優先", "宿泊日", "部屋タイプ", "宿泊まで", "前回変更", "現ランク", "確度", "推奨", "主要根拠", "操作"],
+        columns: ["優先度", "判断", "宿泊日", "部屋タイプ", "現ランク", "推奨", "根拠", "状態", "操作"],
         emptyText,
         controls: {
             targetMonth: {
@@ -128,7 +153,9 @@ function buildRowsForState(state: FixtureState): RankRecommendationReactRowSnaps
         reason: "直近販売が基準より鈍い",
         curveOpen: state === "preview-open",
         rankOpen: state === "preview-open",
-        pendingRankChange: state === "rank-change-pending"
+        pendingDecision: state === "decision-pending",
+        pendingRankChange: state === "rank-change-pending",
+        rankChangeError: state === "rank-change-error"
     });
     const secondRow = buildRow({
         key: "20260803-standard-single",
@@ -141,10 +168,30 @@ function buildRowsForState(state: FixtureState): RankRecommendationReactRowSnaps
         reason: "相場より高めの注意",
         curveOpen: false,
         rankOpen: false,
-        pendingRankChange: false
+        pendingDecision: false,
+        pendingRankChange: false,
+        rankChangeError: false
+    });
+    const longNameRow = buildRow({
+        key: "20260811-family-suite-long-name",
+        stayDate: "2026-08-11",
+        roomGroup: "露天風呂付き和洋室スイート 角部屋 海側 禁煙 夕朝食付きプラン連動",
+        priority: "low",
+        action: "watch",
+        currentRank: "15",
+        recommendedRank: "14",
+        reason: "長い部屋タイプ名と複数根拠が同じ行で折り返される状態",
+        curveOpen: false,
+        rankOpen: false,
+        pendingDecision: false,
+        pendingRankChange: false,
+        rankChangeError: false
     });
 
-    return state === "decision-hidden" ? [firstRow] : [firstRow, secondRow];
+    if (state === "decision-hidden") {
+        return [firstRow];
+    }
+    return state === "long-room-name" ? [longNameRow, firstRow] : [firstRow, secondRow];
 }
 
 function buildRow(options: {
@@ -158,7 +205,9 @@ function buildRow(options: {
     reason: string;
     curveOpen: boolean;
     rankOpen: boolean;
+    pendingDecision: boolean;
     pendingRankChange: boolean;
+    rankChangeError: boolean;
 }): RankRecommendationReactRowSnapshot {
     return {
         key: options.key,
@@ -166,23 +215,23 @@ function buildRow(options: {
         action: options.action,
         status: "eligible",
         cells: [
-            { kind: "text", value: options.priority === "high" ? "高" : "中" },
-            { kind: "text", value: options.stayDate },
-            { kind: "text", value: options.roomGroup },
-            { kind: "text", value: "53日" },
-            { kind: "text", value: "5/27・2日前", attribute: "data-ra-rank-recommendation-history" },
+            { kind: "text", value: options.priority === "high" ? "高" : options.priority === "medium" ? "中" : "低", role: "priority" },
+            { kind: "text", value: "高・注意あり", role: "decision-summary", title: "宿泊まで: 53日\nデータ: 保存済み\n前回変更: 5/27・2日前" },
+            { kind: "text", value: options.stayDate, role: "stay-date", title: "宿泊まで: 53日" },
+            { kind: "text", value: options.roomGroup, role: "room-group", title: `${options.roomGroup}\nデータ: 保存済み\n前回変更: 5/27・2日前` },
             {
                 kind: "rankGap",
                 currentRankText: options.currentRank,
                 title: "同じ宿泊日の全部屋タイプ rank を確認",
+                role: "current-rank",
                 entries: [
                     { values: [options.roomGroup, options.currentRank, "8/12", "対象", "fixture"], isTarget: true },
                     { values: ["ダブル", "12", "5/10", "1段低い", "fixture"], isTarget: false }
                 ]
             },
-            { kind: "text", value: "高・注意あり" },
-            { kind: "text", value: options.action === "raise_watch" ? "上げ候補" : "下げ候補" },
-            { kind: "text", value: options.reason }
+            { kind: "text", value: options.action === "raise_watch" ? "上げ候補" : options.action === "lower_watch" ? "下げ候補" : "様子見", role: "recommended-action" },
+            { kind: "text", value: options.reason, role: "reason", title: options.reason },
+            { kind: "text", value: "有効", role: "status" }
         ],
         analyzeLink: {
             text: "Analyze",
@@ -191,7 +240,7 @@ function buildRow(options: {
             attrs: {}
         },
         curvePreviewButton: {
-            ...buildButton("曲線", "curve-preview"),
+            ...buildButton("曲線", "curve-preview-toggle"),
             expanded: options.curveOpen
         },
         curvePopoverItems: [
@@ -209,12 +258,18 @@ function buildRow(options: {
             submitButton: buildButton("反映する", "rank-change-inline-submit")
         },
         rankChangeButton: {
-            ...buildButton("rank調整", "rank-change-preview"),
+            ...buildButton("rank調整", "rank-change-preview-toggle"),
             expanded: options.rankOpen
         },
         snoozeButton: buildButton("様子見", "snooze"),
         dismissButton: buildButton("対応不要", "dismiss"),
-        pendingDecision: null,
+        pendingDecision: options.pendingDecision
+            ? {
+                key: options.key,
+                label: "様子見: 3秒後に確定",
+                cancelButton: buildButton("取消", "decision-cancel")
+            }
+            : null,
         pendingRankChange: options.pendingRankChange
             ? {
                 key: options.key,
@@ -222,7 +277,13 @@ function buildRow(options: {
                 cancelButton: buildButton("取消", "rank-change-cancel")
             }
             : null,
-        rankChangeResult: null,
+        rankChangeResult: options.rankChangeError
+            ? {
+                status: "failed",
+                message: "HTTP 403: 権限またはログイン状態を確認",
+                title: "fixture error"
+            }
+            : null,
         curvePreview: {
             key: options.key,
             open: options.curveOpen
@@ -362,6 +423,7 @@ function installFixtureStyles(): void {
             border-radius: 6px;
             background: #f8fafc;
             box-shadow: 0 1px 3px rgba(24, 39, 75, 0.08);
+            overflow-x: auto;
         }
 
         [data-ra-rank-recommendation-list] table {
@@ -408,6 +470,15 @@ function installFixtureStyles(): void {
             line-height: 1.45;
         }
 
+        [data-ra-rank-recommendation-rank-gap-tooltip] {
+            display: none;
+        }
+
+        [data-ra-rank-recommendation-rank-gap]:hover [data-ra-rank-recommendation-rank-gap-tooltip],
+        [data-ra-rank-recommendation-rank-gap]:focus-within [data-ra-rank-recommendation-rank-gap-tooltip] {
+            display: block;
+        }
+
         [data-ra-fixture-secondary] {
             padding: 12px;
             border: 1px solid #d9e1ea;
@@ -419,6 +490,35 @@ function installFixtureStyles(): void {
             display: none;
         }
 
+        [data-ra-fixture-gallery] {
+            margin-top: 18px;
+        }
+
+        [data-ra-fixture-gallery] h2 {
+            margin: 0 0 10px;
+            font-size: 18px;
+        }
+
+        [data-ra-fixture-gallery-grid] {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+            gap: 14px;
+        }
+
+        [data-ra-fixture-gallery-card] {
+            min-width: 0;
+            padding: 10px;
+            border: 1px solid #d9e1ea;
+            border-radius: 6px;
+            background: #ffffff;
+        }
+
+        [data-ra-fixture-gallery-card] h3 {
+            margin: 0 0 8px;
+            color: #33445a;
+            font-size: 13px;
+        }
+
         @media (max-width: 760px) {
             [data-ra-fixture-header] {
                 align-items: stretch;
@@ -427,6 +527,79 @@ function installFixtureStyles(): void {
 
             [data-ra-fixture-shell] {
                 padding: 14px;
+            }
+
+            [data-ra-fixture-gallery-grid] {
+                grid-template-columns: 1fr;
+            }
+
+            [data-ra-rank-recommendation-list] table,
+            [data-ra-rank-recommendation-list] thead,
+            [data-ra-rank-recommendation-list] tbody,
+            [data-ra-rank-recommendation-list] tr,
+            [data-ra-rank-recommendation-list] th,
+            [data-ra-rank-recommendation-list] td {
+                display: block;
+            }
+
+            [data-ra-rank-recommendation-list] thead {
+                display: none;
+            }
+
+            [data-ra-rank-recommendation-row] {
+                padding: 8px 0;
+                border-top: 1px solid #e1e7ef;
+            }
+
+            [data-ra-rank-recommendation-list] td {
+                display: grid;
+                grid-template-columns: 82px minmax(0, 1fr);
+                gap: 6px;
+                padding: 4px 0;
+                border-top: 0;
+                white-space: normal;
+            }
+
+            [data-ra-rank-recommendation-list] td::before {
+                color: #5b6b7d;
+                font-weight: 800;
+                content: attr(data-ra-rank-recommendation-cell-role);
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="priority"]::before {
+                content: "優先度";
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="decision-summary"]::before {
+                content: "判断";
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="stay-date"]::before {
+                content: "宿泊日";
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="room-group"]::before {
+                content: "部屋タイプ";
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="current-rank"]::before {
+                content: "現ランク";
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="recommended-action"]::before {
+                content: "推奨";
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="reason"]::before {
+                content: "根拠";
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="status"]::before {
+                content: "状態";
+            }
+
+            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="actions"]::before {
+                content: "操作";
             }
         }
     `;
