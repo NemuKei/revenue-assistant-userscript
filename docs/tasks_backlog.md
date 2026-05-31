@@ -6525,7 +6525,7 @@
 ### RAU-UX-72 実画面で top list UI overhaul を配布確認する
 
 - 状態:
-  - 完了。2026-06-01 に通常 Chrome と Tampermonkey 配布版での top list UI overhaul 確認をこの bundle の closeout 対象にした。GitHub Pages published version と Tampermonkey installed version の一致、top smoke、監視対象 write API POST 0 件、console / page error 0 件は最終 verify に記録する。
+  - 完了。2026-06-01 に通常 Chrome と Tampermonkey 配布版で top list UI overhaul を確認した。GitHub Actions の Publish Userscript run `26717274182` は success で、GitHub Pages published version と Tampermonkey installed version は `0.1.0.356` に揃えた。`npm run smoke:distribution -- --installed-version 0.1.0.356 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail` は pass し、row 10 件、React marker あり、UI component marker 44 件、監視対象 write API POST 0 件、console / page error 0 件だった。追加の CDP 操作確認では tooltip 表示、popover content 1 件、booking curve preview row 10 件 / SVG 20 件、rank change preview row 10 件、pending cancel 後の pending 0 件、新規保存 decision 0 件、監視対象 write API POST 0 件を確認した。
 - 目的:
   - UI library component、design token、control 整理、pending / error 表示、候補 row 情報設計の変更を、fixture だけでなく通常 Chrome の Revenue Assistant 実ログイン状態と Tampermonkey 配布版で確認する。
   - 実画面で、候補 row 10 件、popover / tooltip、preview、pending cancel、監視対象 write API POST 0 件、console / page error 0 件が維持されていることを確認する。
@@ -6567,7 +6567,7 @@ Later:
 
 統合判断:
 
-- 2026-06-01 に、未着手だった `RAU-UX-59` から `RAU-UX-72` を完了した。Publish Userscript workflow は path filter で docs-only push を起動対象外にし、`smoke:distribution` は状態待ちと UI component marker 検査を持つようにした。React Doctor の残診断は performance、dead code、server に分類し、今回の bundle では runtime bug として扱う追加修正は行わない。bundle size と dependency 予算は、新しい package を追加しない判断と、追加する場合の確認項目として正本化した。Vite fixture は dev-only UI regression gallery になり、runtime のトップ料金調整候補 list は RAU root 限定 design token、component marker、9 列 row layout、responsive block layout、統一された pending / warning / error 表示を持つ。
+- 2026-06-01 に、未着手だった `RAU-UX-59` から `RAU-UX-72` を完了した。Publish Userscript workflow は path filter で docs-only push を起動対象外にし、`smoke:distribution` は状態待ちと UI component marker 検査を持つようにした。React Doctor の残診断は performance、dead code、server に分類し、今回の bundle では runtime bug として扱う追加修正は行わない。bundle size と dependency 予算は、新しい package を追加しない判断と、追加する場合の確認項目として正本化した。Vite fixture は dev-only UI regression gallery になり、runtime のトップ料金調整候補 list は RAU root 限定 design token、component marker、9 列 row layout、responsive block layout、統一された pending / warning / error 表示を持つ。Publish Userscript run `26717274182` は success で、GitHub Pages published version と Tampermonkey installed version は `0.1.0.356` に揃えた。
 - 次に task 化すべき候補は、配布後の実利用で分かる UI 改善をすぐ追加実装へ進めるのではなく、候補を分けて判断する。候補は、実画面での視認性観察を数日分ためる task、React Doctor の performance family を 1 種類だけ処理する task、UI marker smoke を GitHub Actions でどう扱うかを検討する task、top list の数値非表示契約を維持したまま判断補助を増やせるかを調査する task である。
 - 2026-06-01 に、UI ライブラリを導入して全面的に進化させたいという利用者方針を、`RAU-UX-63` から `RAU-UX-72` として task 化した。新規 task は、`RAU-UX-59` と `RAU-UX-60` の publish / smoke 安定化を先に進めた後、`RAU-UX-63` で対象と非対象を再定義し、`RAU-UX-62` と `RAU-UX-64` で bundle size と追加 package 採用条件を固定し、`RAU-UX-65` で dev-only regression gallery を用意してから runtime UI へ進める順序にした。`RAU-UX-66` から `RAU-UX-70` は実装面の段階移行であり、design token、操作部品、control、状態表示、候補 row 情報設計の順に分ける。`RAU-UX-71` と `RAU-UX-72` は、配布版 smoke と通常 Chrome / Tampermonkey 実画面確認を、UI overhaul の完了条件として独立させる。
 - `RAU-UX-63` から `RAU-UX-72` は既存の `RAU-UX-59` から `RAU-UX-62` を置き換えない。docs-only push による Publish Userscript 連鎖、Tampermonkey 更新直後の smoke 不安定、React Doctor 残診断、bundle size / dependency 予算は、UI ライブラリ全面移行を安全に進める前提条件として扱う。
