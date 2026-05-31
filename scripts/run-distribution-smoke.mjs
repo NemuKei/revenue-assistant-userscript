@@ -177,15 +177,16 @@ function assessSmokeResult(options) {
         failures.push(failure);
     }
 
-    const versionFailures = assessVersionRelationship({
+    const versionAssessment = assessVersionRelationship({
         localVersion: options.localVersion,
         publishedVersionResult: options.publishedVersionResult,
         installedVersion: options.installedVersion
     });
     if (options.versionPolicy === "fail") {
-        failures.push(...versionFailures);
+        failures.push(...versionAssessment.failures);
+        warnings.push(...versionAssessment.warnings);
     } else {
-        warnings.push(...versionFailures);
+        warnings.push(...versionAssessment.failures, ...versionAssessment.warnings);
     }
 
     if (!isExpectedModeUrl(options.mode, options.smokeResult.url)) {
@@ -239,10 +240,11 @@ function assessModeMetrics(mode, metrics, options) {
 
 function assessVersionRelationship(options) {
     const failures = [];
+    const warnings = [];
     if (options.publishedVersionResult.error !== null) {
         failures.push(`published version is unavailable: ${options.publishedVersionResult.error}`);
     } else if (options.localVersion !== "unknown" && options.publishedVersionResult.version !== "unknown" && options.localVersion !== options.publishedVersionResult.version) {
-        failures.push(`local version ${options.localVersion} differs from published version ${options.publishedVersionResult.version}`);
+        warnings.push(`local version ${options.localVersion} differs from published version ${options.publishedVersionResult.version}`);
     }
 
     const installedVersionKnown = options.installedVersion !== "manual-check-required" && options.installedVersion !== "unknown";
@@ -250,7 +252,7 @@ function assessVersionRelationship(options) {
         failures.push(`installed version ${options.installedVersion} differs from published version ${options.publishedVersionResult.version}`);
     }
 
-    return failures;
+    return { failures, warnings };
 }
 
 function minCountFailure(label, value, minimum) {

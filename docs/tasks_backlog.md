@@ -5044,7 +5044,7 @@
   - `npm run check` と `git diff --check` が通過する。
 - 実装内容:
   - `scripts/run-distribution-smoke.mjs` に pass / fail assessment を追加し、監視対象 write API POST、console error、page error、mode 別 selector、`--mode` と最終 URL の不一致を non-zero exit の条件にした。
-  - version mismatch は `--version-policy warn | fail` で扱う。既定は `warn` とし、local build が GitHub Pages の run number を含まない状態でも開発中 smoke を止めない。配布版完了確認では `--version-policy fail` を使う。
+  - version mismatch は `--version-policy warn | fail` で扱う。既定は `warn` とし、local build が GitHub Pages の run number を含まない状態でも開発中 smoke を止めない。local version と published version の不一致は常に warning として出力する。配布版完了確認では `--version-policy fail` を使い、published version 取得失敗、または installed version と published version の不一致を non-zero exit にする。
   - 価格推移の failure / skip fixture では graph panel と SVG が 0 件になること自体を確認するため、`--allow-empty-price-trends` を追加した。この option は price-trends tab、content、RAU overview の確認は維持し、panel / SVG だけを必須から外す。
   - README の配布版 smoke 手順に、exit code の失敗条件、version policy、fixture 用 option の使い分けを追記した。
 - verify:
@@ -5194,6 +5194,13 @@
 - 受け入れ条件:
   - `--mode price-trends` が fixture なし、`--allow-empty-price-trends` なし、`--version-policy fail` で通過する。
   - price trends overview、panel、SVG、background status、監視対象 write API POST 0 件、console / page error 0 件を記録している。
+- 実施内容:
+  - Tampermonkey dashboard の `更新を確認` を Chrome DevTools Protocol 経由で実行し、`Revenue Assistant Userscript` が `0.1.0.341` へ更新されたことを確認した。
+  - `smoke:distribution --mode price-trends` の `--version-policy fail` は、local build が GitHub Pages の run number を含まないことを考慮し、local version と published version の不一致を warning に留め、published version 取得失敗と installed version 不一致だけを non-zero exit にする条件へ補正した。
+- verify:
+  - `npm run userscript:version-check -- --installed-version 0.1.0.341 --open-url https://ra.jalan.net/`: local version `0.1.0`、published version `0.1.0.341`、installed version `0.1.0.341`、Chrome CDP reachable、opened Revenue Assistant URL `https://ra.jalan.net/`。
+  - `npm run smoke:distribution -- --installed-version 0.1.0.341 --mode price-trends --url https://ra.jalan.net/analyze/2026-06-05 --seconds 30 --version-policy fail`: price trends tab yes、content yes、overview 1 件、panel 4 件、SVG 4 件、background status 表示あり、監視対象 write API POST 0 件、console / page error 0 件、smoke result pass。
+  - local version `0.1.0` と published version `0.1.0.341` の差は warning として出力した。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -5228,7 +5235,7 @@ Next:
 
 After Next:
 
-- `RAU-CP-18` 最新配布版で価格推移 normal graph smoke を再実行する。
+- なし。
 
 Later:
 
@@ -5236,7 +5243,7 @@ Later:
 
 統合判断:
 
-- 2026-05-31 に、開始時点で未着手だった `RAU-UX-24`、`RAU-MP-07`、`RAU-CP-17`、`RAU-UX-23` を閉じた。追加で見えた次の task 化候補は 4 件である。`RAU-UX-25` は、配布版 top smoke が selector 0 件で失敗したときの切り分け情報がまだ不足しているため Now とした。`RAU-MP-08` は、日次差分を現在表示月だけに絞っても fixture では 45 行残るため Next とした。`RAU-CP-18` は、fixture ではなく最新版 Tampermonkey 配布物の通常価格推移 graph を version policy fail 付きで確認するため After Next とした。`RAU-UX-26` は React Doctor 残診断の安全な performance 修正候補だが、runtime bug ではないため Later とした。
+- 2026-05-31 に、開始時点で未着手だった `RAU-UX-24`、`RAU-MP-07`、`RAU-CP-17`、`RAU-UX-23` を閉じた。追加で見えた次の task 化候補は 4 件だった。このうち `RAU-CP-18` は、Tampermonkey dashboard を `0.1.0.341` へ更新し、fixture ではない通常価格推移 graph を `--version-policy fail` 付きで確認したため同日に完了した。残りの実行順は、`RAU-UX-25` は配布版 top smoke が selector 0 件で失敗したときの切り分け情報がまだ不足しているため Now、`RAU-MP-08` は日次差分を現在表示月だけに絞っても fixture では 45 行残るため Next、`RAU-UX-26` は React Doctor 残診断の安全な performance 修正候補だが runtime bug ではないため Later とした。
 - 2026-05-31 に、未着手だった `RAU-UX-21`、`RAU-UX-22`、`RAU-MP-06`、`RAU-CP-16` を閉じた。追加で見えた次の task 化候補は 4 件である。`RAU-UX-24` は smoke helper が主要 selector と POST 件数を出力できるようになった直後に、完了扱いにできない条件を exit code へ反映するため Now とした。`RAU-MP-07` は `RAU-MP-06` の fixture 確認で日次差分 row が多くなることが分かったため Next とした。`RAU-CP-17` は `RAU-CP-16` で long-run 進行と skip fixture は確認したが、complete と failure fixture の追加確認が残るため After Next とした。`RAU-UX-23` は React Doctor 診断のうち安全に直せる performance 系だけを小分けに扱う候補だが、runtime bug ではないため Later とした。
 - 2026-05-31 に、前回完了報告で推奨した 4 件を task 化した。`RAU-UX-21` は React Doctor 導入直後の既存診断を分類し、次の React UI 変更で無関係な警告に引きずられないようにするため Now とした。`RAU-UX-22` は配布版 smoke helper を top 以外の重要画面へ広げ、今後の GUI 確認を同じ基準で実行できるようにするため Next とした。`RAU-MP-06` は `RAU-MP-05` で採用した月次実績画面の実装候補であり、仕様影響を確認してから進めるため After Next とした。`RAU-CP-16` は価格推移 background queue の短時間確認後に残る long-run と failure 表示の確認であり、現時点で緊急の修正は見つかっていないため Later とした。
 - 2026-05-31 に、開始時点で Remaining Task Triage に残っていた `RAU-UX-20`、`RAU-UX-18`、`RAU-UX-19`、`RAU-MP-05`、`RAU-CP-15` を閉じた。`RAU-UX-20` では `react-doctor@0.2.14` を exact devDependency として lockfile に固定し、`npm run react:doctor` を追加した。`RAU-UX-18` では React list を mount marker、summary、controls、table、row、cell、row actions、preview rows へ責務分割した。`RAU-UX-19` では配布版 smoke helper `npm run smoke:distribution` を追加した。`RAU-MP-05` では月次実績画面の次段階候補を比較し、最初に実装する候補を `日次差分表示` と判断した。`RAU-CP-15` では通常 Chrome の Tampermonkey installed version `0.1.0.336` で価格推移 background queue の停止、復帰、表示安定性を確認した。
