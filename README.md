@@ -39,7 +39,7 @@ npm run check
 - `npm run chrome:pages`: CDP 経由で Chrome に接続し、開いているページを一覧表示
 - `npm run userscript:version-check -- --installed-version <Tampermonkey上のversion>`: local `dist`、GitHub Pages 公開版、Tampermonkey 上の version、Revenue Assistant tab の有無を確認
 - `npm run smoke:write-posts -- --seconds 30 --operation <確認内容>`: CDP 接続中の Chrome tab で、監視対象 write API の POST 件数を確認
-- `npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --url https://ra.jalan.net/`: 配布版 version、top 主要 selector、監視対象 write API POST 件数をまとめて確認
+- `npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode top --url https://ra.jalan.net/`: 配布版 version、画面別主要 selector、監視対象 write API POST 件数をまとめて確認
 
 ## Verification
 
@@ -97,7 +97,8 @@ node .\scripts\build.mjs
 | Top 料金調整候補 | `rank調整` を開閉し、送信前に `取消` する | 5 秒 pending 中に取消でき、実 POST は発生しない | pending 表示、取消後の pending 件数、監視対象 write API POST 件数 |
 | Top 料金調整候補 | `様子見` と `対応不要` を押し、保存前に `取消` する | browser-local decision record が保存されず、row 表示が戻る | pending 表示、取消後の pending 件数、監視対象 write API POST 件数 |
 | Analyze 価格推移 tab | `価格推移` tab を開く | `競合価格 最安値推移（90日版）`、初回表示優先、background queue 状態が表示される | URL、panel / SVG 件数、background status text、console error 件数 |
-| 月次実績画面 | `/monthly-progress/YYYY-MM` を reload | `LTブッキングカーブ`、2 panel、loading / background state が表示される | URL、preview root 件数、panel / SVG 件数、status text、console error 件数 |
+| Analyze 価格推移 tab fixture | `localStorage["revenue-assistant:price-trends:v1:background-fixture"]` に `failure` または `skip` を入れて `価格推移` tab を開く | response body を保存せず、failure / skip 表示だけを確認できる | background status text、empty text、console error 件数、監視対象 write API POST 件数 |
+| 月次実績画面 | `/monthly-progress/YYYY-MM` を reload | `LTブッキングカーブ`、2 panel、日次差分、loading / background state が表示される | URL、preview root 件数、panel / SVG 件数、日次差分 row 件数、status text、console error 件数 |
 | Warm cache indicator | Top または Analyze で detail を開く | 対象期間、保存、skip、失敗、候補優先が発火する場合の進行状態が読める | indicator text、対象期間、保存 / skip / 失敗件数 |
 
 標準 smoke では実送信を行いません。監視対象 write API は次の POST です。
@@ -118,10 +119,12 @@ npm run smoke:write-posts -- --seconds 30 --operation top-react-smoke
 配布版 smoke を半自動でまとめる場合は、通常 Chrome を remote debugging port `9222` 付きで起動し、Tampermonkey 上の installed version を確認してから次を実行します。
 
 ```powershell
-npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --url https://ra.jalan.net/ --seconds 30
+npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode top --url https://ra.jalan.net/ --seconds 30
+npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode price-trends --url https://ra.jalan.net/analyze/YYYY-MM-DD --seconds 60
+npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode monthly-progress --url https://ra.jalan.net/monthly-progress/YYYY-MM --seconds 30
 ```
 
-この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、top 料金調整候補 row 件数、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button、価格推移 overview 件数、価格推移 background status、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。Tampermonkey dashboard の更新操作は行いません。local / published / installed version が一致しない場合は、配布版 smoke を完了扱いにせず、Tampermonkey の通常 UI から更新してから再実行します。
+この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、`--mode` ごとの主要 selector、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。`--mode top` は top 料金調整候補 row 件数、React marker、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button を出力します。`--mode price-trends` は価格推移 tab / content、RAU overview、panel、SVG、background status を出力します。`--mode monthly-progress` は月次 preview root、panel、SVG、日次差分 section、日次差分 row、status text を出力します。いずれの mode でも POST count が 0 でない場合、console / page error が出た場合、または対象画面の主要 selector が 0 件の場合は、配布版 smoke を完了扱いにしません。Tampermonkey dashboard の更新操作は行いません。local / published / installed version が一致しない場合は、配布版 smoke を完了扱いにせず、Tampermonkey の通常 UI から更新してから再実行します。
 
 ## 現在の実装状態
 
@@ -149,9 +152,9 @@ npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --
 
 月次実績画面向けには、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。
 
-`/api/v1/booking_curve/monthly` の結果は、`facilityCacheKey + yearMonth + batchDateKey` ごとの IndexedDB snapshot として保存します。現在の preview は、同じ batch date の snapshot がなければ API 取得して保存し、その後に保存済み snapshot を読んで表示します。過去 batch の履歴比較や日次差分表示にはまだ使っていません。
+`/api/v1/booking_curve/monthly` の結果は、`facilityCacheKey + yearMonth + batchDateKey` ごとの IndexedDB snapshot として保存します。現在の preview は、同じ batch date の snapshot がなければ API 取得して保存し、その後に保存済み snapshot を読んで表示します。過去 batch の履歴比較にはまだ使っていません。
 
-予約日基準 chart 直下には、month-end anchor の LT バケット集約 chart を独立 section で差し込んでいます。現在は `販売客室数` panel、`販売単価 / 売上` 切替 panel、対象月から未来 4 か月の同時表示、`前年 / 前々年 / 3年前` compare 切替、hover tooltip まで入っています。GUI 確認と final graph 契約の固定は `docs/tasks_backlog.md` の `RAU-MP-01` で扱います。
+予約日基準 chart 直下には、month-end anchor の LT バケット集約 chart を独立 section で差し込んでいます。現在は `販売客室数` panel、`販売単価 / 売上` 切替 panel、対象月から未来 4 か月の同時表示、`前年 / 前々年 / 3年前` compare 切替、hover tooltip、販売客室数の隣接 LT bucket 差分を読む日次差分 table まで入っています。日次差分 table は、増加、減少、変化なし、未観測、比較前 bucket なしを表示します。
 
 ## ドキュメントの正本
 

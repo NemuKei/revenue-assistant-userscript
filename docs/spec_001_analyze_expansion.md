@@ -390,6 +390,7 @@ Indicator:
 - 価格推移タブの background queue は、booking curve warm cache queue と競合価格 snapshot queue へ混ぜない。`document.hidden`、別 Analyze 日付への遷移、施設 cache key の変更、価格推移タブ本文が表示されなくなった場合は停止する。`document.hidden` で停止した場合は、同じ価格推移タブへ戻ったときに残り queue を再開できる。
 - 価格推移タブの meta 表示では、background queue の `処理済み / 対象数`、保存数、skip 数、失敗数、現在取得中条件、完了または停止理由を表示する。取得中条件は、人数、食事、部屋タイプを表示する。
 - `部屋タイプ=指定なし` の graph は、部屋タイプ別 record がすべてそろうまでは初回表示用の指定なし record を使う。部屋タイプ別 record が一部だけ保存された途中状態で、指定なし graph を部分的な部屋タイプ別集約へ切り替えない。これにより、background queue 中に現在表示条件の graph が不要に揺れることを避ける。
+- 表示品質確認用に、browser-local の `localStorage["revenue-assistant:price-trends:v1:background-fixture"]` で background queue 表示の合成 fixture を有効化できる。値は `failure` または `skip` とし、raw response body、Cookie、token、credential、非公開データを使わず、失敗件数、停止理由、skip 表示だけを確認する。
 
 月次実績画面 final graph 契約:
 
@@ -403,7 +404,7 @@ Indicator:
 - 読み込み状態は、現在表示月を `取得中`、`保存済み`、`保存済みだが比較不足`、`取得失敗`、`対象外` に分ける。background 対象は、対象月、比較月、処理済み件数、対象件数、失敗件数、現在取得中の yearMonth を表示できる形にする。`RAU-MP-03` の初期実装では、現在表示月が保存済みで比較値が不足している場合に `保存済み・比較不足あり` と表示し、background queue は `background 取得中 processed / total・現在 YYYY-MM・失敗 n` または `background 完了 processed / total・失敗 n` と表示する。
 - 表示品質確認用に、browser-local の `localStorage["revenue-assistant:monthly-progress:v1:fixture-mode"]` で合成 fixture を有効化できる。値は `empty`、`current-only`、`compare-shortage`、`partial-failure` とし、raw response body、Cookie、token、credential、非公開データを使わない。fixture mode 中は月次 snapshot の background prefetch を開始せず、合成 view model だけで空状態、現在月のみ保存済み、比較不足、一部取得失敗の表示を確認する。
 - 月次実績画面の次段階候補は、`過去 batch 履歴比較`、`日次差分表示`、`表示密度調整` の 3 つに分けて扱う。最初に実装する候補は `日次差分表示` とする。理由は、既存の `monthly-progress` snapshot と LT bucket view model だけで入力が閉じ、過去 batch 間比較のような保存世代管理を増やさずに、利用者が月内の増減日を読めるようにできるためである。
-- `日次差分表示` の入力は、`facilityCacheKey x yearMonth x batchDateKey` の保存済み monthly snapshot と、既存の month-end anchor に変換した LT bucket 系列である。処理は、同じ表示月の連続する予約日または LT bucket の差分を計算し、増加、減少、変化なし、未観測を UI 表示用の view model へ変換する。出力は、既存 `LTブッキングカーブ` section 内の補助表示として、対象月、LT bucket、差分方向、差分量の表示有無、未観測理由を持つ。raw monthly API response body、Cookie、token、credential、非公開データは保存または docs 化しない。
+- `日次差分表示` の入力は、`facilityCacheKey x yearMonth x batchDateKey` の保存済み monthly snapshot と、既存の month-end anchor に変換した LT bucket 系列である。処理は、同じ表示月の連続する予約日または LT bucket の差分を計算し、増加、減少、変化なし、未観測を UI 表示用の view model へ変換する。出力は、既存 `LTブッキングカーブ` section 内の補助表示として、対象月、LT bucket、対象日、差分方向、差分量の表示有無、未観測理由を持つ。初期実装では `販売客室数` の現年系列だけを対象にし、隣り合う観測済み LT bucket の差分を `日次差分` table に表示する。raw monthly API response body、Cookie、token、credential、非公開データは保存または docs 化しない。
 - `過去 batch 履歴比較` は、同じ `yearMonth` の複数 `batchDateKey` snapshot を比較するため、保存世代の選択、古い snapshot の保持方針、比較基準 batch の表示が必要である。これは `日次差分表示` より保存単位と UI 説明が増えるため、月次画面の次段階 1 件目にはしない。
 - `表示密度調整` は、系列数、tooltip 情報量、panel 配置、既存 Revenue Assistant chart との距離を調整する UI task とする。入力データの追加は伴わないため、日次差分表示または過去 batch 比較で情報量が増えた後に必要性を再判断する。
 - 既存 snapshot schema migration、料金調整候補 scoring への接続、月次実績の rank recommendation 入力化は別 task とする。

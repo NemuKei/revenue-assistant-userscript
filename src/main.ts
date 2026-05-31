@@ -304,6 +304,7 @@ const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
 const PRICE_TREND_BACKGROUND_QUEUE_INTERVAL_MS = 1000;
 const PRICE_TREND_BACKGROUND_QUEUE_MAX_CONSECUTIVE_ERRORS = 3;
+const PRICE_TREND_BACKGROUND_FIXTURE_STORAGE_KEY = "revenue-assistant:price-trends:v1:background-fixture";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
 const SALES_SETTING_CURRENT_UI_CARD_ATTRIBUTE = "data-ra-sales-setting-current-ui-card";
@@ -482,6 +483,7 @@ interface SalesSettingWarmCacheState {
 
 type CompetitorPriceSnapshotStatus = "idle" | "saving" | "stored" | "skipped" | "error";
 type PriceTrendStatus = "idle" | "loading" | "stored" | "skipped" | "error";
+type PriceTrendBackgroundFixtureMode = "failure" | "skip";
 
 interface CompetitorPriceSnapshotUiState {
     status: CompetitorPriceSnapshotStatus;
@@ -13752,12 +13754,77 @@ function renderPriceTrendOverviewFromState(): void {
         return;
     }
 
+    applyPriceTrendBackgroundFixtureIfNeeded();
+
     if (priceTrendUiState.records.length === 0 && priceTrendUiState.status === "idle") {
         cleanupPriceTrendOverview();
         return;
     }
 
     renderPriceTrendOverviewAtTarget(target, priceTrendUiState);
+}
+
+function applyPriceTrendBackgroundFixtureIfNeeded(): void {
+    const fixtureMode = resolvePriceTrendBackgroundFixtureMode();
+    if (fixtureMode === null) {
+        return;
+    }
+
+    const fixtureStayDate = activeAnalyzeDate ?? priceTrendUiState.stayDate ?? "fixture";
+    const fixtureFacilityId = activeFacilityCacheKey ?? priceTrendUiState.facilityId ?? "fixture";
+    if (fixtureMode === "skip") {
+        priceTrendBackgroundQueueState = {
+            ...createInitialPriceTrendBackgroundQueueState(),
+            status: "complete",
+            facilityId: fixtureFacilityId,
+            stayDate: fixtureStayDate,
+            total: 3,
+            processed: 3,
+            skipped: 3
+        };
+        priceTrendUiState = {
+            ...priceTrendUiState,
+            status: "skipped",
+            facilityId: fixtureFacilityId,
+            stayDate: fixtureStayDate,
+            records: [],
+            reason: "unsupported-stay-date",
+            errorMessage: null,
+            updatedAt: new Date().toISOString()
+        };
+        return;
+    }
+
+    priceTrendBackgroundQueueState = {
+        ...createInitialPriceTrendBackgroundQueueState(),
+        status: "stopped",
+        facilityId: fixtureFacilityId,
+        stayDate: fixtureStayDate,
+        total: 3,
+        processed: 3,
+        errors: 3,
+        consecutiveErrors: 3,
+        pauseReason: "fixture failure"
+    };
+    priceTrendUiState = {
+        ...priceTrendUiState,
+        status: "error",
+        facilityId: fixtureFacilityId,
+        stayDate: fixtureStayDate,
+        records: [],
+        reason: null,
+        errorMessage: "fixture failure",
+        updatedAt: new Date().toISOString()
+    };
+}
+
+function resolvePriceTrendBackgroundFixtureMode(): PriceTrendBackgroundFixtureMode | null {
+    try {
+        const rawMode = window.localStorage.getItem(PRICE_TREND_BACKGROUND_FIXTURE_STORAGE_KEY);
+        return rawMode === "failure" || rawMode === "skip" ? rawMode : null;
+    } catch {
+        return null;
+    }
 }
 
 function renderPriceTrendOverviewAtTarget(

@@ -7,6 +7,7 @@ const DEFAULT_DIST_PATH = "dist/revenue-assistant-userscript.user.js";
 const DEFAULT_PUBLISHED_URL = "https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js";
 const DEFAULT_URL = "https://ra.jalan.net/";
 const DEFAULT_SECONDS = 20;
+const SMOKE_MODES = new Set(["top", "price-trends", "monthly-progress"]);
 const WRITE_ENDPOINTS = [
     "/api/v1/lincoln/suggest",
     "/api/v1/lincoln/price_ranks",
@@ -19,6 +20,7 @@ const cdpUrl = args["cdp-url"] ?? process.env.CHROME_CDP_URL ?? DEFAULT_CDP_URL;
 const distPath = args["dist"] ?? DEFAULT_DIST_PATH;
 const publishedUrl = args["published-url"] ?? DEFAULT_PUBLISHED_URL;
 const installedVersion = args["installed-version"] ?? "manual-check-required";
+const mode = parseMode(args.mode ?? "top");
 const targetUrl = args["url"] ?? DEFAULT_URL;
 const seconds = parsePositiveInteger(args["seconds"], DEFAULT_SECONDS);
 
@@ -27,7 +29,7 @@ const localVersion = extractUserscriptMetadata(localText, "version") ?? "unknown
 const localUpdateUrl = extractUserscriptMetadata(localText, "updateURL") ?? "none";
 const localDownloadUrl = extractUserscriptMetadata(localText, "downloadURL") ?? "none";
 const publishedVersionResult = await readPublishedVersion(publishedUrl);
-const smokeResult = await runChromeSmoke({ cdpUrl, targetUrl, seconds });
+const smokeResult = await runChromeSmoke({ cdpUrl, targetUrl, seconds, mode });
 
 console.log(`local version: ${localVersion}`);
 console.log(`published version: ${publishedVersionResult.version}`);
@@ -38,19 +40,12 @@ console.log(`installed version: ${installedVersion}`);
 console.log(`local updateURL: ${localUpdateUrl}`);
 console.log(`local downloadURL: ${localDownloadUrl}`);
 console.log(`published URL: ${publishedUrl}`);
+console.log(`smoke mode: ${mode}`);
 console.log(`smoke URL: ${smokeResult.url}`);
 console.log(`duration seconds: ${seconds}`);
-console.log(`top row count: ${smokeResult.topRowCount}`);
-console.log(`React marker mounted: ${smokeResult.reactMarkerMounted ? "yes" : "no"}`);
-console.log(`target month select: ${smokeResult.targetMonthSelect ? "yes" : "no"}`);
-console.log(`view mode buttons: ${smokeResult.viewModeButtonCount}`);
-console.log(`display limit buttons: ${smokeResult.displayLimitButtonCount}`);
-console.log(`rank order control: ${smokeResult.rankOrderControl ? "yes" : "no"}`);
-console.log(`curve preview buttons: ${smokeResult.curvePreviewButtonCount}`);
-console.log(`rank change buttons: ${smokeResult.rankChangeButtonCount}`);
-console.log(`decision buttons: ${smokeResult.decisionButtonCount}`);
-console.log(`price trends overview count: ${smokeResult.priceTrendsOverviewCount}`);
-console.log(`price trends background text: ${smokeResult.priceTrendsBackgroundText}`);
+for (const [label, value] of Object.entries(smokeResult.modeMetrics)) {
+    console.log(`${label}: ${value}`);
+}
 console.log(`console error count: ${smokeResult.consoleErrorCount}`);
 console.log(`page error count: ${smokeResult.pageErrorCount}`);
 console.log(`write endpoints: ${WRITE_ENDPOINTS.join(", ")}`);
@@ -95,7 +90,7 @@ async function runChromeSmoke(options) {
                 return;
             }
             const requestUrl = request.url();
-            if (!WRITE_ENDPOINTS.some((endpoint) => requestUrl.includes(endpoint))) {
+            if (!matchesWriteEndpoint(requestUrl)) {
                 return;
             }
             writePosts.push({
@@ -118,29 +113,14 @@ async function runChromeSmoke(options) {
         } else {
             await page.reload({ waitUntil: "domcontentloaded" });
         }
+        await prepareMode(page, options.mode);
         await page.waitForTimeout(options.seconds * 1000);
 
-        const selectors = await page.evaluate(() => {
-            const doc = globalThis.document;
-            const textFrom = (selector) => doc.querySelector(selector)?.textContent?.trim() ?? "none";
-            return {
-                topRowCount: doc.querySelectorAll("[data-ra-rank-recommendation-row]").length,
-                reactMarkerMounted: doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null,
-                targetMonthSelect: doc.querySelector("[data-ra-rank-recommendation-target-month]") !== null,
-                viewModeButtonCount: doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"view-mode\"]").length,
-                displayLimitButtonCount: doc.querySelectorAll("[data-ra-rank-recommendation-display-limit-control] button").length,
-                rankOrderControl: doc.querySelector("[data-ra-rank-recommendation-order-control]") !== null,
-                curvePreviewButtonCount: doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"curve-preview-toggle\"]").length,
-                rankChangeButtonCount: doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"]").length,
-                decisionButtonCount: doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"snooze\"], [data-ra-rank-recommendation-button-action=\"dismiss\"]").length,
-                priceTrendsOverviewCount: doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview]").length,
-                priceTrendsBackgroundText: textFrom("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-overview-meta]")
-            };
-        });
+        const modeMetrics = await collectModeMetrics(page, options.mode);
 
         return {
             url: page.url(),
-            ...selectors,
+            modeMetrics,
             consoleErrorCount: consoleErrors.length,
             pageErrorCount: pageErrors.length,
             writePostCount: writePosts.length,
@@ -149,6 +129,57 @@ async function runChromeSmoke(options) {
     } finally {
         await browser.close();
     }
+}
+
+async function prepareMode(page, mode) {
+    if (mode !== "price-trends") {
+        return;
+    }
+    try {
+        const tab = page.locator("[data-testid=\"tab-priceTrends\"]").first();
+        await tab.waitFor({ state: "attached", timeout: 15000 });
+        await tab.click({ force: true });
+    } catch {
+        // The selector counts below make the missing tab visible in the smoke output.
+    }
+}
+
+async function collectModeMetrics(page, mode) {
+    return await page.evaluate((selectedMode) => {
+        const doc = globalThis.document;
+        const textFrom = (selector) => doc.querySelector(selector)?.textContent?.trim() ?? "none";
+        if (selectedMode === "top") {
+            return {
+                "top row count": doc.querySelectorAll("[data-ra-rank-recommendation-row]").length,
+                "React marker mounted": doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null ? "yes" : "no",
+                "target month select": doc.querySelector("[data-ra-rank-recommendation-target-month]") !== null ? "yes" : "no",
+                "view mode buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"view-mode\"]").length,
+                "display limit buttons": doc.querySelectorAll("[data-ra-rank-recommendation-display-limit-control] button").length,
+                "rank order control": doc.querySelector("[data-ra-rank-recommendation-order-control]") !== null ? "yes" : "no",
+                "curve preview buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"curve-preview-toggle\"]").length,
+                "rank change buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"]").length,
+                "decision buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"snooze\"], [data-ra-rank-recommendation-button-action=\"dismiss\"]").length
+            };
+        }
+        if (selectedMode === "price-trends") {
+            return {
+                "price trends tab": doc.querySelector("[data-testid=\"tab-priceTrends\"]") !== null ? "yes" : "no",
+                "price trends content": doc.querySelector("[data-testid=\"price-trends-content\"]") !== null ? "yes" : "no",
+                "price trends overview count": doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview]").length,
+                "price trends panel count": doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-chart-panel]").length,
+                "price trends svg count": doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-chart-svg]").length,
+                "price trends background text": textFrom("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-overview-meta]")
+            };
+        }
+        return {
+            "monthly preview root count": doc.querySelectorAll("[data-ra-monthly-progress-preview-root]").length,
+            "monthly preview panel count": doc.querySelectorAll("[data-ra-monthly-progress-preview-panel]").length,
+            "monthly preview svg count": doc.querySelectorAll("[data-ra-monthly-progress-preview-svg]").length,
+            "monthly daily diff count": doc.querySelectorAll("[data-ra-monthly-progress-daily-diff]").length,
+            "monthly daily diff rows": doc.querySelectorAll("[data-ra-monthly-progress-daily-diff-row]").length,
+            "monthly status text": textFrom("[data-ra-monthly-progress-preview-status]")
+        };
+    }, mode);
 }
 
 async function resolvePage(context, url) {
@@ -175,12 +206,28 @@ function sanitizeUrl(value) {
     return url.toString();
 }
 
+function matchesWriteEndpoint(value) {
+    try {
+        const url = new URL(value);
+        return WRITE_ENDPOINTS.some((endpoint) => url.pathname.includes(endpoint));
+    } catch {
+        return WRITE_ENDPOINTS.some((endpoint) => value.includes(endpoint));
+    }
+}
+
 function parsePositiveInteger(value, fallback) {
     if (value === undefined) {
         return fallback;
     }
     const parsed = Number.parseInt(value, 10);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function parseMode(value) {
+    if (SMOKE_MODES.has(value)) {
+        return value;
+    }
+    throw new Error(`unsupported smoke mode: ${value}. Expected one of: ${[...SMOKE_MODES].join(", ")}`);
 }
 
 function parseArgs(values) {

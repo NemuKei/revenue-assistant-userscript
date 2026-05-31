@@ -56,6 +56,9 @@ const MONTHLY_PROGRESS_COMPARE_MODE_STORAGE_KEY = "preview-compare-mode";
 const MONTHLY_PROGRESS_SECONDARY_METRIC_STORAGE_KEY = "preview-secondary-metric";
 const MONTHLY_PROGRESS_FIXTURE_MODE_STORAGE_KEY = "revenue-assistant:monthly-progress:v1:fixture-mode";
 const MONTHLY_PROGRESS_PREVIEW_EMPTY_ATTRIBUTE = "data-ra-monthly-progress-preview-empty";
+const MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE = "data-ra-monthly-progress-daily-diff";
+const MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE = "data-ra-monthly-progress-daily-diff-row";
+const MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE = "data-ra-monthly-progress-daily-diff-tone";
 const MONTHLY_PROGRESS_RESERVATION_CHART_TEST_ID = "chart-content-numberOfRoomsSold-dateOfReservationBasis";
 const MONTHLY_PROGRESS_VISIBLE_MONTH_COUNT = 4;
 const MONTHLY_PROGRESS_PREVIEW_LABEL_TICKS = new Set<LeadTimeBucketTick>([360, 270, 180, 120, 90, 60, 45, 30, 21, 14, 7, 3, "ACT"]);
@@ -111,6 +114,7 @@ interface MonthlyProgressFocusMonthPreview {
     roomPoints: MonthlyProgressPreviewPoint[];
     salesPoints: MonthlyProgressPreviewPoint[];
     unitPricePoints: MonthlyProgressPreviewPoint[];
+    dailyDiffItems: MonthlyProgressDailyDiffItem[];
 }
 
 interface MonthlyProgressPreviewModel {
@@ -121,6 +125,18 @@ interface MonthlyProgressPreviewModel {
     observationDateKey: string;
     loadingSummary: string | null;
     emptyState: string | null;
+}
+
+type MonthlyProgressDailyDiffDirection = "increase" | "decrease" | "flat" | "unobserved";
+
+interface MonthlyProgressDailyDiffItem {
+    tick: LeadTimeBucketTick;
+    dateKey: string | null;
+    currentValue: number | null;
+    previousValue: number | null;
+    delta: number | null;
+    direction: MonthlyProgressDailyDiffDirection;
+    reason: string;
 }
 
 interface MonthlyProgressBackgroundPrefetchState {
@@ -726,6 +742,7 @@ function buildMonthlyProgressFixtureFocusMonth(options: {
         color: MONTHLY_PROGRESS_PREVIEW_MONTH_COLORS[options.index % MONTHLY_PROGRESS_PREVIEW_MONTH_COLORS.length] ?? "#1f5fbf",
         roomPoints,
         salesPoints,
+        dailyDiffItems: buildMonthlyProgressDailyDiffItems(roomPoints),
         unitPricePoints: salesPoints.map((salesPoint, index) => {
             const roomPoint = roomPoints[index];
             return {
@@ -749,14 +766,24 @@ function buildMonthlyProgressFixturePoints(options: {
     partialCompare: boolean;
     partialCurrent: boolean;
 }): MonthlyProgressPreviewPoint[] {
+    let previousFixtureValue = 0;
     return LEAD_TIME_BUCKET_TICKS.map((tick, index) => {
         const progressRatio = index / Math.max(1, LEAD_TIME_BUCKET_TICKS.length - 1);
+        const baseCurrentValue = Math.max(0, Math.round(options.baseValue * progressRatio));
+        const adjustedCurrentValue = index === 5
+            ? previousFixtureValue
+            : index === 8
+                ? Math.max(0, previousFixtureValue - Math.max(1, Math.round(options.baseValue * 0.06)))
+                : baseCurrentValue;
         const currentValue = options.partialCurrent && index % 5 === 2
             ? null
-            : Math.max(0, Math.round(options.baseValue * progressRatio));
+            : adjustedCurrentValue;
         const compareValue = !options.includeCompare || (options.partialCompare && index % 3 === 1)
             ? null
             : Math.max(0, Math.round((options.baseValue + options.compareOffset) * progressRatio));
+        if (currentValue !== null) {
+            previousFixtureValue = currentValue;
+        }
         return {
             tick,
             currentValue,
@@ -766,6 +793,48 @@ function buildMonthlyProgressFixturePoints(options: {
             threeYearsAgoCompareValue: compareValue === null ? null : Math.max(0, compareValue - 7),
             currentDateKey: `202605${String(Math.min(28, index + 1)).padStart(2, "0")}`,
             compareDateKey: compareValue === null ? null : `202505${String(Math.min(28, index + 1)).padStart(2, "0")}`
+        };
+    });
+}
+
+function buildMonthlyProgressDailyDiffItems(points: MonthlyProgressPreviewPoint[]): MonthlyProgressDailyDiffItem[] {
+    let previousObservedValue: number | null = null;
+    return points.map((point) => {
+        if (point.currentValue === null) {
+            return {
+                tick: point.tick,
+                dateKey: point.currentDateKey,
+                currentValue: null,
+                previousValue: previousObservedValue,
+                delta: null,
+                direction: "unobserved",
+                reason: point.currentDateKey === null ? "対象日未解決" : "未観測"
+            };
+        }
+
+        if (previousObservedValue === null) {
+            previousObservedValue = point.currentValue;
+            return {
+                tick: point.tick,
+                dateKey: point.currentDateKey,
+                currentValue: point.currentValue,
+                previousValue: null,
+                delta: null,
+                direction: "unobserved",
+                reason: "比較前 bucket なし"
+            };
+        }
+
+        const delta = point.currentValue - previousObservedValue;
+        previousObservedValue = point.currentValue;
+        return {
+            tick: point.tick,
+            dateKey: point.currentDateKey,
+            currentValue: point.currentValue,
+            previousValue: point.currentValue - delta,
+            delta,
+            direction: delta > 0 ? "increase" : delta < 0 ? "decrease" : "flat",
+            reason: "観測済み"
         };
     });
 }
@@ -842,6 +911,7 @@ function buildMonthlyProgressFocusMonthPreview(options: {
         color: MONTHLY_PROGRESS_PREVIEW_MONTH_COLORS[options.index % MONTHLY_PROGRESS_PREVIEW_MONTH_COLORS.length] ?? "#1f5fbf",
         roomPoints,
         salesPoints,
+        dailyDiffItems: buildMonthlyProgressDailyDiffItems(roomPoints),
         unitPricePoints: salesPoints.map((salesPoint, index) => {
             const roomPoint = roomPoints[index];
             return {
@@ -959,7 +1029,8 @@ function renderMonthlyProgressPreview(options: {
         focusMonths: options.previewModel.focusMonths.map((month) => ({
             yearMonth: month.yearMonth,
             room: month.roomPoints.map((point) => [point.tick, point.currentValue, point.compareValue]),
-            unitPrice: month.unitPricePoints.map((point) => [point.tick, point.currentValue, point.compareValue])
+            unitPrice: month.unitPricePoints.map((point) => [point.tick, point.currentValue, point.compareValue]),
+            dailyDiff: month.dailyDiffItems.map((item) => [item.tick, item.direction, item.delta])
         }))
     });
 
@@ -1017,6 +1088,7 @@ function renderMonthlyProgressPreview(options: {
                 controls: createMonthlyProgressSecondaryMetricGroup(options.context, options.previewModel.secondaryMetric)
             })
         );
+        grid.append(createMonthlyProgressDailyDiffSection(options.previewModel.focusMonths));
     } else {
         const emptyElement = document.createElement("div");
         emptyElement.setAttribute(MONTHLY_PROGRESS_PREVIEW_EMPTY_ATTRIBUTE, "");
@@ -1245,6 +1317,80 @@ function createMonthlyProgressPanel(panel: MonthlyProgressPanelModel): HTMLEleme
     return panelElement;
 }
 
+function createMonthlyProgressDailyDiffSection(focusMonths: MonthlyProgressFocusMonthPreview[]): HTMLElement {
+    const section = document.createElement("section");
+    section.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE, "");
+
+    const title = document.createElement("div");
+    title.textContent = "日次差分";
+
+    const description = document.createElement("p");
+    description.textContent = "販売客室数の現年系列を、隣り合う LT bucket 同士で比較する。未観測 bucket は差分計算から除外する。";
+
+    const table = document.createElement("table");
+    const head = document.createElement("thead");
+    const headRow = document.createElement("tr");
+    for (const label of ["対象月", "LT", "対象日", "状態", "差分"]) {
+        const cell = document.createElement("th");
+        cell.textContent = label;
+        headRow.append(cell);
+    }
+    head.append(headRow);
+
+    const body = document.createElement("tbody");
+    for (const month of focusMonths) {
+        for (const item of month.dailyDiffItems) {
+            const row = document.createElement("tr");
+            row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE, "");
+            row.setAttribute(MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE, item.direction);
+
+            const monthCell = document.createElement("td");
+            monthCell.textContent = month.label;
+
+            const tickCell = document.createElement("td");
+            tickCell.textContent = formatMonthlyProgressTooltipTickLabel(item.tick);
+
+            const dateCell = document.createElement("td");
+            dateCell.textContent = item.dateKey === null ? "-" : formatDateKey(item.dateKey);
+
+            const stateCell = document.createElement("td");
+            stateCell.textContent = formatMonthlyProgressDailyDiffDirection(item);
+
+            const deltaCell = document.createElement("td");
+            deltaCell.textContent = formatMonthlyProgressDailyDiffDelta(item);
+
+            row.replaceChildren(monthCell, tickCell, dateCell, stateCell, deltaCell);
+            body.append(row);
+        }
+    }
+    table.append(head, body);
+    section.replaceChildren(title, description, table);
+    return section;
+}
+
+function formatMonthlyProgressDailyDiffDirection(item: MonthlyProgressDailyDiffItem): string {
+    if (item.direction === "increase") {
+        return "増加";
+    }
+    if (item.direction === "decrease") {
+        return "減少";
+    }
+    if (item.direction === "flat") {
+        return "変化なし";
+    }
+    return item.reason;
+}
+
+function formatMonthlyProgressDailyDiffDelta(item: MonthlyProgressDailyDiffItem): string {
+    if (item.delta === null) {
+        return "-";
+    }
+    if (item.delta === 0) {
+        return "0室";
+    }
+    return `${item.delta > 0 ? "+" : ""}${item.delta.toLocaleString("ja-JP")}室`;
+}
+
 function createMonthlyProgressTooltip(): HTMLDivElement {
     const tooltip = document.createElement("div");
     tooltip.setAttribute(MONTHLY_PROGRESS_PREVIEW_TOOLTIP_ATTRIBUTE, "");
@@ -1452,7 +1598,8 @@ function showMonthlyProgressTooltip(
         color: "#1f5fbf",
         roomPoints: [],
         salesPoints: [],
-        unitPricePoints: []
+        unitPricePoints: [],
+        dailyDiffItems: []
     }, panel.metric)[pointIndex];
     if (referencePoint === undefined) {
         hideMonthlyProgressTooltip(tooltipElement, guideLineElement, activePointElements);
@@ -1782,7 +1929,7 @@ function ensureMonthlyProgressPreviewStyles(): void {
         gap: 12px;
         margin-top: 12px;
       }
-            [${MONTHLY_PROGRESS_PREVIEW_EMPTY_ATTRIBUTE}] {
+      [${MONTHLY_PROGRESS_PREVIEW_EMPTY_ATTRIBUTE}] {
                 grid-column: 1 / -1;
                 min-height: 116px;
                 display: flex;
@@ -1797,6 +1944,60 @@ function ensureMonthlyProgressPreviewStyles(): void {
                 font-weight: 700;
                 line-height: 1.55;
                 text-align: center;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] {
+                grid-column: 1 / -1;
+                border-radius: 10px;
+                border: 1px solid #d8e5f2;
+                background: #ffffff;
+                padding: 10px;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] > div {
+                color: #1f3856;
+                font-size: 12px;
+                font-weight: 700;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] p {
+                margin: 4px 0 8px;
+                color: #5c7492;
+                font-size: 10px;
+                font-weight: 700;
+                line-height: 1.5;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] table {
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 10px;
+                line-height: 1.35;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] th,
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] td {
+                padding: 5px 6px;
+                border-bottom: 1px solid #e5ebf2;
+                text-align: right;
+                white-space: nowrap;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] th:first-child,
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] td:first-child,
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] th:nth-child(4),
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] td:nth-child(4) {
+                text-align: left;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] th {
+                color: #58708f;
+                font-weight: 700;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE}][${MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE}="increase"] td:last-child {
+                color: #1f7a47;
+                font-weight: 800;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE}][${MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE}="decrease"] td:last-child {
+                color: #b44242;
+                font-weight: 800;
+            }
+            [${MONTHLY_PROGRESS_DAILY_DIFF_ROW_ATTRIBUTE}][${MONTHLY_PROGRESS_DAILY_DIFF_TONE_ATTRIBUTE}="flat"] td:last-child {
+                color: #456784;
+                font-weight: 800;
             }
       [${MONTHLY_PROGRESS_PREVIEW_PANEL_ATTRIBUTE}] {
         min-width: 0;
