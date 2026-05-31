@@ -4,7 +4,8 @@
 
 ## Current Task Bundle
 
-- 主対象: 2026-05-31 に、未着手だった `RAU-UX-48` から `RAU-UX-58` を完了した。Vite は正規配布 build、dev-only fixture preview、candidate build に導入した。UI ライブラリは Radix UI `@radix-ui/react-popover@1.1.15` の Popover 1 component だけをトップ料金調整候補 list の booking curve 要点 popover へ接続した。旧 esbuild build は `npm run build:legacy` として rollback 候補に残した。GitHub Actions の Publish Userscript は docs-only closeout commit 後の run `26714363970` で success になり、GitHub Pages 公開版と Tampermonkey installed version は `0.1.0.355` に揃えた。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
+- 主対象: 2026-05-31 に、完了報告で推奨した 4 件を `RAU-UX-59` から `RAU-UX-62` として task 化した。`RAU-UX-59` は docs-only closeout commit 後に Publish Userscript が走り、公開版 version と Tampermonkey installed version の再同期が必要になる状態を減らす task である。`RAU-UX-60` は Tampermonkey 更新直後の `smoke:distribution` を固定秒数待ちから状態待ちへ変える task である。`RAU-UX-61` は Vite / Radix 導入後の React Doctor 残診断 62 件を再分類する task である。`RAU-UX-62` は Vite / Radix 後の bundle size と dependency 追加判断の予算を決める task である。Remaining Task Triage は Now `RAU-UX-59`、Next `RAU-UX-60`、After Next `RAU-UX-61`、Later `RAU-UX-62` である。
+- 主対象: 2026-05-31 に、未着手だった `RAU-UX-48` から `RAU-UX-58` を完了した。Vite は正規配布 build、dev-only fixture preview、candidate build に導入した。UI ライブラリは Radix UI `@radix-ui/react-popover@1.1.15` の Popover 1 component だけをトップ料金調整候補 list の booking curve 要点 popover へ接続した。旧 esbuild build は `npm run build:legacy` として rollback 候補に残した。GitHub Actions の Publish Userscript は docs-only closeout commit 後の run `26714363970` で success になり、GitHub Pages 公開版と Tampermonkey installed version は `0.1.0.355` に揃えた。完了時点の Remaining Task Triage は Now / Next / After Next / Later すべて空であった。
 - 主対象: 2026-05-31 に、未着手だった `RAU-UX-45`、`RAU-UX-46`、`RAU-UX-47` を完了した。Remaining Task Triage は Now / Next / After Next / Later すべて空である。`RAU-UX-45` と `RAU-UX-46` では、配布版 smoke の前提診断として local version、published version、installed version または `manual-check-required`、Revenue Assistant URL、login form candidate、calendar candidate、RAU userscript root count、React marker、preflight message を分けて出すようにした。`RAU-UX-47` では React Doctor の `js-index-maps` family だけを処理し、診断件数を 61 件から 59 件へ減らした。userscript runtime UI、rank recommendation scoring、API request 範囲、Revenue Assistant write API、Tampermonkey dashboard は変更していない。
 - 主対象: 2026-05-31 に、未着手だった `RAU-UX-42`、`RAU-UX-41`、`RAU-UX-43`、`RAU-UX-44` を完了した。Remaining Task Triage は Now / Next / After Next / Later すべて空である。今回の変更では Tampermonkey dashboard 更新は行っていない。CDP 接続付き通常 Chrome へ local `dist/revenue-assistant-userscript.user.js` を一時注入し、top preview keyboard close / focus return、月次 compact view の主 table / details 分離、監視対象 write API POST 0 件を確認した。
 - 直前の bundle では、未着手だった `RAU-UX-25`、`RAU-MP-08`、`RAU-UX-26`、`RAU-UX-27` から `RAU-UX-40` までを完了した。その完了報告で推奨した 4 件を `RAU-UX-41` から `RAU-UX-44` として task 化し、Remaining Task Triage は Now `RAU-UX-42`、Next `RAU-UX-41`、After Next `RAU-UX-43`、Later `RAU-UX-44` とした。GitHub Pages 公開版と Tampermonkey dashboard は `0.1.0.346` に揃え、配布版 top smoke、月次 smoke、preview 開閉、pending cancel を確認済みである。
@@ -186,7 +187,11 @@
   - `RAU-UX-56` Vite build を配布版 smoke で並走検証する
   - `RAU-UX-57` React + UI ライブラリ化を top rank recommendation surface へ段階接続する
   - `RAU-UX-58` Vite build を正規配布 path へ切り替える
-- 未実装 Task ID: なし
+- 未実装 Task ID:
+  - `RAU-UX-59` docs-only push で Publish Userscript が連鎖しない条件を設計または実装する
+  - `RAU-UX-60` `smoke:distribution` の Tampermonkey 更新直後待機を固定秒数から状態待ちへ変える
+  - `RAU-UX-61` Vite / Radix 導入後の React Doctor 残診断を再分類する
+  - `RAU-UX-62` Vite / Radix 後の bundle size と dependency 予算を決める
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -199,7 +204,8 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now / Next / After Next / Later すべて空である。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now `RAU-UX-59`、Next `RAU-UX-60`、After Next `RAU-UX-61`、Later `RAU-UX-62` である。
+  - 次の 1 task は `RAU-UX-59` である。目的は、docs-only closeout commit や backlog taskization commit が userscript 実行版を変えていない場合に、Publish Userscript が不要に走り、GitHub Pages 公開版 version と Tampermonkey installed version の再同期が必要になる状態を減らすことである。
   - `RAU-UX-48` から `RAU-UX-58` は完了済みである。Vite の正規配布 build、dev-only fixture preview、candidate build、Radix Popover 1 component の production 接続、旧 esbuild build の rollback 経路を現行契約として扱う。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。

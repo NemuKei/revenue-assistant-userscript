@@ -6194,26 +6194,130 @@
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_000_overview.md`
 
+### RAU-UX-59 docs-only push で Publish Userscript が連鎖しない条件を設計または実装する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 2026-05-31 の Vite 正規 build 切替 closeout では、docs-only commit が `main` へ push された後にも GitHub Actions の Publish Userscript が走り、GitHub Pages 公開版の `@version` が `0.1.0.354` から `0.1.0.355` へ進んだ。
+  - その結果、Tampermonkey dashboard をもう一度更新し、配布版 smoke を取り直す必要が発生した。
+  - 今後の docs-only closeout、STATUS 同期、backlog taskization で、実行版が変わっていないのに公開版 version だけが進み、Tampermonkey installed version の再確認が必要になる状態を減らす。
+- スコープ:
+  - 対象は `.github/workflows/publish-userscript.yml`、commit message による skip 条件、path filter、または release gate のいずれかである。
+  - docs-only commit、source / build / userscript metadata に関係する commit、workflow file 変更 commit を区別する。
+  - `src/`、`scripts/`、`package.json`、`package-lock.json`、`userscript.config.mjs`、`vite.userscript.config.mjs`、`.github/workflows/publish-userscript.yml` の変更時に publish すべきか、`docs/` だけの変更時に publish すべきでないかを明記する。
+- 非目標:
+  - userscript の runtime UI、rank recommendation scoring、Revenue Assistant API request 範囲、Tampermonkey dashboard 更新手順は変更しない。
+  - GitHub Pages 配布方式そのもの、`GITHUB_RUN_NUMBER` を使う version 付与方式、`dist/*.user.js` を正とする契約を同時に置き換えない。
+  - publish を完全に手動化する判断は、この task の中で根拠なしに決めない。
+- 受け入れ条件:
+  - docs-only closeout commit が Publish Userscript を走らせるかどうかの期待挙動が、README、workflow comment、または `docs/context/DECISIONS.md` のいずれかに明記されている。
+  - workflow を変更する場合は、docs-only 変更、source 変更、workflow 変更の 3 種類について、どの job が走るべきかを説明できる。
+  - docs-only push 後に公開版 version が進まないこと、または進む場合でも Tampermonkey installed version の再更新が必要になる理由が明記されている。
+  - `git diff --check` が通過する。workflow を編集した場合は、可能な範囲で GitHub Actions の最新 run 状態を確認する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: なし
+
+### RAU-UX-60 `smoke:distribution` の Tampermonkey 更新直後待機を固定秒数から状態待ちへ変える
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 2026-05-31 の Tampermonkey 更新直後確認では、15 秒待機の top smoke が RAU userscript root 0 件で expected fail になり、30 秒待機では pass した。
+  - 固定秒数だけで待つと、Revenue Assistant の初回 reload、Tampermonkey の更新反映、React mount のタイミングにより、実装不具合ではない失敗と実装不具合を区別しにくい。
+  - `smoke:distribution` が、指定秒数の間に RAU root、React marker、mode 別主要 selector が揃うかを待ち、揃わなかった場合に何が不足したかを出力できるようにする。
+- スコープ:
+  - 対象は `scripts/run-distribution-smoke.mjs` の待機処理、preflight output、fail message である。
+  - top mode では RAU root、React marker、候補 row、主要 control を段階的に待つ。
+  - price-trends mode と monthly-progress mode では、既存の主要 selector 判定を壊さず、状態待ちに流用できるものだけを対象にする。
+- 非目標:
+  - Tampermonkey dashboard の更新操作を自動化しない。
+  - Chrome extension storage、Tampermonkey 内部 storage、Cookie、token、Revenue Assistant 認証情報を直接読まない。
+  - selector 0 件、console / page error、監視対象 write API POST の fail 条件を緩めない。
+- 受け入れ条件:
+  - `--seconds` は単なる sleep ではなく、最大待機時間として使われる。
+  - 待機中に RAU root、React marker、mode 別主要 selector のどこまで揃ったかを、失敗時の output で確認できる。
+  - 更新直後の reload 遅延と、Tampermonkey 未更新または userscript 未発火を区別できる message が出る。
+  - `npm run check`、対象 mode の `npm run smoke:distribution`、`git diff --check` が通過する。Revenue Assistant 実画面確認が必要な場合は、通常 Chrome の Tampermonkey installed version と published version を記録する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-61 Vite / Radix 導入後の React Doctor 残診断を再分類する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 2026-05-31 の Vite / Radix 導入後、`npm run react:doctor -- --diff false` は pass したが 62 issues を報告した。
+  - React Doctor の残診断には、runtime bug 候補、performance 最適化候補、userscript build や generated output に対する誤検知、Vite fixture / Radix 導入後に新しく見えるようになった診断が混ざる可能性がある。
+  - 次に安全に処理できる 1 family を選ぶ前に、現在の診断を rule family、対象 file、risk、保留理由に分ける。
+- スコープ:
+  - 対象は `npm run react:doctor -- --verbose --diff false` の出力分類、`docs/tasks_backlog.md` または `docs/context/STATUS.md` への分類結果記録、必要なら次の小タスク候補の切り出しである。
+  - Vite fixture、Radix Popover、userscript runtime、generated `dist` に関係する診断を区別する。
+  - async / request ordering / `flushSync` / generated output / low-risk lookup のどれに属するかを分ける。
+- 非目標:
+  - この task だけで複数 rule family を一括修正しない。
+  - React Doctor の設定変更、診断抑制、dependency 更新を同時に行わない。
+  - Runtime UI、API request 範囲、write guard、Tampermonkey 更新手順を変更しない。
+- 受け入れ条件:
+  - React Doctor の総件数、主要 rule family、対象 file、runtime bug として扱うかどうか、保留理由が記録されている。
+  - 次に実装修正へ進める場合は、1 task で扱う rule family が 1 種類に限定されている。
+  - `npm run react:doctor -- --diff false`、`git diff --check` が通過する。docs-only 分類で runtime file を編集しない場合は `npm run check` を必須にしない理由を記録する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-62 Vite / Radix 後の bundle size と dependency 予算を決める
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Vite 正規 build と Radix Popover 導入後、`dist/revenue-assistant-userscript.user.js` の size、dependency 数、lockfile の optional dependency が増えた。
+  - 今後 UI ライブラリや Vite plugin を増やす前に、userscript として許容する bundle size、dependency 追加時の確認項目、rollback 条件を決める。
+  - 「便利そうだから UI ライブラリを増やす」ではなく、対象 component、得られる操作品質、size 増加、Tampermonkey 実行確認を比較して判断できるようにする。
+- スコープ:
+  - 対象は bundle size の測定方法、Vite build と旧 esbuild build の比較方法、dependency 追加時の security / license / install script / version pin 確認、Tampermonkey 配布版 smoke 条件である。
+  - `scripts/compare-vite-build.mjs`、README、`docs/spec_000_overview.md`、`docs/spec_003_rank_recommendation_signal.md` のどこに基準を置くかを決める。
+  - size 予算は厳密な上限、警告閾値、増加理由の記録条件のいずれかとして定義する。
+- 非目標:
+  - この task だけで dependency を追加、削除、更新しない。
+  - Vite、Radix、React、React DOM の採用判断を巻き戻さない。
+  - minify 設定、code splitting、runtime lazy loading を根拠なしに変更しない。
+- 受け入れ条件:
+  - bundle size を測る command、比較対象、記録先、警告条件が明記されている。
+  - dependency 追加時に確認する項目として、version pin、lockfile 差分、install script、license、supply-chain risk、Tampermonkey 配布版 smoke が含まれている。
+  - 次に UI library component を増やす場合、どの条件を満たせば進めてよいか、どの条件なら止めるかを説明できる。
+  - `git diff --check` が通過する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_000_overview.md`, `docs/spec_003_rank_recommendation_signal.md`
+
 ## Remaining Task Triage
 
 Now:
 
-- なし
+- `RAU-UX-59` docs-only push で Publish Userscript が連鎖しない条件を設計または実装する
 
 Next:
 
-- なし
+- `RAU-UX-60` `smoke:distribution` の Tampermonkey 更新直後待機を固定秒数から状態待ちへ変える
 
 After Next:
 
-- なし
+- `RAU-UX-61` Vite / Radix 導入後の React Doctor 残診断を再分類する
 
 Later:
 
-- なし
+- `RAU-UX-62` Vite / Radix 後の bundle size と dependency 予算を決める
 
 統合判断:
 
+- 2026-05-31 に、完了報告で推奨した 4 件を task 化した。`RAU-UX-59` は docs-only closeout commit 後に Publish Userscript が走り、公開版 version と Tampermonkey installed version の再同期が必要になった実害を減らすため Now とする。`RAU-UX-60` は Tampermonkey 更新直後の smoke が固定 15 秒では RAU root 0 件になり、30 秒では pass したため、次の配布確認を安定させる検証補助として Next とする。`RAU-UX-61` は React Doctor 残 62 件の分類 task であり、runtime bug と保守改善を分ける必要があるため After Next とする。`RAU-UX-62` は Vite / Radix 後の size と dependency 追加判断の基準作りであり、直近 runtime bug ではないため Later とする。
 - 2026-05-31 に、未着手だった `RAU-UX-48` から `RAU-UX-58` を完了した。Vite は正規 build と dev-only fixture preview と candidate build に導入し、UI ライブラリは Radix UI `@radix-ui/react-popover@1.1.15` の Popover 1 component だけをトップ料金調整候補 list の booking curve 要点 popover へ接続した。旧 esbuild build は `npm run build:legacy` として rollback 候補に残した。Remaining Task Triage は空である。
 - 2026-05-31 に、利用者が React + Vite + UI ライブラリへ完全移行する前提を明示したため、長期レーンとして `RAU-UX-48` から `RAU-UX-58` を追加した。`RAU-UX-48` から `RAU-UX-50` は、依存追加、build 切替、runtime UI 置換の前に、完了定義、build lane、UI ライブラリ候補を正本化する docs-first task である。`RAU-UX-51` から `RAU-UX-53` は、Vite と UI ライブラリの価値を dev-only fixture に閉じて検証する。`RAU-UX-54` から `RAU-UX-58` は、production 接続条件、並走 build、配布版 smoke、top surface への段階接続、正規 build 切替の順に置く。理由は、Tampermonkey 配布版、Revenue Assistant の実ログイン状態、監視対象 write API POST 0 件確認、`dist/*.user.js` の正規生成契約を壊さずに移行するためである。
 - `RAU-UX-44` の「現時点では外部 UI ライブラリを導入しない」判断は、当時の自前 UI primitive と既存 selector 制約に対する完了済み判断として残す。今回の長期レーンは、利用者が新しく示した完全移行前提に基づく追加 task 群であり、過去 task を未完了へ戻すものではない。
