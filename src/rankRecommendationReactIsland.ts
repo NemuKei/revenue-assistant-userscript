@@ -1,4 +1,5 @@
 import * as React from "react";
+import * as Popover from "@radix-ui/react-popover";
 import { flushSync } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
 
@@ -21,6 +22,8 @@ const RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE = "data-ra-rank-recommendation-rank
 const RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap-trigger";
 const RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap-tooltip";
 const RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE = "data-ra-rank-recommendation-curve-popover";
+const RANK_RECOMMENDATION_CURVE_POPOVER_TRIGGER_ATTRIBUTE = "data-ra-rank-recommendation-curve-popover-trigger";
+const RANK_RECOMMENDATION_CURVE_POPOVER_CONTENT_ATTRIBUTE = "data-ra-rank-recommendation-curve-popover-content";
 const RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE = "data-ra-rank-recommendation-inline-rank-change";
 const RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE = "data-ra-rank-recommendation-inline-rank-select";
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
@@ -466,14 +469,32 @@ function RankRecommendationButtonPrimitive(props: {
 }
 
 function renderCurvePopover(items: readonly { label: string; value: string }[]): React.ReactElement {
-    return React.createElement("details", { [RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE]: "" },
-        React.createElement("summary", {
-            title: "候補行内でブッキングカーブの要点を確認"
-        }, "要点"),
-        React.createElement("div", null, items.map((item) => React.createElement("div", { key: item.label },
-            React.createElement("span", null, item.label),
-            React.createElement("strong", null, item.value)
-        )))
+    return React.createElement("span", { [RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE]: "" },
+        React.createElement(Popover.Root, { modal: false },
+            React.createElement(Popover.Trigger, { asChild: true },
+                React.createElement("button", {
+                    type: "button",
+                    [RANK_RECOMMENDATION_CURVE_POPOVER_TRIGGER_ATTRIBUTE]: "",
+                    [RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE]: "radix-popover-trigger",
+                    title: "候補行内でブッキングカーブの要点を確認"
+                }, "要点")
+            ),
+            React.createElement(Popover.Portal, null,
+                React.createElement(Popover.Content, {
+                    ...{
+                        [RANK_RECOMMENDATION_CURVE_POPOVER_CONTENT_ATTRIBUTE]: "",
+                        [RANK_RECOMMENDATION_UI_PRIMITIVE_ATTRIBUTE]: "radix-popover-content"
+                    },
+                    align: "end",
+                    sideOffset: 4,
+                    collisionPadding: 12
+                },
+                items.map((item) => React.createElement("div", { key: item.label },
+                    React.createElement("span", null, item.label),
+                    React.createElement("strong", null, item.value)
+                )))
+            )
+        )
     );
 }
 

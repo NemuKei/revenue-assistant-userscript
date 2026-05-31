@@ -2,6 +2,7 @@ import * as esbuild from "esbuild";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { renderUserscriptMetadata } from "./userscript-metadata.mjs";
 import userscript from "../userscript.config.mjs";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,10 +24,11 @@ const buildOptions = {
     logLevel: "info",
     legalComments: "none",
     banner: {
-        js: renderMetadata(userscript)
+        js: renderUserscriptMetadata(userscript)
     },
     define: {
-        __DEV__: JSON.stringify(isWatchMode)
+        __DEV__: JSON.stringify(isWatchMode),
+        "process.env.NODE_ENV": JSON.stringify(isWatchMode ? "development" : "production")
     }
 };
 
@@ -46,39 +48,4 @@ if (isWatchMode) {
 } else {
     await esbuild.build(buildOptions);
     console.log(`[build] ${path.relative(projectRoot, outputFile)}`);
-}
-
-function renderMetadata(config) {
-    const lines = ["// ==UserScript=="];
-    const entries = [
-        ["name", config.name],
-        ["namespace", config.namespace],
-        ["version", config.version],
-        ["description", config.description],
-        ["author", config.author],
-        ["match", config.match],
-        ["exclude", config.exclude],
-        ["grant", config.grant?.length ? config.grant : ["none"]],
-        ["connect", config.connect],
-        ["require", config.require],
-        ["run-at", config.runAt],
-        ["updateURL", config.updateURL],
-        ["downloadURL", config.downloadURL]
-    ];
-
-    for (const [key, rawValue] of entries) {
-        if (rawValue === undefined || rawValue === null || rawValue === "") {
-            continue;
-        }
-
-        const values = Array.isArray(rawValue) ? rawValue : [rawValue];
-
-        for (const value of values) {
-            lines.push(`// @${String(key).padEnd(12, " ")} ${value}`);
-        }
-    }
-
-    lines.push("// ==/UserScript==", "");
-
-    return lines.join("\n");
 }

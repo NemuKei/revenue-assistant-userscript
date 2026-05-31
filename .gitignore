@@ -30,6 +30,7 @@ Thumbs.db
 .idea/
 
 # Temp
+.tmp/
 coverage/
 tmp/
 output/

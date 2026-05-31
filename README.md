@@ -27,7 +27,12 @@ npm run check
 ## 開発コマンド
 
 - `npm run dev`: `dist/*.user.js` を watch build
-- `npm run build`: 本番向けに 1 回ビルド
+- `npm run build`: Vite で本番向け userscript bundle を 1 回ビルド
+- `npm run build:legacy`: 旧 esbuild build を rollback 候補として 1 回実行
+- `npm run dev:fixture`: Revenue Assistant runtime へ接続しない Vite fixture preview を起動
+- `npm run build:vite:fixture`: Vite fixture preview を build
+- `npm run build:vite:candidate`: 正規 `dist` を上書きしない Vite candidate userscript build を `.tmp/vite-candidate/` に生成
+- `npm run build:compare:vite`: 正規 `dist` と Vite candidate の userscript metadata、size、entry line を比較
 - `npm run typecheck`: TypeScript の型検査
 - `npm run lint`: ESLint 実行
 - `npm run check`: 型検査、lint、build をまとめて実行
@@ -56,6 +61,10 @@ npm run lint
 # userscript bundle 再生成だけを確認
 npm run build
 
+# 正規 build と candidate build の metadata / size 比較
+npm run build:vite:candidate
+npm run build:compare:vite
+
 # React component 変更後の追加診断
 npm run react:doctor -- --diff false
 
@@ -72,8 +81,10 @@ Codex automation shell などで `npm run ...` をそのまま実行できない
 ```powershell
 node .\node_modules\typescript\bin\tsc --noEmit
 node .\node_modules\eslint\bin\eslint.js .
-node .\scripts\build.mjs
+node .\node_modules\vite\bin\vite.js build --config .\vite.userscript.config.mjs --mode userscript
 ```
+
+`npm run build` は Vite build を正規 path として使います。旧 esbuild build へ戻す必要がある場合は、まず `npm run build:legacy` で `dist/revenue-assistant-userscript.user.js` を再生成し、Vite 起因の問題かどうかを切り分けます。旧 build を正規 path に戻す判断は、`package.json` の `build` script を `node ./scripts/build.mjs` に戻す変更として扱います。
 
 ## 配布版確認と通常 Chrome smoke
 

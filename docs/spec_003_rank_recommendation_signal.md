@@ -645,11 +645,12 @@ React component が扱ってよい入力、状態、出力:
 
 UI primitive 導入方針:
 
-- 初期方針は、外部 UI ライブラリを追加せず、自前の小さい React component を UI primitive として使う。
-- 最初に扱う primitive は、button と pending notice とする。理由は、既存 selector と delegated event handler を維持したまま、操作部品の属性、disabled、title、aria を集約でき、write API に近い rank 変更 adapter を component へ取り込まないためである。
-- tooltip、popover、segmented control、tabs、modal / confirmation、select / menu は後回しにする。特に pending / confirmation と preview は、write guard と focus への影響があるため、button primitive の smoke が通った後に扱う。
-- 外部 UI ライブラリを使う場合でも、CSS theme 全面導入は行わない。必要な UI primitive だけを取り込み、既存 `data-ra-*` selector、Tampermonkey 配布、Chrome / CDP smoke、監視対象 write API POST 0 件確認を維持する。
-- 2026-05-31 の再評価では、現在の自前 UI primitive は button、pending notice、React row actions、preview row、booking curve 要点 popover、現ランク tooltip、rank select、details 系操作に広がっている。一方で、操作状態の大半は既存 `data-ra-*` selector と delegated event handler に結び付いており、外部 UI ライブラリへ置き換えると Tampermonkey 配布 bundle size、CSS 衝突、focus 管理の再検証範囲が増える。現時点では外部 UI ライブラリを導入せず、自前 primitive を継続する。再評価 trigger は、modal / menu / tabs のいずれかを新規に追加する場合、または preview / popover / details の focus 管理が複数箇所で重複し、同じ keyboard close、focus return、disabled、aria-expanded、aria-controls を保つための実装が 3 箇所以上に分散した場合とする。
+- 自前 UI primitive は、button、pending notice、React row actions、preview row、現ランク tooltip、rank select、details 系操作に使い続ける。
+- 外部 UI ライブラリは、CSS theme 全面導入や component suite 置き換えではなく、必要な component だけを取り込む。
+- 2026-05-31 の完全移行レーンでは、最初の外部 UI ライブラリ component として Radix UI `@radix-ui/react-popover@1.1.15` の Popover だけを採用する。対象は、トップ料金調整候補 list の booking curve 要点 popover である。
+- booking curve 要点 popover は、既存 `curvePopoverItems` だけを入力にし、Revenue Assistant API request、IndexedDB write、candidate scoring、reasonFingerprint、rank change adapter を直接扱わない。
+- Popover の trigger と content は `data-ra-rank-recommendation-curve-popover`、`data-ra-rank-recommendation-curve-popover-content`、`data-ra-rank-recommendation-ui-primitive` を持ち、既存 selector contract と smoke helper の確認入口を維持する。
+- Radix Popover は Portal を使うため、CSS は content 自体の data attribute へ当てる。Revenue Assistant 本体 DOM へ global theme、CSS reset、design token を注入しない。
 - write API に近い操作へ primitive を適用する場合は、送信条件、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、反映確認、同一 `stayDate x roomGroup` pending block を維持する。
 
 UI ライブラリ候補の評価基準:
@@ -666,7 +667,7 @@ UI ライブラリ候補の評価基準:
 
 | 候補 | 使える component | 使わない component | 供給網上の注意 | Tampermonkey userscript での懸念 | 判断 |
 | --- | --- | --- | --- | --- | --- |
-| Radix UI `@radix-ui/react-popover` | Popover、Dialog、Tooltip、Select を個別 package で検討できる | CSS theme、全面的な component suite 置き換え | npm metadata では `@radix-ui/react-popover` は MIT、15 dependencies、unpacked size 91.3 kB、version `1.1.15` | Portal と z-index、既存 details / tooltip との event 競合、複数 Radix package を入れた場合の依存増加 | 保留候補。popover だけを試す価値はあるが、最初の task では依存追加しない |
+| Radix UI `@radix-ui/react-popover` | Popover、Dialog、Tooltip、Select を個別 package で検討できる | CSS theme、全面的な component suite 置き換え | npm metadata では `@radix-ui/react-popover` は MIT、15 dependencies、unpacked size 91.3 kB、version `1.1.15`。install / postinstall script は確認対象 metadata には出ていない。`npm audit` は 0 vulnerabilities | Portal と z-index、既存 details / tooltip との event 競合、複数 Radix package を入れた場合の依存増加 | 採用候補。最初の production 接続対象は booking curve 要点 popover 1 件だけに限定する |
 | Ariakit `@ariakit/react` | Dialog、Popover、Menu、Select、Combobox などの headless component | 全面的な toolkit 導入 | npm metadata では MIT、1 dependency、unpacked size 273 kB、version `0.4.18` | API 面は広いが、userscript で必要な部品より大きくなりやすい | 保留候補。dependency 数は少ないが、最初の primitive には過剰 |
 | React Aria Components `react-aria-components` | Button、Popover、Dialog、Select、Tabs など accessibility 重視の unstyled component | 国際化や日付系を含む広い component 群 | npm metadata では Apache-2.0、29 dependencies、unpacked size 4.39 MB、version `1.12.1` | internationalization 依存と package size が大きく、Tampermonkey 配布に対して初期導入が重い | 不採用寄りの保留。accessibility は強いが、今回の小さい primitive 試験には重い |
 | Headless UI `@headlessui/react` | Dialog、Popover、Menu、Tabs など | Tailwind 前提の例をそのまま使うこと | npm metadata では MIT、5 dependencies、unpacked size 1.01 MB、version `2.2.7` | Tailwind と組み合わせる説明が多く、RAU の既存 CSS へ最小導入するには検証が必要 | 保留候補。Tailwind を入れない前提では最初の候補にしない |

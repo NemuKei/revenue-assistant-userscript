@@ -4,7 +4,7 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
     {
-        ignores: ["dist/**", ".chrome-debug-profile/**"]
+        ignores: ["dist/**", ".tmp/**", ".chrome-debug-profile/**"]
     },
     js.configs.recommended,
     ...tseslint.configs.recommended,

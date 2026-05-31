@@ -180,6 +180,7 @@ const RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE = "data-ra-rank-recommendation-rank
 const RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap-trigger";
 const RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE = "data-ra-rank-recommendation-rank-gap-tooltip";
 const RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE = "data-ra-rank-recommendation-curve-popover";
+const RANK_RECOMMENDATION_CURVE_POPOVER_CONTENT_ATTRIBUTE = "data-ra-rank-recommendation-curve-popover-content";
 const RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE = "data-ra-rank-recommendation-inline-rank-change";
 const RANK_RECOMMENDATION_INLINE_RANK_SELECT_ATTRIBUTE = "data-ra-rank-recommendation-inline-rank-select";
 const RANK_RECOMMENDATION_BUTTON_ATTRIBUTE = "data-ra-rank-recommendation-button";
@@ -17226,13 +17227,12 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] {
-            position: relative;
             display: inline-block;
             margin-right: 6px;
             vertical-align: top;
         }
 
-        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] summary {
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] button {
             display: inline-flex;
             align-items: center;
             min-height: 26px;
@@ -17245,18 +17245,10 @@ function ensureGroupRoomStyles(): void {
             font-weight: 800;
             line-height: 1.2;
             cursor: pointer;
-            list-style: none;
         }
 
-        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] summary::-webkit-details-marker {
-            display: none;
-        }
-
-        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] > div {
-            position: absolute;
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_CONTENT_ATTRIBUTE}] {
             z-index: 20;
-            top: calc(100% + 4px);
-            right: 0;
             min-width: 260px;
             padding: 8px 10px;
             border: 1px solid #c9d4e2;
@@ -17268,18 +17260,18 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.45;
         }
 
-        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] > div > div {
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_CONTENT_ATTRIBUTE}] > div {
             display: grid;
             grid-template-columns: max-content minmax(0, 1fr);
             gap: 4px 10px;
         }
 
-        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] span {
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_CONTENT_ATTRIBUTE}] span {
             color: #5b6b7d;
             font-weight: 800;
         }
 
-        [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] strong {
+        [${RANK_RECOMMENDATION_CURVE_POPOVER_CONTENT_ATTRIBUTE}] strong {
             min-width: 0;
             color: #243245;
             font-weight: 800;
