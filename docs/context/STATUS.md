@@ -1,9 +1,10 @@
 # STATUS
 
-最終更新: 2026-06-01
+最終更新: 2026-06-02
 
 ## Current Task Bundle
 
+- 主対象: 2026-06-02 に、利用者が実画面で確認した 7 件の改善観点を `RAU-UX-91` から `RAU-UX-97` として task 化した。`RAU-UX-91` は、top list に最終変更履歴を `◯日前` 形式で表示し、直近変更済み候補が再び出る理由を判断しやすくする task である。`RAU-UX-92` は、小キャパ、特にキャパ 3 のキャンプ系候補が過剰に発火していないかを、最終変更履歴、同日他部屋タイプとの rank gap、capacity 別 cooldown で再評価する task である。`RAU-UX-93` は、booking curve preview と Analyze の直近型 reference curve が正しい入力と線種で出ているかを検証する task である。`RAU-UX-94` は、`下げ余地なし` 候補を表示対象に残す意味があるかを再評価する task である。`RAU-UX-95` は、推奨列に `推奨反映` button を追加するか判断し、追加する場合は既存の 5 秒 pending、cancel、送信 guard を維持して実装する task である。`RAU-UX-96` は、現ランク tooltip が二重に被る表示不具合を解消する task である。`RAU-UX-97` は、Analyze 上部に当日全タイプの推奨一覧と一括反映入口を設計する task であり、初期 task では実 POST と自動一括反映を非目標にして安全制約を確認する。Remaining Task Triage は Now `RAU-UX-91`、`RAU-UX-93`、Next `RAU-UX-92`、After Next `RAU-UX-94`、`RAU-UX-96`、Later `RAU-UX-95`、`RAU-UX-97` とした。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「自動反映より安全な作業キューを優先する」原則で今回の実行順を説明できるため、判断原則は更新していない。runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 主対象: 2026-06-01 に、未着手だった `RAU-UX-87`、`RAU-UX-88`、`RAU-UX-89`、`RAU-UX-90` を完了した。`RAU-UX-87` では通常 Chrome の Revenue Assistant top 画面で、主操作 `Analyzeで確認`、`曲線`、`rank調整` が各 row に常時表示され、副操作 `要点`、`様子見`、`対応不要` が閉じた `その他` details 内にあることを確認した。副操作は誤押下防止と表示密度維持のため details 内維持とし、再評価条件は実利用で `その他` 開閉が多い、または `様子見` / `対応不要` を見つけられず候補処理が止まる場合とした。`RAU-UX-88` では現在の表示中 10 行がすべて `rank変更: 送信候補あり` であることを確認したうえで、実装上は `送信不可` と `確認不足` が同時に成立した場合に `送信不可` を badge 本文へ優先表示するよう変更し、`docs/spec_003_rank_recommendation_signal.md` に反映した。`RAU-UX-89` では `smoke:distribution` に page websocket fallback、`--cdp-connection page` option、Chrome DevTools Protocol command timeout を追加した。publish 前の browser-level path と page websocket fallback 明示確認は `0.1.0.359` で pass した。commit `8a7a6c4` を `origin/main` へ push した後、Publish Userscript run `26751922797` は success になり、GitHub Pages published version と Tampermonkey installed version は `0.1.0.360` に揃えた。最終の browser-level path `npm run smoke:distribution -- --installed-version 0.1.0.360 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail` は pass し、top row 10 件、React marker あり、primary actions wrappers 10 件、secondary action markers 10 件、status badge cells 10 件、UI component markers 54 件、console error 0 件、page error 0 件、監視対象 write API POST 0 件だった。`RAU-UX-90` では `react-doctor/js-combine-iterations` を対象にし、React Doctor は 49 issues から 39 issues になった。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 主対象: 2026-06-01 に、直前の完了報告で推奨した 4 件を `RAU-UX-87` から `RAU-UX-90` として task 化した。`RAU-UX-87` は、`その他` details 内の副操作を再配置するか判断する task である。`RAU-UX-88` は、status badge の `確認不足` と `送信不可` の優先順位を再評価する task である。`RAU-UX-89` は、`smoke:distribution` の Chrome DevTools Protocol websocket connected 後 timeout を切り分ける task である。`RAU-UX-90` は、React Doctor 残り 49 issues から次に安全な 1 family を選んで処理する task である。Remaining Task Triage は Now `RAU-UX-87`、Next `RAU-UX-88`、After Next `RAU-UX-89`、Later `RAU-UX-90` とした。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「画面遷移、タブ切替、フォーカス復帰で安定して動くことを優先する」原則で今回の実行順を説明できるため、判断原則は更新していない。runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 主対象: 2026-06-01 に、未着手だった `RAU-UX-83`、`RAU-UX-84`、`RAU-UX-85`、`RAU-UX-86` を完了した。`RAU-UX-83` では通常 Chrome の Revenue Assistant top 画面で、主操作 `Analyzeで確認`、`曲線`、`rank調整` が各 row に常時表示され、副操作 `要点`、`様子見`、`対応不要` が閉じた `その他` details 内にあることを確認した。主操作は常時表示を維持し、副操作は誤押下を避けるため details 内維持と判断した。`RAU-UX-84` では表示中 10 行の status badge がすべて `確認不足` で、title に raw source、注意、rank 変更可否が補足されることを確認した。現時点では status badge 文言を変更しない。`RAU-UX-85` では `check:fixture-markers` と `smoke:distribution --mode top` の分類名を `primary actions wrappers`、`secondary action markers`、`status badge cells` に揃え、README に反映した。`RAU-UX-86` では `react-doctor/js-batch-dom-css` だけを対象にし、booking curve legend swatch の style assignment を局所的に整理した。React Doctor は 50 issues から 49 issues になり、`react-doctor/js-batch-dom-css` は表示されなくなった。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`npm run smoke:write-posts -- --seconds 10 --operation rau-ux-83-observation --page-index 0` が通過した。`npm run smoke:distribution -- --installed-version 0.1.0.358 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail` は、現在の Chrome DevTools Protocol 接続状態で websocket connected 後に timeout して完走しなかったため、runtime selector 分類は Chrome拡張 backend で同一 tab の DOM を確認した。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
@@ -210,7 +211,13 @@
   - `RAU-UX-89` `smoke:distribution` の Chrome DevTools Protocol websocket connected 後 timeout を切り分ける
   - `RAU-UX-90` React Doctor 残り 49 issues から次に安全な 1 family を選んで処理する
 - 未着手 Task ID:
-  - なし
+  - `RAU-UX-91` top list に最終変更履歴を相対日数で表示する
+  - `RAU-UX-92` 小キャパ候補の過剰発火を再評価する
+  - `RAU-UX-93` 直近型 reference curve の算出と表示を検証する
+  - `RAU-UX-94` `下げ余地なし` 候補を表示対象に残すか再評価する
+  - `RAU-UX-95` 推奨列に `推奨反映` button を追加するか判断して実装する
+  - `RAU-UX-96` 現ランク tooltip の二重表示を解消する
+  - `RAU-UX-97` Analyze 上部に全タイプ推奨一覧と一括反映入口を設計する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -223,8 +230,8 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now / Next / After Next / Later すべて空である。
-  - 次の task は未設定である。次に進める場合は、今回の完了報告で提案する視点を task 化してから着手する。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now `RAU-UX-91`、`RAU-UX-93`、Next `RAU-UX-92`、After Next `RAU-UX-94`、`RAU-UX-96`、Later `RAU-UX-95`、`RAU-UX-97` である。
+  - 次の task は `RAU-UX-91` である。top list に、rank change history 由来の最終変更履歴を `◯日前` 形式で表示し、直近変更済み候補が再び候補化される理由を、cooldown、reasonFingerprint、confidence、resolved 判定と区別して確認できるようにする。`RAU-UX-93` も Now だが、表示上の判断材料を増やす `RAU-UX-91` を先に行うと、`RAU-UX-92` の小キャパ過剰発火検証で使う観測項目が揃いやすい。
   - `RAU-UX-48` から `RAU-UX-72` は完了済みである。Vite の正規配布 build、dev-only fixture preview、candidate build、Radix Popover 1 component の production 接続、旧 esbuild build の rollback 経路、Publish Userscript path filter、状態待ち配布版 smoke、UI regression gallery、RAU root 限定 design token、9 列 row layout、UI component marker を現行契約として扱う。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
@@ -460,8 +467,8 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-01 時点では Now / Next / After Next / Later すべて空である。
-2. 次に進める場合は、今回の完了報告で提案する視点を task 化してから着手する。未タスク化のまま runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、配布設定を変更しない。
+1. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-02 時点では Now `RAU-UX-91`、`RAU-UX-93`、Next `RAU-UX-92`、After Next `RAU-UX-94`、`RAU-UX-96`、Later `RAU-UX-95`、`RAU-UX-97` である。
+2. 次に進める場合は、`RAU-UX-91` から着手する。top list に最終変更履歴を相対日数で表示し、直近変更済み候補が再び候補化される理由を確認できるようにする。未タスク化のまま runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、配布設定を変更しない。
 3. top list UI をさらに変更する場合は、実装前に `docs/spec_003_rank_recommendation_signal.md` の top list UI 契約を確認する。常時表示、details 内表示、preview open 時だけ表示する要素を変える場合は、spec 更新要否を判定する。
 4. 配布版 smoke で RAU userscript root count が `0` の場合、または Chrome DevTools Protocol 接続が websocket 接続後に timeout する場合は、ログイン状態、Tampermonkey installed version、GitHub Pages published version、Tampermonkey dashboard 更新要否、Chrome remote debugging port の応答、`smoke:distribution` helper 側の navigation / connection timeout を分けて確認する。
 5. React component、React mount、React state 管理を追加または変更する場合は、`npm run check` に加え、固定済み repo-local command の `npm run react:doctor -- --diff false` を実行する。UI ライブラリまたは UI primitive を追加導入する場合は、依存追加の承認、version pin、bundle size 差分、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を行う。
