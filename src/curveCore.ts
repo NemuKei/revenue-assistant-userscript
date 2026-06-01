@@ -1084,10 +1084,15 @@ function isKnownCurveSegment(segment: CurveSegment): boolean {
 }
 
 function resolveActualFinalRooms(observations: CurveObservation[]): number | null {
-    const finalObservation = observations
-        .filter((observation) => typeof observation.rooms === "number")
-        .filter((observation) => observation.lt >= 0)
-        .sort((left, right) => left.lt - right.lt)[0];
+    let finalObservation: CurveObservation | null = null;
+    for (const observation of observations) {
+        if (typeof observation.rooms !== "number" || observation.lt < 0) {
+            continue;
+        }
+        if (finalObservation === null || observation.lt < finalObservation.lt) {
+            finalObservation = observation;
+        }
+    }
     return finalObservation?.rooms ?? null;
 }
 
@@ -1310,9 +1315,16 @@ function normalizeNonNegativeNumber(value: number | null | undefined): number | 
 }
 
 function selectCurrentEvaluationObservation(evaluationCase: ForecastEvaluationCase): CurveObservation | undefined {
-    return evaluationCase.observedPrefix
-        .filter((observation) => typeof observation.rooms === "number")
-        .sort((left, right) => right.observedDate.localeCompare(left.observedDate))[0];
+    let currentObservation: CurveObservation | undefined;
+    for (const observation of evaluationCase.observedPrefix) {
+        if (typeof observation.rooms !== "number") {
+            continue;
+        }
+        if (currentObservation === undefined || observation.observedDate > currentObservation.observedDate) {
+            currentObservation = observation;
+        }
+    }
+    return currentObservation;
 }
 
 function getReferenceCurveRoomsAtObservedLt(result: ReferenceCurveResult | undefined, observedLt: number | null): number | null {
@@ -1450,10 +1462,15 @@ function groupObservationsByStayDate(observations: CurveObservation[]): Map<stri
 function resolveFinalRoomsByStayDate(observationsByStayDate: Map<string, CurveObservation[]>): Map<string, number> {
     const finalRoomsByStayDate = new Map<string, number>();
     for (const [stayDate, observations] of observationsByStayDate) {
-        const finalObservation = observations
-            .filter((observation) => typeof observation.rooms === "number")
-            .filter((observation) => observation.lt >= 0)
-            .sort((left, right) => left.lt - right.lt)[0];
+        let finalObservation: CurveObservation | null = null;
+        for (const observation of observations) {
+            if (typeof observation.rooms !== "number" || observation.lt < 0) {
+                continue;
+            }
+            if (finalObservation === null || observation.lt < finalObservation.lt) {
+                finalObservation = observation;
+            }
+        }
         const finalRooms = finalObservation?.rooms;
         if (typeof finalRooms === "number" && finalRooms > 0) {
             finalRoomsByStayDate.set(stayDate, finalRooms);

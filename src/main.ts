@@ -8685,7 +8685,7 @@ function renderRankRecommendationList(
     rootElement.setAttribute(RANK_RECOMMENDATION_LIST_ATTRIBUTE, "");
     rootElement.setAttribute(RANK_RECOMMENDATION_LIST_SIGNATURE_ATTRIBUTE, options.signature);
 
-    const metaText = formatRankRecommendationListMeta(
+    const metaDetailText = formatRankRecommendationListMeta(
         candidates,
         options.statusText,
         options.hiddenSummary,
@@ -8709,7 +8709,15 @@ function renderRankRecommendationList(
         signature: options.signature,
         mode: options.signature.startsWith("fixture:") ? "fixture" : "live",
         title: "料金調整候補",
-        metaText,
+        metaText: formatRankRecommendationListShortMeta(
+            candidates,
+            options.statusText,
+            options.hiddenSummary,
+            options.viewMode ?? "all",
+            options.targetMonth ?? null,
+            options.curvePreviewInfoByKey
+        ),
+        metaTitle: metaDetailText,
         columns: viewModel.columns,
         emptyText: candidates.length === 0
             ? (options.viewMode === undefined || options.viewMode === "all"
@@ -8827,7 +8835,8 @@ function buildRankRecommendationReactControlsSnapshot(options: {
             ? {
                 source: options.rankOrder.source,
                 ladderJson: JSON.stringify(options.rankLadder),
-                summary: formatRankRecommendationOrderSummary(options.rankOrder),
+                summary: formatRankRecommendationOrderShortSummary(options.rankOrder),
+                summaryTitle: formatRankRecommendationOrderSummary(options.rankOrder),
                 inputValue: options.rankOrder.ranksHighToLow.map((rank) => rank.name).join(", "),
                 status: formatRankRecommendationOrderDiagnosticStatus(options.rankOrder.diagnostics),
                 saveButton: buildRankRecommendationButtonSnapshot({ text: "保存", action: "rank-order-save" }),
@@ -8873,7 +8882,15 @@ function buildRankRecommendationReactRowSnapshot(row: RankRecommendationListView
         priority: candidate.priority,
         action: candidate.action,
         status: candidate.status,
-        cells: buildRankRecommendationReactCells(candidate, displayInfo, curvePreviewInfo, actionLabel, reasonText, cautionText),
+        cells: buildRankRecommendationReactCells(
+            candidate,
+            displayInfo,
+            curvePreviewInfo,
+            actionLabel,
+            reasonText,
+            cautionText,
+            rankChangeProposal
+        ),
         analyzeLink: {
             href: `/analyze/${formatCompactDateForDisplay(candidate.stayDate)}`,
             text: "Analyzeで確認",
@@ -8942,7 +8959,8 @@ function buildRankRecommendationReactCells(
     curvePreviewInfo: RankRecommendationCurvePreviewInfo | null,
     actionLabel: string,
     reasonText: string,
-    cautionText: string
+    cautionText: string,
+    rankChangeProposal: RankRecommendationRankChangeProposal
 ): RankRecommendationReactCellSnapshot[] {
     return [
         { kind: "text", value: formatRankRecommendationPriority(candidate.priority), role: "priority" },
@@ -8983,7 +9001,12 @@ function buildRankRecommendationReactCells(
             title: formatRankRecommendationReasonTitle(candidate),
             role: "reason"
         },
-        { kind: "text", value: formatRankRecommendationStatus(candidate.status), role: "status" }
+        {
+            kind: "text",
+            value: formatRankRecommendationStatusBadge(candidate, curvePreviewInfo, cautionText, rankChangeProposal),
+            title: formatRankRecommendationStatusBadgeTitle(candidate, curvePreviewInfo, cautionText, rankChangeProposal),
+            role: "status"
+        }
     ];
 }
 
@@ -9230,6 +9253,20 @@ function formatRankRecommendationOrderSummary(rankOrder: RankRecommendationRankO
     }
 }
 
+function formatRankRecommendationOrderShortSummary(rankOrder: RankRecommendationRankOrderResolution): string {
+    switch (rankOrder.source) {
+        case "manual_override":
+            return "ランク順序: 手動";
+        case "numeric_rank_name":
+            return "ランク順序: 数値推定";
+        case "settings_screen":
+            return "ランク順序: 確認済み";
+        case "unresolved":
+        default:
+            return "ランク順序: 未確認";
+    }
+}
+
 function formatRankRecommendationOrderDiagnosticStatus(diagnostics: readonly string[]): string {
     if (diagnostics.includes("manual_override_ignored_length_mismatch")) {
         return "保存済み手動順序は現在のrank一覧と件数が一致しないため未使用です";
@@ -9265,6 +9302,30 @@ function formatRankRecommendationListMeta(
         formatRankRecommendationConfidenceSummary(candidates),
         formatRankRecommendationRawSourceStatusSummary(candidates, curvePreviewInfoByKey),
         formatRankRecommendationCautionSummary(candidates),
+        formatRankRecommendationTargetMonthSummary(hiddenSummary, targetMonth),
+        formatRankRecommendationViewModeSummary(hiddenSummary, viewMode),
+        formatRankRecommendationHiddenSummary(hiddenSummary),
+        formatRankRecommendationOverflowSummary(hiddenSummary)
+    ].filter((part): part is string => part !== null);
+    return parts.join(" / ");
+}
+
+function formatRankRecommendationListShortMeta(
+    candidates: readonly RankRecommendationCandidate[],
+    statusText: string | null,
+    hiddenSummary?: RankRecommendationHiddenSummary,
+    viewMode: RankRecommendationViewMode = "all",
+    targetMonth: string | null = null,
+    curvePreviewInfoByKey?: ReadonlyMap<string, RankRecommendationCurvePreviewInfo>
+): string {
+    if (statusText !== null) {
+        return statusText;
+    }
+    const parts = [
+        `候補 ${candidates.length}件`,
+        formatRankRecommendationAsOfDateSummary(candidates),
+        formatRankRecommendationRawSourceStatusSummary(candidates, curvePreviewInfoByKey),
+        formatRankRecommendationShortCautionSummary(candidates),
         formatRankRecommendationTargetMonthSummary(hiddenSummary, targetMonth),
         formatRankRecommendationViewModeSummary(hiddenSummary, viewMode),
         formatRankRecommendationHiddenSummary(hiddenSummary),
@@ -9502,6 +9563,12 @@ function formatRankRecommendationCautionSummary(candidates: readonly RankRecomme
         ],
         (label) => label
     );
+}
+
+function formatRankRecommendationShortCautionSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
+    return candidates.some((candidate) => summarizeRankRecommendationConfidenceCautions(candidate.diagnostics).length > 0)
+        ? "注意あり"
+        : null;
 }
 
 function formatRankRecommendationCountSummary<T extends string>(
@@ -10293,6 +10360,49 @@ function formatRankRecommendationAction(candidate: RankRecommendationCandidate):
 
 function formatRankRecommendationStatus(status: RankRecommendationStatus): string {
     return status === "active" ? "確認待ち" : "判定対象外";
+}
+
+function formatRankRecommendationStatusBadge(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null,
+    cautionText: string,
+    rankChangeProposal: RankRecommendationRankChangeProposal
+): string {
+    if (candidate.status !== "active") {
+        return "対象外";
+    }
+    const rawStatus = getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
+        ? undefined
+        : new Map([[buildRankRecommendationCandidateDisplayInfoKey(candidate), curvePreviewInfo]]));
+    if (rawStatus === "loading") {
+        return "取得中";
+    }
+    if (rawStatus === "missing" || rawStatus === "error" || cautionText !== "") {
+        return "確認不足";
+    }
+    if (!rankChangeProposal.enabled) {
+        return "送信不可";
+    }
+    return "根拠あり";
+}
+
+function formatRankRecommendationStatusBadgeTitle(
+    candidate: RankRecommendationCandidate,
+    curvePreviewInfo: RankRecommendationCurvePreviewInfo | null,
+    cautionText: string,
+    rankChangeProposal: RankRecommendationRankChangeProposal
+): string {
+    const rawStatus = getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
+        ? undefined
+        : new Map([[buildRankRecommendationCandidateDisplayInfoKey(candidate), curvePreviewInfo]]));
+    return [
+        `候補状態: ${formatRankRecommendationStatus(candidate.status)}`,
+        `raw source: ${formatRankRecommendationRawSourceStatus(rawStatus)}`,
+        cautionText === "" ? "注意: なし" : `注意: ${cautionText}`,
+        rankChangeProposal.enabled
+            ? "rank変更: 送信候補あり"
+            : `rank変更: 送信不可 (${formatRankRecommendationRankChangeDisabledReasons(rankChangeProposal.disabledReasons)})`
+    ].join("\n");
 }
 
 function formatRankRecommendationRankChangeDisabledReasons(
@@ -17286,6 +17396,36 @@ function ensureGroupRoomStyles(): void {
             vertical-align: top;
         }
 
+        [data-ra-rank-recommendation-primary-actions],
+        [data-ra-rank-recommendation-secondary-actions] {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 0 0 6px;
+        }
+
+        [data-ra-rank-recommendation-secondary-actions] {
+            width: fit-content;
+        }
+
+        [data-ra-rank-recommendation-secondary-actions] summary {
+            min-height: 24px;
+            padding: 3px 7px;
+            border: 1px solid #c9d4e2;
+            border-radius: 5px;
+            background: #f8fbff;
+            color: #315b8d;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.25;
+        }
+
+        [data-ra-rank-recommendation-secondary-actions] > *:not(summary) {
+            margin-top: 6px;
+        }
+
         [${RANK_RECOMMENDATION_CURVE_POPOVER_ATTRIBUTE}] button {
             display: inline-flex;
             align-items: center;
@@ -17336,7 +17476,7 @@ function ensureGroupRoomStyles(): void {
             display: inline-flex;
             align-items: center;
             gap: 4px;
-            margin-right: 6px;
+            margin: 0 0 6px;
             vertical-align: top;
         }
 
@@ -17401,7 +17541,7 @@ function ensureGroupRoomStyles(): void {
             align-items: center;
             justify-content: center;
             min-height: 26px;
-            margin: 0 6px 6px 0;
+            margin: 0;
             padding: 4px 8px;
             border: 1px solid var(--ra-ui-border-strong);
             border-radius: 5px;

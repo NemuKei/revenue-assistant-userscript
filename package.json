@@ -14,6 +14,7 @@
         "build:vite:fixture": "vite build --config ./vite.fixture.config.mjs",
         "build:vite:candidate": "vite build --config ./vite.userscript.config.mjs --mode candidate",
         "build:compare:vite": "node ./scripts/compare-vite-build.mjs",
+        "check:fixture-markers": "node ./scripts/check-rank-fixture-markers.mjs",
         "typecheck": "tsc --noEmit",
         "lint": "eslint .",
         "check": "npm run typecheck && npm run lint && npm run build",

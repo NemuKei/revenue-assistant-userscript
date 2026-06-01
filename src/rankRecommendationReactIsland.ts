@@ -140,6 +140,7 @@ export interface RankRecommendationReactControlsSnapshot {
         source: string;
         ladderJson: string;
         summary: string;
+        summaryTitle?: string;
         inputValue: string;
         status: string;
         saveButton: RankRecommendationReactButtonSnapshot;
@@ -153,6 +154,7 @@ export interface RankRecommendationReactListSnapshot {
     mode: RankRecommendationReactMode;
     title: string;
     metaText: string;
+    metaTitle?: string;
     columns: readonly string[];
     emptyText: string | null;
     controls: RankRecommendationReactControlsSnapshot;
@@ -173,8 +175,14 @@ export function syncRankRecommendationReactList(
     }
 
     flushSync(() => {
-        root.render(React.createElement(RankRecommendationReactList, { snapshot }));
+        root.render(renderRankRecommendationReactListElement(snapshot));
     });
+}
+
+export function renderRankRecommendationReactListElement(
+    snapshot: RankRecommendationReactListSnapshot
+): React.ReactElement {
+    return React.createElement(RankRecommendationReactList, { snapshot });
 }
 
 export function unmountRankRecommendationReactIsland(): void {
@@ -224,7 +232,10 @@ function RankRecommendationReactSummary(props: { snapshot: RankRecommendationRea
     const snapshot = props.snapshot;
     return React.createElement("div", { [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "summary" },
         React.createElement("h2", null, snapshot.title),
-        React.createElement("div", { "data-ra-rank-recommendation-meta": "" }, snapshot.metaText)
+        React.createElement("div", {
+            "data-ra-rank-recommendation-meta": "",
+            title: snapshot.metaTitle
+        }, snapshot.metaText)
     );
 }
 
@@ -295,7 +306,10 @@ function renderRankOrderControl(control: RankRecommendationReactControlsSnapshot
         [RANK_RECOMMENDATION_ORDER_SOURCE_ATTRIBUTE]: control.source,
         [RANK_RECOMMENDATION_RANK_LADDER_ATTRIBUTE]: control.ladderJson
     },
-        React.createElement("div", { "data-ra-rank-recommendation-order-summary": "" }, control.summary),
+        React.createElement("div", {
+            "data-ra-rank-recommendation-order-summary": "",
+            title: control.summaryTitle
+        }, control.summary),
         React.createElement("details", { [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "rank-order-details" },
             React.createElement("summary", null, "ランク順序を調整"),
             React.createElement("textarea", {
@@ -405,23 +419,36 @@ function RankRecommendationReactRowActions(props: { row: RankRecommendationReact
     const row = props.row;
     const curvePreviewId = buildRankRecommendationPreviewRowId("curve", row.curvePreview.key);
     const rankChangePreviewId = buildRankRecommendationPreviewRowId("rank-change", row.rankChangePreview.key);
+    const shouldShowInlineRankChange = row.rankChangePreview.open
+        || row.pendingRankChange !== null
+        || row.rankChangeResult !== null;
     return React.createElement("td", {
         [RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE]: "actions",
         [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "row-actions"
     },
-        renderAnalyzeLink(row.analyzeLink),
-        renderButton(row.curvePreviewButton, {
-            "aria-expanded": row.curvePreviewButton.expanded ? "true" : "false",
-            "aria-controls": curvePreviewId
-        }),
+        React.createElement("div", { "data-ra-rank-recommendation-primary-actions": "" },
+            renderAnalyzeLink(row.analyzeLink),
+            renderButton(row.curvePreviewButton, {
+                "aria-expanded": row.curvePreviewButton.expanded ? "true" : "false",
+                "aria-controls": curvePreviewId
+            }),
+            renderButton(row.rankChangeButton, {
+                "aria-expanded": row.rankChangeButton.expanded ? "true" : "false",
+                "aria-controls": rankChangePreviewId
+            })
+        ),
+        shouldShowInlineRankChange
+            ? React.createElement(InlineRankChange, { inlineRankChange: row.inlineRankChange })
+            : null,
+        React.createElement("details", {
+            "data-ra-rank-recommendation-secondary-actions": "",
+            [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "secondary-actions"
+        },
+        React.createElement("summary", null, "その他"),
         renderCurvePopover(row.curvePopoverItems),
-        renderButton(row.rankChangeButton, {
-            "aria-expanded": row.rankChangeButton.expanded ? "true" : "false",
-            "aria-controls": rankChangePreviewId
-        }),
-        React.createElement(InlineRankChange, { inlineRankChange: row.inlineRankChange }),
         renderButton(row.snoozeButton),
-        renderButton(row.dismissButton),
+        renderButton(row.dismissButton)
+        ),
         renderPendingDecision(row.pendingDecision),
         renderPendingRankChange(row.pendingRankChange),
         row.pendingRankChange === null ? renderRankChangeResult(row.rankChangeResult) : null

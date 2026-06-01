@@ -1,4 +1,5 @@
 import {
+    renderRankRecommendationReactListElement,
     syncRankRecommendationReactList,
     type RankRecommendationReactButtonSnapshot,
     type RankRecommendationReactListSnapshot,
@@ -38,30 +39,28 @@ const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
     { value: "price-trends-failure", label: "価格推移 failure" }
 ];
 
-const rootElement = document.getElementById("rank-fixture-root");
-const secondaryRootElement = document.getElementById("rank-fixture-secondary-root");
-const galleryRootElement = document.getElementById("rank-fixture-gallery-root");
-const stateSelectElement = document.getElementById("rank-fixture-state");
+if (typeof document !== "undefined") {
+    const rootElement = document.getElementById("rank-fixture-root");
+    const secondaryRootElement = document.getElementById("rank-fixture-secondary-root");
+    const galleryRootElement = document.getElementById("rank-fixture-gallery-root");
+    const stateSelectElement = document.getElementById("rank-fixture-state");
 
-if (!(rootElement instanceof HTMLElement)
-    || !(secondaryRootElement instanceof HTMLElement)
-    || !(galleryRootElement instanceof HTMLElement)
-    || !(stateSelectElement instanceof HTMLSelectElement)) {
-    throw new Error("Rank recommendation fixture root is missing.");
+    if (!(rootElement instanceof HTMLElement)
+        || !(secondaryRootElement instanceof HTMLElement)
+        || !(galleryRootElement instanceof HTMLElement)
+        || !(stateSelectElement instanceof HTMLSelectElement)) {
+        throw new Error("Rank recommendation fixture root is missing.");
+    }
+
+    installFixtureStyles();
+    installStateOptions(stateSelectElement);
+    renderFixture(rootElement, secondaryRootElement, "candidates");
+    renderGallery(galleryRootElement);
+
+    stateSelectElement.addEventListener("change", () => {
+        renderFixture(rootElement, secondaryRootElement, stateSelectElement.value as FixtureState);
+    });
 }
-
-const fixtureRootElement = rootElement;
-const fixtureSecondaryRootElement = secondaryRootElement;
-const fixtureGalleryRootElement = galleryRootElement;
-
-installFixtureStyles();
-installStateOptions(stateSelectElement);
-renderFixture("candidates");
-renderGallery();
-
-stateSelectElement.addEventListener("change", () => {
-    renderFixture(stateSelectElement.value as FixtureState);
-});
 
 function installStateOptions(selectElement: HTMLSelectElement): void {
     selectElement.replaceChildren(...FIXTURE_STATES.map((state) => {
@@ -72,12 +71,12 @@ function installStateOptions(selectElement: HTMLSelectElement): void {
     }));
 }
 
-function renderFixture(state: FixtureState): void {
-    syncRankRecommendationReactList(fixtureRootElement, buildFixtureSnapshot(state));
-    renderSecondaryFixtureState(fixtureSecondaryRootElement, state);
+function renderFixture(rootElement: HTMLElement, secondaryRootElement: HTMLElement, state: FixtureState): void {
+    syncRankRecommendationReactList(rootElement, buildFixtureSnapshot(state));
+    renderSecondaryFixtureState(secondaryRootElement, state);
 }
 
-function renderGallery(): void {
+function renderGallery(galleryRootElement: HTMLElement): void {
     const galleryCards = FIXTURE_STATES.map((state) => {
         const card = document.createElement("article");
         card.setAttribute("data-ra-fixture-gallery-card", "");
@@ -89,10 +88,10 @@ function renderGallery(): void {
         syncRankRecommendationReactList(mount, buildFixtureSnapshot(state.value));
         return card;
     });
-    fixtureGalleryRootElement.replaceChildren(...galleryCards);
+    galleryRootElement.replaceChildren(...galleryCards);
 }
 
-function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListSnapshot {
+export function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListSnapshot {
     const rows = buildRowsForState(state);
     const emptyText = getEmptyTextForState(state);
     return {
@@ -100,6 +99,7 @@ function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListS
         mode: "fixture",
         title: "料金調整候補",
         metaText: buildMetaText(state, rows.length),
+        metaTitle: buildMetaTitle(state, rows.length),
         columns: ["優先度", "判断", "宿泊日", "部屋タイプ", "現ランク", "推奨", "根拠", "状態", "操作"],
         emptyText,
         controls: {
@@ -125,7 +125,8 @@ function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListS
             rankOrder: {
                 source: "manual-override",
                 ladderJson: JSON.stringify(["10", "11", "12"]),
-                summary: "rank順序: 手動調整 10 > 11 > 12",
+                summary: "ランク順序: 手動",
+                summaryTitle: "rank順序: 手動調整 10 > 11 > 12",
                 inputValue: "10\n11\n12",
                 status: "保存済み",
                 saveButton: buildButton("保存", "rank-order-save"),
@@ -136,6 +137,12 @@ function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListS
         rows
     };
 }
+
+export function buildAllFixtureSnapshots(): readonly RankRecommendationReactListSnapshot[] {
+    return FIXTURE_STATES.map((state) => buildFixtureSnapshot(state.value));
+}
+
+export { renderRankRecommendationReactListElement };
 
 function buildRowsForState(state: FixtureState): RankRecommendationReactRowSnapshot[] {
     if (state === "empty" || state === "current-settings-401" || state === "current-settings-403") {
@@ -323,6 +330,13 @@ function getEmptyTextForState(state: FixtureState): string | null {
 
 function buildMetaText(state: FixtureState, rowCount: number): string {
     if (state === "decision-hidden") {
+        return `候補 ${rowCount}件 / 非表示 利用者判断 1件 / fixture`;
+    }
+    return `候補 ${rowCount}件 / 注意あり / fixture`;
+}
+
+function buildMetaTitle(state: FixtureState, rowCount: number): string {
+    if (state === "decision-hidden") {
         return `表示 ${rowCount} 件 / 利用者判断で非表示 1 件 / fixture`;
     }
     return `表示 ${rowCount} 件 / 上げ候補 1 件 / 下げ候補 1 件 / fixture`;
@@ -446,7 +460,6 @@ function installFixtureStyles(): void {
         [data-ra-rank-recommendation-button],
         [data-ra-rank-recommendation-curve-popover] button {
             min-height: 26px;
-            margin-right: 6px;
             padding: 4px 8px;
             border: 1px solid #b7c4d3;
             border-radius: 5px;
@@ -455,6 +468,36 @@ function installFixtureStyles(): void {
             font-size: 12px;
             font-weight: 800;
             cursor: pointer;
+        }
+
+        [data-ra-rank-recommendation-primary-actions],
+        [data-ra-rank-recommendation-secondary-actions] {
+            display: flex;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 6px;
+            margin: 0 0 6px;
+        }
+
+        [data-ra-rank-recommendation-secondary-actions] {
+            width: fit-content;
+        }
+
+        [data-ra-rank-recommendation-secondary-actions] summary {
+            min-height: 24px;
+            padding: 3px 7px;
+            border: 1px solid #c9d4e2;
+            border-radius: 5px;
+            background: #f8fbff;
+            color: #315b8d;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.25;
+        }
+
+        [data-ra-rank-recommendation-secondary-actions] > *:not(summary) {
+            margin-top: 6px;
         }
 
         [data-ra-rank-recommendation-curve-popover-content] {

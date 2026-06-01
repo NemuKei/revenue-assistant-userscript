@@ -33,6 +33,7 @@ npm run check
 - `npm run build:vite:fixture`: Vite fixture preview を build
 - `npm run build:vite:candidate`: 正規 `dist` を上書きしない Vite candidate userscript build を `.tmp/vite-candidate/` に生成
 - `npm run build:compare:vite`: 正規 `dist` と Vite candidate の userscript metadata、size、entry line を比較
+- `npm run check:fixture-markers`: Revenue Assistant 認証、Tampermonkey、通常 Chrome profile を使わず、fixture の合成 data だけで top 料金調整候補 list の主要 UI marker を確認
 - `npm run typecheck`: TypeScript の型検査
 - `npm run lint`: ESLint 実行
 - `npm run check`: 型検査、lint、build をまとめて実行
@@ -156,6 +157,8 @@ npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --
 ```
 
 この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、`--mode` ごとの主要 selector、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。全 mode 共通で、page title、ログイン画面らしい selector の有無、カレンダーらしい selector の有無、RAU userscript root の件数、React marker の有無、preflight message を出力します。`--mode top` は、top 料金調整候補 row 件数、対象月 select、表示 mode、表示上限、rank order control、`曲線` button、`rank調整` button、decision button、UI component marker を出力します。`--mode price-trends` は価格推移 tab / content、RAU overview、panel、SVG、background status を出力します。`--mode monthly-progress` は月次 preview root、panel、SVG、日次差分 section、日次差分 total row、主 table row、details table row、details summary、details 初期 open / closed、status text を出力します。いずれの mode でも、監視対象 write API POST が 1 件以上、console / page error が 1 件以上、対象画面の主要 selector が 0 件、または `--mode` と最終 URL が対応しない場合は、command は non-zero exit で失敗します。Tampermonkey dashboard の更新操作は、利用者が明示的に許可した検証で、通常 Chrome profile と Tampermonkey の実 installed version を揃える必要がある場合だけ行います。
+
+UI component marker の構造だけを CI で確認する場合は、Revenue Assistant 認証、Tampermonkey、通常 Chrome profile、GitHub Pages 公開版 version を使いません。`npm run build:vite:fixture` で fixture bundle を生成し、`npm run check:fixture-markers` で React server render された fixture snapshot から RAU root、React marker、summary、control group、table、row layout、primary actions、secondary actions、popover、tooltip、pending notice、status message、rank select、主要 button marker を数えます。この確認は実ログイン画面の smoke を置き換えません。実アカウントの表示、Tampermonkey installed version、監視対象 write API POST 0 件、console / page error 0 件は、必要に応じて CDP 接続付き通常 Chrome の `smoke:distribution` または一時注入確認で別に扱います。
 
 RAU userscript root count が `0` の場合は、次の順に確認します。まず Revenue Assistant がログイン済み画面かを `login form candidate` と `calendar candidate` で確認します。ログイン画面らしい selector がある場合は再ログインしてから smoke を再実行します。ログイン済み画面らしいのに RAU userscript root count が `0` の場合は、Tampermonkey dashboard で `Revenue Assistant Userscript` の installed version が GitHub Pages 公開版 version と一致しているか、対象 script が有効か、`https://ra.jalan.net/*` で発火する設定かを確認します。公開版 version の反映待ちが疑われる場合は少し待ってから再実行します。Tampermonkey 手動更新が必要な場合は、dashboard で対象 script を更新し、期待 version と一致した状態で `--version-policy fail` を付けて再確認します。
 

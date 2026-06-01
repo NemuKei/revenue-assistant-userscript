@@ -35,3 +35,8 @@ jobs:
 
             - name: Validate and build
               run: npm run check
+
+            - name: Validate fixture UI markers
+              run: |
+                  npm run build:vite:fixture
+                  npm run check:fixture-markers
