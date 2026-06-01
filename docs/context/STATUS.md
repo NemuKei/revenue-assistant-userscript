@@ -4,8 +4,9 @@
 
 ## Current Task Bundle
 
-- 主対象: 2026-06-01 に、利用者が「料金調整候補画面にフォーカスしてよい」「今は冗長なので、どうシンプルにできるかを主眼に調査 task を切ってから進めたい」と明示したため、`RAU-UX-77` を追加した。`RAU-UX-77` は、料金調整候補画面の表示項目、項目名、並び、重複説明、tooltip、popover、preview、meta summary、button 文言、余白量を棚卸しし、常時表示、畳む、削る、短くする、操作時だけ表示する、判断保留に分ける docs-first 調査 task である。Remaining Task Triage は Now `RAU-UX-77`、Next `RAU-UX-73`、After Next `RAU-UX-76` と `RAU-UX-75`、Later `RAU-UX-74` とした。runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
-- 主対象: 2026-06-01 に、完了報告で推奨した 4 件を `RAU-UX-73` から `RAU-UX-76` として task 化した。`RAU-UX-73` は配布後の実利用で top list UI の視認性を観察して改善候補を分類する task、`RAU-UX-76` は top list の数値非表示契約を維持した判断補助追加を調査する task、`RAU-UX-75` は UI component marker smoke を GitHub Actions で扱う条件を検討する task、`RAU-UX-74` は React Doctor performance family を 1 種類だけ選んで安全に処理する task である。Remaining Task Triage は Now `RAU-UX-73`、Next `RAU-UX-76`、After Next `RAU-UX-75`、Later `RAU-UX-74` とした。runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
+- 主対象: 2026-06-01 に、未着手だった `RAU-UX-77`、`RAU-UX-73`、`RAU-UX-76`、`RAU-UX-75`、`RAU-UX-74` を完了した。Chrome DevTools Protocol で通常 Chrome の Revenue Assistant に接続し、保存済み認証情報を使って再ログインしたうえで top page の RAU top list を確認した。実画面では RAU root 1 件、React marker 1 件、候補 row 10 件、UI component marker 44 件、popover 10 件、tooltip 10 件、booking curve preview visible row 1 件 / SVG 2 件、rank change preview visible row 1 件を確認した。実データのスクリーンショット、HAR、raw trace、request body、response body、Cookie、token、価格や在庫の非公開データは保存していない。`RAU-UX-74` では `react-doctor/js-set-map-lookups` だけを処理し、React Doctor 診断を 62 件から 55 件へ減らした。Remaining Task Triage は、Now `RAU-UX-78`、Next `RAU-UX-79`、After Next `RAU-UX-80` と `RAU-UX-81`、Later `RAU-UX-82` とした。runtime UI の操作列整理、summary 短縮、非数値 badge、CI fixture marker check、次の React Doctor family はまだ未着手である。
+- 主対象: 2026-06-01 に、利用者が「料金調整候補画面にフォーカスしてよい」「今は冗長なので、どうシンプルにできるかを主眼に調査 task を切ってから進めたい」と明示したため、`RAU-UX-77` を追加した。`RAU-UX-77` は、料金調整候補画面の表示項目、項目名、並び、重複説明、tooltip、popover、preview、meta summary、button 文言、余白量を棚卸しし、常時表示、畳む、削る、短くする、操作時だけ表示する、判断保留に分ける docs-first 調査 task である。当時の Remaining Task Triage では、`RAU-UX-77` を最優先、`RAU-UX-73` を次点、`RAU-UX-76` と `RAU-UX-75` をその次、`RAU-UX-74` を後続としていた。runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
+- 主対象: 2026-06-01 に、完了報告で推奨した 4 件を `RAU-UX-73` から `RAU-UX-76` として task 化した。`RAU-UX-73` は配布後の実利用で top list UI の視認性を観察して改善候補を分類する task、`RAU-UX-76` は top list の数値非表示契約を維持した判断補助追加を調査する task、`RAU-UX-75` は UI component marker smoke を GitHub Actions で扱う条件を検討する task、`RAU-UX-74` は React Doctor performance family を 1 種類だけ選んで安全に処理する task である。当時の Remaining Task Triage では、`RAU-UX-73` を最優先、`RAU-UX-76` を次点、`RAU-UX-75` をその次、`RAU-UX-74` を後続としていた。runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 主対象: 2026-06-01 に、未着手だった `RAU-UX-59` から `RAU-UX-72` を完了した。Publish Userscript workflow は path filter により docs-only push を起動対象外にした。`smoke:distribution` は固定秒数 sleep ではなく、RAU root、React marker、mode 別主要 selector、UI component marker が揃うまでの状態待ちへ変更した。React Doctor 残診断は performance warning 40 件、dead code 19 件、server 3 件に分類し、今回の bundle では runtime bug として扱う追加修正を行わない判断にした。bundle size と dependency 予算は、新しい package を追加しない判断と、追加する場合の確認項目として正本化した。Vite fixture は dev-only UI regression gallery へ拡張し、トップ料金調整候補 list は RAU root 限定 design token、UI component marker、9 列 row layout、responsive block layout、統一された pending / warning / error 表示を持つ。Publish Userscript run `26717274182` は success で、GitHub Pages published version と Tampermonkey installed version は `0.1.0.356` に揃えた。配布版 top smoke は row 10 件、React marker あり、UI component marker 44 件、監視対象 write API POST 0 件、console / page error 0 件で pass した。追加の CDP 操作確認では tooltip、popover、booking curve preview、rank change preview、pending cancel を確認し、検証中に新規保存された browser-local decision は 0 件だった。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 主対象: 2026-05-31 に、完了報告で推奨した 4 件を `RAU-UX-59` から `RAU-UX-62` として task 化した。`RAU-UX-59` は docs-only closeout commit 後に Publish Userscript が走り、公開版 version と Tampermonkey installed version の再同期が必要になる状態を減らす task である。`RAU-UX-60` は Tampermonkey 更新直後の `smoke:distribution` を固定秒数待ちから状態待ちへ変える task である。`RAU-UX-61` は Vite / Radix 導入後の React Doctor 残診断 62 件を再分類する task である。`RAU-UX-62` は Vite / Radix 後の bundle size と dependency 追加判断の予算を決める task である。
 - 主対象: 2026-05-31 に、未着手だった `RAU-UX-48` から `RAU-UX-58` を完了した。Vite は正規配布 build、dev-only fixture preview、candidate build に導入した。UI ライブラリは Radix UI `@radix-ui/react-popover@1.1.15` の Popover 1 component だけをトップ料金調整候補 list の booking curve 要点 popover へ接続した。旧 esbuild build は `npm run build:legacy` として rollback 候補に残した。GitHub Actions の Publish Userscript は docs-only closeout commit 後の run `26714363970` で success になり、GitHub Pages 公開版と Tampermonkey installed version は `0.1.0.355` に揃えた。完了時点の Remaining Task Triage は Now / Next / After Next / Later すべて空であった。
@@ -191,11 +192,11 @@
   - `RAU-UX-57` React + UI ライブラリ化を top rank recommendation surface へ段階接続する
   - `RAU-UX-58` Vite build を正規配布 path へ切り替える
 - 未実装 Task ID:
-  - `RAU-UX-77` 料金調整候補画面の冗長な表示を減らす調査を行う
-  - `RAU-UX-73` 配布後の実利用で top list UI の視認性を観察して改善候補を分類する
-  - `RAU-UX-76` top list の数値非表示契約を維持した判断補助追加を調査する
-  - `RAU-UX-75` UI component marker smoke を GitHub Actions で扱う条件を検討する
-  - `RAU-UX-74` React Doctor performance family を 1 種類だけ選んで安全に処理する
+  - `RAU-UX-78` 料金調整候補 row の操作列を主操作と副操作へ分ける
+  - `RAU-UX-79` top list の summary と rank order 表示を短くする
+  - `RAU-UX-80` 数値非表示契約を守る非数値判断 badge を整理する
+  - `RAU-UX-81` secret を使わない UI component marker fixture check を validate-pr に追加する
+  - `RAU-UX-82` React Doctor performance family の次候補を 1 種類だけ処理する
 - 次スレッドの種別:
   - `mainline-task`
 - 次スレッドで参照する正本:
@@ -208,8 +209,8 @@
   - `docs/spec_003_rank_recommendation_signal.md`
 - 次スレッドの範囲:
   - Rank Recommendation Bundle は、トップ料金調整候補リスト、初期 scoring、Analyze focus、Analyze focus 先 roomGroup card の候補 summary、Analyze focus summary の不足または注意表示、user decision、resolved 化、rank response / recommendedRank / bulk apply の正本化、数値 rank 名からの上下関係 fallback、settings screen 由来の rank order source、manual override 入口、rank 順序の上下反転保存、manual override 保存失敗理由の具体化、保存済み manual override 未使用理由の表示、非数値の確度表示、確度 cell の注意あり表示、確度 tooltip の非数値根拠補足、主要根拠 cell の非数値注意 tooltip、top list meta の候補内訳表示、top list meta の不足または注意の内訳表示、top list meta の基準日表示、top list meta の基準日鮮度表示、top list meta の基準日混在時の最古基準日表示、current settings 取得失敗時の status 具体化、user decision / resolved による非表示件数 meta 表示、confidence 表示段階上昇時の user decision 抑制解除、top list の宿泊まで日数表示、lifecycle filter 後の表示 top 10 選定、top list の段階的な表示件数増加、top list の表示件数初期値リセット、top list の表示モード切替、top list のカレンダー下配置、前回変更日と cooldown 診断の表示、booking curve preview、上げ推奨と下げ推奨の priority 比較見直し、`様子見` / `対応不要` の取消可能な pending buffer、`現ランク` tooltip での全部屋タイプ rank 差表示、直近日程に限定した競合価格相場乖離の小補正まで完了済みとして扱う。
-  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now `RAU-UX-77`、Next `RAU-UX-73`、After Next `RAU-UX-76` と `RAU-UX-75`、Later `RAU-UX-74` である。
-  - 次の 1 task は `RAU-UX-77` である。目的は、料金調整候補画面が冗長に感じられる原因を、表示項目、項目名、並び、重複説明、tooltip、popover、preview、meta summary、button 文言、余白量に分けて調査し、常時表示、畳む、削る、短くする、操作時だけ表示する、判断保留へ分類することである。runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API を変更しない docs-first task として開始する。
+  - `docs/tasks_backlog.md` の Remaining Task Triage は、Now `RAU-UX-78`、Next `RAU-UX-79`、After Next `RAU-UX-80` と `RAU-UX-81`、Later `RAU-UX-82` である。
+  - 次の 1 task は `RAU-UX-78` である。目的は、料金調整候補 row の操作列で、主操作と補助操作が同じ密度で並ぶ状態を減らし、利用者が最初に見るべき操作を短時間で判断できるようにすることである。`Analyzeで確認`、booking curve preview、rank change preview、rank select、`反映する`、`様子見`、`対応不要`、pending cancel の既存 selector 契約を維持する。
   - `RAU-UX-48` から `RAU-UX-72` は完了済みである。Vite の正規配布 build、dev-only fixture preview、candidate build、Radix Popover 1 component の production 接続、旧 esbuild build の rollback 経路、Publish Userscript path filter、状態待ち配布版 smoke、UI regression gallery、RAU root 限定 design token、9 列 row layout、UI component marker を現行契約として扱う。
   - `RAU-FC-02` では、evaluation dataset の grain、入力、除外条件、未来情報混入防止、metric、`ForecastResult v1 candidate`、rank recommendation impact proxy を `docs/spec_002_curve_core.md` に確定済みである。
   - `RAU-FC-03` では、`src/curveCore.ts` に evaluation case 生成と evaluation result 集計を追加済みである。
@@ -445,9 +446,9 @@
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-01 時点の次の 1 task は Now `RAU-UX-77` である。
-2. `RAU-UX-77` は docs-first の調査 task として開始する。対象は通常 Chrome の Revenue Assistant top page に表示される RAU の料金調整候補画面であり、候補 row、9 列 layout、meta summary、表示 mode / 表示上限 / rank order control、主要根拠、確度、状態、操作、tooltip、popover、booking curve preview、rank change preview を扱う。
-3. 調査結果では、表示項目ごとに `常時表示する`、`畳む`、`削る`、`文言を短くする`、`操作時だけ表示する`、`判断保留` のいずれかを記録する。個人情報、顧客情報、予約情報、価格や在庫の非公開データ、Cookie、token、raw trace、HAR、request body、response body は含めない。
+1. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-01 時点の次の 1 task は Now `RAU-UX-78` である。
+2. `RAU-UX-78` は、料金調整候補 row の操作列を主操作と副操作へ分ける実装 task として開始する。常時表示する command、preview open 時だけ表示する command、secondary actions としてまとめる command を分ける。
+3. 実装前に `docs/spec_003_rank_recommendation_signal.md` の top list UI 契約を確認する。`RAU-UX-78` は `spec-impact: yes` であるため、操作列の公開挙動を変える場合は実装前に spec 更新要否を判定する。
 4. 配布版 smoke で RAU userscript root count が `0` の場合は、`smoke:distribution` の preflight message に従い、ログイン状態、Tampermonkey installed version、GitHub Pages published version、Tampermonkey dashboard 更新要否を順に確認する。
 5. React component、React mount、React state 管理を追加または変更する場合は、`npm run check` に加え、固定済み repo-local command の `npm run react:doctor -- --diff false` を実行する。UI ライブラリまたは UI primitive を追加導入する場合は、依存追加の承認、version pin、bundle size 差分、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を行う。
 

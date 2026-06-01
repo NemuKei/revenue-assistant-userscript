@@ -6550,7 +6550,7 @@
 ### RAU-UX-73 配布後の実利用で top list UI の視認性を観察して改善候補を分類する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-UX-70` から `RAU-UX-72` で刷新したトップ料金調整候補 list を、実際の Revenue Assistant 利用中に読み取り、比較、操作の観点で観察し、すぐ実装する修正と追加調査が必要な論点を分ける。
   - 画面をさらに変更する前に、候補 row 10 件、長い roomGroup 名、tooltip、popover、booking curve preview、rank change preview、pending 表示が、実務上どこで読みづらいかを具体的に記録する。
@@ -6567,6 +6567,17 @@
   - 実装へ進める候補は、入力、比較対象、判断、出力、非目標、verify 方法が分かる粒度へ分けられている。
   - 機密情報、個人情報、価格や在庫の非公開データ、認証情報、raw trace、HAR、request body、response body を commit していない。
   - docs-only で閉じる場合は `git diff --check` と `docs/tasks_backlog.md` / `docs/context/STATUS.md` の整合確認が通過している。
+- 観察結果:
+  - 2026-06-01 に Chrome DevTools Protocol で通常 Chrome の Revenue Assistant に接続した。ログアウト状態だったため、保存済み認証情報が入力済みであることだけを確認し、資格情報は出力せずにログインした。`/accommodations` で最初の施設候補を選択し、top page `https://ra.jalan.net/` の RAU top list を確認した。
+  - 実画面では RAU root 1 件、React marker 1 件、候補 row 10 件、UI component marker 44 件、control group 1 件、popover 10 件、tooltip 10 件を確認した。個人情報、顧客情報、予約情報、価格や在庫の非公開データ、Cookie、token、raw trace、HAR、request body、response body は保存していない。
+  - viewport は `1038 x 705`、RAU root の表示幅は `1185px` で、横方向の scan はできるが、画面幅より広くなる状態だった。これは immediate bug ではないが、操作列と tooltip / popover / preview の量を減らす判断材料にする。
+  - 1 行目の操作列は `Analyzeで確認`、`曲線`、`要点`、`rank調整`、`反映する`、`様子見`、`対応不要` の 7 command と rank select 1 件を同じ cell に持っていた。直接操作は可能だが、主操作と補助操作が同じ密度で並ぶため、読み取りより先に操作部品が目に入りやすい。
+  - booking curve 要点 popover は open でき、visible content 1 件、item 5 件を確認した。`曲線` preview は visible preview row 1 件、SVG 2 件を確認した。`rank調整` preview は visible preview row 1 件、preview section 1 件を確認した。`反映する` は押していない。
+- 分類:
+  - すぐ実装する修正候補: 操作列を主操作と副操作に分け、常時表示する command を減らす。候補 task は `RAU-UX-78`。
+  - すぐ実装する修正候補: meta summary と rank order summary の文を短くし、詳細説明は既存 `details` または title へ寄せる。候補 task は `RAU-UX-79`。
+  - 仕様確認が必要な候補: 数値を出さずに判断を助ける非数値 badge を追加する。候補 task は `RAU-UX-80`。
+  - 対応しない候補: 金額、差額、percent、forecast 数値、sales / ADR 数値、競合価格の金額を top list 本文へ戻す案。`docs/context/INTENT.md` と `docs/spec_003_rank_recommendation_signal.md` の契約に反するため、今回の次 task にはしない。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -6575,7 +6586,7 @@
 ### RAU-UX-74 React Doctor performance family を 1 種類だけ選んで安全に処理する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - React Doctor に残っている performance warning のうち、runtime bug として扱う必要がないものを 1 rule family だけ選び、挙動を変えずに小さく減らす。
   - React Doctor の残診断を一度に広く直そうとして、候補生成、表示状態、preview、pending、API adapter の責務境界を崩すことを避ける。
@@ -6592,6 +6603,14 @@
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過している。
   - React Doctor 診断件数の before / after が記録され、意図しない新規診断が増えていない。
   - runtime UI、candidate scoring、API request 範囲、Revenue Assistant write API を変更していないことが差分から説明できる。
+- 実装内容:
+  - 対象 family は `react-doctor/js-set-map-lookups` とした。対象は `src/main.ts` の競合価格 chart と価格推移 chart の SVG path / circle 描画で、`fetchDates.indexOf(...)` と `leadTimeDays.indexOf(...)` を facility ごとの loop 内で繰り返していた箇所である。
+  - それぞれの描画関数内で、入力配列から `Map` を 1 回だけ作り、sort と x 座標計算でその `Map` を参照する形にした。入力データ、描画 series、tooltip、API request、IndexedDB、candidate scoring、Revenue Assistant write API は変更していない。
+  - 対象外にした family は、`deslop/unused-file`、`react-doctor/js-combine-iterations`、`react-doctor/async-defer-await`、`react-doctor/async-await-in-loop`、`react-doctor/server-sequential-independent-await`、`react-doctor/js-min-max-loop`、`react-doctor/js-tosorted-immutable`、`react-doctor/js-batch-dom-css`、`react-doctor/no-flush-sync` である。複数 family を同時に処理しないため、今回の変更には含めていない。
+- React Doctor 診断:
+  - before: `Performance 40`、`Dead Code 19`、`Server 3`、合計 62 件。
+  - after: `Performance 33`、`Dead Code 19`、`Server 3`、合計 55 件。`react-doctor/js-set-map-lookups` は 7 件から 0 件になった。
+  - `react-doctor/js-tosorted-immutable` は 1 件残した。理由は repo の `tsconfig.json` が `target` / `lib` ともに `ES2022` であり、`Array.prototype.toSorted()` は ES2023 のため、今回の安全な小変更には含めないためである。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -6600,7 +6619,7 @@
 ### RAU-UX-75 UI component marker smoke を GitHub Actions で扱う条件を検討する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-UX-71` で追加した UI component marker smoke を、GitHub Actions 上でどこまで自動確認できるかを整理し、通常 Chrome、Tampermonkey、Revenue Assistant 実ログイン状態が必要な確認と分離する。
   - CI で確認できる fixture / build / selector 契約と、ローカルまたは通常 Chrome でしか確認できない配布版実行契約を混同しない。
@@ -6617,6 +6636,14 @@
   - 実装する場合は、GitHub Actions workflow の変更対象、path filter、fail 条件、secret を使わない理由が記録されている。
   - docs-only で閉じる場合は `git diff --check` が通過している。workflow を変更する場合は、対象 workflow の構文確認または dry-run 可能な確認を行っている。
   - CI で扱えない確認を完了扱いにしないことが明記されている。
+- 判断:
+  - CI で扱う候補は、Revenue Assistant 認証、Tampermonkey installed version、通常 Chrome profile、GitHub Pages published version に依存しない確認だけに限定する。
+  - CI で確認してよい項目は、Vite fixture build、fixture DOM 上の RAU root、React marker、UI component marker、主要 control、row layout、row actions、popover、tooltip、pending notice、status message の selector 契約である。
+  - ローカル配布版 smoke で確認する項目は、GitHub Pages published version と Tampermonkey installed version の一致、Revenue Assistant top / Analyze / monthly-progress の mode 別 selector、console / page error、監視対象 write API POST 0 件である。
+  - 手動または Chrome DevTools Protocol で確認する項目は、保存済み認証情報での再ログイン、施設選択、実ログイン top page の候補 row、tooltip / popover / preview / pending 操作、Tampermonkey dashboard 更新である。
+  - CI で扱わない項目は、Revenue Assistant 認証情報、Cookie、token、Tampermonkey storage、通常 Chrome profile、実アカウントの施設選択、非公開価格や在庫を含む screenshot / HAR / raw trace である。
+- 実装候補:
+  - `RAU-UX-81` として、secret を使わない fixture marker check script と `validate-pr` workflow 接続を検討する。workflow を変える場合は、`.github/workflows/validate-pr.yml` と必要な script だけを対象にし、Revenue Assistant 実ログイン確認を CI の完了条件にしない。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -6625,7 +6652,7 @@
 ### RAU-UX-76 top list の数値非表示契約を維持した判断補助追加を調査する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - top list へ推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を直接表示しない契約を維持したまま、利用者が料金調整候補を判断しやすくなる補助表示を追加できるかを調査する。
   - 追加候補を、何のデータを使うか、何を比較するか、何を判断するか、何を出力するかの単位で整理し、実装へ進めるものと進めないものを分ける。
@@ -6642,6 +6669,12 @@
   - 実装しない候補は、契約違反、情報不足、負荷、検証不能、または効果が低いなどの理由を記録している。
   - 実装へ進める候補がある場合は、新規 task として分割され、対象 spec、acceptance、verify 方法が明記されている。
   - docs-only で閉じる場合は `git diff --check` と `docs/tasks_backlog.md` / `docs/context/STATUS.md` の整合確認が通過している。
+- 調査結果:
+  - 候補 1: `データ状態 badge`。入力は既存の raw source status、warm cache pending、curve preview diagnostics である。比較対象は、候補ごとの raw source の有無、取得中、取得失敗、対象外である。判断は、利用者が候補を見る前に「根拠が十分か、取得中か、確認不足か」を区別できるかで行う。出力は `根拠あり`、`取得中`、`不足あり`、`対象外` のような非数値 badge とする。金額、差額、percent、forecast 数値、sales / ADR 数値は出さない。候補 task は `RAU-UX-80`。
+  - 候補 2: `判断理由 group label`。入力は既存 reason code と diagnostics である。比較対象は、上げ検討、下げ注意、確認不足、変更直後、競合価格対応未確認などの既存分類である。判断は、主要根拠 cell の文を短くしても候補の意味を失わないかで行う。出力は `需要強め`、`下げ注意`、`確認不足` のような短い非数値 label と title 補足とする。候補 task は `RAU-UX-80` に統合する。
+  - 候補 3: `操作前確認 label`。入力は rank change proposal disabled reasons、current settings 再取得失敗分類、rank status 再取得失敗分類、pending state である。比較対象は、今すぐ反映可能、確認不足、反映確認中、送信不可である。判断は、`反映する` を押す前に送信可能性を誤読しないかで行う。出力は操作列内の短い状態 label とする。候補 task は `RAU-UX-78` または `RAU-UX-80` に含める。
+  - 実装しない候補: 推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を top list 本文に出す案。理由は、現行契約に反し、価格や forecast の解釈を利用者が金額推奨として誤読する可能性があるためである。
+  - 実装しない候補: 新しい未調査 API、OTA または第三者サイト hidden API、background prefetch を使って判断補助を増やす案。理由は、今回の調査範囲を超え、負荷、権限、非公開データ保存範囲の判断が必要になるためである。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -6650,7 +6683,7 @@
 ### RAU-UX-77 料金調整候補画面の冗長な表示を減らす調査を行う
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 料金調整候補画面が冗長に感じられる原因を、表示項目、項目名、並び、重複説明、tooltip、popover、preview、meta summary、button 文言、余白量に分けて調査する。
   - どの情報を常時表示するか、どの情報を hover / popover / preview へ退避するか、どの情報を削るかを整理し、次の実装 task で迷わない形にする。
@@ -6669,32 +6702,151 @@
   - 冗長に感じる原因を、情報重複、説明文の長さ、視線移動の多さ、操作 button の多さ、tooltip / popover / preview の役割重複、余白量のいずれかに分類している。
   - 次に実装する候補がある場合は、表示項目、変更理由、保持する契約、非目標、verify 方法を持つ新規 task へ分割している。
   - docs-only で閉じるため、`git diff --check` と `docs/tasks_backlog.md` / `docs/context/STATUS.md` の整合確認が通過している。
+- 調査結果:
+  - 表示項目: title と meta summary。分類は `文言を短くする`。使うデータは表示件数、非表示件数、優先度、確度、データ状態である。判断に必要な理由は、候補 list の全体像を先に把握するためである。現状の冗長さは、meta summary が長く、操作前に読む量が多いことである。簡素化案は、常時表示を 1 行の短い summary にし、内訳は title または details に寄せる。削った場合のリスクは、候補が少ない理由を見落とすことである。実装候補 task は `RAU-UX-79`。
+  - 表示項目: 対象月、表示 mode、表示上限 control。分類は `常時表示する`。使うデータは target month、view mode、display limit である。判断に必要な理由は、候補 list の絞り込み条件を誤読しないためである。現状の冗長さは軽い。簡素化案は label を短くし、button 群の折り返し時の余白を抑える。実装候補 task は `RAU-UX-79`。
+  - 表示項目: rank order summary と rank order details。分類は `畳む`。使うデータは rank order source、manual override、settings screen order、numeric fallback である。判断に必要な理由は、推奨方向の前提を確認するためである。現状の冗長さは、毎回の候補判断ではなく設定確認に近い情報が list 上部を占めることである。簡素化案は、常時表示を `ランク順序: 確認済み` のような短い badge にし、詳細と入力欄は details 内に維持する。実装候補 task は `RAU-UX-79`。
+  - 表示項目: `優先度`、`判断`、`宿泊日`、`部屋タイプ`、`現ランク`、`推奨`、`根拠`、`状態` の 8 cell。分類は `常時表示する`。使うデータは既存 snapshot に含まれる candidate display info である。判断に必要な理由は、候補同士を横比較するためである。現状の冗長さは、`現ランク` tooltip の hidden table text と `根拠` title が長く、DOM 上の text 量が多いことである。簡素化案は、cell 本文は短く保ち、詳細は tooltip / title に維持する。実装候補 task は `RAU-UX-80`。
+  - 表示項目: 現ランク tooltip。分類は `畳む`。使うデータは同一宿泊日の全部屋タイプ rank、OH / capacity、対象候補との差、備考である。判断に必要な理由は、同日他部屋タイプとの相対関係を見るためである。現状の冗長さは、tooltip の表が 5 列で、一覧の `th` 取得にも混ざるほど DOM 上は大きいことである。簡素化案は、trigger は現ランクだけを維持し、tooltip は必要時だけ表示する現行方針を維持する。header selector を使う検証では、top table の header と tooltip 内 table header を分ける。実装候補 task は `RAU-UX-81` の検証設計へ含める。
+  - 表示項目: booking curve 要点 popover と `曲線` preview。分類は `判断保留`。使うデータは保存済み `booking_curve_raw_source:v2` と preview 用 snapshot である。判断に必要な理由は、候補の根拠を画面遷移なしで確認するためである。現状の冗長さは、`要点` と `曲線` が近い位置に並び、どちらを先に押すべきかが分かりにくいことである。簡素化案は、常時表示を `曲線` 1 command に寄せるか、`要点` を hover / popover 専用の補助にするかを `RAU-UX-78` で決める。
+  - 表示項目: `rank調整` preview、rank select、`反映する`。分類は `操作時だけ表示する`。使うデータは rank change proposal、target rank、disabled reasons、write guard である。判断に必要な理由は、単一候補の rank 変更を安全に行うためである。現状の冗長さは、preview を開く前から select と `反映する` が同じ操作列に見えていることである。簡素化案は、常時表示を `rank調整` だけにし、select と `反映する` は preview open または操作 focus 時だけ見せる。実装候補 task は `RAU-UX-78`。
+  - 表示項目: `Analyzeで確認`、`様子見`、`対応不要`。分類は `操作時だけ表示する`。使うデータは existing link attributes と user decision attributes である。判断に必要な理由は、詳細確認、cooldown、dismiss を実行するためである。現状の冗長さは、すべての候補 row に 3 command が常時並ぶことである。簡素化案は、`Analyzeで確認` を主操作に残し、`様子見` と `対応不要` は secondary actions としてまとめる。実装候補 task は `RAU-UX-78`。
+  - 表示項目: pending notice、warning、error、status message。分類は `常時表示する`。使うデータは pending decision、pending rank change、rank change result である。判断に必要な理由は、取消可能状態、反映確認中、失敗理由を誤読しないためである。現状の冗長さは平常時には 0 件で、問題は発生時にだけ出るため小さい。簡素化案は、発生時の visibility を維持し、平常時は DOM へ出さない現行方針を維持する。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-UX-78 料金調整候補 row の操作列を主操作と副操作へ分ける
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 料金調整候補 row の操作列で、主操作と補助操作が同じ密度で並ぶ状態を減らし、利用者が最初に見るべき操作を短時間で判断できるようにする。
+- スコープ:
+  - 対象は top list の `操作` cell、`Analyzeで確認`、`曲線`、`要点`、`rank調整`、rank select、`反映する`、`様子見`、`対応不要`、pending notice である。
+  - 常時表示する command、preview open 時だけ表示する command、secondary actions としてまとめる command を分ける。
+  - 5 秒 pending、取消、送信直前 current settings 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、HTTP 401 / 403 / その他 status の区別は維持する。
+- 非目標:
+  - Revenue Assistant write API endpoint、candidate scoring、priority order、confidence calculation、rank change payload、pending 秒数を変更しない。
+  - 新しい UI library package、visual diff service、screenshot baseline service を導入しない。
+- 受け入れ条件:
+  - 操作列の常時表示 command 数が減り、preview open または secondary action 表示時に必要な操作が実行できる。
+  - `Analyzeで確認`、booking curve preview、rank change preview、rank select、`反映する`、`様子見`、`対応不要`、pending cancel の既存 selector 契約が維持されている。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて `npm run smoke:distribution -- --mode top` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-79 top list の summary と rank order 表示を短くする
+
+- 状態:
+  - 未着手。
+- 目的:
+  - top list 上部で常時読む文章量を減らし、候補 row の scan を始めるまでの視線移動と読解量を減らす。
+- スコープ:
+  - 対象は title、meta summary、rank order summary、rank order details、target month / view mode / display limit controls の label である。
+  - 常時表示は短い状態 summary にし、候補内訳、非表示件数、rank order の詳細説明、manual override 入力欄は details、title、または tooltip に寄せる。
+- 非目標:
+  - rank order source の解決順、manual override 保存、上下反転保存、candidate scoring、API request 範囲を変更しない。
+  - 情報を削除して確認不能にすることを目的にしない。常時表示から外す情報は、必要時に確認できる場所を維持する。
+- 受け入れ条件:
+  - top list 上部の常時表示文が短くなり、rank order の詳細は折りたたみ内で確認できる。
+  - 表示中候補数、非表示件数、rank order source、manual override 状態が確認不能になっていない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて `npm run smoke:distribution -- --mode top` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-80 数値非表示契約を守る非数値判断 badge を整理する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - top list に金額、差額、percent、forecast 数値、sales / ADR 数値を直接表示せず、既存 diagnostics から判断の入口になる短い非数値 badge を出す。
+- スコープ:
+  - 入力は既存 reason code、diagnostics、raw source status、warm cache pending、curve preview diagnostics、rank change disabled reasons に限定する。
+  - 比較対象は、根拠あり、取得中、不足あり、対象外、需要強め、下げ注意、確認不足、変更直後、送信不可のような非数値状態である。
+  - 出力は短い badge、title、または tooltip 補足とし、top list 本文へ数値を直接表示しない。
+- 非目標:
+  - 新しい未調査 API、OTA または第三者サイト hidden API、background prefetch、Revenue Assistant write API、自動反映、bulk apply を追加しない。
+  - candidate scoring、priority order、confidence calculation をこの task だけで変更しない。
+- 受け入れ条件:
+  - 追加する badge ごとに、入力、比較対象、判断、出力、数値非表示契約への影響が `docs/spec_003_rank_recommendation_signal.md` または task 本文に記録されている。
+  - 金額、差額、percent、forecast 数値、sales / ADR 数値、競合価格の金額を top list 本文へ直接表示していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて `npm run smoke:distribution -- --mode top` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-impl
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-81 secret を使わない UI component marker fixture check を validate-pr に追加する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - UI component marker の基本契約を、Revenue Assistant 認証、Tampermonkey、通常 Chrome profile に依存しない fixture 確認として CI に寄せる。
+- スコープ:
+  - 対象は Vite fixture build、fixture DOM 上の RAU root、React marker、UI component marker、summary、control group、table、row layout、row actions、popover、tooltip、pending notice、status message である。
+  - workflow を変更する場合は `.github/workflows/validate-pr.yml` と必要な script に限定し、Publish Userscript workflow とは分ける。
+- 非目標:
+  - Revenue Assistant 認証情報、Cookie、token、Tampermonkey storage、Chrome profile、実アカウントの施設選択、GitHub Pages published version と installed version の一致確認を CI に入れない。
+  - screenshot baseline service、visual diff service、外部 SaaS、依存追加を同時に導入しない。
+- 受け入れ条件:
+  - CI で確認する selector と、ローカル配布版 smoke または Chrome DevTools Protocol でしか確認しない項目が分かれている。
+  - secret を使わずに実行でき、fixture の合成 data だけで pass / fail できる。
+  - workflow を変更した場合は、構文確認またはローカルで可能な dry-run 相当の確認を行っている。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
+### RAU-UX-82 React Doctor performance family の次候補を 1 種類だけ処理する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-UX-74` 後に残った React Doctor performance warning を、runtime bug と混同せず、1 rule family だけ安全に減らす。
+- スコープ:
+  - 対象候補は `react-doctor/js-combine-iterations`、`react-doctor/js-min-max-loop`、`react-doctor/async-defer-await` のいずれか 1 family とする。
+  - 着手前に対象 file、入力、処理、出力、保持する挙動を確認する。
+- 非目標:
+  - dead code family、server family、`flushSync`、async concurrency、React Doctor 設定変更、診断抑制、dependency 追加または更新は扱わない。
+  - 複数 rule family を同時に処理しない。
+- 受け入れ条件:
+  - 対象にした React Doctor rule family と対象外にした family が記録されている。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run react:doctor -- --diff false`、`git diff --check` が通過している。
+  - React Doctor 診断件数の before / after が記録され、意図しない新規診断が増えていない。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: なし
+
 ## Remaining Task Triage
 
 Now:
 
-- `RAU-UX-77` 料金調整候補画面の冗長な表示を減らす調査を行う
+- `RAU-UX-78` 料金調整候補 row の操作列を主操作と副操作へ分ける
 
 Next:
 
-- `RAU-UX-73` 配布後の実利用で top list UI の視認性を観察して改善候補を分類する
+- `RAU-UX-79` top list の summary と rank order 表示を短くする
 
 After Next:
 
-- `RAU-UX-76` top list の数値非表示契約を維持した判断補助追加を調査する
-- `RAU-UX-75` UI component marker smoke を GitHub Actions で扱う条件を検討する
+- `RAU-UX-80` 数値非表示契約を守る非数値判断 badge を整理する
+- `RAU-UX-81` secret を使わない UI component marker fixture check を validate-pr に追加する
 
 Later:
 
-- `RAU-UX-74` React Doctor performance family を 1 種類だけ選んで安全に処理する
+- `RAU-UX-82` React Doctor performance family の次候補を 1 種類だけ処理する
 
 統合判断:
 
+- 2026-06-01 に、未着手だった `RAU-UX-77`、`RAU-UX-73`、`RAU-UX-76`、`RAU-UX-75`、`RAU-UX-74` を完了した。`RAU-UX-77` と `RAU-UX-73` では、保存済み認証情報を使って通常 Chrome の Revenue Assistant へ再ログインし、top page の RAU top list を Chrome DevTools Protocol で確認した。実画面では RAU root 1 件、React marker 1 件、候補 row 10 件、UI component marker 44 件、popover 10 件、tooltip 10 件を確認した。`RAU-UX-74` では `react-doctor/js-set-map-lookups` だけを処理し、React Doctor 診断を 62 件から 55 件へ減らした。
+- `RAU-UX-78` は、実画面で操作列に 7 command と rank select が常時並んでいたため Now とする。主操作と副操作を分けることで、利用者の料金調整判断に直接効く可能性が高い。`RAU-UX-79` は、meta summary と rank order summary の文量を減らす task であり、操作列整理の次に視線移動を減らせるため Next とする。`RAU-UX-80` は、数値非表示契約を守った判断補助追加であり、表示を増やす可能性があるため、先に簡素化 task を進めてから扱う。`RAU-UX-81` は検証基盤 task であり、CI で扱える fixture marker check と実ログイン smoke を分けるため After Next とする。`RAU-UX-82` は保守 task であり、runtime bug ではないため Later とする。
 - 2026-06-01 に、利用者が「料金調整候補画面にフォーカスしてよい」「今は冗長なので、どうシンプルにできるかを主眼に調査 task を切ってから進めたい」と明示したため、`RAU-UX-77` を追加し、Remaining Task Triage の Now に置いた。`RAU-UX-77` は実装 task ではなく、料金調整候補画面の表示項目、項目名、並び、重複説明、tooltip、popover、preview、meta summary、button 文言、余白量を棚卸しし、常時表示、畳む、削る、短くする、操作時だけ表示する、判断保留に分ける調査 task である。`RAU-UX-73` は配布後の広い視認性観察であり、`RAU-UX-77` より焦点が広いため Next へ下げる。`RAU-UX-76` は数値非表示契約を維持した判断補助の追加調査であり、画面をシンプルにする方向性が決まった後に扱う。
 - 2026-06-01 に、完了報告で推奨した 4 件を `RAU-UX-73` から `RAU-UX-76` として task 化した。`RAU-UX-73` は、配布後の実利用でしか分からない視認性を確認してから次の UI 変更を決めるため Now とする。`RAU-UX-76` は、top list に金額、差額、percent、forecast 数値、sales / ADR 数値を直接表示しない契約を維持したまま判断補助を増やせるかを調べる task であり、利用者の料金調整判断に近いため Next とする。`RAU-UX-75` は、UI component marker smoke の一部を GitHub Actions へ寄せられるかを検討する検証基盤 task だが、通常 Chrome、Tampermonkey、Revenue Assistant 実ログイン状態が必要な確認と分離する必要があるため After Next とする。`RAU-UX-74` は React Doctor の performance warning を小分けに減らす保守 task であり、runtime bug ではないため Later とする。
 - `RAU-UX-73` から `RAU-UX-76` は、実装対象を広げる task ではなく、UI overhaul 配布後の観察、数値非表示契約を守った判断補助の調査、検証基盤の CI 化可否、React Doctor performance warning の小分け処理に分ける。Revenue Assistant write API、自動反映、bulk apply、未調査 API、推奨レート金額、forecast 数値、sales / ADR 数値の top list 直接表示は、今回追加した task の対象外である。

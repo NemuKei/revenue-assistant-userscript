@@ -14599,6 +14599,7 @@ function createCompetitorPriceChartSvg(
     const plotWidth = width - paddingLeft - paddingRight;
     const plotHeight = height - paddingTop - paddingBottom;
     const layout = getCompetitorPriceChartLayout(fetchDates.length, paddingLeft, plotWidth);
+    const fetchDateIndexByDate = new Map(fetchDates.map((fetchDate, index) => [fetchDate, index] as const));
     const prices = points.map((point) => point.price);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
@@ -14656,14 +14657,14 @@ function createCompetitorPriceChartSvg(
     for (const facility of facilities) {
         const facilityPoints = points
             .filter((point) => point.yadNo === facility.yadNo)
-            .sort((left, right) => fetchDates.indexOf(left.fetchDate) - fetchDates.indexOf(right.fetchDate));
+            .sort((left, right) => (fetchDateIndexByDate.get(left.fetchDate) ?? -1) - (fetchDateIndexByDate.get(right.fetchDate) ?? -1));
         if (facilityPoints.length === 0) {
             continue;
         }
 
         const pathData = facilityPoints
             .map((point, index) => {
-                const x = getCompetitorPriceChartX(fetchDates.indexOf(point.fetchDate), fetchDates.length, layout);
+                const x = getCompetitorPriceChartX(fetchDateIndexByDate.get(point.fetchDate) ?? -1, fetchDates.length, layout);
                 const y = getCompetitorPriceChartY(point.price, yMin, yMax, paddingTop, plotHeight);
                 return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
             })
@@ -14677,7 +14678,7 @@ function createCompetitorPriceChartSvg(
 
         for (const point of facilityPoints) {
             const circleElement = document.createElementNS(svgNamespace, "circle");
-            circleElement.setAttribute("cx", getCompetitorPriceChartX(fetchDates.indexOf(point.fetchDate), fetchDates.length, layout).toFixed(2));
+            circleElement.setAttribute("cx", getCompetitorPriceChartX(fetchDateIndexByDate.get(point.fetchDate) ?? -1, fetchDates.length, layout).toFixed(2));
             circleElement.setAttribute("cy", getCompetitorPriceChartY(point.price, yMin, yMax, paddingTop, plotHeight).toFixed(2));
             circleElement.setAttribute("r", "3");
             circleElement.setAttribute("fill", facility.color);
@@ -14739,6 +14740,7 @@ function createPriceTrendChartSvg(
     const plotWidth = width - paddingLeft - paddingRight;
     const plotHeight = height - paddingTop - paddingBottom;
     const layout = getCompetitorPriceChartLayout(leadTimeDays.length, paddingLeft, plotWidth);
+    const leadTimeIndexByDays = new Map(leadTimeDays.map((leadTimeDaysValue, index) => [leadTimeDaysValue, index] as const));
     const prices = points.map((point) => point.price);
     const minPrice = Math.min(...prices);
     const maxPrice = Math.max(...prices);
@@ -14806,14 +14808,14 @@ function createPriceTrendChartSvg(
     for (const facility of facilities) {
         const facilityPoints = points
             .filter((point) => point.yadNo === facility.yadNo)
-            .sort((left, right) => leadTimeDays.indexOf(left.leadTimeDays) - leadTimeDays.indexOf(right.leadTimeDays));
+            .sort((left, right) => (leadTimeIndexByDays.get(left.leadTimeDays) ?? -1) - (leadTimeIndexByDays.get(right.leadTimeDays) ?? -1));
         if (facilityPoints.length === 0) {
             continue;
         }
 
         const pathData = facilityPoints
             .map((point, index) => {
-                const x = getCompetitorPriceChartX(leadTimeDays.indexOf(point.leadTimeDays), leadTimeDays.length, layout);
+                const x = getCompetitorPriceChartX(leadTimeIndexByDays.get(point.leadTimeDays) ?? -1, leadTimeDays.length, layout);
                 const y = getCompetitorPriceChartY(point.price, yMin, yMax, paddingTop, plotHeight);
                 return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
             })
