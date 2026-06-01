@@ -7842,10 +7842,12 @@ async function buildRankRecommendationOwnPricePositionEvidence(options: {
             continue;
         }
 
-        const competitorPrices = Array.from(minimumPrices.entries())
-            .filter(([yadNo]) => yadNo !== ownYadNo)
-            .map(([, value]) => value.price)
-            .filter((price) => Number.isFinite(price));
+        const competitorPrices: number[] = [];
+        for (const [yadNo, value] of minimumPrices.entries()) {
+            if (yadNo !== ownYadNo && Number.isFinite(value.price)) {
+                competitorPrices.push(value.price);
+            }
+        }
         if (competitorPrices.length === 0) {
             continue;
         }
@@ -10377,11 +10379,11 @@ function formatRankRecommendationStatusBadge(
     if (rawStatus === "loading") {
         return "取得中";
     }
-    if (rawStatus === "missing" || rawStatus === "error" || cautionText !== "") {
-        return "確認不足";
-    }
     if (!rankChangeProposal.enabled) {
         return "送信不可";
+    }
+    if (rawStatus === "missing" || rawStatus === "error" || cautionText !== "") {
+        return "確認不足";
     }
     return "根拠あり";
 }
@@ -11283,9 +11285,14 @@ function clearCurrentUiSalesSettingSupplementRestore(): void {
 }
 
 function collectCurrentUiRoomGroupNames(): string[] {
-    return Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="booking-curve-rm-room-group-list"] li`))
-        .map((element) => element.textContent?.trim() ?? "")
-        .filter((name) => name !== "" && name !== "全て");
+    const names: string[] = [];
+    for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[data-testid="booking-curve-rm-room-group-list"] li`))) {
+        const name = element.textContent?.trim() ?? "";
+        if (name !== "" && name !== "全て") {
+            names.push(name);
+        }
+    }
+    return names;
 }
 
 function findCurrentUiSalesSettingContentElement(): HTMLElement | null {
@@ -12668,18 +12675,20 @@ function buildSalesSettingBookingCurveAreaPath(samples: SalesSettingBookingCurve
         segments.push(activeSegment);
     }
 
-    return segments.map((segment) => {
+    const segmentPaths: string[] = [];
+    for (const segment of segments) {
         const firstSample = segment[0];
         const lastSample = segment[segment.length - 1];
         if (firstSample === undefined || lastSample === undefined) {
-            return "";
+            continue;
         }
 
         const linePath = segment
             .map((sample, index) => `${index === 0 ? "M" : "L"}${sample.x.toFixed(2)},${sample.y?.toFixed(2) ?? baselineY.toFixed(2)}`)
             .join(" ");
-        return `${linePath} L${lastSample.x.toFixed(2)},${baselineY.toFixed(2)} L${firstSample.x.toFixed(2)},${baselineY.toFixed(2)} Z`;
-    }).filter((segmentPath) => segmentPath !== "").join(" ");
+        segmentPaths.push(`${linePath} L${lastSample.x.toFixed(2)},${baselineY.toFixed(2)} L${firstSample.x.toFixed(2)},${baselineY.toFixed(2)} Z`);
+    }
+    return segmentPaths.join(" ");
 }
 
 function buildSalesSettingBookingCurveSamples(
@@ -12719,13 +12728,18 @@ function buildSalesSettingBookingCurveTooltipReferenceValues(
     drawableSeries: SalesSettingBookingCurveDrawableSeries[],
     index: number
 ): SalesSettingBookingCurveTooltipReferenceValue[] {
-    return drawableSeries
-        .filter((series) => series.kind !== "current")
-        .map((series) => ({
+    const referenceValues: SalesSettingBookingCurveTooltipReferenceValue[] = [];
+    for (const series of drawableSeries) {
+        if (series.kind === "current") {
+            continue;
+        }
+        referenceValues.push({
             label: series.label,
             value: series.series.values[index] ?? null,
             interpolated: series.series.interpolated?.[index] === true
-        }));
+        });
+    }
+    return referenceValues;
 }
 
 function resolveSalesSettingBookingCurveMarkerX(
@@ -13625,9 +13639,13 @@ function getInconsistentSalesSettingGroupNames(
         return [];
     }
 
-    return metrics
-        .filter((metric) => metric.currentValue !== null && metric.currentValue > overallCurrentValue)
-        .map((metric) => metric.roomGroupName);
+    const inconsistentNames: string[] = [];
+    for (const metric of metrics) {
+        if (metric.currentValue !== null && metric.currentValue > overallCurrentValue) {
+            inconsistentNames.push(metric.roomGroupName);
+        }
+    }
+    return inconsistentNames;
 }
 
 function renderSalesSettingOverallSummary(

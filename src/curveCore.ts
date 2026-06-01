@@ -608,13 +608,18 @@ export function buildSeasonalComponentReferenceCurve(input: CurveInput, options:
         });
     }
 
-    const seasonalMonths = new Set([
-        shiftYearMonth(targetMonth, -12),
-        shiftYearMonth(targetMonth, -24)
-    ].filter((value): value is string => value !== null));
-    const scopedObservations = selectObservations(input.observations, options)
-        .filter((observation) => seasonalMonths.has(observation.stayDate.slice(0, 7)))
-        .filter((observation) => getUtcWeekday(observation.stayDate) === options.weekday);
+    const seasonalMonthValues: string[] = [];
+    for (const offset of [-12, -24]) {
+        const value = shiftYearMonth(targetMonth, offset);
+        if (value !== null) {
+            seasonalMonthValues.push(value);
+        }
+    }
+    const seasonalMonths = new Set(seasonalMonthValues);
+    const scopedObservations = selectObservations(input.observations, options).filter((observation) => (
+        seasonalMonths.has(observation.stayDate.slice(0, 7))
+        && getUtcWeekday(observation.stayDate) === options.weekday
+    ));
     const observationsByStayDate = groupObservationsByStayDate(scopedObservations);
     const finalRoomsByStayDate = resolveFinalRoomsByStayDate(observationsByStayDate);
     const finalRooms = Array.from(finalRoomsByStayDate.values());
@@ -1273,11 +1278,13 @@ function selectSalesAdrObservations(
     }
 ): SalesAdrObservation[] {
     return observations
-        .filter((observation) => observation.stayDate === options.targetStayDate)
-        .filter((observation) => observation.observedDate <= options.asOfDate)
-        .filter((observation) => observation.scope === options.scope)
-        .filter((observation) => observation.segment === options.segment)
-        .filter((observation) => options.scope === "hotel" || observation.roomGroupId === options.roomGroupId)
+        .filter((observation) => (
+            observation.stayDate === options.targetStayDate
+            && observation.observedDate <= options.asOfDate
+            && observation.scope === options.scope
+            && observation.segment === options.segment
+            && (options.scope === "hotel" || observation.roomGroupId === options.roomGroupId)
+        ))
         .sort((left, right) => right.observedDate.localeCompare(left.observedDate));
 }
 
@@ -1381,11 +1388,17 @@ function buildRecentWeightedSamplesForLt(observations: CurveObservation[], asOfD
         return [];
     }
 
-    return observations
-        .filter((observation) => observation.lt === lt)
-        .filter((observation) => observation.stayDate >= startDate && observation.stayDate <= endDate)
-        .map((observation) => toRecentWeightedSample(observation, asOfDate))
-        .filter((sample): sample is WeightedSample => sample !== null);
+    const samples: WeightedSample[] = [];
+    for (const observation of observations) {
+        if (observation.lt !== lt || observation.stayDate < startDate || observation.stayDate > endDate) {
+            continue;
+        }
+        const sample = toRecentWeightedSample(observation, asOfDate);
+        if (sample !== null) {
+            samples.push(sample);
+        }
+    }
+    return samples;
 }
 
 function buildRecentFinalWeightedSamples(observations: CurveObservation[], asOfDate: string): WeightedSample[] {
