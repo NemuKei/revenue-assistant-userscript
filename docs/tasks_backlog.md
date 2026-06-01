@@ -6851,7 +6851,7 @@
 ### RAU-UX-83 配布後の実利用で primary / secondary action の押下頻度を観察する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に、通常 Chrome の Revenue Assistant top 画面で配布版 `0.1.0.358` の実 DOM を確認し、主操作と副操作の配置を分類した。
 - 目的:
   - `RAU-UX-78` で常時表示する操作を `Analyzeで確認`、`曲線`、`rank調整` に絞り、`要点`、`様子見`、`対応不要` を `その他` details へ移した後の実利用で、主操作と副操作の配置が料金調整判断を妨げていないか確認する。
 - スコープ:
@@ -6867,6 +6867,12 @@
   - 変更する場合は、実装 task と spec 更新要否が分けて記録されている。
   - 実ログイン画面を確認した場合は、監視対象 write API POST 0 件、または実送信を伴う場合の利用者承認と対象が記録されている。
   - docs-only で終える場合は、`git diff --check` が通過している。
+- 実施結果:
+  - Chrome拡張 backend で通常 Chrome の `https://ra.jalan.net/` tab を確認した。RAU root は 3 件、React marker は mounted、候補 row は 10 件だった。主操作 wrapper は 10 件、副操作 details は 10 件で、すべて初期 closed だった。
+  - 表示中 10 行の主操作は、各行とも `Analyzeで確認`、`曲線`、`rank調整` だった。`Analyzeで確認` は詳細画面へ移動して標準画面と RAU の根拠を確認する場面、`曲線` は top 画面上で booking curve を軽く確認する場面、`rank調整` は送信前 preview と pending を経て rank 変更へ進む場面で使うため、常時表示を維持する。
+  - 表示中 10 行の副操作は、各行とも `その他` details 内の `要点`、`様子見`、`対応不要` だった。`要点` は詳細根拠の補助確認、`様子見` と `対応不要` は browser-local decision を保存し得る操作であり、誤押下を避けるため details 内維持とする。
+  - 実利用の押下 telemetry は持たないため、頻度そのものではなく、実画面での利用場面、初期表示状態、誤操作リスクで分類した。今回の観察だけでは UI 実装 task は追加しない。実利用で `その他` details の開閉が多い、または `様子見` / `対応不要` を探しにくいことが分かった場合だけ、別 task として文言または配置を再評価する。
+  - `様子見` と `対応不要` は押していない。`npm run smoke:write-posts -- --seconds 10 --operation rau-ux-83-observation --page-index 0` では監視対象 write API POST 0 件だった。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -6875,7 +6881,7 @@
 ### RAU-UX-84 非数値 status badge 文言の誤読リスクを確認する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に、通常 Chrome の Revenue Assistant top 画面で表示中 10 行の status badge と title 補足を確認した。
 - 目的:
   - `RAU-UX-80` で追加した `根拠あり`、`取得中`、`確認不足`、`送信不可`、`対象外` の非数値 badge が、候補の状態、根拠の有無、操作可否を誤って伝えていないか確認する。
 - スコープ:
@@ -6891,6 +6897,14 @@
   - 文言を変える場合は、変更候補と対象 spec が記録されている。変更しない場合は、その理由が記録されている。
   - top list 本文に金額、差額、percent、forecast 数値、sales / ADR 数値、競合価格の金額を直接表示していないことが確認されている。
   - docs-only で終える場合は、`git diff --check` が通過している。
+- 実施結果:
+  - 実画面の表示中 10 行では status badge はすべて `確認不足` だった。title には `候補状態: 確認待ち`、`raw source: 最新基準日あり`、`注意: forecast 比較不足 / 同曜日比較不足` または `隣接ランク表示に制約あり`、`rank変更: 送信候補あり` または `送信不可` が出ていた。
+  - `確認不足` は、根拠が完全にないという意味ではなく、候補として active だが追加確認または注意が残る状態として読むのが正しい。raw source が最新でも forecast 比較不足や同曜日比較不足が残る場合に出るため、badge 単体ではやや慎重な文言である。ただし title が不足理由を補足し、top list の金額や forecast / sales / ADR 数値を直接出さない契約とも整合するため、現時点では文言を変更しない。
+  - `根拠あり` は、active、raw source が missing / error / loading ではなく、caution がなく、rank 変更 proposal が enabled の場合に出る。誤読リスクは「確認不要」と受け取られることだが、rank 変更は引き続き preview、5 秒 pending、送信直前再取得を通るため、文言変更は不要と判断した。
+  - `取得中` は raw source が loading の場合に出る。誤読リスクは低く、候補用データの取得が進行中であることを示す文言として維持する。
+  - `送信不可` は、追加確認ではなく rank change proposal が disabled の場合に出る。実画面では `確認不足` が優先されるため表示されていない行があったが、title には `rank変更: 送信不可` が出ていた。将来 `確認不足` と `送信不可` の優先順位が誤読を生む場合は別 task で扱う。
+  - `対象外` は candidate status が active ではない場合に出る。表示中 10 行では確認できなかったが、候補状態と操作対象外を分ける文言として維持する。
+  - この task では、status badge 文言、candidate scoring、priority order、confidence calculation、API request 範囲、Revenue Assistant write API endpoint は変更しない。spec 更新は不要と判断した。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -6899,7 +6913,7 @@
 ### RAU-UX-85 fixture marker check と runtime smoke helper の selector 分類を揃える
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に、fixture marker check と runtime smoke top mode の selector 分類名を揃えた。
 - 目的:
   - `RAU-UX-81` で追加した secret なし fixture marker check と、配布版 `smoke:distribution --mode top` の出力で、primary action、secondary action、status badge、UI component marker の分類名と確認範囲を揃える。
 - スコープ:
@@ -6915,6 +6929,13 @@
   - CI で確認する項目と、実ログイン smoke で確認する項目が分かれている。
   - `npm run check:fixture-markers` と、変更対象に応じた `npm run smoke:distribution -- --mode top` または代替の dry-run が通過している。
   - `git diff --check` が通過している。
+- 実装結果:
+  - `scripts/check-rank-fixture-markers-entry.ts` に `status badge cells` を追加し、fixture snapshot 上の `data-ra-rank-recommendation-cell-role="status"` を row 数以上確認するようにした。
+  - `scripts/run-distribution-smoke.mjs` の top mode 出力に `primary actions wrappers`、`secondary action markers`、`status badge cells` を追加した。top row がある場合は各分類が row 数以上あることを pass 条件にした。
+  - `scripts/run-distribution-smoke.mjs` の CDP 接続 timeout と reload / goto timeout を、観測秒数に応じて 30 秒より長くできるようにした。reload / goto timeout は例外終了ではなく `navigation warning` metric として出し、その後の selector 評価へ進む。
+  - `README.md` の `smoke:distribution --mode top` 説明に、primary actions wrappers、secondary action markers、status badge cells を追加した。
+  - `npm run check:fixture-markers` は sandbox 内で `spawn EPERM` になったため、同じ command を通常権限で再実行して pass した。出力は primary actions wrappers 21、secondary action markers 21、status badge cells 21 だった。
+  - `npm run smoke:distribution -- --installed-version 0.1.0.358 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail` は、現在の CDP 接続状態で `browserType.connectOverCDP` が websocket connected 後に timeout し、完走しなかった。代替証跡として Chrome拡張 backend で通常 Chrome の同一 tab を確認し、RAU root 3 件、React marker mounted、row 10 件、primary wrappers 10 件、secondary details 10 件、status badge 10 件を確認した。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -6923,7 +6944,7 @@
 ### RAU-UX-86 React Doctor 残り 50 issues から次に安全な 1 family を選んで処理する
 
 - 状態:
-  - 未着手。
+  - 完了。2026-06-01 に、`react-doctor/js-batch-dom-css` 1 件だけを対象にして処理した。
 - 目的:
   - `RAU-UX-82` 後に残った React Doctor 50 issues から、runtime bug と混同せず、次に安全に扱える 1 rule family だけを選んで減らす。
 - スコープ:
@@ -6938,6 +6959,11 @@
   - 対象にした React Doctor rule family と対象外にした family が記録されている。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run react:doctor -- --verbose --diff false`、`git diff --check` が通過している。
   - React Doctor 診断件数の before / after が記録され、意図しない新規診断が増えていない。
+- 実装結果:
+  - 対象にした rule family は `react-doctor/js-batch-dom-css` である。`src/main.ts` の booking curve legend swatch 生成で、dash pattern 用の sequential style assignments を `style.cssText` 1 回にまとめた。dash pattern なしの swatch は従来どおり `backgroundColor = item.stroke` を使うため、表示色と凡例 label は変えていない。
+  - 対象外にした family は、`react-doctor/js-combine-iterations`、`react-doctor/async-defer-await`、`react-doctor/async-await-in-loop`、`react-doctor/server-sequential-independent-await`、`react-doctor/no-flush-sync`、`react-doctor/js-tosorted-immutable`、dead code family である。`js-tosorted-immutable` は repo の `tsconfig.json` が `target` / `lib` とも ES2022 で、`Array.prototype.toSorted` を前提にしないため今回は扱わない。
+  - 実装前の `npm run react:doctor -- --verbose --diff false` は 50 issues で、`react-doctor/js-batch-dom-css` は 1 件だった。実装後の同 command は 49 issues で、`react-doctor/js-batch-dom-css` は表示されなくなった。
+  - `npm run typecheck`、`npm run lint`、`npm run build` は通過した。`npm run build` は sandbox 内で `spawn EPERM` になったため、同じ command を通常権限で再実行して pass した。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -6947,22 +6973,23 @@
 
 Now:
 
-- `RAU-UX-83` 配布後の実利用で primary / secondary action の押下頻度を観察する
+- なし
 
 Next:
 
-- `RAU-UX-84` 非数値 status badge 文言の誤読リスクを確認する
+- なし
 
 After Next:
 
-- `RAU-UX-85` fixture marker check と runtime smoke helper の selector 分類を揃える
+- なし
 
 Later:
 
-- `RAU-UX-86` React Doctor 残り 50 issues から次に安全な 1 family を選んで処理する
+- なし
 
 統合判断:
 
+- 2026-06-01 に、未着手だった `RAU-UX-83`、`RAU-UX-84`、`RAU-UX-85`、`RAU-UX-86` を完了した。`RAU-UX-83` では通常 Chrome の Revenue Assistant top 画面で主操作 `Analyzeで確認`、`曲線`、`rank調整` と、副操作 `要点`、`様子見`、`対応不要` の配置を確認し、主操作は常時表示、副操作は `その他` details 内維持と判断した。`RAU-UX-84` では実画面の status badge が 10 行すべて `確認不足` で、title に raw source、注意、rank 変更可否が補足されることを確認し、現時点では文言を変更しない判断にした。`RAU-UX-85` では fixture marker check と runtime smoke top mode に `primary actions wrappers`、`secondary action markers`、`status badge cells` を揃え、README に反映した。`RAU-UX-86` では `react-doctor/js-batch-dom-css` だけを処理し、React Doctor 診断を 50 issues から 49 issues へ減らした。この完了により Remaining Task Triage は空である。次に task 化する候補は、実利用で `その他` details の開閉が多い場合の操作再配置、status badge の `確認不足` と `送信不可` の優先順位再評価、CDP smoke helper の websocket connected 後 timeout の原因切り分け、React Doctor の残り 49 issues から次に安全な 1 family を選ぶことである。
 - 2026-06-01 に、完了報告で推奨した 4 件を `RAU-UX-83` から `RAU-UX-86` として task 化した。`RAU-UX-83` は、`RAU-UX-78` で主操作と副操作を分けた後、実利用で主操作と `その他` details の配置が料金調整判断を妨げないか観察するため Now とする。`RAU-UX-84` は、`RAU-UX-80` の非数値 status badge が候補状態と操作可否を誤読なく伝えているかを確認する task であり、文言は UI / UX の判断に直結するため Next とする。`RAU-UX-85` は、`RAU-UX-81` の fixture marker check と配布版 runtime smoke の分類名を揃える検証基盤 task であり、観察と文言確認の後に扱うため After Next とする。`RAU-UX-86` は React Doctor 残り 50 issues の保守 task で、runtime bug ではないため Later とする。`docs/context/INTENT.md` は確認済みであり、既存の「シンプルで分かりやすい UI / UX を優先する」「first wave では推奨レート金額ではなく推奨ランク方向を優先する」「自動反映より安全な作業キューを優先する」原則で今回の実行順を説明できるため、判断原則は更新しない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-01 に、未着手だった `RAU-UX-78`、`RAU-UX-79`、`RAU-UX-80`、`RAU-UX-81`、`RAU-UX-82` を完了した。`RAU-UX-78` では top 料金調整候補 row の常時表示操作を `Analyzeで確認`、`曲線`、`rank調整` に限定し、`要点`、`様子見`、`対応不要` は `その他` details へ移した。`RAU-UX-79` では meta summary と rank order summary を短くし、詳細は title と details に残した。`RAU-UX-80` では状態 cell を `根拠あり`、`取得中`、`確認不足`、`送信不可`、`対象外` の非数値 badge にした。`RAU-UX-81` では secret なしの `check:fixture-markers` を追加し、`validate-pr` workflow に接続した。`RAU-UX-82` では `react-doctor/js-min-max-loop` だけを処理し、React Doctor 診断を 55 issues から 50 issues へ減らした。Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、candidate scoring、priority order、confidence calculation、金額や forecast / sales / ADR 数値の top list 直接表示は変更していない。Publish Userscript run `26739542834` は success で、GitHub Pages published version と Tampermonkey installed version は `0.1.0.358` に揃えた。配布版 top smoke は row 10 件、React marker あり、UI component marker 54 件、監視対象 write API POST 0 件、console / page error 0 件で pass した。verify は `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`git diff --check`、`npm run smoke:distribution -- --installed-version 0.1.0.358 --mode top --url https://ra.jalan.net/ --seconds 30 --version-policy fail` が通過した。この完了により Remaining Task Triage は空である。
 - 2026-06-01 に、未着手だった `RAU-UX-77`、`RAU-UX-73`、`RAU-UX-76`、`RAU-UX-75`、`RAU-UX-74` を完了した。`RAU-UX-77` と `RAU-UX-73` では、保存済み認証情報を使って通常 Chrome の Revenue Assistant へ再ログインし、top page の RAU top list を Chrome DevTools Protocol で確認した。実画面では RAU root 1 件、React marker 1 件、候補 row 10 件、UI component marker 44 件、popover 10 件、tooltip 10 件を確認した。`RAU-UX-74` では `react-doctor/js-set-map-lookups` だけを処理し、React Doctor 診断を 62 件から 55 件へ減らした。

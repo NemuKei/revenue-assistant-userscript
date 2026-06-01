@@ -103,7 +103,8 @@ async function readPublishedVersion(url) {
 }
 
 async function runChromeSmoke(options) {
-    const browser = await chromium.connectOverCDP(options.cdpUrl);
+    const cdpTimeoutMs = Math.max(30_000, options.seconds * 1000 + 15_000);
+    const browser = await chromium.connectOverCDP(options.cdpUrl, { timeout: cdpTimeoutMs });
     const writePosts = [];
     const consoleErrors = [];
     const pageErrors = [];
@@ -136,14 +137,12 @@ async function runChromeSmoke(options) {
             pageErrors.push(error.message);
         });
 
-        if (page.url() !== options.targetUrl) {
-            await page.goto(options.targetUrl, { waitUntil: "domcontentloaded" });
-        } else {
-            await page.reload({ waitUntil: "domcontentloaded" });
-        }
+        const navigationTimeoutMs = Math.max(30_000, options.seconds * 1000 + 15_000);
+        const navigationWarning = await navigateOrReloadForSmoke(page, options.targetUrl, navigationTimeoutMs);
         await prepareMode(page, options.mode);
         const waitResult = await waitForModeReady(page, options.mode, options.seconds);
         const modeMetrics = {
+            "navigation warning": navigationWarning ?? "none",
             ...waitResult.metrics,
             "state wait satisfied": waitResult.ready ? "yes" : "no",
             "state wait elapsed ms": waitResult.elapsedMs
@@ -159,6 +158,19 @@ async function runChromeSmoke(options) {
         };
     } finally {
         await browser.close();
+    }
+}
+
+async function navigateOrReloadForSmoke(page, targetUrl, timeoutMs) {
+    try {
+        if (page.url() !== targetUrl) {
+            await page.goto(targetUrl, { waitUntil: "domcontentloaded", timeout: timeoutMs });
+        } else {
+            await page.reload({ waitUntil: "domcontentloaded", timeout: timeoutMs });
+        }
+        return null;
+    } catch (error) {
+        return error instanceof Error ? error.message.replace(/\s+/g, " ").slice(0, 240) : String(error);
     }
 }
 
@@ -235,6 +247,8 @@ function buildPreflightMessages(options) {
 
 function assessModeMetrics(mode, metrics, options) {
     if (mode === "top") {
+        const rowCount = Number(metrics["top row count"]);
+        const perRowMinimum = Number.isFinite(rowCount) && rowCount > 0 ? rowCount : 1;
         return [
             minCountFailure("top row count", metrics["top row count"], 1),
             yesFailure("React marker mounted", metrics["React marker mounted"]),
@@ -242,6 +256,9 @@ function assessModeMetrics(mode, metrics, options) {
             minCountFailure("view mode buttons", metrics["view mode buttons"], 1),
             minCountFailure("display limit buttons", metrics["display limit buttons"], 1),
             yesFailure("rank order control", metrics["rank order control"]),
+            minCountFailure("primary actions wrappers", metrics["primary actions wrappers"], perRowMinimum),
+            minCountFailure("secondary action markers", metrics["secondary action markers"], perRowMinimum),
+            minCountFailure("status badge cells", metrics["status badge cells"], perRowMinimum),
             minCountFailure("curve preview buttons", metrics["curve preview buttons"], 1),
             minCountFailure("rank change buttons", metrics["rank change buttons"], 1),
             minCountFailure("decision buttons", metrics["decision buttons"], 1),
@@ -376,6 +393,9 @@ async function collectModeMetrics(page, mode) {
                 "view mode buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"view-mode\"]").length,
                 "display limit buttons": doc.querySelectorAll("[data-ra-rank-recommendation-display-limit-control] button").length,
                 "rank order control": doc.querySelector("[data-ra-rank-recommendation-order-control]") !== null ? "yes" : "no",
+                "primary actions wrappers": doc.querySelectorAll("[data-ra-rank-recommendation-primary-actions]").length,
+                "secondary action markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"secondary-actions\"]").length,
+                "status badge cells": doc.querySelectorAll("[data-ra-rank-recommendation-cell-role=\"status\"]").length,
                 "curve preview buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"curve-preview-toggle\"]").length,
                 "rank change buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"]").length,
                 "decision buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"snooze\"], [data-ra-rank-recommendation-button-action=\"dismiss\"]").length,

@@ -39,6 +39,7 @@ export function runRankFixtureMarkerCheck(): void {
         { name: "row actions markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="row-actions"/g), min: rowCount },
         { name: "primary actions wrappers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-primary-actions/g), min: rowCount },
         { name: "secondary action markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="secondary-actions"/g), min: rowCount },
+        { name: "status badge cells", count: countMatches(renderedHtml, /data-ra-rank-recommendation-cell-role="status"/g), min: rowCount },
         { name: "popover markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="popover"/g), min: rowCount },
         { name: "tooltip markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="tooltip"/g), min: rowCount },
         { name: "pending notice markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="pending-notice"/g), min: 2 },

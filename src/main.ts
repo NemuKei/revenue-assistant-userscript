@@ -13397,10 +13397,13 @@ function createSalesSettingBookingCurveLegend(curveData: SalesSettingBookingCurv
         itemElement.setAttribute("aria-disabled", item.visible ? "false" : "true");
 
         const swatchElement = document.createElement("span");
-        swatchElement.style.backgroundColor = item.stroke;
         if (item.dasharray !== null) {
-            swatchElement.style.backgroundImage = `repeating-linear-gradient(90deg, ${item.stroke} 0 6px, transparent 6px 10px)`;
-            swatchElement.style.backgroundColor = "transparent";
+            swatchElement.style.cssText = [
+                "background-color: transparent",
+                `background-image: repeating-linear-gradient(90deg, ${item.stroke} 0 6px, transparent 6px 10px)`
+            ].join("; ");
+        } else {
+            swatchElement.style.backgroundColor = item.stroke;
         }
 
         itemElement.replaceChildren(swatchElement, document.createTextNode(item.label));
