@@ -7692,7 +7692,7 @@
 ### RAU-WC-20 高速化後の実ブラウザ throughput と安全停止を確認する
 
 - 状態:
-  - ローカル verify 済み。配布版実ブラウザ確認は commit / push と Tampermonkey 更新後に追記する。
+  - 完了。
 - 目的:
   - `RAU-WC-19` の上限付き multi-worker 化が、通常 Chrome の Revenue Assistant 実画面で、取得速度を改善しつつ HTTP error、console error、page error、write API POST を発生させないことを確認する。
 - スコープ:
@@ -7710,6 +7710,11 @@
   - HTTP 401、HTTP 403、HTTP 429、5xx、console error、page error、監視対象 write API POST が 0 件である。
   - 取得済み cache が多く live request 件数で倍速を測れない場合は、その理由、source-level 証跡、skip 即時進行、error 0 件を記録する。
   - 必要に応じて GitHub Pages published version と Tampermonkey installed version を揃え、配布版 smoke で version mismatch がないことを確認する。
+- 完了内容:
+  - commit `9695cb2` を `origin/main` へ push し、Publish Userscript run `26801978239` が success になった後、GitHub Pages published version と Tampermonkey installed version を `0.1.0.367` に揃えた。
+  - 配布版 top smoke `npm run smoke:distribution -- --installed-version 0.1.0.367 --mode top --url https://ra.jalan.net/ --seconds 60 --version-policy fail` は pass した。出力では、月別 warm cache control 3 件、月別 button 3 件、月別 status `202606=idle,202607=idle,202608=idle`、console error 0 件、page error 0 件、監視対象 write API POST 0 件を確認した。
+  - Chrome DevTools Protocol の 45 秒観測では、2026-08 の優先取得ボタン押下後に RAU 発行の booking curve request 41 件を観測し、平均開始件数 2.25 件/秒、最小開始間隔 345ms、監視対象 write API POST 0 件、console error 0 件、page error 0 件だった。
+  - 同じ実画面で取得中状態を再観測した時点では、新しい booking curve request は観測窓に出なかった。これは 2026-08 優先取得が既に進行中で、再押下対象がない状態だったためである。この再観測でも監視対象 write API POST 0 件、console error 0 件、page error 0 件だった。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: after-implementation
@@ -7779,7 +7784,7 @@
 ### RAU-WC-23 優先取得ボタンの実ブラウザ動作と安全性を確認する
 
 - 状態:
-  - ローカル verify 済み。配布版実ブラウザ確認は commit / push と Tampermonkey 更新後に追記する。
+  - 完了。
 - 目的:
   - カレンダー上部の月別優先取得ボタンが、通常 Chrome の Revenue Assistant 実画面で、先々の月の booking curve 関連 task を優先しつつ、write API POST や HTTP / console / page error を発生させないことを確認する。
 - スコープ:
@@ -7796,6 +7801,11 @@
   - 円形 progress の状態遷移が、待機中、取得中、完了、クールダウン中、エラーのいずれかとして読める。
   - HTTP 401、HTTP 403、HTTP 429、5xx、console error、page error、監視対象 write API POST が 0 件である。
   - 取得済み cache が多く live request 件数で優先順を測れない場合は、その理由、source-level 証跡、skip 即時進行、error 0 件を記録する。
+- 完了内容:
+  - 配布版 top smoke で、表示中カレンダーに月別 warm cache control 3 件と月別 button 3 件が出ていることを確認した。
+  - Chrome DevTools Protocol 観測では、2026-08 の優先取得ボタン押下後に indicator が `取得中 2026-08-01` と `worker 3/3` を表示した。これは押した月の stay_date が通常の直近日付 queue より前へ置かれ、最大 3 worker で処理されていることを示す。
+  - 月別 control は `2026-06 優先取得取得中 0%`、`2026-07 優先取得取得中 0%`、`2026-08 優先取得取得中 1%` から、再観測時点で `2026-08 優先取得取得中 2%` まで進んでいた。
+  - 45 秒観測で、監視対象 write API POST 0 件、console error 0 件、page error 0 件だった。再観測でも同じく監視対象 write API POST 0 件、console error 0 件、page error 0 件だった。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: after-implementation
@@ -7805,8 +7815,7 @@
 
 Now:
 
-- `RAU-WC-20` 高速化後の実ブラウザ throughput と安全停止を確認する
-- `RAU-WC-23` 優先取得ボタンの実ブラウザ動作と安全性を確認する
+なし
 
 Next:
 
@@ -7822,6 +7831,7 @@ Later:
 
 統合判断:
 
+- 2026-06-02 に、未着手だった `RAU-WC-18`、`RAU-WC-19`、`RAU-WC-20`、`RAU-WC-21`、`RAU-WC-22`、`RAU-WC-23` を完了した。booking curve warm cache は `開始間隔 350ms 以上`、`同時実行 3 件以下` の上限付き高速化になり、トップカレンダー上部には表示月ごとの `YYYY-MM 優先取得` button と円形 progress が追加された。配布版 `0.1.0.367` を Tampermonkey installed version `0.1.0.367` に揃え、配布版 top smoke と Chrome DevTools Protocol 観測で、月別 control 3 件、button 3 件、2026-08 優先取得時の `worker 3/3`、booking curve request 41 件、平均開始件数 2.25 件/秒、最小開始間隔 345ms、監視対象 write API POST 0 件、console error 0 件、page error 0 件を確認した。この完了により Remaining Task Triage は空である。
 - 2026-06-02 に、利用者が、カレンダートップでは直近データ取得が優先されるため、先々の月を調整したい場合に料金調整候補の根拠データが不足する課題を示した。利用者はカレンダー上部または料金調整候補側の優先取得ボタンを候補として挙げ、配置はカレンダー上部を第一候補とした。既存の warm cache queue と候補優先取得は土台として使えるが、利用者が表示中の月を明示して直近日付より優先させる入口は未実装である。そのため、まず `RAU-WC-21` でカレンダー月 card 上部の UI 契約と安全制約を確定し、`RAU-WC-22` で月別優先取得ボタンと円形 progress を実装し、`RAU-WC-23` で通常 Chrome の実ブラウザ動作、HTTP / console / page error 0 件、監視対象 write API POST 0 件を確認する。`RAU-WC-18` は取得速度の安全上限を決める前提であるため Now に維持し、`RAU-WC-21` は `RAU-WC-19` の multi-worker 実装前に UI 契約を固めるため Next へ置く。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant 実画面状態は変更していない。
 - 2026-06-02 に、利用者が「データ取得の遅さ」が現在のボトルネックであり、安全に寄せすぎている感覚があるため、request 間隔だけでなく multi-worker 併用も含めて倍以上の改善を検討したいと示した。既存の `RAU-WC-01`、`RAU-WC-04`、`RAU-WC-11` は warm cache、request scheduler、in-flight dedupe の土台であり、現行仕様は `/api/v4/booking_curve` の開始間隔 1.0 秒以上を契約としている。今回の要望はその契約を見直す実装前判断を含むため、まず `RAU-WC-18` で安全上限と error 分類を仕様へ反映し、次に `RAU-WC-19` で `開始間隔 350ms 以上`、`同時実行 3 件以下` の multi-worker 実装を行い、最後に `RAU-WC-20` で通常 Chrome の実ブラウザ throughput と HTTP / console / page error 0 件を確認する。Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、価格や在庫の非公開データ保存は対象外である。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant 実画面状態は変更していない。
 - 2026-06-02 に、未着手だった `RAU-UX-100` から `RAU-UX-105` と `RAU-AF-12` から `RAU-AF-17` を完了した。`RAU-UX-100` では、競合価格の現在値だけではなく、通常時の自社価格と競合価格の相対距離を baseline として使う設計を記録した。`RAU-UX-101` では 5 秒 pending の progress ring を追加した。`RAU-UX-102` では現ランク cell で現ランク値と販売室数を別行に分け、補助表示を `販売室数：current/max` にした。`RAU-UX-103` では、browser-local decision は保存成功後に既存 lifecycle filter で非表示になり、rank change は送信前 guard、POST、反映確認の失敗を隠さないため無条件非表示にしない判断を記録した。`RAU-UX-104` と `RAU-UX-105` では、操作履歴からの自動 suppression または外部機械学習モデル導入は初期実装では行わず、必要な場合は明示設定によるクールダウン調整を別 task で扱う方針を記録した。`RAU-AF-12` から `RAU-AF-17` では、Analyze 日付ページ上部に read-only の料金調整候補一覧を追加し、top list から遷移した候補の highlight、配布版 smoke mode `analyze-recommendations`、反映操作を実装する前の write 安全条件を追加した。Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、bulk apply、自動反映、金額・差額・percent・forecast 数値・sales / ADR 数値の本文表示は変更していない。verify は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`git diff --check` が通過済みである。React Doctor は残診断 41 件で完走し、今回の bundle では既存診断を追加修正しない。Vite、esbuild、React Doctor を起動する build / fixture / marker / React Doctor は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。commit `6ec3c1e` を `origin/main` へ push し、Publish Userscript run `26794622573` は success になった。GitHub Pages published version は `0.1.0.364` であり、Tampermonkey dashboard から installed version を `0.1.0.363` から `0.1.0.364` へ更新した。配布版 top smoke は top row 10 件、React marker あり、primary actions wrappers 10 件、secondary action markers 10 件、status badge cells 10 件、UI component markers 54 件、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。配布版 Analyze smoke は Analyze 候補一覧 root 1 件、row 5 件、empty 0 件、write button 0 件、read-only state yes、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。この完了により Remaining Task Triage は空である。
