@@ -887,12 +887,12 @@
 - 受け入れ条件:
   - `現ランク` tooltip に `販売室数` 列が表示される。
   - 各部屋タイプの値が `current/max` 形式で表示される。
-  - `remaining_num_room` または `max_num_room` が取れない場合は `- / -` と表示し、備考に `販売室数未取得` を表示する。
+  - `remaining_num_room` または `max_num_room` が取れない場合は `-/-` と表示し、備考に `販売室数未取得` を表示する。
   - tooltip が通常の候補操作、`Analyzeで確認`、`曲線`、`rank調整`、`様子見`、`対応不要` を妨げない。
 - 実装内容:
   - `RankRecommendationRankGapEntry` に `occupancyCapacity` を追加した。
   - `buildRankRecommendationRankGapContextByScope()` で、current settings response の `remaining_num_room` と `max_num_room` から `販売室数 = max_num_room - remaining_num_room` を計算する。
-  - tooltip table に `販売室数` 列を追加し、既存の `formatSalesSettingCapacity()` で `current/max` 形式へ整形する。
+  - tooltip table に `販売室数` 列を追加し、料金調整候補用の整形処理で `current/max` 形式へ整形する。
   - `販売室数` は UI 表示用の signature に含め、同じ宿泊日と部屋タイプの販売室数または最大販売可能室数が変わった場合に表示更新対象になるようにした。
 - verify:
   - `npm run typecheck`: passed

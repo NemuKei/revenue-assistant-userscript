@@ -9958,7 +9958,12 @@ function formatRankRecommendationRankGapRelativeStep(entry: RankRecommendationRa
 }
 
 function formatRankRecommendationRankGapOccupancyCapacity(entry: RankRecommendationRankGapEntry): string {
-    return formatSalesSettingCapacity(entry.occupancyCapacity);
+    const capacity = entry.occupancyCapacity;
+    if (capacity === null) {
+        return "-/-";
+    }
+
+    return `${formatGroupRoomNumber(capacity.currentValue)}/${formatGroupRoomNumber(capacity.maxValue)}`;
 }
 
 function formatRankRecommendationRankGapNote(
