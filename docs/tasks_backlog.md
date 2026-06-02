@@ -7248,6 +7248,55 @@
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-UX-98 最終変更履歴表示後に直近変更済み候補の再発火理由を分類する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-UX-91` で top list に最終変更履歴を表示した後、直近に rank 変更済みの候補が再び表示される理由を、利用者が実画面で短時間に分類できるか確認する。分類できない場合は、表示項目、tooltip、diagnostics、candidate lifecycle のどこを追加または修正する必要があるかを判断する。
+- スコープ:
+  - 対象は、最終変更履歴表示後の top list、候補行 title / tooltip、cooldown 表示、reasonFingerprint、confidence 表示段階、resolved 判定、user decision、販売状況変化による候補再表示理由である。
+  - 分類する理由は、少なくとも `cooldown 中だが別理由で再表示`、`reasonFingerprint が変わった`、`confidence 表示段階が上がった`、`rank change resolved の対象外`、`販売状況または remaining rooms が変わった`、`表示または実装上の不具合` に分ける。
+  - 実データ確認が必要な場合は、通常 Chrome のログイン済み Revenue Assistant 画面を Chrome DevTools Protocol または Chrome拡張で read-only 確認し、raw response body、Cookie、token、credential、価格や在庫の非公開データを保存しない。
+- 非目標:
+  - この task だけで cooldown 期間、candidate scoring、priority、confidence、reasonFingerprint、rank change resolved 判定を変更しない。変更が必要な場合は `RAU-UX-92` または別 task の対象として記録する。
+  - Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数を変更しない。
+  - top list に金額、差額、percent、forecast 数値、sales / ADR 数値、競合価格金額を追加しない。
+- 受け入れ条件:
+  - 直近変更済み候補が再表示される理由を、候補行だけで分類できるか、tooltip / title / diagnostics まで見れば分類できるか、分類できないかのどれかに分けて記録している。
+  - 分類できない場合は、足りない入力、足りない表示、または実装上の不具合を具体的に記録している。
+  - `RAU-UX-92` に渡すべき小キャパ過剰発火の判断材料と、`RAU-UX-92` へ渡さない単なる表示改善を分けている。
+  - docs-only で終える場合は `git diff --check` が通過している。実装する場合は `npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて top の配布版 smoke が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-99 直近型 reference curve 検証結果を小キャパ抑制条件へ接続するか判断する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-UX-93` で直近型 reference curve の算出と表示を検証した後、その結果を `RAU-UX-92` の小キャパ候補過剰発火の抑制条件へ接続するべきか判断する。直近型 curve が誤っている場合、キャパ 3 前後の候補が過剰に出ている原因を cooldown や capacity 閾値だけに寄せず、reference 入力の誤りとして切り分ける。
+- スコープ:
+  - 対象は、直近型 reference curve の正誤、raw source 欠損、derived record 欠損、cache key 不一致、計算関数の誤り、表示切替の誤り、small capacity diagnostics、candidate priority / confidence の補助条件である。
+  - 判断する接続先は、候補生成時の suppression、priority / confidence 低下、diagnostics 表示、`確認不足` status、または実装変更なしのどれかである。
+  - `RAU-UX-92` へ渡す場合は、どの reference curve 状態を小キャパ候補の過剰発火判定に使うかを明記する。例は `直近型欠損なら小キャパ候補を確認不足へ落とす`、`直近型と季節型が乖離している場合は priority を上げすぎない` のような条件である。
+- 非目標:
+  - この task だけで `/api/v4/booking_curve` の request 範囲、request 件数、request 間隔を増やさない。
+  - 小キャパ候補を一律に無効化しない。
+  - Revenue Assistant write API endpoint、rank change payload、bulk apply、自動反映を変更しない。
+  - raw response body、HAR、Cookie、token、credential、非公開データを Git 管理へ入れない。
+- 受け入れ条件:
+  - `RAU-UX-93` の検証結果を、小キャパ抑制条件へ接続する、diagnostics だけへ接続する、接続しない、追加調査へ回す、のどれかに分類している。
+  - 接続する場合は、入力条件、処理、出力を分けて記録している。入力条件は reference curve 状態、capacity、remaining rooms、LT、rank history、reasonFingerprint のどれを使うかを明示している。
+  - 接続しない場合は、小キャパ過剰発火を `RAU-UX-92` で cooldown、rank gap、candidate lifecycle の観点から扱う理由を記録している。
+  - docs-only で終える場合は `git diff --check` が通過している。実装する場合は `npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて booking curve と top の配布版 smoke が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_002_curve_core.md`, `docs/spec_003_rank_recommendation_signal.md`
+
 ## Remaining Task Triage
 
 Now:
@@ -7257,10 +7306,12 @@ Now:
 
 Next:
 
-- `RAU-UX-92` 小キャパ候補の過剰発火を再評価する
+- `RAU-UX-98` 最終変更履歴表示後に直近変更済み候補の再発火理由を分類する
+- `RAU-UX-99` 直近型 reference curve 検証結果を小キャパ抑制条件へ接続するか判断する
 
 After Next:
 
+- `RAU-UX-92` 小キャパ候補の過剰発火を再評価する
 - `RAU-UX-94` `下げ余地なし` 候補を表示対象に残すか再評価する
 - `RAU-UX-96` 現ランク tooltip の二重表示を解消する
 
@@ -7271,6 +7322,7 @@ Later:
 
 統合判断:
 
+- 2026-06-02 に、直前の完了報告で推奨した 2 件を `RAU-UX-98` と `RAU-UX-99` として task 化した。`RAU-UX-98` は、`RAU-UX-91` の最終変更履歴表示後に、直近変更済み候補が再表示される理由を候補行、tooltip、diagnostics で分類できるか確認する task である。`RAU-UX-99` は、`RAU-UX-93` の直近型 reference curve 検証結果を、小キャパ候補の過剰発火抑制条件へ接続するか判断する task である。どちらも `RAU-UX-91` と `RAU-UX-93` の結果を使うため Next とし、小キャパ抑制の本体である `RAU-UX-92` は After Next へ下げる。これにより、`RAU-UX-92` では cooldown、同日他部屋タイプとの rank gap、capacity 別条件だけでなく、直近変更履歴表示と reference curve 検証の結果を使って判断できる。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「自動反映より安全な作業キューを優先する」原則で今回の順序を説明できるため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、利用者が実画面で確認した 7 件の改善観点を `RAU-UX-91` から `RAU-UX-97` として task 化した。`RAU-UX-91` は最終変更履歴を `◯日前` 形式で読みやすくし、直近変更済み候補の再表示理由を確認する土台になるため Now とする。`RAU-UX-93` は直近型 reference curve の正誤が候補根拠と preview の信頼性に直接影響するため Now とする。`RAU-UX-92` は小キャパ候補の過剰発火を、最終変更履歴、同日他部屋タイプとの rank gap、capacity 別 cooldown で再評価する task であり、`RAU-UX-91` と `RAU-UX-93` の確認結果を使うため Next とする。`RAU-UX-94` は候補 list のノイズ削減、`RAU-UX-96` は tooltip の視認性 bug であり、候補品質の確認後に扱うため After Next とする。`RAU-UX-95` の `推奨反映` button と `RAU-UX-97` の Analyze 上部一括反映入口は Revenue Assistant write API に近い操作であるため、候補品質、安全 guard、bulk apply 非目標との整合を確認した後の Later とする。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「自動反映より安全な作業キューを優先する」原則で今回の順序を説明できるため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-01 に、未着手だった `RAU-UX-87`、`RAU-UX-88`、`RAU-UX-89`、`RAU-UX-90` を完了した。`RAU-UX-87` では通常 Chrome の Revenue Assistant top 画面で、副操作 `要点`、`様子見`、`対応不要` が閉じた `その他` details 内にあり、主操作 `Analyzeで確認`、`曲線`、`rank調整` と分離されていることを確認した。副操作は、判断補助または browser-local decision 保存操作であり、誤押下防止と表示密度維持のため details 内維持とした。`RAU-UX-88` では、現在の表示中 10 行は `rank変更: 送信候補あり` だったが、実装上は `送信不可` と `確認不足` が同時に成立した場合に `送信不可` を badge 本文へ優先表示するよう変更し、`docs/spec_003_rank_recommendation_signal.md` に反映した。`RAU-UX-89` では `smoke:distribution` に page websocket fallback と CDP command timeout を追加した。publish 前の `0.1.0.359` の配布版 top smoke と page websocket fallback smoke は pass した。push 後の Publish Userscript run `26751922797` は success で、GitHub Pages published version と Tampermonkey installed version は `0.1.0.360` に揃えた。最終の `0.1.0.360` 配布版 top smoke も pass した。`RAU-UX-90` では `react-doctor/js-combine-iterations` を対象にし、React Doctor は 49 issues から 39 issues になった。この完了により Remaining Task Triage は空である。
 - 2026-06-01 に、直前の完了報告で推奨した 4 件を `RAU-UX-87` から `RAU-UX-90` として task 化した。`RAU-UX-87` は、`RAU-UX-83` で details 内維持とした副操作について、実利用で開閉頻度や探しにくさが残る場合に再配置するか判断する task であり、利用者の料金調整操作に直接関わるため Now とする。`RAU-UX-88` は、`RAU-UX-84` で見えた `確認不足` と `送信不可` の優先順位を再評価する task であり、候補状態と操作可否の誤読を減らすため Next とする。`RAU-UX-89` は、`RAU-UX-85` で完走しなかった CDP smoke helper の timeout 切り分けであり、検証基盤改善として After Next とする。`RAU-UX-90` は React Doctor 残り 49 issues の保守 task で、runtime bug ではないため Later とする。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「画面遷移、タブ切替、フォーカス復帰で安定して動くことを優先する」原則で今回の実行順を説明できるため、判断原則は更新しない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
