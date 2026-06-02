@@ -7706,6 +7706,84 @@
   - `spec-checkpoint`: after-implementation
   - `target-spec`: `README.md`
 
+### RAU-WC-21 カレンダー上部の優先取得 UI 契約を確定する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - カレンダートップで先々の月を調整したい場合に、直近日付の取得だけが優先されて料金調整候補の根拠データが不足する状態を減らすため、表示月ごとの優先取得ボタンの契約を実装前に確定する。
+- スコープ:
+  - 対象はカレンダー月 card の上部、月名や目標表示の周辺で、Revenue Assistant 標準 UI を押しのけない領域である。
+  - ボタンは各表示月ごとに置く。押した月の宿泊日を、直近日付より優先して warm cache queue に入れる。
+  - 対象データは、料金調整候補生成と根拠表示に必要な `current raw source`、`reference source raw source`、`same-weekday raw source` とする。
+  - 円形 progress の状態は、`待機中`、`取得中`、`完了`、`クールダウン中`、`エラー` を区別する。
+  - 既存の右下 warm cache indicator は残し、月別ボタンは詳細状態への入口として扱う。
+- 非目標:
+  - この task では `src/`、`dist/`、Tampermonkey dashboard、Revenue Assistant 実画面を変更しない。
+  - 日付単位の個別優先取得ボタンは初期実装に含めない。
+  - 新しい API endpoint、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、価格や在庫の非公開データ保存は扱わない。
+- 受け入れ条件:
+  - カレンダー上部のボタン配置、表示文言、円形 progress の状態、押下後に優先される日付範囲が記録されている。
+  - 既存 warm cache queue、request scheduler、in-flight dedupe、document hidden 停止、cooldown、連続 error 停止を維持する前提が記録されている。
+  - 料金調整候補 list 側ではなくカレンダー上部を第一候補にする理由が記録されている。
+  - docs-only で終え、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/context/DECISIONS.md`
+
+### RAU-WC-22 カレンダー上部に月別の優先取得ボタンと円形 progress を実装する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 利用者が表示中の先々の月を明示的に選び、その月の料金調整候補に必要な booking curve 関連データを直近日付より先に取得できるようにする。
+- スコープ:
+  - `RAU-WC-21` で確定したカレンダー月 card 上部に、月別の優先取得ボタンと円形 progress を追加する。
+  - 月別ボタン押下で、その月の未取得または不足している booking curve 関連 task を高優先度 queue に入れる。
+  - 既存の request scheduler、in-flight dedupe、document hidden 停止、cooldown、連続 error 停止を維持する。
+  - 進捗は円形 progress と短い状態文で表示し、`待機中`、`取得中`、`完了`、`クールダウン中`、`エラー` を区別する。
+  - 既存の右下 warm cache indicator は残し、月別ボタンの状態と矛盾しないようにする。
+- 非目標:
+  - 取得対象 API、request body、IndexedDB schema、raw source compact schema、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - 日付単位の個別優先取得ボタンは追加しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、`price_ranks` 系 endpoint は変更しない。
+- 受け入れ条件:
+  - 表示中の各月 card 上部に優先取得ボタンが表示され、押した月の task が直近日付より優先される。
+  - 円形 progress が 0 から進み、完了、クールダウン中、またはエラー状態へ遷移する。
+  - 既存 warm cache indicator と月別 progress の件数や状態が矛盾しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+  - 実ブラウザ確認を同じ task で行わない場合は、未確認範囲として `RAU-WC-23` に渡す。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: during-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-WC-23 優先取得ボタンの実ブラウザ動作と安全性を確認する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - カレンダー上部の月別優先取得ボタンが、通常 Chrome の Revenue Assistant 実画面で、先々の月の booking curve 関連 task を優先しつつ、write API POST や HTTP / console / page error を発生させないことを確認する。
+- スコープ:
+  - 通常 Chrome のカレンダートップで、先の月の優先取得ボタンを押す。
+  - 押した月の task が直近日付より先に処理されることを、CDP の network / DOM / console 観測で確認する。
+  - 円形 progress が 0 から進み、完了、クールダウン中、またはエラー状態へ遷移することを確認する。
+  - 監視対象 write API POST、HTTP 401 / 403 / 429 / 5xx、console error、page error を確認する。
+- 非目標:
+  - この task では実装を追加しない。必要な修正が見つかった場合は、原因と修正対象を別 task または `RAU-WC-22` の follow-up として戻す。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映の実送信は行わない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データを Git 管理へ入れない。
+- 受け入れ条件:
+  - 先の月の優先取得ボタン押下後、その月の booking curve 関連 task が直近日付より先に処理されることを確認している。
+  - 円形 progress の状態遷移が、待機中、取得中、完了、クールダウン中、エラーのいずれかとして読める。
+  - HTTP 401、HTTP 403、HTTP 429、5xx、console error、page error、監視対象 write API POST が 0 件である。
+  - 取得済み cache が多く live request 件数で優先順を測れない場合は、その理由、source-level 証跡、skip 即時進行、error 0 件を記録する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: after-implementation
+  - `target-spec`: `README.md`
+
 ## Remaining Task Triage
 
 Now:
@@ -7714,11 +7792,14 @@ Now:
 
 Next:
 
+- `RAU-WC-21` カレンダー上部の優先取得 UI 契約を確定する
 - `RAU-WC-19` booking_curve warm cache を上限付き multi-worker 化する
 
 After Next:
 
 - `RAU-WC-20` 高速化後の実ブラウザ throughput と安全停止を確認する
+- `RAU-WC-22` カレンダー上部に月別の優先取得ボタンと円形 progress を実装する
+- `RAU-WC-23` 優先取得ボタンの実ブラウザ動作と安全性を確認する
 
 Later:
 
@@ -7726,6 +7807,7 @@ Later:
 
 統合判断:
 
+- 2026-06-02 に、利用者が、カレンダートップでは直近データ取得が優先されるため、先々の月を調整したい場合に料金調整候補の根拠データが不足する課題を示した。利用者はカレンダー上部または料金調整候補側の優先取得ボタンを候補として挙げ、配置はカレンダー上部を第一候補とした。既存の warm cache queue と候補優先取得は土台として使えるが、利用者が表示中の月を明示して直近日付より優先させる入口は未実装である。そのため、まず `RAU-WC-21` でカレンダー月 card 上部の UI 契約と安全制約を確定し、`RAU-WC-22` で月別優先取得ボタンと円形 progress を実装し、`RAU-WC-23` で通常 Chrome の実ブラウザ動作、HTTP / console / page error 0 件、監視対象 write API POST 0 件を確認する。`RAU-WC-18` は取得速度の安全上限を決める前提であるため Now に維持し、`RAU-WC-21` は `RAU-WC-19` の multi-worker 実装前に UI 契約を固めるため Next へ置く。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant 実画面状態は変更していない。
 - 2026-06-02 に、利用者が「データ取得の遅さ」が現在のボトルネックであり、安全に寄せすぎている感覚があるため、request 間隔だけでなく multi-worker 併用も含めて倍以上の改善を検討したいと示した。既存の `RAU-WC-01`、`RAU-WC-04`、`RAU-WC-11` は warm cache、request scheduler、in-flight dedupe の土台であり、現行仕様は `/api/v4/booking_curve` の開始間隔 1.0 秒以上を契約としている。今回の要望はその契約を見直す実装前判断を含むため、まず `RAU-WC-18` で安全上限と error 分類を仕様へ反映し、次に `RAU-WC-19` で `開始間隔 350ms 以上`、`同時実行 3 件以下` の multi-worker 実装を行い、最後に `RAU-WC-20` で通常 Chrome の実ブラウザ throughput と HTTP / console / page error 0 件を確認する。Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、価格や在庫の非公開データ保存は対象外である。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant 実画面状態は変更していない。
 - 2026-06-02 に、未着手だった `RAU-UX-100` から `RAU-UX-105` と `RAU-AF-12` から `RAU-AF-17` を完了した。`RAU-UX-100` では、競合価格の現在値だけではなく、通常時の自社価格と競合価格の相対距離を baseline として使う設計を記録した。`RAU-UX-101` では 5 秒 pending の progress ring を追加した。`RAU-UX-102` では現ランク cell で現ランク値と販売室数を別行に分け、補助表示を `販売室数：current/max` にした。`RAU-UX-103` では、browser-local decision は保存成功後に既存 lifecycle filter で非表示になり、rank change は送信前 guard、POST、反映確認の失敗を隠さないため無条件非表示にしない判断を記録した。`RAU-UX-104` と `RAU-UX-105` では、操作履歴からの自動 suppression または外部機械学習モデル導入は初期実装では行わず、必要な場合は明示設定によるクールダウン調整を別 task で扱う方針を記録した。`RAU-AF-12` から `RAU-AF-17` では、Analyze 日付ページ上部に read-only の料金調整候補一覧を追加し、top list から遷移した候補の highlight、配布版 smoke mode `analyze-recommendations`、反映操作を実装する前の write 安全条件を追加した。Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、bulk apply、自動反映、金額・差額・percent・forecast 数値・sales / ADR 数値の本文表示は変更していない。verify は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`git diff --check` が通過済みである。React Doctor は残診断 41 件で完走し、今回の bundle では既存診断を追加修正しない。Vite、esbuild、React Doctor を起動する build / fixture / marker / React Doctor は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。commit `6ec3c1e` を `origin/main` へ push し、Publish Userscript run `26794622573` は success になった。GitHub Pages published version は `0.1.0.364` であり、Tampermonkey dashboard から installed version を `0.1.0.363` から `0.1.0.364` へ更新した。配布版 top smoke は top row 10 件、React marker あり、primary actions wrappers 10 件、secondary action markers 10 件、status badge cells 10 件、UI component markers 54 件、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。配布版 Analyze smoke は Analyze 候補一覧 root 1 件、row 5 件、empty 0 件、write button 0 件、read-only state yes、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。この完了により Remaining Task Triage は空である。
 - 2026-06-02 に、利用者が「学習化をしないと結論した場合は、カスタマイズ機能を検討するタスクを入れるのはどう」と示し、クールダウン設定の例として `長め`、`ふつう`、`短め`、`任意日数`、部屋タイプ別設定、LT 別設定を挙げたため、`RAU-UX-105` として task 化した。`RAU-UX-105` は `RAU-UX-104` の後続 task であり、操作判断から過剰推奨を学習化しない、または初期実装では見送る場合の代替策として、明示設定によるクールダウン調整の範囲を設計する。LT は `lead time` の略で、宿泊日までの日数を指す。`RAU-UX-105` は実装 task ではなく、設定範囲、保存対象、説明表示、非目標を決める docs-first task とする。利用者回答により、`RAU-UX-105` は `RAU-UX-104` の直後、Analyze 上部候補一覧 task より前に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
