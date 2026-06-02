@@ -17992,8 +17992,9 @@ function ensureGroupRoomStyles(): void {
 
         span[${RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE}] {
             display: inline-flex;
+            flex-direction: column;
             max-width: 100%;
-            align-items: center;
+            align-items: flex-start;
         }
 
         [${RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE}] {
