@@ -7306,11 +7306,44 @@
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_002_curve_core.md`, `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-UX-100 競合価格の通常時平均との差分を料金調整候補の補助根拠として設計する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 現在の競合相場との単発比較だけではなく、自施設が普段どの程度競合より高い、または安い位置で販売しているかを基準にして、現在の相対的な価格位置が通常時からどれだけ乖離しているかを料金調整候補の補助根拠にする。
+  - 現行実装の `相場より安め` / `相場より高め` は、現在の自社最安値と現在の競合中央値だけを比較する。これでは、施設の通常方針として競合より少し安く売る、または高く売る状態と、今日だけ通常方針から外れている状態を区別できない。この task では、通常時の自社価格と競合価格の相対距離を baseline として持ち、現在値との差を使う判断へ置き換えるか、または併用する。
+- スコープ:
+  - 対象は、料金調整候補の `ownPricePositionSignal`、競合価格または価格推移の保存済み record、通常時平均との差分を作る純粋計算、reasonCodes、diagnostics、priority / confidence の小さな補正である。
+  - 入力候補は、公式 `価格推移` 由来の `price-trend-records`、既存 `competitor-price-snapshots`、宿泊日、宿泊日までの日数帯、曜日、人数、食事条件、部屋タイプ、施設 ID、競合施設集合である。
+  - 比較する値は、現在の `自社価格 / 競合中央値`、通常時の `自社価格 / 競合中央値` の中央値または平均、現在値から通常時 baseline を引いた乖離量、比較可能な人数数、比較対象 record 数、取得時点の古さである。
+  - 価格推移から後日でも必要な価格系列を取得できるようになったため、単純な競合価格 snapshot 不足だけを理由にこの task を見送らない。ただし、対象条件の price trend record がまだ保存されていない場合、取得中、取得失敗、条件不一致は diagnostics として残す。
+  - 初期設計では、比較単位を粗くしすぎる場合と細かくしすぎる場合を比較する。粗い単位の例は `facility x stayDate x guestCount`、細かい単位の例は `facility x roomType x mealType x guestCount x leadTimeBucket x weekday` である。
+  - roomGroup と `jalan` 側部屋タイプの対応 source が未確定である現状を踏まえ、roomGroup 単位の候補に直接強い補正を入れる前に、部屋タイプ対応未確認の diagnostics を残すか、価格推移の roomType scope を使える条件を明記する。
+- 非目標:
+  - 競合価格だけで `raise_watch`、`lower_watch`、`watch` の action を新規作成または反転しない。
+  - 推奨レート金額、金額差、percent を top list 本文に直接表示しない。
+  - Revenue Assistant write API endpoint、rank change payload、pending 秒数、bulk apply、自動反映を変更しない。
+  - 未確認の API request 範囲、取得頻度、対象日付範囲、background queue 上限を実装時の判断なしに増やさない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データを Git 管理へ入れない。
+- 受け入れ条件:
+  - 現行の `相場より安め` / `相場より高め` と、新しい「通常時平均との差分」方式の違いが、入力、処理、出力に分けて記録されている。
+  - 通常時 baseline の比較単位、必要 record 数、対象期間、lead time bucket、曜日、人数、食事条件、部屋タイプの扱いが記録されている。
+  - 価格推移 record と競合価格 snapshot のどちらを使うか、または両方をどの条件で使い分けるかが記録されている。
+  - 補正を入れる場合は、`raise_watch` に対する上げ補助、`raise_watch` に対する抑制、`lower_watch` に対する下げ補助、`lower_watch` に対する抑制を分けて定義している。
+  - 比較不能、record 不足、条件不一致、roomGroup と `jalan` 側部屋タイプ対応未確認、取得時点が古い場合の diagnostics が定義されている。
+  - 実装する場合は、純粋関数または adapter 単位のテスト、`npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて top の配布版 smoke が通過している。docs-only で終える場合は `git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+  - `open-spec-questions`: 通常時 baseline の対象期間、lead time bucket、曜日条件、roomType と roomGroup の対応未確認時の補正上限、価格推移 record と競合価格 snapshot の優先順位。
+
 ## Remaining Task Triage
 
 Now:
 
-- なし
+- `RAU-UX-100` 競合価格の通常時平均との差分を料金調整候補の補助根拠として設計する
 
 Next:
 
@@ -7326,6 +7359,7 @@ Later:
 
 統合判断:
 
+- 2026-06-02 に、利用者が「相場より高い / 安い」という現在値だけの判定よりも、普段の自社価格と競合価格の相対距離を baseline とし、現在の相対距離が通常時からどの程度乖離しているかで判断するほうがよいと明示した。価格推移から後日でも必要な価格系列を取得できるようになったため、データ不足を理由に見送らず、まず `RAU-UX-100` として実装前設計 task を追加する。既存の `RAU-RR-18` と `RAU-RR-53` は、現在の自社最安値と現在の競合中央値を使う小さな scoring support であり、通常時 baseline との差分までは扱っていないため重複しない。`RAU-UX-100` は、料金調整候補の精度と誤読防止に直結するため Now とする。`docs/context/INTENT.md` は確認済みであり、既存の「競合価格内の自社料金位置は rank order source ではなく priority、confidence、reasonCodes、diagnostics を補助する入力として扱う」原則に沿っているため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、未着手だった `RAU-UX-91` から `RAU-UX-99` を完了した。top list は 9 列 row layout を維持し、前回変更履歴を `推奨` cell の補助表示と title へ入れた。recommended rank がある候補には `推奨反映` button を追加したが、既存の単一行 rank 変更 handler、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、反映確認を通す。capacity 3 の候補は一律除外せず、capacity pressure があっても正の `all` または `transient` reference deviation を確認できない場合は `watch` / medium と小キャパ確認 diagnostics へ落とす。直近型 reference curve が欠損している場合に季節型を直近型として代用しない契約を `docs/spec_002_curve_core.md` と `docs/spec_003_rank_recommendation_signal.md` に明記した。rank ladder の端の `上げ余地なし` / `下げ余地なし` 候補は、操作不能な理由を示す参考候補として残し、quick submit は出さない。Analyze 上部の全タイプ推奨一覧と一括反映入口は、request shape、CSRF、権限差、同時更新、partial failure、反映確認が未確認であるため今回は実装しない。verify は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`git diff --check`、配布版 top smoke `npm run smoke:distribution -- --installed-version 0.1.0.361 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail` が通過した。追加の Chrome DevTools Protocol 確認では、`推奨` cell layout 10 件、`推奨反映` button 10 件、前回変更補助表示 10 件、現ランク tooltip trigger の native `title` 0 件、`aria-label` 10 件を確認した。この完了により Remaining Task Triage は空である。
 - 2026-06-02 に、直前の完了報告で推奨した 2 件を `RAU-UX-98` と `RAU-UX-99` として task 化した。`RAU-UX-98` は、`RAU-UX-91` の最終変更履歴表示後に、直近変更済み候補が再表示される理由を候補行、tooltip、diagnostics で分類できるか確認する task である。`RAU-UX-99` は、`RAU-UX-93` の直近型 reference curve 検証結果を、小キャパ候補の過剰発火抑制条件へ接続するか判断する task である。どちらも `RAU-UX-91` と `RAU-UX-93` の結果を使うため Next とし、小キャパ抑制の本体である `RAU-UX-92` は After Next へ下げる。これにより、`RAU-UX-92` では cooldown、同日他部屋タイプとの rank gap、capacity 別条件だけでなく、直近変更履歴表示と reference curve 検証の結果を使って判断できる。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「自動反映より安全な作業キューを優先する」原則で今回の順序を説明できるため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、利用者が実画面で確認した 7 件の改善観点を `RAU-UX-91` から `RAU-UX-97` として task 化した。`RAU-UX-91` は最終変更履歴を `◯日前` 形式で読みやすくし、直近変更済み候補の再表示理由を確認する土台になるため Now とする。`RAU-UX-93` は直近型 reference curve の正誤が候補根拠と preview の信頼性に直接影響するため Now とする。`RAU-UX-92` は小キャパ候補の過剰発火を、最終変更履歴、同日他部屋タイプとの rank gap、capacity 別 cooldown で再評価する task であり、`RAU-UX-91` と `RAU-UX-93` の確認結果を使うため Next とする。`RAU-UX-94` は候補 list のノイズ削減、`RAU-UX-96` は tooltip の視認性 bug であり、候補品質の確認後に扱うため After Next とする。`RAU-UX-95` の `推奨反映` button と `RAU-UX-97` の Analyze 上部一括反映入口は Revenue Assistant write API に近い操作であるため、候補品質、安全 guard、bulk apply 非目標との整合を確認した後の Later とする。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「自動反映より安全な作業キューを優先する」原則で今回の順序を説明できるため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
