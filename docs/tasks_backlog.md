@@ -7339,6 +7339,285 @@
   - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
   - `open-spec-questions`: 通常時 baseline の対象期間、lead time bucket、曜日条件、roomType と roomGroup の対応未確認時の補正上限、価格推移 record と競合価格 snapshot の優先順位。
 
+### RAU-UX-101 5秒 pending にカウントダウン・プログレスリングを追加する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `様子見`、`対応不要`、`推奨反映` の 5 秒取消可能 pending で、残り時間と送信または保存までの猶予を視覚的に分かりやすくする。
+  - 現在の `n秒後に確定` または `n秒後に送信` の text は維持しつつ、同じ pending state を表す progress ring を追加し、取消可能時間を誤読しにくくする。
+- スコープ:
+  - 対象は top 料金調整候補 list の browser-local decision pending と rank change pending である。
+  - 残り秒数 text と progress ring は同じ `commitAt`、現在時刻、5 秒 duration から計算する。
+  - progress ring は pending 表示の補助要素として扱い、pending 秒数、取消条件、送信前 guard、保存処理、POST 実行条件は変更しない。
+  - `check:fixture-markers` または fixture 表示で、pending 表示が text と progress ring を持つことを確認できるようにする。
+- 非目標:
+  - 5 秒 pending の秒数を変更しない。
+  - pending 中の reload、施設切替、batch 切替、script 再実行で送信しない契約を変更しない。
+  - Revenue Assistant write API endpoint、rank change payload、decision record schema、candidate scoring、priority / confidence を変更しない。
+- 受け入れ条件:
+  - `様子見`、`対応不要`、`推奨反映` の pending 表示で、残り秒数 text と progress ring が同じ残り時間を表す。
+  - `取消` を押した場合、progress ring 表示も pending state と一緒に消え、保存または POST が実行されない。
+  - 5 秒満了時、既存どおり browser-local decision 保存または rank change 送信前 guard へ進む。
+  - 実装する場合は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、必要に応じて top の配布版 smoke、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-102 現ランクの下に OH / キャパを表示する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - top 料金調整候補 list で、現ランクと同じ cell 内に在庫の圧迫度を小さく表示し、rank 判断時に現在の稼働状況を把握しやすくする。
+  - `OH` は `On Hand` の略であり、ここでは `current_settings` の `max_num_room - remaining_num_room` で計算できる現在の使用済みまたは確保済み室数を指す。`キャパ` は `max_num_room` を指す。
+- スコープ:
+  - 対象は top 料金調整候補 list の `現ランク` cell である。
+  - 表示形式は `OH / キャパ` の補助行とし、例は `OH/キャパ 8/12` のようにする。
+  - 入力は既存 `/api/v1/suggest/output/current_settings` 由来の `remaining_num_room` と `max_num_room` を使い、新規 API request は追加しない。
+  - 同一宿泊日の全部屋タイプ rank tooltip で既に持っている occupancy / capacity 情報と意味がずれないようにする。
+- 非目標:
+  - forecast、sales、ADR、競合価格の金額、差額、percent を top list 本文に追加しない。
+  - current settings の取得範囲、request 件数、request 間隔を変更しない。
+  - candidate scoring、priority / confidence、small capacity diagnostics をこの task だけで変更しない。
+- 受け入れ条件:
+  - `remaining_num_room` と `max_num_room` が取得できる候補では、現ランク cell の下に `OH/キャパ current/max` が表示される。
+  - `remaining_num_room` または `max_num_room` が未取得、不正、または `max_num_room <= 0` の場合は、推測値を出さず、表示しないか `OH未取得` と分かる補助表示にする。
+  - OH の定義が docs または spec に明記され、`remaining rooms` と混同しない。
+  - 実装する場合は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、必要に応じて top の配布版 smoke、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-103 操作の 5 秒満了後に対象行を即時非表示にする
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `様子見`、`対応不要`、`推奨反映` の操作後に、処理済みの候補が list に残り続ける時間を短くし、利用者が次に見るべき候補へ移りやすくする。
+  - 非表示タイミングは押下直後ではなく、5 秒取消可能 pending の満了後とする。押下直後に消すと、取消入口を見失いやすく、誤操作時の復帰が分かりにくくなるためである。
+- スコープ:
+  - 対象は top 料金調整候補 list の browser-local decision と rank change 操作後の対象 row である。
+  - `様子見` と `対応不要` は、5 秒満了後に decision record 保存へ進み、保存に成功した場合は対象 row を即時非表示にする。
+  - `推奨反映` は、5 秒満了後に対象 row を一時的に非表示にし、送信前 guard、POST、反映確認に失敗した場合は再表示または失敗状態を出す。
+  - row 非表示は既存の resolved / user decision lifecycle と矛盾しないようにし、次回再同期や再表示条件は既存 filter に従う。
+- 非目標:
+  - 5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、反映確認を弱めない。
+  - 押下直後に対象 row を消さない。
+  - 送信失敗、保存失敗、反映確認失敗を隠さない。
+  - Revenue Assistant write API endpoint、rank change payload、bulk apply、自動反映を変更しない。
+- 受け入れ条件:
+  - 5 秒 pending 中は対象 row が残り、取消できる。
+  - 5 秒満了後、`様子見` または `対応不要` の保存成功時に対象 row が即時非表示になる。
+  - 5 秒満了後、`推奨反映` は送信処理へ進むが、送信前 guard、POST、反映確認の失敗時には対象 row を再表示するか、同じ行で失敗状態を確認できる。
+  - 対象 row が非表示になった後も、top list meta の user decision / resolved 非表示件数と矛盾しない。
+  - 実装する場合は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、通常 Chrome または Chrome DevTools Protocol の top 操作確認、監視対象 write API POST 件数確認、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-104 操作判断から過剰推奨を学習できるか検討する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 利用者が `様子見`、`対応不要`、rank 変更、rank 変更取消、送信前 guard 失敗、反映確認失敗を行った履歴を、将来の過剰推奨抑制や候補品質改善に使えるか検討する。
+  - ここでいう学習は、外部サービスへ送信する機械学習ではなく、browser-local record と既存 reasonFingerprint / diagnostics を使った priority / confidence 補正、cooldown 条件、false positive 判定の設計候補を指す。
+- スコープ:
+  - 入力候補は、`様子見`、`対応不要`、rank 変更実行、rank 変更取消、送信前 guard 失敗、反映確認失敗、reasonFingerprint、capacity、reference deviation、競合価格 baseline、confidence 表示段階である。
+  - 出力候補は、priority / confidence 補正、diagnostics、cooldown 条件、false positive 判定、再表示条件の設計である。
+  - `様子見` は false positive ではなく一時的な見送り、`対応不要` は同じ reasonFingerprint の false positive 候補として扱う既存方針を前提にする。
+  - 実装に進む場合は、最初の子 task を別途作り、保存 schema、互換性、削除方針、画面表示、評価方法を分けて扱う。
+- 非目標:
+  - この task だけで機械学習モデル、外部送信、自動 suppression、自動反映、bulk apply、未検証の priority 変更を実装しない。
+  - 個人情報、顧客情報、予約情報、価格や在庫の非公開データを raw のまま Git 管理へ入れない。
+  - `様子見` と `対応不要` を同じ意味として扱わない。
+- 受け入れ条件:
+  - 操作履歴のどの入力を、どの判断に使えるかを、入力、処理、出力に分けて記録している。
+  - `様子見`、`対応不要`、rank 変更実行、取消、guard 失敗、反映確認失敗を同じ重みで扱わない理由が記録されている。
+  - 自動 suppression を実装しない条件と、実装へ進む場合に必要な追加 task が記録されている。
+  - docs-only で終える場合は `git diff --check` が通過している。実装に進む場合は、純粋関数または store 単位の test、`npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて top の配布版 smoke が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`, `docs/context/DECISIONS.md`
+
+### RAU-UX-105 学習化を採用しない場合のクールダウン・カスタマイズ範囲を設計する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-UX-104` で操作判断から過剰推奨を学習化しない、または初期実装では見送ると判断した場合の代替策として、利用者が明示した条件で候補の再表示や優先度を調整できるか検討する。
+  - ここでいうカスタマイズは、利用者の操作履歴から自動で推奨を変える学習化ではなく、利用者が設定した条件を候補の再表示タイミング、priority、confidence、diagnostics、または非表示期間へ反映する設計候補を指す。
+- スコープ:
+  - 初期検討対象はクールダウンに限定する。
+  - クールダウンの候補設定は、`長め`、`ふつう`、`短め`、`任意日数` とする。
+  - 設定粒度として、全体設定、部屋タイプ別設定、LT 別設定を比較する。LT は `lead time` の略で、ここでは宿泊日までの日数を指す。
+  - LT 別設定では、利用者が決めた日数範囲ブロックを使う前提にする。具体的な範囲値はこの task で固定せず、範囲ブロックの決め方と保存方法を検討対象にする。
+  - 設定が候補にどう影響したかを、diagnostics または候補行の補助表示で説明できるか確認する。
+- 非目標:
+  - この task だけで設定 UI、保存 schema、候補生成ロジック、priority / confidence 補正、自動 suppression を実装しない。
+  - 自動反映、送信前 guard の無効化、任意の数式入力、JavaScript 入力、外部送信、機械学習モデル導入を行わない。
+  - 未検証の設定値で候補を自動的に消し込む suppression を実装しない。
+  - Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、bulk apply を変更しない。
+- 受け入れ条件:
+  - `RAU-UX-104` の結論を受けて、学習化を採用しない場合、または初期実装では見送る場合の代替策として扱う条件が記録されている。
+  - クールダウンの設定値、設定粒度、保存対象、候補への反映先、説明表示の要否が、入力、処理、出力に分けて記録されている。
+  - 全体設定、部屋タイプ別設定、LT 別設定のそれぞれについて、利用者が得る利点、誤設定時のリスク、実装前に確認する spec が記録されている。
+  - 自動反映、送信前 guard の無効化、任意式入力、未検証 suppression を非目標にする理由が記録されている。
+  - docs-only で終える場合は `git diff --check` が通過している。実装に進む場合は、設定保存、候補抽出、diagnostics 表示、reset 操作、互換性を別 task に分ける判断が記録されている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`, `docs/context/DECISIONS.md`
+
+### RAU-AF-12 Analyze 上部候補一覧の read-only 表示契約を確定する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Analyze 日付ページ `/analyze/YYYY-MM-DD` を開いたときに、その宿泊日に関係する料金調整候補を上部で確認できるようにするため、最初に read-only 表示だけの外部契約を確定する。
+  - 既存の `RAU-UX-97` は、Analyze 上部の全タイプ推奨一覧と一括反映入口を設計したうえで、request shape、CSRF、権限差、同時更新、partial failure、反映確認が未確認であるため実装しない判断で完了している。この task はその判断を置き換えず、一括反映を含まない read-only 表示から再開するための契約を切り出す。
+- スコープ:
+  - 対象 route は `/analyze/YYYY-MM-DD` だけとし、候補の対象宿泊日は開いている Analyze 日付と一致するものだけにする。
+  - 表示単位は `stayDate x roomGroup` とする。
+  - 表示候補は、部屋タイプ、現ランク、推奨方向、推奨ランク、主要根拠、状態、前回変更履歴、送信不可理由、`曲線` または roomGroup card 確認導線のどれを出すかに限定する。
+  - top list と同じ候補生成、priority、confidence、resolved 判定、user decision filter、rank change history を使うか、Analyze 専用にどこまで絞るかを記録する。
+- 非目標:
+  - 一括反映、未選択行の送信、自動反映、`price_ranks` 系 endpoint への POST、推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent を表示または送信しない。
+  - Revenue Assistant API request 範囲、request 件数、request 間隔、既存 top list の candidate scoring を変更しない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データを Git 管理へ入れない。
+- 受け入れ条件:
+  - Analyze 上部候補一覧の入力、表示列、表示しない項目、候補が 0 件の場合の表示、既存 top list との違いが記録されている。
+  - `RAU-UX-97` で非実装と判断した一括反映入口との境界が明記されている。
+  - 実装開始前に更新すべき spec が `docs/spec_001_analyze_expansion.md` と `docs/spec_003_rank_recommendation_signal.md` のどちらか、または両方かが記録されている。
+  - docs-only で終える場合は `git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-AF-13 Analyze 用の候補抽出 view model を作る
+
+- 状態:
+  - 未着手。
+- 目的:
+  - top list と Analyze 上部候補一覧で候補生成の意味がずれないように、Analyze 日付に一致する候補だけを抽出する view model を作る。
+- スコープ:
+  - 対象は、既存 `RankRecommendationCandidate`、top list の view model、Analyze route の `activeAnalyzeDate`、候補生成時の `asOfDate`、resolved 判定、user decision filter、rank change history 表示情報である。
+  - Analyze 用 view model は、候補生成ロジックを React component または DOM renderer に直書きせず、入力候補配列から表示 snapshot を作る層に置く。
+  - 候補抽出条件は、`candidate.stayDate` が Analyze 日付と一致することを最小条件とし、施設 cache key、batch date key、roomGroupId、reasonFingerprint の扱いを記録する。
+- 非目標:
+  - candidate scoring、priority order、confidence calculation、rank order source、recommendedRank 算出、decision lifecycle、resolved 判定の意味を変更しない。
+  - Analyze 用 view model の作成だけで DOM 挿入、React component 追加、write API 呼び出しを行わない。
+  - Revenue Assistant API request 範囲を増やさない。
+- 受け入れ条件:
+  - Analyze 日付に一致する候補だけが view model に含まれる。
+  - 候補 0 件、候補複数件、resolved 済み、user decision 済み、送信不可理由ありの入力を区別できる fixture または pure function test がある。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて fixture check、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-AF-14 Analyze 上部に read-only 候補一覧を表示する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Analyze 日付ページを開いた利用者が、その日付でどの部屋タイプが料金調整候補なのかを、画面上部で確認できるようにする。
+- スコープ:
+  - 対象は `/analyze/YYYY-MM-DD` の既存上部 summary 付近に追加する RAU section、`RAU-AF-13` の view model、表示候補 row、空状態、取得中状態、エラー状態である。
+  - 表示は read-only に限定し、初期実装では `推奨反映`、`rank調整`、一括反映、任意 rank select を表示しない。
+  - 既存の Analyze 販売設定 tab、booking curve、競合価格 graph、価格推移 tab、warm cache indicator の操作を押しのけない位置と幅で表示する。
+- 非目標:
+  - Revenue Assistant write API endpoint、rank change payload、pending 秒数、bulk apply、自動反映を変更しない。
+  - top list の表示列、表示件数、表示モード、target month filter を変更しない。
+  - 金額、差額、percent、forecast 数値、sales / ADR 数値、競合価格金額を Analyze 上部候補一覧へ直接表示しない。
+- 受け入れ条件:
+  - Analyze 日付ページ上部に、該当日付の候補件数と候補 row が表示される。
+  - 候補がない日付では、空状態が既存 Analyze UI を妨げずに表示される。
+  - 画面表示だけで監視対象 write API POST が 0 件であることを通常 Chrome、Chrome DevTools Protocol、または配布版 smoke で確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて Analyze smoke、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-AF-15 top list から Analyze へ来た候補を highlight する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - top list の `Analyzeで確認` から遷移したあと、Analyze 日付ページ上で対象 roomGroup と候補理由を見失わないようにする。
+- スコープ:
+  - 対象は top list の `Analyzeで確認` link、Analyze route、対象 `roomGroupId`、`reasonFingerprint`、Analyze 上部候補一覧、該当 roomGroup card または候補 row の highlight である。
+  - 状態の受け渡しに URL query、hash、または browser-local state を使う場合は、施設 ID、宿泊日、roomGroupId、reasonFingerprint が一致する場合だけ highlight する。
+  - highlight 表示は短時間または明示的に閉じられる補助表示とし、候補再生成、decision lifecycle、rank change payload には影響させない。
+- 非目標:
+  - Analyze 遷移だけで Revenue Assistant write API を呼ばない。
+  - highlight 状態を永続 decision record として保存しない。
+  - roomGroup card が見つからない場合に DOM を推測で書き換えない。見つからない場合は Analyze 上部候補一覧だけに summary を表示する。
+- 受け入れ条件:
+  - top list から遷移した候補だけが Analyze 側で highlight される。
+  - URL 直打ち、別日付、別施設、別 roomGroup、reasonFingerprint 不一致では highlight しない。
+  - highlight 中も既存 Analyze tab、booking curve、競合価格、価格推移、warm cache indicator の操作ができる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、必要に応じて Analyze smoke、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-AF-16 Analyze 候補一覧の配布版 smoke を追加する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Analyze 上部候補一覧を配布版 userscript で確認できるようにし、表示有無だけでなく監視対象 write API POST 0 件も検証する。
+- スコープ:
+  - 対象は `smoke:distribution` の Analyze mode、または既存 `price-trends` mode と衝突しない新しい確認項目である。
+  - 出力項目は、Revenue Assistant URL、login form candidate、Analyze page candidate、RAU Analyze candidate list root、候補 row count、highlight state、console / page error 件数、監視対象 write API POST 件数、userscript version とする。
+- 非目標:
+  - Tampermonkey dashboard 更新操作を smoke helper に入れない。
+  - smoke helper から Revenue Assistant へ write API を送らない。
+  - raw response body、Cookie、token、credential、非公開価格データを出力または保存しない。
+- 受け入れ条件:
+  - Analyze 候補一覧が実装済みの場合、配布版 smoke で root と row count を確認できる。
+  - 候補 0 件の場合でも、Analyze page candidate、RAU root、空状態、監視対象 write API POST 0 件を区別できる。
+  - mode と最終 URL が不一致の場合、console / page error がある場合、監視対象 write API POST が 0 件でない場合は完了扱いにしない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、対象 smoke、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `README.md`, `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-AF-17 Analyze 上部からの反映操作を実装する前に write 安全条件を再調査する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - Analyze 上部候補一覧から `推奨反映` または一括反映を追加する前に、標準 UI と既存 RAU guard で確認済みの範囲、未確認の範囲、実装しない範囲を再整理する。
+- スコープ:
+  - 対象は `/api/v1/lincoln/suggest` の単一行 custom rank path、`POST /api/v1/lincoln/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/neppan/price_ranks`、CSRF、provider 差、権限差、同時更新、partial failure、error response、反映確認、除外候補の扱いである。
+  - 調査は read-only を基本にし、実 POST が必要な場合は利用者が実務上変更してよい対象、対象 endpoint、監視方法、rollback 不可リスク、確認手順を事前に固定する。
+  - 実装候補は、単一行 `推奨反映`、利用者が明示選択した複数行の user-confirmed bulk apply、一括反映を引き続き見送る、の 3 つに分けて判断する。
+- 非目標:
+  - この task だけで write API 実装、一括反映、自動反映、未選択行送信、rollback 実装を行わない。
+  - 未確認 provider を確認済み endpoint として扱わない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データを Git 管理へ入れない。
+- 受け入れ条件:
+  - Analyze 上部からの単一行反映と一括反映について、実装してよい条件、実装しない条件、追加調査が必要な条件が分けて記録されている。
+  - 送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、5 秒 pending、取消、反映確認を維持するか、Analyze 専用に追加する guard が記録されている。
+  - `price_ranks` 系 endpoint を使う場合は、payload field、対象行指定、provider 差、partial failure、権限差、error response、反映確認先が確認されるまで実装しない判断が残っている。
+  - docs-only で終える場合は `git diff --check` が通過している。実 POST 調査を行う場合は、監視対象 endpoint、HTTP status、POST 件数、ユーザー確認結果を保存し、raw body と credential は保存しない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`, `docs/context/DECISIONS.md`
+
 ## Remaining Task Triage
 
 Now:
@@ -7347,18 +7626,29 @@ Now:
 
 Next:
 
-- なし
+- `RAU-UX-101` 5秒 pending にカウントダウン・プログレスリングを追加する
+- `RAU-UX-102` 現ランクの下に OH / キャパを表示する
+- `RAU-UX-103` 操作の 5 秒満了後に対象行を即時非表示にする
 
 After Next:
 
-- なし
+- `RAU-UX-104` 操作判断から過剰推奨を学習できるか検討する
+- `RAU-UX-105` 学習化を採用しない場合のクールダウン・カスタマイズ範囲を設計する
+- `RAU-AF-12` Analyze 上部候補一覧の read-only 表示契約を確定する
+- `RAU-AF-13` Analyze 用の候補抽出 view model を作る
+- `RAU-AF-14` Analyze 上部に read-only 候補一覧を表示する
+- `RAU-AF-15` top list から Analyze へ来た候補を highlight する
+- `RAU-AF-16` Analyze 候補一覧の配布版 smoke を追加する
 
 Later:
 
-- なし
+- `RAU-AF-17` Analyze 上部からの反映操作を実装する前に write 安全条件を再調査する
 
 統合判断:
 
+- 2026-06-02 に、利用者が「学習化をしないと結論した場合は、カスタマイズ機能を検討するタスクを入れるのはどう」と示し、クールダウン設定の例として `長め`、`ふつう`、`短め`、`任意日数`、部屋タイプ別設定、LT 別設定を挙げたため、`RAU-UX-105` として task 化した。`RAU-UX-105` は `RAU-UX-104` の後続 task であり、操作判断から過剰推奨を学習化しない、または初期実装では見送る場合の代替策として、明示設定によるクールダウン調整の範囲を設計する。LT は `lead time` の略で、宿泊日までの日数を指す。`RAU-UX-105` は実装 task ではなく、設定範囲、保存対象、説明表示、非目標を決める docs-first task とする。利用者回答により、`RAU-UX-105` は `RAU-UX-104` の直後、Analyze 上部候補一覧 task より前に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
+- 2026-06-02 に、利用者が top 料金調整候補 list の操作体験と過剰推奨抑制に関する 4 件を追加で示したため、`RAU-UX-101` から `RAU-UX-104` として task 化した。`RAU-UX-101` は 5 秒 pending の残り時間を text と progress ring で示す UI 改善、`RAU-UX-102` は現ランク cell 内の OH / キャパ補助表示、`RAU-UX-103` は 5 秒満了後に対象 row を即時非表示にする操作後整理、`RAU-UX-104` は操作判断を過剰推奨抑制へ使えるか検討する docs-first task である。利用者回答により、この 4 件は Analyze 上部候補一覧 task より前に置く。`RAU-UX-103` の非表示タイミングは押下直後ではなく 5 秒満了後とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
+- 2026-06-02 に、利用者が「Analyze 画面トップに調整候補の一覧を出す実装」を安全に進める計画を求めたため、完了済み `RAU-UX-97` の一括反映込み設計を再開せず、read-only 表示から段階的に進める `RAU-AF-12` から `RAU-AF-17` として task 化した。`RAU-AF-12` は、Analyze 上部候補一覧の入力、表示列、非対象、top list との差分を確定する docs-first task である。`RAU-AF-13` から `RAU-AF-16` は、候補抽出 view model、read-only UI、top list からの highlight、配布版 smoke の順に進める。`RAU-AF-17` は Revenue Assistant write API に近い判断を含むため Later とし、単一行反映や一括反映を実装する前の read-only 調査 task に分けた。2026-06-02 の後続 task 化により、現在の実行順では `RAU-AF-12` は `RAU-UX-101` から `RAU-UX-104` の後に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、利用者が「相場より高い / 安い」という現在値だけの判定よりも、普段の自社価格と競合価格の相対距離を baseline とし、現在の相対距離が通常時からどの程度乖離しているかで判断するほうがよいと明示した。価格推移から後日でも必要な価格系列を取得できるようになったため、データ不足を理由に見送らず、まず `RAU-UX-100` として実装前設計 task を追加する。既存の `RAU-RR-18` と `RAU-RR-53` は、現在の自社最安値と現在の競合中央値を使う小さな scoring support であり、通常時 baseline との差分までは扱っていないため重複しない。`RAU-UX-100` は、料金調整候補の精度と誤読防止に直結するため Now とする。`docs/context/INTENT.md` は確認済みであり、既存の「競合価格内の自社料金位置は rank order source ではなく priority、confidence、reasonCodes、diagnostics を補助する入力として扱う」原則に沿っているため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、未着手だった `RAU-UX-91` から `RAU-UX-99` を完了した。top list は 9 列 row layout を維持し、前回変更履歴を `推奨` cell の補助表示と title へ入れた。補助表示は `前回 ランク 11→10 経過 2日前` のような項目別表示とし、月日や年月日は出さず、経過日は `n日前` だけにした。recommended rank がある候補には `推奨反映` button を追加したが、既存の単一行 rank 変更 handler、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、反映確認を通す。capacity 3 の候補は一律除外せず、capacity pressure があっても正の `all` または `transient` reference deviation を確認できない場合は `watch` / medium と小キャパ確認 diagnostics へ落とす。直近型 reference curve が欠損している場合に季節型を直近型として代用しない契約を `docs/spec_002_curve_core.md` と `docs/spec_003_rank_recommendation_signal.md` に明記した。rank ladder の端の `上げ余地なし` / `下げ余地なし` 候補は、操作不能な理由を示す参考候補として残し、quick submit は出さない。Analyze 上部の全タイプ推奨一覧と一括反映入口は、request shape、CSRF、権限差、同時更新、partial failure、反映確認が未確認であるため今回は実装しない。verify は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`git diff --check`、配布版 top smoke `npm run smoke:distribution -- --installed-version 0.1.0.361 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail` が通過した。追加の Chrome DevTools Protocol 確認では、`推奨` cell layout 10 件、`推奨反映` button 10 件、前回変更補助表示 10 件、現ランク tooltip trigger の native `title` 0 件、`aria-label` 10 件を確認した。この完了により Remaining Task Triage は空である。
 - 2026-06-02 に、直前の完了報告で推奨した 2 件を `RAU-UX-98` と `RAU-UX-99` として task 化した。`RAU-UX-98` は、`RAU-UX-91` の最終変更履歴表示後に、直近変更済み候補が再表示される理由を候補行、tooltip、diagnostics で分類できるか確認する task である。`RAU-UX-99` は、`RAU-UX-93` の直近型 reference curve 検証結果を、小キャパ候補の過剰発火抑制条件へ接続するか判断する task である。どちらも `RAU-UX-91` と `RAU-UX-93` の結果を使うため Next とし、小キャパ抑制の本体である `RAU-UX-92` は After Next へ下げる。これにより、`RAU-UX-92` では cooldown、同日他部屋タイプとの rank gap、capacity 別条件だけでなく、直近変更履歴表示と reference curve 検証の結果を使って判断できる。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「自動反映より安全な作業キューを優先する」原則で今回の順序を説明できるため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
