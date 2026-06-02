@@ -16,6 +16,11 @@ const WRITE_ENDPOINTS = [
     "/api/v1/tema/price_ranks",
     "/api/v1/neppan/price_ranks"
 ];
+const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
+const BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS = 5;
+const BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND = 1;
+const BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS = 300;
+const BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY = 3;
 
 async function main() {
     const args = parseArgs(process.argv.slice(2));
@@ -129,12 +134,15 @@ async function runChromeSmoke(options) {
             throw new Error("Chrome context not found. Start Chrome with remote debugging port first.");
         }
         const page = await resolvePage(context, options.targetUrl);
+        const bookingCurveObserver = createBookingCurveRequestObserver();
         page.on("request", (request) => {
             if (request.method() !== "POST") {
+                bookingCurveObserver.onRequest(request);
                 return;
             }
             const requestUrl = request.url();
             if (!matchesWriteEndpoint(requestUrl)) {
+                bookingCurveObserver.onRequest(request);
                 return;
             }
             writePosts.push({
@@ -142,6 +150,12 @@ async function runChromeSmoke(options) {
                 url: sanitizeUrl(requestUrl),
                 observedAt: new Date().toISOString()
             });
+        });
+        page.on("response", (response) => {
+            bookingCurveObserver.onResponse(response);
+        });
+        page.on("requestfailed", (request) => {
+            bookingCurveObserver.onFailed(request);
         });
         page.on("console", (message) => {
             if (message.type() === "error") {
@@ -156,9 +170,16 @@ async function runChromeSmoke(options) {
         const navigationWarning = await navigateOrReloadForSmoke(page, options.targetUrl, navigationTimeoutMs);
         await prepareMode(page, options.mode);
         const waitResult = await waitForModeReady(page, options.mode, options.seconds);
+        const observationStartedAt = Date.now() - waitResult.elapsedMs;
+        if (options.mode === "top" && waitResult.elapsedMs < options.seconds * 1000) {
+            await page.waitForTimeout(options.seconds * 1000 - waitResult.elapsedMs);
+            waitResult.metrics = await collectModeMetrics(page, options.mode);
+            waitResult.elapsedMs = Date.now() - observationStartedAt;
+        }
         const modeMetrics = {
             "navigation warning": navigationWarning ?? "none",
             ...waitResult.metrics,
+            ...summarizeBookingCurveRequests(bookingCurveObserver.entries),
             "state wait satisfied": waitResult.ready ? "yes" : "no",
             "state wait elapsed ms": waitResult.elapsedMs
         };
@@ -183,9 +204,11 @@ async function runChromeSmokeWithPageCdp(options, connectionError) {
     const consoleErrors = [];
     const pageErrors = [];
     const connectionErrorMessage = formatErrorMessage(connectionError);
+    const bookingCurveObserver = createBookingCurveCdpObserver();
     try {
         client.on("Network.requestWillBeSent", (event) => {
             const request = event.params?.request;
+            bookingCurveObserver.onRequest(event);
             if (request?.method !== "POST") {
                 return;
             }
@@ -198,6 +221,12 @@ async function runChromeSmokeWithPageCdp(options, connectionError) {
                 url: sanitizeUrl(requestUrl),
                 observedAt: new Date().toISOString()
             });
+        });
+        client.on("Network.responseReceived", (event) => {
+            bookingCurveObserver.onResponse(event);
+        });
+        client.on("Network.loadingFailed", (event) => {
+            bookingCurveObserver.onFailed(event);
         });
         client.on("Runtime.consoleAPICalled", (event) => {
             if (event.params?.type === "error") {
@@ -223,6 +252,12 @@ async function runChromeSmokeWithPageCdp(options, connectionError) {
         const navigationWarning = await navigateOrReloadForSmokeViaCdp(client, currentUrl, options.targetUrl, navigationTimeoutMs);
         await prepareModeViaCdp(client, options.mode);
         const waitResult = await waitForModeReadyViaCdp(client, options.mode, options.seconds);
+        const observationStartedAt = Date.now() - waitResult.elapsedMs;
+        if (options.mode === "top" && waitResult.elapsedMs < options.seconds * 1000) {
+            await sleep(options.seconds * 1000 - waitResult.elapsedMs);
+            waitResult.metrics = await collectModeMetricsViaCdp(client, options.mode);
+            waitResult.elapsedMs = Date.now() - observationStartedAt;
+        }
         const finalUrl = await getPageUrlViaCdp(client);
         const modeMetrics = {
             "CDP connection method": "page websocket fallback",
@@ -230,6 +265,7 @@ async function runChromeSmokeWithPageCdp(options, connectionError) {
             "page target id": pageTarget.id,
             "navigation warning": navigationWarning ?? "none",
             ...waitResult.metrics,
+            ...summarizeBookingCurveRequests(bookingCurveObserver.entries),
             "state wait satisfied": waitResult.ready ? "yes" : "no",
             "state wait elapsed ms": waitResult.elapsedMs
         };
@@ -324,6 +360,150 @@ function assessSmokeResult(options) {
     return { failures, warnings, preflightMessages };
 }
 
+function createBookingCurveRequestObserver() {
+    const entries = [];
+    const byRequest = new WeakMap();
+    let activeCount = 0;
+    let maxConcurrent = 0;
+    return {
+        entries,
+        onRequest(request) {
+            if (!isBookingCurveRequest(request.method(), request.url())) {
+                return;
+            }
+            activeCount += 1;
+            maxConcurrent = Math.max(maxConcurrent, activeCount);
+            const entry = {
+                method: request.method(),
+                url: sanitizeUrl(request.url()),
+                startedAtMs: Date.now(),
+                status: null,
+                failed: false,
+                maxConcurrentAtStart: maxConcurrent
+            };
+            entries.push(entry);
+            byRequest.set(request, entry);
+        },
+        onResponse(response) {
+            const entry = byRequest.get(response.request());
+            if (!entry) {
+                return;
+            }
+            entry.status = response.status();
+            activeCount = Math.max(0, activeCount - 1);
+        },
+        onFailed(request) {
+            const entry = byRequest.get(request);
+            if (!entry) {
+                return;
+            }
+            entry.failed = true;
+            activeCount = Math.max(0, activeCount - 1);
+        }
+    };
+}
+
+function createBookingCurveCdpObserver() {
+    const entries = [];
+    const byRequestId = new Map();
+    let activeCount = 0;
+    let maxConcurrent = 0;
+    return {
+        entries,
+        onRequest(event) {
+            const request = event.params?.request;
+            if (!isBookingCurveRequest(request?.method, request?.url)) {
+                return;
+            }
+            activeCount += 1;
+            maxConcurrent = Math.max(maxConcurrent, activeCount);
+            const entry = {
+                method: request.method,
+                url: sanitizeUrl(request.url),
+                startedAtMs: Date.now(),
+                status: null,
+                failed: false,
+                maxConcurrentAtStart: maxConcurrent
+            };
+            entries.push(entry);
+            byRequestId.set(event.params.requestId, entry);
+        },
+        onResponse(event) {
+            const entry = byRequestId.get(event.params?.requestId);
+            if (!entry) {
+                return;
+            }
+            entry.status = event.params?.response?.status ?? null;
+            activeCount = Math.max(0, activeCount - 1);
+        },
+        onFailed(event) {
+            const entry = byRequestId.get(event.params?.requestId);
+            if (!entry) {
+                return;
+            }
+            entry.failed = true;
+            activeCount = Math.max(0, activeCount - 1);
+        }
+    };
+}
+
+function isBookingCurveRequest(method, value) {
+    if (method !== "GET") {
+        return false;
+    }
+    try {
+        const url = new URL(value);
+        return url.origin === "https://ra.jalan.net" && url.pathname === BOOKING_CURVE_ENDPOINT;
+    } catch {
+        return false;
+    }
+}
+
+function summarizeBookingCurveRequests(entries) {
+    const sortedEntries = entries.slice().sort((left, right) => left.startedAtMs - right.startedAtMs);
+    const statuses = new Map();
+    for (const entry of sortedEntries) {
+        const statusKey = entry.failed ? "failed" : entry.status === null ? "pending" : String(entry.status);
+        statuses.set(statusKey, (statuses.get(statusKey) ?? 0) + 1);
+    }
+    const intervals = [];
+    for (let index = 1; index < sortedEntries.length; index += 1) {
+        intervals.push(sortedEntries[index].startedAtMs - sortedEntries[index - 1].startedAtMs);
+    }
+    const observedSpanMs = sortedEntries.length >= 2
+        ? sortedEntries[sortedEntries.length - 1].startedAtMs - sortedEntries[0].startedAtMs
+        : 0;
+    const averageStartsPerSecond = observedSpanMs > 0
+        ? sortedEntries.length / (observedSpanMs / 1000)
+        : 0;
+    const maxConcurrent = sortedEntries.reduce((max, entry) => Math.max(max, entry.maxConcurrentAtStart), 0);
+    const hasEnoughRequests = sortedEntries.length >= BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS;
+    const httpErrorCount = sortedEntries.filter((entry) => entry.failed || (entry.status !== null && entry.status >= 400)).length;
+    const fallbackReason = hasEnoughRequests
+        ? "none"
+        : `booking_curve request count ${sortedEntries.length} is below ${BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS}; cache may already be warm or no monthly priority fetch was active`;
+
+    return {
+        "booking curve request count": sortedEntries.length,
+        "booking curve status counts": formatStatusCounts(statuses),
+        "booking curve HTTP error count": httpErrorCount,
+        "booking curve average starts per second": averageStartsPerSecond.toFixed(2),
+        "booking curve min start interval ms": intervals.length === 0 ? "n/a" : Math.min(...intervals),
+        "booking curve max concurrent requests": maxConcurrent,
+        "booking curve throughput fallback reason": fallbackReason
+    };
+}
+
+function formatStatusCounts(statuses) {
+    if (statuses.size === 0) {
+        return "none";
+    }
+    return Array.from(statuses.entries())
+        .sort(([left], [right]) => left.localeCompare(right))
+        .map(([status, count]) => `${status}=${count}`)
+        .join(",");
+}
+
 function buildPreflightMessages(options) {
     const messages = [
         `page title=${options.metrics["page title"] ?? "unknown"}, login form candidate=${options.metrics["login form candidate"] ?? "unknown"}, calendar candidate=${options.metrics["calendar candidate"] ?? "unknown"}, RAU userscript root count=${options.metrics["RAU userscript root count"] ?? "unknown"}, React marker mounted=${options.metrics["React marker mounted"] ?? "unknown"}, installed version=${options.installedVersion}`
@@ -349,6 +529,27 @@ function assessModeMetrics(mode, metrics, options) {
     if (mode === "top") {
         const rowCount = Number(metrics["top row count"]);
         const perRowMinimum = Number.isFinite(rowCount) && rowCount > 0 ? rowCount : 1;
+        const bookingCurveRequestCount = Number(metrics["booking curve request count"]);
+        const bookingCurveHttpErrorCount = Number(metrics["booking curve HTTP error count"]);
+        const bookingCurveAverageStartsPerSecond = Number(metrics["booking curve average starts per second"]);
+        const bookingCurveMinStartIntervalMs = Number(metrics["booking curve min start interval ms"]);
+        const bookingCurveMaxConcurrentRequests = Number(metrics["booking curve max concurrent requests"]);
+        const bookingCurveHasEnoughRequests = Number.isFinite(bookingCurveRequestCount)
+            && bookingCurveRequestCount >= BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS;
+        const bookingCurveThroughputFailures = bookingCurveHasEnoughRequests
+            ? [
+                bookingCurveHttpErrorCount === 0 ? null : `booking curve HTTP error count must be 0, got ${bookingCurveHttpErrorCount}`,
+                Number.isFinite(bookingCurveAverageStartsPerSecond) && bookingCurveAverageStartsPerSecond >= BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND
+                    ? null
+                    : `booking curve average starts per second must be at least ${BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND} when request count is ${bookingCurveRequestCount}, got ${metrics["booking curve average starts per second"]}`,
+                Number.isFinite(bookingCurveMinStartIntervalMs) && bookingCurveMinStartIntervalMs >= BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS
+                    ? null
+                    : `booking curve min start interval must be at least ${BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS}ms when request count is ${bookingCurveRequestCount}, got ${metrics["booking curve min start interval ms"]}`,
+                Number.isFinite(bookingCurveMaxConcurrentRequests) && bookingCurveMaxConcurrentRequests <= BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY
+                    ? null
+                    : `booking curve max concurrent requests must be at most ${BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY}, got ${metrics["booking curve max concurrent requests"]}`
+            ]
+            : [];
         return [
             minCountFailure("top row count", metrics["top row count"], 1),
             yesFailure("React marker mounted", metrics["React marker mounted"]),
@@ -365,7 +566,8 @@ function assessModeMetrics(mode, metrics, options) {
             minCountFailure("UI component markers", metrics["UI component markers"], 1),
             minCountFailure("UI control markers", metrics["UI control markers"], 1),
             minCountFailure("UI row layout markers", metrics["UI row layout markers"], 1),
-            minCountFailure("UI popover markers", metrics["UI popover markers"], 1)
+            minCountFailure("UI popover markers", metrics["UI popover markers"], 1),
+            ...bookingCurveThroughputFailures
         ].filter((failure) => failure !== null);
     }
     if (mode === "price-trends") {
@@ -535,6 +737,8 @@ function collectModeMetricsInPage(selectedMode) {
             "React marker mounted": doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null ? "yes" : "no"
         });
         if (selectedMode === "top") {
+            const warmCacheIndicatorText = textFrom("[data-ra-sales-setting-warm-cache-indicator]");
+            const warmCacheWorkerMatch = warmCacheIndicatorText.match(/worker\s+(\d+)\/(\d+)/);
             return {
                 ...commonPageDiagnostics(),
                 "top row count": doc.querySelectorAll("[data-ra-rank-recommendation-row]").length,
@@ -559,7 +763,9 @@ function collectModeMetricsInPage(selectedMode) {
                 "warm cache month statuses": Array.from(doc.querySelectorAll("[data-ra-sales-setting-warm-cache-month-control]"))
                     .map((element) => `${element.getAttribute("data-ra-sales-setting-warm-cache-month") ?? "unknown"}=${element.getAttribute("data-ra-sales-setting-warm-cache-month-status") ?? "unknown"}`)
                     .join(",") || "none",
-                "warm cache indicator text": textFrom("[data-ra-sales-setting-warm-cache-indicator]")
+                "warm cache worker count": warmCacheWorkerMatch?.[1] ?? "n/a",
+                "warm cache worker capacity": warmCacheWorkerMatch?.[2] ?? "n/a",
+                "warm cache indicator text": warmCacheIndicatorText
             };
         }
         if (selectedMode === "price-trends") {
