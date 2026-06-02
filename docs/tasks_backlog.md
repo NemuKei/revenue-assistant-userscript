@@ -7811,19 +7811,89 @@
   - `spec-checkpoint`: after-implementation
   - `target-spec`: `README.md`
 
+### RAU-WC-24 月別優先取得完了後の候補再評価 summary を設計する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 月別優先取得の完了後、対象月の料金調整候補について、根拠データ更新後に候補が増えたか、判断が変わったか、根拠不足が減ったかを短く表示できるようにする。
+- スコープ:
+  - 取得前後で比較する値を定義する。候補件数、active candidate 件数、表示中候補件数、raw source 状態、状態 badge の `取得中` / `確認不足` / `根拠あり` の件数差分を候補にする。
+  - 表示文言、表示タイミング、表示位置を設計する。表示位置は `RAU-WC-26` で決める候補 list 側の優先取得導線と整合させる。
+  - 比較結果を保存するか、画面内の一時 summary に留めるかを決める。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - request body、response body、raw trace、Cookie、token、credential、価格や在庫の非公開データは保存しない。
+- 受け入れ条件:
+  - 取得前後で比較する値、表示文言、表示タイミング、表示位置が `docs/spec_001_analyze_expansion.md`、`docs/spec_003_rank_recommendation_signal.md`、またはこの backlog task に明記されている。
+  - 保存しないデータと、保存する場合の最小識別情報が明記されている。
+  - `RAU-WC-26` の候補 list 導線と矛盾しない表示場所が決まっている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-WC-25 warm cache throughput smoke 判定を追加する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 配布版 smoke で、booking curve warm cache の取得速度と安全条件を raw body なしで自動判定できるようにする。
+- スコープ:
+  - `smoke:distribution --mode top` の出力または pass / fail 判定に、RAU 発行 `/api/v4/booking_curve` の HTTP status count、平均 request 開始件数、最小 request 開始間隔、worker 数、監視対象 write API POST 0 件を追加する。
+  - 未取得 task が十分ある場合の pass / fail 条件と、cache 済みで request が少ない場合の fallback 判定を分ける。
+  - request / response body を保存せず、URL、method、status、timestamp、worker 表示、POST count だけを観測する。
+- 非目標:
+  - HAR、raw Chrome DevTools Protocol trace、request body、response body、Cookie、token、credential、価格や在庫の非公開データは保存しない。
+  - Revenue Assistant write API を実行しない。
+  - warm cache の request 間隔、同時実行数、worker 数はこの task では変更しない。
+- 受け入れ条件:
+  - 未取得 task が十分ある場合に、平均 request 開始件数、最小 request 開始間隔、HTTP error 0 件、worker 数、監視対象 write API POST 0 件を自動判定できる。
+  - cache 済みで request が少ない場合は、低 throughput を失敗扱いにせず、fallback 理由を出力できる。
+  - `npm run smoke:distribution -- --installed-version <version> --mode top --url https://ra.jalan.net/ --seconds 60 --version-policy fail` の確認観点が README または task に明記されている。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: after-implementation
+  - `target-spec`: `README.md`
+
+### RAU-WC-26 月別優先取得後の候補 list 連動を設計する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 月別優先取得 button 押下後に、対象月 filter や表示月選択と連動させ、取得した月の料金調整候補を確認するまでの操作数を減らす。
+- スコープ:
+  - 月別優先取得 button の最適な配置を再検討する。候補は、カレンダー上部維持、料金調整候補 list 上部への移動、カレンダー側と候補 list 側の両方配置、候補 list 側だけに置く案とする。
+  - button 押下後に候補 list の `対象月` filter を押した月へ切り替えるか、カレンダー表示月だけを切り替えるか、両方を連動しないかを比較して採用案を決める。
+  - 対象月 filter を切り替える場合、表示上限、booking curve preview、rank change preview、rank change pending をどう扱うかを決める。
+  - 配布版 GUI 確認条件を決める。
+- 非目標:
+  - この task では実装を追加しない。実装は採用案が決まった後の follow-up とする。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - candidate scoring、priority、confidence、reasonFingerprint、API request 範囲、request 件数は変更しない。
+- 受け入れ条件:
+  - 優先取得 button の採用配置、非採用配置、その理由が明記されている。
+  - button 押下後の `対象月` filter、カレンダー表示月、preview、rank change pending の扱いが明記されている。
+  - 配布版 GUI 確認で見る対象、期待結果、監視対象 write API POST 0 件確認の要否が明記されている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
 ## Remaining Task Triage
 
 Now:
 
-なし
+- `RAU-WC-26` 月別優先取得後の候補 list 連動を設計する
 
 Next:
 
-なし
+- `RAU-WC-24` 月別優先取得完了後の候補再評価 summary を設計する
 
 After Next:
 
-なし
+- `RAU-WC-25` warm cache throughput smoke 判定を追加する
 
 Later:
 
@@ -7831,6 +7901,7 @@ Later:
 
 統合判断:
 
+- 2026-06-02 に、月別優先取得後の利用者導線と配布版 smoke に関する推奨 3 件を `RAU-WC-24`、`RAU-WC-25`、`RAU-WC-26` として task 化した。live backlog の重複確認では `RAU-WC-24`、`RAU-WC-25`、`RAU-WC-26` は存在せず、選択された 3 件と同じ責務境界の未着手 task も見つからなかった。`RAU-WC-26` は、優先取得 button の配置見直しと候補 list 側の操作導線を先に決める task であり、次の UI / UX 実装判断に直結するため Now とする。`RAU-WC-24` は、優先取得後に候補が増えたか、判断が変わったか、根拠不足が減ったかを表示する task であり、`RAU-WC-26` で導線と表示場所を決めた後の Next とする。`RAU-WC-25` は検証基盤として重要だが、利用者の操作導線と summary 表示の判断後に観測項目を確定しやすいため After Next とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version、Revenue Assistant 実画面状態は変更していない。
 - 2026-06-02 に、未着手だった `RAU-WC-18`、`RAU-WC-19`、`RAU-WC-20`、`RAU-WC-21`、`RAU-WC-22`、`RAU-WC-23` を完了した。booking curve warm cache は `開始間隔 350ms 以上`、`同時実行 3 件以下` の上限付き高速化になり、トップカレンダー上部には表示月ごとの `YYYY-MM 優先取得` button と円形 progress が追加された。配布版 `0.1.0.367` を Tampermonkey installed version `0.1.0.367` に揃え、配布版 top smoke と Chrome DevTools Protocol 観測で、月別 control 3 件、button 3 件、2026-08 優先取得時の `worker 3/3`、booking curve request 41 件、平均開始件数 2.25 件/秒、最小開始間隔 345ms、監視対象 write API POST 0 件、console error 0 件、page error 0 件を確認した。この完了により Remaining Task Triage は空である。
 - response status 再観測では、booking curve response 28 件が HTTP 200 で、HTTP error は 0 件だった。
 - 2026-06-02 に、利用者が、カレンダートップでは直近データ取得が優先されるため、先々の月を調整したい場合に料金調整候補の根拠データが不足する課題を示した。利用者はカレンダー上部または料金調整候補側の優先取得ボタンを候補として挙げ、配置はカレンダー上部を第一候補とした。既存の warm cache queue と候補優先取得は土台として使えるが、利用者が表示中の月を明示して直近日付より優先させる入口は未実装である。そのため、まず `RAU-WC-21` でカレンダー月 card 上部の UI 契約と安全制約を確定し、`RAU-WC-22` で月別優先取得ボタンと円形 progress を実装し、`RAU-WC-23` で通常 Chrome の実ブラウザ動作、HTTP / console / page error 0 件、監視対象 write API POST 0 件を確認する。`RAU-WC-18` は取得速度の安全上限を決める前提であるため Now に維持し、`RAU-WC-21` は `RAU-WC-19` の multi-worker 実装前に UI 契約を固めるため Next へ置く。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant 実画面状態は変更していない。
