@@ -716,6 +716,51 @@ status は次を持つ。
 - future scoring と精度評価に使うため、`active -> user decision -> resolved / expired` の履歴を残す。
 - `expiresAt` は、stayDate が過ぎた、asOfDate が古くなった、または reasonFingerprint の前提が変わった場合に使う。
 
+## Pending UI And Row Visibility
+
+`様子見`、`対応不要`、`推奨反映` は、押下直後に確定または送信しない。5 秒の in-memory pending state に入り、同じ行に残り秒数 text、progress ring、`取消` button を表示する。progress ring は text と同じ `commitAt` と 5 秒 duration から計算し、表示補助だけに使う。progress ring は pending 秒数、保存条件、送信前 guard、POST 実行条件、反映確認を変更しない。
+
+`様子見` と `対応不要` は、5 秒満了後に browser-local decision record の保存へ進む。保存が成功した場合、次の rank recommendation 再同期で既存の user decision lifecycle filter により対象行を非表示にする。保存に失敗した場合は、失敗を console warning に残し、次の再同期で候補が再表示され得る状態を維持する。
+
+`推奨反映` は、5 秒満了後に送信前 guard へ進む。送信前 guard、POST、反映確認のいずれかに失敗した場合、対象候補を隠したままにせず、同じ行または次の再同期後の行で失敗状態を確認できるようにする。送信成功または反映確認済みの場合は、既存の resolved rank change filter により対象候補を非表示にする。満了直後に無条件で行を消さない理由は、送信前 guard と反映確認の失敗を利用者が確認できる状態を維持するためである。
+
+## Current Rank Occupancy Display
+
+トップ料金調整候補 list の `現ランク` cell では、current rank の下に `OH/キャパ current/max` を補助行として表示する。`OH` は `On Hand` の略であり、ここでは `/api/v1/suggest/output/current_settings` の `max_num_room - remaining_num_room` で計算する現在の使用済みまたは確保済み室数を指す。`キャパ` は同じ response の `max_num_room` を指す。
+
+この表示は、同じ cell の rank gap tooltip に出している `OH/キャパ` と同じ計算にそろえる。`remaining_num_room` または `max_num_room` が未取得、不正、または `max_num_room <= 0` の場合は推測値を出さず、補助行を表示しないか tooltip 側で `OH未取得` と表示する。`OH/キャパ` は UI 表示用であり、candidate scoring、priority、confidence、reasonFingerprint、rank change payload には使わない。
+
+## Competitor Baseline Deviation
+
+現行の `ownPricePositionSignal` は、現在の自社最安値と現在の競合中央値を比較して `own_price_low_against_competitors`、`own_price_near_competitors`、`own_price_high_against_competitors` を作る。これは現在値の単発比較であり、施設が通常から競合より少し安く売る方針なのか、今日だけ通常方針から外れているのかを区別しない。
+
+今後の `通常時平均との差分` 方式では、入力を次のように分ける。
+
+- 現在値: 同じ `stayDate`、人数、食事条件、部屋タイプ scope の `自社価格 / 競合中央値`。
+- baseline: 過去または lead time 別の公式 `価格推移` record、または同じ条件 signature の競合価格 snapshot から作る通常時の `自社価格 / 競合中央値` の中央値を第一候補にする。
+- 比較条件: 施設 ID、宿泊日、lead time bucket、曜日、人数、食事条件、部屋タイプ、競合施設集合、取得時点の古さ、比較可能 record 数。
+- 出力: 現在値から baseline を引いた乖離量、比較可能人数数、比較 record 数、diagnostics、reasonCodes、priority / confidence の小さな補正候補。
+
+初期設計では、公式 `価格推移` の `price-trend-records` を第一候補にする。理由は、同じ宿泊日の lead time 別系列を保存済み store から読め、現在値だけではなく通常時相当の相対距離を作りやすいためである。既存 `competitor-price-snapshots` は、同じ検索条件 signature と競合施設集合がそろう場合に fallback として扱う。価格推移 record が未保存、取得中、取得失敗、89 日より先で公式側に data がない、または条件が一致しない場合は、補正せず diagnostics に残す。
+
+baseline の比較単位は、初期実装では `facility x guestCount x mealType x roomType x leadTimeBucket` を第一候補にする。ただし、Revenue Assistant の `roomGroup` と `jalan` 側の room type 対応 source が未確定な場合は、roomGroup 単位の強い補正を行わず、`competitor_price_room_group_scope_unconfirmed` または baseline 用 diagnostics を残す。weekday は baseline の補助 bucket とし、record 数が不足する場合は weekday を外した baseline へ下げる。
+
+補正を使う場合は、action を新規作成または反転しない。`raise_watch` に対して、現在値が baseline より自社安めへ大きく乖離していれば上げ補助、baseline より自社高めへ乖離していれば抑制候補にする。`lower_watch` に対して、現在値が baseline より自社高めへ大きく乖離していれば下げ補助、baseline より自社安めへ乖離していれば抑制候補にする。補正幅は既存 `RAU-RR-53` の小補正と同じく小さくし、推奨レート金額、金額差、percent は top list 本文に直接表示しない。
+
+比較不能時の diagnostics 候補は、`competitor_baseline_price_trend_missing`、`competitor_baseline_snapshot_missing`、`competitor_baseline_record_count_low`、`competitor_baseline_condition_mismatch`、`competitor_baseline_competitor_set_mismatch`、`competitor_baseline_room_group_scope_unconfirmed`、`competitor_baseline_stale` とする。
+
+## Operation History Learning And Cooldown Customization
+
+操作履歴を使う候補品質改善は、browser-local record と既存 reasonFingerprint / diagnostics を使う設計候補として扱う。外部サービスへ送る機械学習、個人情報や予約情報の保存、自動反映、自動 suppression は行わない。
+
+入力候補は、`様子見`、`対応不要`、rank 変更実行、rank 変更取消、送信前 guard 失敗、反映確認失敗、reasonFingerprint、capacity、reference deviation、競合価格 baseline、confidence 表示段階である。`様子見` は一時的な見送りであり false positive とは扱わない。`対応不要` は同じ reasonFingerprint の false positive 候補として扱える。rank 変更実行は、利用者が候補を実務上採用した signal として扱える。rank 変更取消、guard 失敗、反映確認失敗は候補品質よりも操作安全性や同時更新の問題を示す可能性があるため、候補抑制の強い根拠にしない。
+
+初期判断では、操作履歴から自動 suppression を実装しない。実装へ進む場合は、保存 schema、互換性、削除方針、表示説明、評価方法を別 task に分ける。代替策として、学習化ではなく利用者が明示設定した cooldown を使う。設定候補は `長め`、`ふつう`、`短め`、`任意日数` とし、設定粒度は全体設定、部屋タイプ別設定、LT 別設定を比較する。LT は `lead time` の略で、宿泊日までの日数を指す。
+
+全体設定は実装が小さく、誤設定時の影響範囲を説明しやすいが、特定 roomGroup だけを調整できない。部屋タイプ別設定は小キャパや特殊部屋タイプの再表示頻度を調整しやすいが、roomGroup 名変更や施設差で設定管理が複雑になる。LT 別設定は直近日程と先の日程で異なる判断間隔を持てるが、範囲ブロックの定義を誤ると候補が見えにくくなる。任意日数は自由度が高いが、極端な値による未検証 suppression を避けるため、上限、reset 操作、diagnostics 表示を必須にする。
+
+cooldown 設定を実装する場合でも、送信前 guard の無効化、任意式入力、JavaScript 入力、自動反映、未選択行の送信は行わない。候補に設定が影響した場合は、diagnostics または候補行の補助表示で、どの設定が再表示または非表示期間に影響したかを説明できるようにする。
+
 ## Future Bulk Apply
 
 bulk apply は将来候補として残すが、first phase では非目標とする。

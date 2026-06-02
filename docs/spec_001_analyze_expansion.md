@@ -329,6 +329,18 @@ Indicator:
 
 ## Remaining Candidate Scope
 
+### Analyze 上部の料金調整候補 read-only 表示
+
+Analyze 日付ページ `/analyze/YYYY-MM-DD` では、開いている宿泊日と一致する料金調整候補を上部に read-only section として表示する。入力は top 料金調整候補 list と同じ current settings、rank ladder、curve evidence、user decision filter、resolved rank change filter、rank change history を使う。候補抽出条件は `candidate.stayDate` が Analyze 日付と一致することを最小条件にする。表示単位は `stayDate x roomGroup` である。
+
+表示列は、部屋タイプ、現ランク、推奨、根拠、状態、前回変更に限定する。候補が 0 件の場合は、既存 Analyze UI を押しのけずに空状態を表示する。top list から `Analyzeで確認` で遷移した場合は、sessionStorage に保存した `stayDate`、`roomGroupId`、`roomGroupName`、reason summary が Analyze 日付と一致する場合だけ、該当候補 row と既存 roomGroup card を highlight する。URL 直打ち、別日付、別施設、別 roomGroup では highlight しない。
+
+この section は read-only であり、`推奨反映`、`rank調整`、任意 rank select、一括反映、未選択行送信、自動反映、`price_ranks` 系 endpoint への POST は表示または実行しない。推奨レート金額、forecast 数値、sales / ADR 数値、競合価格の金額、差額、percent も表示しない。Revenue Assistant API request 範囲、request 件数、request 間隔、top list の candidate scoring は変更しない。
+
+配布版 smoke では `--mode analyze-recommendations` を使い、Analyze page candidate、RAU Analyze candidate list root、候補 row count、empty count、highlight count、console / page error 件数、監視対象 write API POST 件数、userscript version を確認する。Analyze section 内に write 系 button が存在する場合、監視対象 write API POST が 0 件でない場合、mode と最終 URL が一致しない場合は pass としない。
+
+Analyze 上部から `推奨反映` または一括反映を実装する前には、write 安全条件を別途再調査する。単一行 `POST /api/v1/lincoln/suggest` は top list の観測済み custom rank path として使えるが、Analyze 上部でも送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、5 秒 pending、取消、反映確認を維持する必要がある。`POST /api/v1/lincoln/price_ranks`、`POST /api/v1/tema/price_ranks`、`POST /api/v1/neppan/price_ranks` を使う場合は、payload field、provider 差、CSRF、権限差、partial failure、error response、反映確認先が確認されるまで実装しない。
+
 ### Candidate 1: Performance Tuning
 
 - 月送り時と販売設定タブ再描画時の体感速度を改善する

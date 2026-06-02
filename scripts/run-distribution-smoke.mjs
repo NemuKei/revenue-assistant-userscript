@@ -7,7 +7,7 @@ const DEFAULT_DIST_PATH = "dist/revenue-assistant-userscript.user.js";
 const DEFAULT_PUBLISHED_URL = "https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js";
 const DEFAULT_URL = "https://ra.jalan.net/";
 const DEFAULT_SECONDS = 20;
-const SMOKE_MODES = new Set(["top", "price-trends", "monthly-progress"]);
+const SMOKE_MODES = new Set(["top", "price-trends", "analyze-recommendations", "monthly-progress"]);
 const VERSION_POLICIES = new Set(["warn", "fail"]);
 const CDP_CONNECTION_MODES = new Set(["auto", "browser", "page"]);
 const WRITE_ENDPOINTS = [
@@ -383,6 +383,13 @@ function assessModeMetrics(mode, metrics, options) {
             minCountFailure("price trends svg count", metrics["price trends svg count"], 1)
         ].filter((failure) => failure !== null);
     }
+    if (mode === "analyze-recommendations") {
+        return [
+            yesFailure("Analyze page candidate", metrics["Analyze page candidate"]),
+            minCountFailure("Analyze recommendation root count", metrics["Analyze recommendation root count"], 1),
+            yesFailure("Analyze recommendation read-only state", metrics["Analyze recommendation read-only state"])
+        ].filter((failure) => failure !== null);
+    }
     return [
         minCountFailure("monthly preview root count", metrics["monthly preview root count"], 1),
         minCountFailure("monthly preview panel count", metrics["monthly preview panel count"], 1),
@@ -434,7 +441,7 @@ function isExpectedModeUrl(mode, value) {
     if (mode === "top") {
         return url.pathname === "/" || url.pathname === "";
     }
-    if (mode === "price-trends") {
+    if (mode === "price-trends" || mode === "analyze-recommendations") {
         return /^\/analyze\/\d{4}-\d{2}-\d{2}$/.test(url.pathname);
     }
     return /^\/monthly-progress\/\d{4}-\d{2}$/.test(url.pathname);
@@ -523,8 +530,8 @@ function collectModeMetricsInPage(selectedMode) {
             "page title": doc.title || "none",
             "login form candidate": doc.querySelector("input[type=\"password\"], form[action*=\"login\" i], [data-testid*=\"login\" i]") !== null ? "yes" : "no",
             "calendar candidate": doc.querySelector("[data-testid*=\"calendar\" i], [class*=\"calendar\" i], a[href^=\"/analyze/\"], a[href*=\"/analyze/\"]") !== null ? "yes" : "no",
-            "RAU userscript root": doc.querySelector("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]") !== null ? "yes" : "no",
-            "RAU userscript root count": doc.querySelectorAll("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]").length,
+            "RAU userscript root": doc.querySelector("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-analyze-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]") !== null ? "yes" : "no",
+            "RAU userscript root count": doc.querySelectorAll("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-analyze-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]").length,
             "React marker mounted": doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null ? "yes" : "no"
         });
         if (selectedMode === "top") {
@@ -558,6 +565,27 @@ function collectModeMetricsInPage(selectedMode) {
                 "price trends panel count": doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-chart-panel]").length,
                 "price trends svg count": doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-chart-svg]").length,
                 "price trends background text": textFrom("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-overview-meta]")
+            };
+        }
+        if (selectedMode === "analyze-recommendations") {
+            const rootCount = doc.querySelectorAll("[data-ra-rank-recommendation-analyze-list]").length;
+            const rowCount = doc.querySelectorAll("[data-ra-rank-recommendation-analyze-row]").length;
+            const emptyCount = doc.querySelectorAll("[data-ra-rank-recommendation-analyze-empty]").length;
+            const writeButtonCount = doc.querySelectorAll(
+                "[data-ra-rank-recommendation-analyze-list] [data-ra-rank-recommendation-button-action=\"rank-change-submit\"],"
+                + "[data-ra-rank-recommendation-analyze-list] [data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"],"
+                + "[data-ra-rank-recommendation-analyze-list] [data-ra-rank-recommendation-button-action=\"snooze\"],"
+                + "[data-ra-rank-recommendation-analyze-list] [data-ra-rank-recommendation-button-action=\"dismiss\"]"
+            ).length;
+            return {
+                ...commonPageDiagnostics(),
+                "Analyze page candidate": /^\/analyze\/\d{4}-\d{2}-\d{2}$/.test(globalThis.location.pathname) ? "yes" : "no",
+                "Analyze recommendation root count": rootCount,
+                "Analyze recommendation row count": rowCount,
+                "Analyze recommendation empty count": emptyCount,
+                "Analyze recommendation highlight count": doc.querySelectorAll("[data-ra-rank-recommendation-analyze-highlight=\"true\"]").length,
+                "Analyze recommendation write button count": writeButtonCount,
+                "Analyze recommendation read-only state": rootCount > 0 && writeButtonCount === 0 && (rowCount > 0 || emptyCount > 0) ? "yes" : "no"
             };
         }
         return {

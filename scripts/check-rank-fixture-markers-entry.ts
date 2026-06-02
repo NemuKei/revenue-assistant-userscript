@@ -57,6 +57,8 @@ export function runRankFixtureMarkerCheck(): void {
         { name: "popover markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="popover"/g), min: rowCount },
         { name: "tooltip markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="tooltip"/g), min: rowCount },
         { name: "pending notice markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="pending-notice"/g), min: 2 },
+        { name: "pending progress markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-pending-progress/g), min: 2 },
+        { name: "current rank occupancy markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-current-rank-occupancy/g), min: rowCount },
         { name: "status message markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="status-message"/g), min: 1 },
         { name: "rank select markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-inline-rank-select/g), min: 1 },
         { name: "curve preview buttons", count: countMatches(renderedHtml, /data-ra-rank-recommendation-button-action="curve-preview-toggle"/g), min: rowCount },

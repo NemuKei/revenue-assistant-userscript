@@ -229,6 +229,7 @@ function buildRow(options: {
             {
                 kind: "rankGap",
                 currentRankText: options.currentRank,
+                occupancyCapacityText: "OH/キャパ 8/12",
                 title: "同じ宿泊日の全部屋タイプ rank を確認",
                 role: "current-rank",
                 entries: [
@@ -286,6 +287,7 @@ function buildRow(options: {
             ? {
                 key: options.key,
                 label: "様子見: 3秒後に確定",
+                progressPercent: 60,
                 cancelButton: buildButton("取消", "decision-cancel")
             }
             : null,
@@ -293,6 +295,7 @@ function buildRow(options: {
             ? {
                 key: options.key,
                 label: "3秒後に送信",
+                progressPercent: 60,
                 cancelButton: buildButton("取消", "rank-change-cancel")
             }
             : null,

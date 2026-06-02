@@ -64,6 +64,7 @@ export interface RankRecommendationReactTextCellSnapshot {
 export interface RankRecommendationReactRankGapCellSnapshot {
     kind: "rankGap";
     currentRankText: string;
+    occupancyCapacityText: string | null;
     title: string;
     role?: string;
     entries: readonly {
@@ -110,11 +111,13 @@ export interface RankRecommendationReactRowSnapshot {
     pendingDecision: {
         key: string;
         label: string;
+        progressPercent: number;
         cancelButton: RankRecommendationReactButtonSnapshot;
     } | null;
     pendingRankChange: {
         key: string;
         label: string;
+        progressPercent: number;
         cancelButton: RankRecommendationReactButtonSnapshot;
     } | null;
     rankChangeResult: {
@@ -426,6 +429,11 @@ function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellS
                         event.stopPropagation();
                     }
                 }, cell.currentRankText),
+                cell.occupancyCapacityText === null
+                    ? null
+                    : React.createElement("span", {
+                        "data-ra-rank-recommendation-current-rank-occupancy": ""
+                    }, cell.occupancyCapacityText),
                 React.createElement("div", { [RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE]: "" },
                     React.createElement("table", null,
                         React.createElement("thead", null,
@@ -629,6 +637,7 @@ function renderPendingDecision(pendingDecision: RankRecommendationReactRowSnapsh
         [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "pending-notice"
     }, React.createElement(RankRecommendationPendingNotice, {
         label: pendingDecision.label,
+        progressPercent: pendingDecision.progressPercent,
         cancelButton: pendingDecision.cancelButton
     }));
 }
@@ -644,15 +653,26 @@ function renderPendingRankChange(pendingRankChange: RankRecommendationReactRowSn
         [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "pending-notice"
     }, React.createElement(RankRecommendationPendingNotice, {
         label: pendingRankChange.label,
+        progressPercent: pendingRankChange.progressPercent,
         cancelButton: pendingRankChange.cancelButton
     }));
 }
 
 function RankRecommendationPendingNotice(props: {
     label: string;
+    progressPercent: number;
     cancelButton: RankRecommendationReactButtonSnapshot;
 }): React.ReactElement {
+    const safePercent = Math.max(0, Math.min(100, props.progressPercent));
     return React.createElement(React.Fragment, null,
+        React.createElement("span", {
+            "data-ra-rank-recommendation-pending-progress": "",
+            role: "img",
+            "aria-label": `残り時間 ${safePercent}%`,
+            style: {
+                "--ra-rank-recommendation-pending-progress": `${safePercent}%`
+            } as React.CSSProperties
+        }),
         React.createElement("span", null, props.label),
         renderButton(props.cancelButton)
     );
