@@ -10282,12 +10282,6 @@ function formatRankRecommendationLatestChangeFreshness(daysAgo: number | null): 
     if (daysAgo === null) {
         return null;
     }
-    if (daysAgo === 0) {
-        return "今日";
-    }
-    if (daysAgo === 1) {
-        return "前日";
-    }
     return `${daysAgo}日前`;
 }
 
