@@ -569,7 +569,7 @@ type EvaluationResult = {
 入力に含める情報:
 
 - `observedPrefix`: `asOfDate` 時点で観測済みの `CurveObservation` だけを含める。`asOfDate` より後の observation は入れない。
-- `referenceCurves.recentWeighted90`: 同じ `targetStayDate`、`asOfDate`、`scope`、`roomGroupId`、`segment` で計算した直近型 reference curve。欠損時は省略し、欠損理由を diagnostics に残す。
+- `referenceCurves.recentWeighted90`: 同じ `targetStayDate`、`asOfDate`、`scope`、`roomGroupId`、`segment` で計算した直近型 reference curve。欠損時は省略し、欠損理由を diagnostics に残す。直近型 reference curve が欠損している case では、季節型 reference curve を直近型として代用しない。
 - `referenceCurves.seasonalComponent`: 同じ `targetStayDate`、`asOfDate`、`scope`、`roomGroupId`、`segment` で計算した季節型 reference curve。欠損時は省略し、欠損理由を diagnostics に残す。
 - `capacityRooms`: capacity が取得できる場合に入れる。小キャパ判定と occupancy ratio 評価に使う。
 - `actualFinalRooms`: `targetStayDate` の final rooms。これは評価 target であり、model input として使わない。

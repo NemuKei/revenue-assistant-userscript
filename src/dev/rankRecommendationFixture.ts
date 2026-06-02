@@ -236,7 +236,16 @@ function buildRow(options: {
                     { values: ["ダブル", "12", "5/10", "1段低い", "fixture"], isTarget: false }
                 ]
             },
-            { kind: "text", value: options.action === "raise_watch" ? "上げ候補" : options.action === "lower_watch" ? "下げ候補" : "様子見", role: "recommended-action" },
+            {
+                kind: "recommendedAction",
+                value: options.action === "raise_watch" ? "上げ候補" : options.action === "lower_watch" ? "下げ候補" : "様子見",
+                role: "recommended-action",
+                title: "推奨と前回変更履歴の fixture",
+                historyText: "5/27・2日前",
+                quickSubmitButton: options.action === "watch"
+                    ? null
+                    : buildButton("推奨反映", "rank-change-submit")
+            },
             { kind: "text", value: options.reason, role: "reason", title: options.reason },
             { kind: "text", value: "有効", role: "status" }
         ],

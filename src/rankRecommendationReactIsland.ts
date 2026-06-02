@@ -72,8 +72,18 @@ export interface RankRecommendationReactRankGapCellSnapshot {
     }[];
 }
 
+export interface RankRecommendationReactRecommendedActionCellSnapshot {
+    kind: "recommendedAction";
+    value: string;
+    title?: string;
+    role?: string;
+    historyText: string | null;
+    quickSubmitButton: RankRecommendationReactButtonSnapshot | null;
+}
+
 export type RankRecommendationReactCellSnapshot =
     | RankRecommendationReactTextCellSnapshot
+    | RankRecommendationReactRecommendedActionCellSnapshot
     | RankRecommendationReactRankGapCellSnapshot;
 
 export interface RankRecommendationReactRowSnapshot {
@@ -372,6 +382,21 @@ function RankRecommendationReactRow(props: { row: RankRecommendationReactRowSnap
 
 function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellSnapshot }): React.ReactElement {
     const { cell } = props;
+    if (cell.kind === "recommendedAction") {
+        return React.createElement("td", {
+            title: cell.title,
+            [RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE]: cell.role ?? "recommended-action"
+        },
+            React.createElement("div", { "data-ra-rank-recommendation-recommended-action-layout": "" },
+                React.createElement("span", { "data-ra-rank-recommendation-recommended-action-label": "" }, cell.value),
+                cell.historyText === null
+                    ? null
+                    : React.createElement("span", { "data-ra-rank-recommendation-history": "" }, `前回 ${cell.historyText}`),
+                cell.quickSubmitButton === null ? null : renderButton(cell.quickSubmitButton)
+            )
+        );
+    }
+
     if (cell.kind === "rankGap") {
         return React.createElement("td", {
             [RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE]: "",
@@ -382,7 +407,7 @@ function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellS
                     type: "button",
                     [RANK_RECOMMENDATION_RANK_GAP_TRIGGER_ATTRIBUTE]: "",
                     [RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE]: "tooltip",
-                    title: cell.title,
+                    "aria-label": cell.title,
                     onClick: (event) => {
                         event.preventDefault();
                         event.stopPropagation();

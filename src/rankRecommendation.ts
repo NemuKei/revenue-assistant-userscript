@@ -199,6 +199,7 @@ function buildRankRecommendationCandidate(options: {
     const weekdayContextSignal = curveEvidence?.weekdayContextSignal ?? null;
     const ownPricePositionSignal = curveEvidence?.ownPricePositionSignal ?? null;
     const ownPricePositionComparableGuestCount = curveEvidence?.ownPricePositionComparableGuestCount ?? 0;
+    const isCapacityThreeReviewTarget = maxRooms === 3;
 
     let action: RankRecommendationAction;
     let priority: RankRecommendationPriority;
@@ -219,13 +220,24 @@ function buildRankRecommendationCandidate(options: {
     } else {
         const remainingRatio = Math.max(0, Math.min(1, remainingRooms / maxRooms));
         const occupancyRatio = 1 - remainingRatio;
+        const hasCapacityPressure = remainingRooms <= 2 || occupancyRatio >= 0.85;
+        const hasConfirmedRaisePaceEvidence = isPositive(allDeviation) || isPositive(transientDeviation);
+        if (isCapacityThreeReviewTarget) {
+            diagnostics.push("small_capacity_three_review");
+        }
         if (isGroupDriven && (remainingRooms <= 2 || occupancyRatio >= 0.85)) {
             action = "watch";
             priority = "medium";
             confidence = 0.35;
             diagnostics.push("group_driven_raise_suppressed");
             reasonCodes.push("団体主因");
-        } else if ((remainingRooms <= 2 || occupancyRatio >= 0.85) && (curveEvidence === null || allDeviation === null || allDeviation >= 0 || isPositive(transientDeviation))) {
+        } else if (isCapacityThreeReviewTarget && hasCapacityPressure && !hasConfirmedRaisePaceEvidence) {
+            action = "watch";
+            priority = "medium";
+            confidence = 0.32;
+            diagnostics.push("small_capacity_reference_confirmation_required");
+            reasonCodes.push("小キャパ確認");
+        } else if (hasCapacityPressure && (curveEvidence === null || allDeviation === null || allDeviation >= 0 || isPositive(transientDeviation))) {
             action = "raise_watch";
             priority = "high";
             confidence = curveEvidence === null || allDeviation === null ? 0.45 : 0.62;

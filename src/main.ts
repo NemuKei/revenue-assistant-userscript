@@ -8878,6 +8878,7 @@ function buildRankRecommendationReactRowSnapshot(row: RankRecommendationListView
         reasonFingerprint: rankChangeProposal.reasonFingerprint
     });
     const hasPendingDecision = pendingDecision !== null;
+    const isRankChangeUnavailable = isRankChangeBlockedByScope || rankOptions.length === 0;
 
     return {
         key: `${candidate.stayDate}:${candidate.roomGroupId}:${candidate.reasonFingerprint}`,
@@ -8891,7 +8892,8 @@ function buildRankRecommendationReactRowSnapshot(row: RankRecommendationListView
             actionLabel,
             reasonText,
             cautionText,
-            rankChangeProposal
+            rankChangeProposal,
+            isRankChangeUnavailable
         ),
         analyzeLink: {
             href: `/analyze/${formatCompactDateForDisplay(candidate.stayDate)}`,
@@ -8911,11 +8913,11 @@ function buildRankRecommendationReactRowSnapshot(row: RankRecommendationListView
         inlineRankChange: {
             options: rankOptions,
             selectedCode: rankChangeProposal.targetRankCode,
-            disabled: !rankChangeProposal.enabled || isRankChangeBlockedByScope || rankOptions.length === 0,
+            disabled: !rankChangeProposal.enabled || isRankChangeUnavailable,
             submitButton: buildRankRecommendationRankChangeSubmitButtonSnapshot(
                 rankChangeProposal,
                 "反映する",
-                !rankChangeProposal.enabled || isRankChangeBlockedByScope || rankOptions.length === 0
+                !rankChangeProposal.enabled || isRankChangeUnavailable
             )
         },
         rankChangeButton: {
@@ -8962,8 +8964,10 @@ function buildRankRecommendationReactCells(
     actionLabel: string,
     reasonText: string,
     cautionText: string,
-    rankChangeProposal: RankRecommendationRankChangeProposal
+    rankChangeProposal: RankRecommendationRankChangeProposal,
+    isRankChangeUnavailable: boolean
 ): RankRecommendationReactCellSnapshot[] {
+    const latestChangeText = formatRankRecommendationLatestChangeCellText(displayInfo);
     return [
         { kind: "text", value: formatRankRecommendationPriority(candidate.priority), role: "priority" },
         {
@@ -8991,12 +8995,31 @@ function buildRankRecommendationReactCells(
             title: [
                 candidate.roomGroupName,
                 `データ: ${formatRankRecommendationRawSourceStatusTitle(candidate, curvePreviewInfo)}`,
-                `前回変更: ${formatRankRecommendationLatestChangeTitle(displayInfo)}`
+                formatRankRecommendationLatestChangeTitle(displayInfo)
             ].join("\n"),
             role: "room-group"
         },
         buildRankRecommendationReactRankGapCell(candidate, displayInfo?.rankGapContext ?? null),
-        { kind: "text", value: actionLabel, role: "recommended-action" },
+        {
+            kind: "recommendedAction",
+            value: actionLabel,
+            title: [
+                `推奨: ${actionLabel}`,
+                formatRankRecommendationLatestChangeTitle(displayInfo),
+                rankChangeProposal.enabled
+                    ? "推奨反映: 5秒の送信待ちと送信前確認を通します"
+                    : `推奨反映: 非表示または無効 (${formatRankRecommendationRankChangeDisabledReasons(rankChangeProposal.disabledReasons)})`
+            ].join("\n"),
+            role: "recommended-action",
+            historyText: latestChangeText === "-" ? null : latestChangeText,
+            quickSubmitButton: rankChangeProposal.targetRankCode === null || rankChangeProposal.targetRankName === null
+                ? null
+                : buildRankRecommendationRankChangeSubmitButtonSnapshot(
+                    rankChangeProposal,
+                    "推奨反映",
+                    !rankChangeProposal.enabled || isRankChangeUnavailable
+                )
+        },
         {
             kind: "text",
             value: reasonText,
@@ -10325,7 +10348,12 @@ function summarizeRankRecommendationConfidenceCautions(diagnostics: readonly str
     if (hasDiagnostic("group_driven_raise_suppressed")) {
         labels.push("団体主因のため上げ判断を抑制");
     }
-    if (hasDiagnostic("small_capacity") || hasDiagnostic("capacity_missing")) {
+    if (
+        hasDiagnostic("small_capacity")
+        || hasDiagnostic("capacity_missing")
+        || hasDiagnostic("small_capacity_three_review")
+        || hasDiagnostic("small_capacity_reference_confirmation_required")
+    ) {
         labels.push("部屋数条件により判定制限");
     }
     if (hasDiagnostic(/^recommended_rank_/)) {
@@ -17268,6 +17296,24 @@ function ensureGroupRoomStyles(): void {
         [${RANK_RECOMMENDATION_HISTORY_ATTRIBUTE}] {
             color: #50627a;
             font-weight: 800;
+        }
+
+        [data-ra-rank-recommendation-recommended-action-layout] {
+            display: inline-grid;
+            gap: 4px;
+            justify-items: start;
+            white-space: normal;
+        }
+
+        [data-ra-rank-recommendation-recommended-action-label] {
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
+        [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] [${RANK_RECOMMENDATION_HISTORY_ATTRIBUTE}] {
+            font-size: 11px;
+            line-height: 1.25;
+            white-space: nowrap;
         }
 
         [${RANK_RECOMMENDATION_RANK_GAP_ATTRIBUTE}] {

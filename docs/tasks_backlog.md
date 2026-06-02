@@ -7086,7 +7086,8 @@
 ### RAU-UX-91 top list に最終変更履歴を相対日数で表示する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - `推奨` cell に `前回 5/27・2日前` のような補助表示を追加し、詳細は同じ cell と部屋タイプ cell の title で確認する形にした。9 列 row layout は維持し、`前回変更` の独立列は戻していない。
 - 目的:
   - 利用者が料金調整候補を読む時点で、同じ宿泊日と部屋タイプに対する直近の rank 変更が何日前だったかを確認できるようにする。例は `2日前`、`5/31・2日前` のような短い表記である。これにより、直近に変更済みの候補が再表示されている理由を、候補行を開く前に判断できるようにする。
 - スコープ:
@@ -7111,7 +7112,8 @@
 ### RAU-UX-92 小キャパ候補の過剰発火を再評価する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - capacity 3 の候補を一律に無効化せず、capacity pressure がある一方で `all` または `transient` の正の reference deviation を確認できない場合は、`raise_watch` / high へ上げず、`watch` / medium と `small_capacity_reference_confirmation_required` diagnostics に落とす形にした。
 - 目的:
   - キャパ 3 程度の小さい部屋タイプで、1 室の差や直近変更履歴により料金調整候補が過剰に発火していないか確認する。利用者観測では、キャンプ系の部屋タイプで最終変更が 2 日前でも候補に出ている可能性がある。この task では、小キャパ、直近 rank 変更、同日他部屋タイプとの rank gap、cooldown 期間をまとめて再評価する。
 - スコープ:
@@ -7136,7 +7138,8 @@
 ### RAU-UX-93 直近型 reference curve の算出と表示を検証する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - 既存契約と実装を確認し、直近型 reference curve は derived record または保存済み raw source から計算できる場合だけ表示根拠にし、欠損時に季節型 reference curve を直近型として代用しない判断を `docs/spec_002_curve_core.md` と `docs/spec_003_rank_recommendation_signal.md` に明記した。top preview のための `/api/v4/booking_curve` request 範囲、request 件数、request 間隔は変更していない。
 - 目的:
   - booking curve preview または Analyze 表示で、`直近型` reference curve が意図した入力から正しく算出、保存、表示されているか確認する。利用者観測では、直近型 reference curve が正しく出ていない可能性がある。
 - スコープ:
@@ -7160,7 +7163,8 @@
 ### RAU-UX-94 `下げ余地なし` 候補を表示対象に残すか再評価する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - `下限ランク: 下げ余地なし` と `上限ランク: 上げ余地なし` は、rank ladder の端で隣接 rank が存在しないことを示す参考候補として残す判断にした。recommended rank が存在しないため `推奨反映` button は出さず、利用者の次操作は `Analyzeで確認`、`曲線`、`対応不要` の判断に寄せる。
 - 目的:
   - `下限ランク: 下げ余地なし` のように実際には rank を下げられない候補を、料金調整候補 list に表示し続ける意味があるか判断する。候補に残す場合は、利用者が次に何を判断すべきかを明示する。候補から外す場合は、診断や summary で理由を確認できるようにする。
 - スコープ:
@@ -7182,7 +7186,8 @@
 ### RAU-UX-95 推奨列に `推奨反映` button を追加するか判断して実装する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - recommended rank が存在する行に `推奨反映` button を追加した。button は既存 `rank-change-submit` action を使い、既存の 5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、反映確認を通す。recommended rank がない行では quick submit を出さない。
 - 目的:
   - 料金調整候補で推奨 rank が既に分かっている場合に、`rank調整` preview を開いてから `反映する` を押す現在のクリック数を減らす。利用者案では、推奨列の `1段上げ検討: 19` の下側に `推奨反映` button を置く。
 - スコープ:
@@ -7206,7 +7211,8 @@
 ### RAU-UX-96 現ランク tooltip の二重表示を解消する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - 原因は custom tooltip trigger に native `title` を同時に付けていたことだった。trigger は `aria-label` へ切り替え、custom tooltip だけを表示入口にした。tooltip の入力 data、rank gap 計算、candidate scoring は変更していない。
 - 目的:
   - top 料金調整候補 list の `現ランク` tooltip が二重に重なって表示される状態を解消する。利用者が同日他部屋タイプとの rank gap を確認するときに、tooltip 同士が重なって読みにくくならないようにする。
 - スコープ:
@@ -7227,7 +7233,8 @@
 ### RAU-UX-97 Analyze 上部に全タイプ推奨一覧と一括反映入口を設計する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - 今回は設計判断で完了し、Analyze 上部の全タイプ推奨一覧と一括反映入口は実装しない判断にした。top list の単一行 `推奨反映` と異なり、一括反映には対象行選択、request shape、CSRF、権限差、同時更新、partial failure、error response、反映確認、除外候補の扱いを別途確認する必要があるためである。
 - 目的:
   - Analyze 日付ページの上部 summary 付近で、その日の全部屋タイプの推奨一覧を確認できるようにする。さらに、将来の user-confirmed bulk apply を見据え、一括反映 button を置けるかを設計する。ただし、一括反映は既存 spec で first phase の非目標であり、安全条件が揃うまで実 POST を行わない。
 - スコープ:
@@ -7251,7 +7258,8 @@
 ### RAU-UX-98 最終変更履歴表示後に直近変更済み候補の再発火理由を分類する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - 前回変更履歴を `推奨` cell の補助表示と title に入れたため、直近変更済み候補が再表示される理由は、候補行本体の前回変更表示、title の履歴詳細、既存 lifecycle diagnostics、reasonFingerprint、confidence 表示段階、user decision cooldown から分類する方針にした。分類不能な場合は、表示不足ではなく実データ側の reasonFingerprint または販売状況変化の追加観測 task として扱う。
 - 目的:
   - `RAU-UX-91` で top list に最終変更履歴を表示した後、直近に rank 変更済みの候補が再び表示される理由を、利用者が実画面で短時間に分類できるか確認する。分類できない場合は、表示項目、tooltip、diagnostics、candidate lifecycle のどこを追加または修正する必要があるかを判断する。
 - スコープ:
@@ -7275,7 +7283,8 @@
 ### RAU-UX-99 直近型 reference curve 検証結果を小キャパ抑制条件へ接続するか判断する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-02）。
+  - 直近型 reference curve の検証結果は、capacity 3 の過剰発火抑制条件へ diagnostics と priority / confidence 低下として接続した。入力条件は reference deviation の `all` または `transient` が正であることを確認できるか、capacity が 3 か、remaining rooms が少ないか、稼働率が高いかである。出力は候補削除ではなく `watch` / medium と小キャパ確認 diagnostics である。
 - 目的:
   - `RAU-UX-93` で直近型 reference curve の算出と表示を検証した後、その結果を `RAU-UX-92` の小キャパ候補過剰発火の抑制条件へ接続するべきか判断する。直近型 curve が誤っている場合、キャパ 3 前後の候補が過剰に出ている原因を cooldown や capacity 閾値だけに寄せず、reference 入力の誤りとして切り分ける。
 - スコープ:
@@ -7301,27 +7310,23 @@
 
 Now:
 
-- `RAU-UX-91` top list に最終変更履歴を相対日数で表示する
-- `RAU-UX-93` 直近型 reference curve の算出と表示を検証する
+- なし
 
 Next:
 
-- `RAU-UX-98` 最終変更履歴表示後に直近変更済み候補の再発火理由を分類する
-- `RAU-UX-99` 直近型 reference curve 検証結果を小キャパ抑制条件へ接続するか判断する
+- なし
 
 After Next:
 
-- `RAU-UX-92` 小キャパ候補の過剰発火を再評価する
-- `RAU-UX-94` `下げ余地なし` 候補を表示対象に残すか再評価する
-- `RAU-UX-96` 現ランク tooltip の二重表示を解消する
+- なし
 
 Later:
 
-- `RAU-UX-95` 推奨列に `推奨反映` button を追加するか判断して実装する
-- `RAU-UX-97` Analyze 上部に全タイプ推奨一覧と一括反映入口を設計する
+- なし
 
 統合判断:
 
+- 2026-06-02 に、未着手だった `RAU-UX-91` から `RAU-UX-99` を完了した。top list は 9 列 row layout を維持し、前回変更履歴を `推奨` cell の補助表示と title へ入れた。recommended rank がある候補には `推奨反映` button を追加したが、既存の単一行 rank 変更 handler、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、反映確認を通す。capacity 3 の候補は一律除外せず、capacity pressure があっても正の `all` または `transient` reference deviation を確認できない場合は `watch` / medium と小キャパ確認 diagnostics へ落とす。直近型 reference curve が欠損している場合に季節型を直近型として代用しない契約を `docs/spec_002_curve_core.md` と `docs/spec_003_rank_recommendation_signal.md` に明記した。rank ladder の端の `上げ余地なし` / `下げ余地なし` 候補は、操作不能な理由を示す参考候補として残し、quick submit は出さない。Analyze 上部の全タイプ推奨一覧と一括反映入口は、request shape、CSRF、権限差、同時更新、partial failure、反映確認が未確認であるため今回は実装しない。この完了により Remaining Task Triage は空である。
 - 2026-06-02 に、直前の完了報告で推奨した 2 件を `RAU-UX-98` と `RAU-UX-99` として task 化した。`RAU-UX-98` は、`RAU-UX-91` の最終変更履歴表示後に、直近変更済み候補が再表示される理由を候補行、tooltip、diagnostics で分類できるか確認する task である。`RAU-UX-99` は、`RAU-UX-93` の直近型 reference curve 検証結果を、小キャパ候補の過剰発火抑制条件へ接続するか判断する task である。どちらも `RAU-UX-91` と `RAU-UX-93` の結果を使うため Next とし、小キャパ抑制の本体である `RAU-UX-92` は After Next へ下げる。これにより、`RAU-UX-92` では cooldown、同日他部屋タイプとの rank gap、capacity 別条件だけでなく、直近変更履歴表示と reference curve 検証の結果を使って判断できる。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「自動反映より安全な作業キューを優先する」原則で今回の順序を説明できるため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、利用者が実画面で確認した 7 件の改善観点を `RAU-UX-91` から `RAU-UX-97` として task 化した。`RAU-UX-91` は最終変更履歴を `◯日前` 形式で読みやすくし、直近変更済み候補の再表示理由を確認する土台になるため Now とする。`RAU-UX-93` は直近型 reference curve の正誤が候補根拠と preview の信頼性に直接影響するため Now とする。`RAU-UX-92` は小キャパ候補の過剰発火を、最終変更履歴、同日他部屋タイプとの rank gap、capacity 別 cooldown で再評価する task であり、`RAU-UX-91` と `RAU-UX-93` の確認結果を使うため Next とする。`RAU-UX-94` は候補 list のノイズ削減、`RAU-UX-96` は tooltip の視認性 bug であり、候補品質の確認後に扱うため After Next とする。`RAU-UX-95` の `推奨反映` button と `RAU-UX-97` の Analyze 上部一括反映入口は Revenue Assistant write API に近い操作であるため、候補品質、安全 guard、bulk apply 非目標との整合を確認した後の Later とする。`docs/context/INTENT.md` は確認済みであり、既存の「トップ画面の料金調整候補だけで一定の調整意思決定を完結できるようにする」「シンプルで分かりやすい UI / UX を優先する」「自動反映より安全な作業キューを優先する」原則で今回の順序を説明できるため、判断原則は更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-01 に、未着手だった `RAU-UX-87`、`RAU-UX-88`、`RAU-UX-89`、`RAU-UX-90` を完了した。`RAU-UX-87` では通常 Chrome の Revenue Assistant top 画面で、副操作 `要点`、`様子見`、`対応不要` が閉じた `その他` details 内にあり、主操作 `Analyzeで確認`、`曲線`、`rank調整` と分離されていることを確認した。副操作は、判断補助または browser-local decision 保存操作であり、誤押下防止と表示密度維持のため details 内維持とした。`RAU-UX-88` では、現在の表示中 10 行は `rank変更: 送信候補あり` だったが、実装上は `送信不可` と `確認不足` が同時に成立した場合に `送信不可` を badge 本文へ優先表示するよう変更し、`docs/spec_003_rank_recommendation_signal.md` に反映した。`RAU-UX-89` では `smoke:distribution` に page websocket fallback と CDP command timeout を追加した。publish 前の `0.1.0.359` の配布版 top smoke と page websocket fallback smoke は pass した。push 後の Publish Userscript run `26751922797` は success で、GitHub Pages published version と Tampermonkey installed version は `0.1.0.360` に揃えた。最終の `0.1.0.360` 配布版 top smoke も pass した。`RAU-UX-90` では `react-doctor/js-combine-iterations` を対象にし、React Doctor は 49 issues から 39 issues になった。この完了により Remaining Task Triage は空である。
