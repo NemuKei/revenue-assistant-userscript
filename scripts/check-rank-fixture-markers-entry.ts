@@ -20,6 +20,18 @@ function assertMetric(metric: MarkerMetric): void {
     }
 }
 
+function assertContains(renderedHtml: string, label: string, expectedText: string): void {
+    if (!renderedHtml.includes(expectedText)) {
+        throw new Error(`${label}: expected fixture HTML to include ${expectedText}`);
+    }
+}
+
+function assertNotMatches(renderedHtml: string, label: string, pattern: RegExp): void {
+    if (pattern.test(renderedHtml)) {
+        throw new Error(`${label}: fixture HTML still contains a forbidden date-based latest-change display`);
+    }
+}
+
 export function runRankFixtureMarkerCheck(): void {
     const renderedHtml = buildAllFixtureSnapshots()
         .map((snapshot) => (
@@ -40,6 +52,8 @@ export function runRankFixtureMarkerCheck(): void {
         { name: "primary actions wrappers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-primary-actions/g), min: rowCount },
         { name: "secondary action markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="secondary-actions"/g), min: rowCount },
         { name: "status badge cells", count: countMatches(renderedHtml, /data-ra-rank-recommendation-cell-role="status"/g), min: rowCount },
+        { name: "history wrappers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-history=""/g), min: 1 },
+        { name: "history item markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-history-item=""/g), min: 2 },
         { name: "popover markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="popover"/g), min: rowCount },
         { name: "tooltip markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="tooltip"/g), min: rowCount },
         { name: "pending notice markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="pending-notice"/g), min: 2 },
@@ -53,6 +67,9 @@ export function runRankFixtureMarkerCheck(): void {
     for (const metric of metrics) {
         assertMetric(metric);
     }
+    assertContains(renderedHtml, "latest-change history rank item", "ランク 11→10");
+    assertContains(renderedHtml, "latest-change history freshness item", "経過 2日前");
+    assertNotMatches(renderedHtml, "latest-change history date display", /前回\s+\d{1,2}\/\d{1,2}|5\/27・2日前/g);
 
     console.log("rank fixture marker check passed");
     for (const metric of metrics) {

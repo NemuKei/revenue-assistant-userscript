@@ -223,9 +223,9 @@ function buildRow(options: {
         status: "eligible",
         cells: [
             { kind: "text", value: options.priority === "high" ? "高" : options.priority === "medium" ? "中" : "低", role: "priority" },
-            { kind: "text", value: "高・注意あり", role: "decision-summary", title: "宿泊まで: 53日\nデータ: 保存済み\n前回変更: 5/27・2日前" },
+            { kind: "text", value: "高・注意あり", role: "decision-summary", title: "宿泊まで: 53日\nデータ: 保存済み\n前回変更: 2日前" },
             { kind: "text", value: options.stayDate, role: "stay-date", title: "宿泊まで: 53日" },
-            { kind: "text", value: options.roomGroup, role: "room-group", title: `${options.roomGroup}\nデータ: 保存済み\n前回変更: 5/27・2日前` },
+            { kind: "text", value: options.roomGroup, role: "room-group", title: `${options.roomGroup}\nデータ: 保存済み\n前回変更: 2日前` },
             {
                 kind: "rankGap",
                 currentRankText: options.currentRank,
@@ -241,7 +241,10 @@ function buildRow(options: {
                 value: options.action === "raise_watch" ? "上げ候補" : options.action === "lower_watch" ? "下げ候補" : "様子見",
                 role: "recommended-action",
                 title: "推奨と前回変更履歴の fixture",
-                historyText: "5/27・2日前",
+                historyItems: [
+                    { label: "ランク", value: "11→10" },
+                    { label: "経過", value: "2日前" }
+                ],
                 quickSubmitButton: options.action === "watch"
                     ? null
                     : buildButton("推奨反映", "rank-change-submit")

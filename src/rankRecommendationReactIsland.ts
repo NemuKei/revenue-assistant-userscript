@@ -77,7 +77,10 @@ export interface RankRecommendationReactRecommendedActionCellSnapshot {
     value: string;
     title?: string;
     role?: string;
-    historyText: string | null;
+    historyItems: readonly {
+        label: string;
+        value: string;
+    }[];
     quickSubmitButton: RankRecommendationReactButtonSnapshot | null;
 }
 
@@ -389,9 +392,19 @@ function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellS
         },
             React.createElement("div", { "data-ra-rank-recommendation-recommended-action-layout": "" },
                 React.createElement("span", { "data-ra-rank-recommendation-recommended-action-label": "" }, cell.value),
-                cell.historyText === null
+                cell.historyItems.length === 0
                     ? null
-                    : React.createElement("span", { "data-ra-rank-recommendation-history": "" }, `前回 ${cell.historyText}`),
+                    : React.createElement("span", { "data-ra-rank-recommendation-history": "" },
+                        React.createElement("span", { "data-ra-rank-recommendation-history-prefix": "" }, "前回"),
+                        ...cell.historyItems.map((item) => React.createElement(
+                            "span",
+                            {
+                                key: `${item.label}:${item.value}`,
+                                "data-ra-rank-recommendation-history-item": ""
+                            },
+                            item.label === "" ? item.value : `${item.label} ${item.value}`
+                        ))
+                    ),
                 cell.quickSubmitButton === null ? null : renderButton(cell.quickSubmitButton)
             )
         );

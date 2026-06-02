@@ -906,6 +906,11 @@ interface RankRecommendationDisplayInfo {
     signature: string;
 }
 
+interface RankRecommendationLatestChangeHistoryItem {
+    label: string;
+    value: string;
+}
+
 interface RankRecommendationListViewModel {
     columns: string[];
     rows: RankRecommendationListViewRow[];
@@ -8967,7 +8972,7 @@ function buildRankRecommendationReactCells(
     rankChangeProposal: RankRecommendationRankChangeProposal,
     isRankChangeUnavailable: boolean
 ): RankRecommendationReactCellSnapshot[] {
-    const latestChangeText = formatRankRecommendationLatestChangeCellText(displayInfo);
+    const latestChangeHistoryItems = buildRankRecommendationLatestChangeHistoryItems(displayInfo);
     return [
         { kind: "text", value: formatRankRecommendationPriority(candidate.priority), role: "priority" },
         {
@@ -9011,7 +9016,7 @@ function buildRankRecommendationReactCells(
                     : `推奨反映: 非表示または無効 (${formatRankRecommendationRankChangeDisabledReasons(rankChangeProposal.disabledReasons)})`
             ].join("\n"),
             role: "recommended-action",
-            historyText: latestChangeText === "-" ? null : latestChangeText,
+            historyItems: latestChangeHistoryItems,
             quickSubmitButton: rankChangeProposal.targetRankCode === null || rankChangeProposal.targetRankName === null
                 ? null
                 : buildRankRecommendationRankChangeSubmitButtonSnapshot(
@@ -10226,10 +10231,34 @@ function formatRankRecommendationLatestChangeCellText(displayInfo: RankRecommend
         return "-";
     }
 
-    const displayDate = formatCompactMonthDayForDisplay(latestRankChange.reflectedDateKey)
-        ?? formatCompactDateForDisplay(latestRankChange.reflectedDateKey);
     const freshness = formatRankRecommendationLatestChangeFreshness(latestRankChange.daysAgo);
-    return freshness === null ? displayDate : `${displayDate}・${freshness}`;
+    return freshness === null ? "変更あり" : freshness;
+}
+
+function buildRankRecommendationLatestChangeHistoryItems(
+    displayInfo: RankRecommendationDisplayInfo | null
+): RankRecommendationLatestChangeHistoryItem[] {
+    const latestRankChange = displayInfo?.latestRankChange ?? null;
+    if (latestRankChange === null) {
+        return [];
+    }
+
+    const items: RankRecommendationLatestChangeHistoryItem[] = [];
+    const transition = formatSalesSettingRankTransition(latestRankChange.beforeRankName, latestRankChange.afterRankName);
+    if (transition !== "-") {
+        items.push({ label: "ランク", value: transition });
+    }
+
+    const freshness = formatRankRecommendationLatestChangeFreshness(latestRankChange.daysAgo);
+    if (freshness !== null) {
+        items.push({ label: "経過", value: freshness });
+    }
+
+    if (items.length === 0) {
+        items.push({ label: "", value: "変更あり" });
+    }
+
+    return items;
 }
 
 function formatRankRecommendationLatestChangeTitle(displayInfo: RankRecommendationDisplayInfo | null): string {
@@ -17311,8 +17340,16 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] [${RANK_RECOMMENDATION_HISTORY_ATTRIBUTE}] {
+            display: inline-flex;
+            flex-wrap: wrap;
+            gap: 2px 6px;
+            align-items: center;
             font-size: 11px;
             line-height: 1.25;
+        }
+
+        [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] [data-ra-rank-recommendation-history-prefix],
+        [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] [data-ra-rank-recommendation-history-item] {
             white-space: nowrap;
         }
 
