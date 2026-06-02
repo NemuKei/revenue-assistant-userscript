@@ -437,7 +437,7 @@ function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellS
                 React.createElement("div", { [RANK_RECOMMENDATION_RANK_GAP_TOOLTIP_ATTRIBUTE]: "" },
                     React.createElement("table", null,
                         React.createElement("thead", null,
-                            React.createElement("tr", null, ["部屋タイプ", "現ランク", "OH/キャパ", "対象候補との差", "備考"].map((label) => (
+                            React.createElement("tr", null, ["部屋タイプ", "現ランク", "販売室数", "対象候補との差", "備考"].map((label) => (
                                 React.createElement("th", { key: label, scope: "col" }, label)
                             )))
                         ),

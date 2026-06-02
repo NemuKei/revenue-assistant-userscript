@@ -9284,7 +9284,7 @@ function buildRankRecommendationReactRankGapCell(
         currentRankText: candidate.currentRankName ?? "-",
         occupancyCapacityText: targetEntry === null
             ? null
-            : `OH/キャパ ${formatRankRecommendationRankGapOccupancyCapacity(targetEntry)}`,
+            : `販売室数：${formatRankRecommendationRankGapOccupancyCapacity(targetEntry)}`,
         title: "同一宿泊日の全部屋タイプの現ランクを表示",
         role: "current-rank",
         entries: context.entries.map((entry) => ({
@@ -9976,7 +9976,7 @@ function formatRankRecommendationRankGapNote(
         notes.push("順序未確認");
     }
     if (entry.diagnostics.includes("occupancy_capacity_missing")) {
-        notes.push("OH未取得");
+        notes.push("販売室数未取得");
     }
 
     return notes.length === 0 ? "-" : Array.from(new Set(notes)).join(" / ");

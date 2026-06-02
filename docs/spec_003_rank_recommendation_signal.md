@@ -569,7 +569,7 @@ rank response dataset の first contract:
 - 宿泊まで。`stayDate - asOfDate` を日数で表示する。当日は `当日`、日数を計算できない場合または宿泊日が `asOfDate` より過去の場合は `-` と表示する。これは作業の緊急度を読みやすくするための表示であり、priority、confidence、candidate lifecycle、API request 範囲は変更しない。
 - 前回変更。`/api/v3/lincoln/suggest/status` で取得済みの rank change history から、同じ `stayDate x roomGroupId` の最新 rank 変更内容と経過日を表示する。2026-06-02 時点の 9 列 row layout では、前回変更を独立列へ戻さず、`推奨` cell の補助行に `前回 ランク 11→10 経過 2日前` のように項目別で表示する。表示する項目は、取得できる場合は `ランク 変更前→変更後` と `経過 n日前` である。月日や年月日は補助行へ表示しない。履歴がない場合は cell 本体に補助行を出さず、title 側で履歴なしを確認できる状態にする。hover tooltip または title では、経過日、変更内容、実行者が取れる場合の実行者、候補が表示されている理由を表示する。候補表示理由は、前回変更が基準日より前であること、基準日以降の変更で通常は resolved 非表示になること、利用者判断がないこと、様子見 cooldown が切れていること、前回判断とは別の `reasonFingerprint` であること、または前回判断後に `confidence` 表示段階が上がったことを区別する。この表示は表示補助であり、cooldown 期間、resolved 判定、candidate scoring、priority、confidence、API request 範囲は変更しない。
 - 部屋タイプ。
-- 現ランク。`RAU-RR-52` では、この cell に hover / focus tooltip を追加し、同じ宿泊日の全部屋タイプの現ランクを一覧表示する。tooltip の列は `部屋タイプ`、`現ランク`、`対象候補との差`、`備考` とする。`対象候補との差` は rank order source が確認できる場合だけ表示し、rank order が `unresolved` の場合、対象候補または比較対象の current rank が rank ladder 上で解決できない場合は `順序未確認` と表示する。`RAU-RR-57` では、この tooltip に `OH/キャパ` 列を追加する。`OH` は `On Hand`、ここでは `/api/v1/suggest/output/current_settings` の `max_num_room - remaining_num_room` で計算する予約済み室数を指す。`キャパ` は同じ response の `max_num_room` を指す。この tooltip は UI 表示用であり、価格計算、候補方向、priority、confidence、reasonFingerprint には使わない。
+- 現ランク。`RAU-RR-52` では、この cell に hover / focus tooltip を追加し、同じ宿泊日の全部屋タイプの現ランクを一覧表示する。tooltip の列は `部屋タイプ`、`現ランク`、`対象候補との差`、`備考` とする。`対象候補との差` は rank order source が確認できる場合だけ表示し、rank order が `unresolved` の場合、対象候補または比較対象の current rank が rank ladder 上で解決できない場合は `順序未確認` と表示する。`RAU-RR-57` では、この tooltip に `販売室数` 列を追加する。`販売室数` は、ここでは `/api/v1/suggest/output/current_settings` の `max_num_room - remaining_num_room` で計算する予約済み室数を指す。分母は同じ response の `max_num_room` を指す。この tooltip は UI 表示用であり、価格計算、候補方向、priority、confidence、reasonFingerprint には使わない。
 - 推奨方向または推奨ランク方向。recommended rank が存在し、既存の単一行 rank 変更 guard を通せる行では、同じ cell 内に `推奨反映` button を表示してよい。この button は既存 `rank-change-submit` handler を使い、押下直後に Revenue Assistant へ POST せず、5 秒 pending、取消、送信直前 current rank 再取得、rank status 再取得、同一 `stayDate x roomGroup` pending block、反映確認を必ず通す。rank ladder の端で `上限ランク: 上げ余地なし` または `下限ランク: 下げ余地なし` になる候補、recommended rank がない候補、送信不可 diagnostics がある候補では quick submit を出さない。
 - rank order の現在 source と、高ランクから低ランクへの順序。
 - 利用者が high-to-low の rank 順序を手動保存する入口、現在の入力順を逆順にして保存する入口、保存失敗理由を具体的に表示する status、推定順序へ戻す reset 入口。
@@ -726,9 +726,9 @@ status は次を持つ。
 
 ## Current Rank Occupancy Display
 
-トップ料金調整候補 list の `現ランク` cell では、current rank の下に `OH/キャパ current/max` を補助行として表示する。`OH` は `On Hand` の略であり、ここでは `/api/v1/suggest/output/current_settings` の `max_num_room - remaining_num_room` で計算する現在の使用済みまたは確保済み室数を指す。`キャパ` は同じ response の `max_num_room` を指す。
+トップ料金調整候補 list の `現ランク` cell では、current rank の値と販売室数を別行に分け、current rank の下に `販売室数：current/max` を補助行として表示する。`販売室数` は、ここでは `/api/v1/suggest/output/current_settings` の `max_num_room - remaining_num_room` で計算する現在の使用済みまたは確保済み室数を指す。分母は同じ response の `max_num_room` を指す。
 
-この表示は、同じ cell の rank gap tooltip に出している `OH/キャパ` と同じ計算にそろえる。`remaining_num_room` または `max_num_room` が未取得、不正、または `max_num_room <= 0` の場合は推測値を出さず、補助行を表示しないか tooltip 側で `OH未取得` と表示する。`OH/キャパ` は UI 表示用であり、candidate scoring、priority、confidence、reasonFingerprint、rank change payload には使わない。
+この表示は、同じ cell の rank gap tooltip に出している `販売室数` と同じ計算にそろえる。`remaining_num_room` または `max_num_room` が未取得、不正、または `max_num_room <= 0` の場合は推測値を出さず、補助行を表示しないか tooltip 側で `販売室数未取得` と表示する。`販売室数` は UI 表示用であり、candidate scoring、priority、confidence、reasonFingerprint、rank change payload には使わない。
 
 ## Competitor Baseline Deviation
 

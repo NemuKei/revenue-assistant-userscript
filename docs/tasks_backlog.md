@@ -870,37 +870,37 @@
   - `spec-checkpoint`: during-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
-### RAU-RR-57 現ランク tooltip に各部屋タイプの OH/キャパを追加する
+### RAU-RR-57 現ランク tooltip に各部屋タイプの販売室数を追加する
 
 - 目的:
-  - 料金調整候補の `現ランク` tooltip で、同一宿泊日の各部屋タイプについて、rank 差だけでなく予約済み室数とキャパシティも確認できるようにする。
+  - 料金調整候補の `現ランク` tooltip で、同一宿泊日の各部屋タイプについて、rank 差だけでなく販売室数と最大販売可能室数も確認できるようにする。
 - スコープ:
-  - 既存の `現ランク` tooltip に `OH/キャパ` 列を追加する。
-  - `OH` は `On Hand`、ここでは `/api/v1/suggest/output/current_settings` の `max_num_room - remaining_num_room` で計算する予約済み室数を指す。
-  - `キャパ` は同じ response の `max_num_room` を指す。
-  - 値は `OH / キャパ` の形式で表示する。
+  - 既存の `現ランク` tooltip に `販売室数` 列を追加する。
+  - `販売室数` は `/api/v1/suggest/output/current_settings` の `max_num_room - remaining_num_room` で計算する。
+  - 最大販売可能室数は同じ response の `max_num_room` を指す。
+  - 値は `current/max` の形式で表示する。
   - 既存 current settings response だけを使い、追加 API request は発生させない。
 - 非目標:
   - tooltip の既存列、rank 差、備考の意味を変えること。
   - candidate scoring、priority、confidence、reasonFingerprint、rank order、user decision、resolved 判定を変えること。
   - Revenue Assistant write API を実行すること。
 - 受け入れ条件:
-  - `現ランク` tooltip に `OH/キャパ` 列が表示される。
-  - 各部屋タイプの値が `OH / キャパ` 形式で表示される。
-  - `remaining_num_room` または `max_num_room` が取れない場合は `- / -` と表示し、備考に `OH未取得` を表示する。
+  - `現ランク` tooltip に `販売室数` 列が表示される。
+  - 各部屋タイプの値が `current/max` 形式で表示される。
+  - `remaining_num_room` または `max_num_room` が取れない場合は `- / -` と表示し、備考に `販売室数未取得` を表示する。
   - tooltip が通常の候補操作、`Analyzeで確認`、`曲線`、`rank調整`、`様子見`、`対応不要` を妨げない。
 - 実装内容:
   - `RankRecommendationRankGapEntry` に `occupancyCapacity` を追加した。
-  - `buildRankRecommendationRankGapContextByScope()` で、current settings response の `remaining_num_room` と `max_num_room` から `OH = max_num_room - remaining_num_room` を計算する。
-  - tooltip table に `OH/キャパ` 列を追加し、既存の `formatSalesSettingCapacity()` で `OH / キャパ` 形式へ整形する。
-  - `OH/キャパ` は UI 表示用の signature に含め、同じ宿泊日と部屋タイプの OH またはキャパが変わった場合に表示更新対象になるようにした。
+  - `buildRankRecommendationRankGapContextByScope()` で、current settings response の `remaining_num_room` と `max_num_room` から `販売室数 = max_num_room - remaining_num_room` を計算する。
+  - tooltip table に `販売室数` 列を追加し、既存の `formatSalesSettingCapacity()` で `current/max` 形式へ整形する。
+  - `販売室数` は UI 表示用の signature に含め、同じ宿泊日と部屋タイプの販売室数または最大販売可能室数が変わった場合に表示更新対象になるようにした。
 - verify:
   - `npm run typecheck`: passed
   - `npm run lint`: passed
   - `npm run build`: passed。sandbox 内で esbuild spawn が `EPERM` になるため、権限許可後に実行して通過
   - `git diff --check`: passed
 - GUI 確認:
-  - 未実施。Codex アプリ内ブラウザの現在ページには RAU top list が注入されておらず、`data-ra-rank-recommendation-row` と `data-ra-rank-recommendation-rank-gap-trigger` が 0 件だったため、この surface では `OH/キャパ` tooltip を確認できなかった。
+  - 未実施。Codex アプリ内ブラウザの現在ページには RAU top list が注入されておらず、`data-ra-rank-recommendation-row` と `data-ra-rank-recommendation-rank-gap-trigger` が 0 件だったため、この surface では `販売室数` tooltip を確認できなかった。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: during-impl
@@ -7367,17 +7367,17 @@
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
-### RAU-UX-102 現ランクの下に OH / キャパを表示する
+### RAU-UX-102 現ランクの下に販売室数を表示する
 
 - 状態:
   - 完了。
-  - 現ランク cell に `OH/キャパ` の補助表示を追加した。`OH` は `On Hand` の略で、`max_num_room - remaining_num_room` を表示し、値を取得できない場合は推測値を出さない。
+  - 現ランク cell で現ランク値と販売室数を別行に分け、`販売室数：current/max` の補助表示を追加した。`current` は `max_num_room - remaining_num_room` で計算し、値を取得できない場合は推測値を出さない。
 - 目的:
   - top 料金調整候補 list で、現ランクと同じ cell 内に在庫の圧迫度を小さく表示し、rank 判断時に現在の稼働状況を把握しやすくする。
   - `OH` は `On Hand` の略であり、ここでは `current_settings` の `max_num_room - remaining_num_room` で計算できる現在の使用済みまたは確保済み室数を指す。`キャパ` は `max_num_room` を指す。
 - スコープ:
   - 対象は top 料金調整候補 list の `現ランク` cell である。
-  - 表示形式は `OH / キャパ` の補助行とし、例は `OH/キャパ 8/12` のようにする。
+  - 表示形式は `販売室数：current/max` の補助行とし、例は `販売室数：8/12` のようにする。
   - 入力は既存 `/api/v1/suggest/output/current_settings` 由来の `remaining_num_room` と `max_num_room` を使い、新規 API request は追加しない。
   - 同一宿泊日の全部屋タイプ rank tooltip で既に持っている occupancy / capacity 情報と意味がずれないようにする。
 - 非目標:
@@ -7385,8 +7385,8 @@
   - current settings の取得範囲、request 件数、request 間隔を変更しない。
   - candidate scoring、priority / confidence、small capacity diagnostics をこの task だけで変更しない。
 - 受け入れ条件:
-  - `remaining_num_room` と `max_num_room` が取得できる候補では、現ランク cell の下に `OH/キャパ current/max` が表示される。
-  - `remaining_num_room` または `max_num_room` が未取得、不正、または `max_num_room <= 0` の場合は、推測値を出さず、表示しないか `OH未取得` と分かる補助表示にする。
+  - `remaining_num_room` と `max_num_room` が取得できる候補では、現ランク cell で現ランク値と別行に `販売室数：current/max` が表示される。
+  - `remaining_num_room` または `max_num_room` が未取得、不正、または `max_num_room <= 0` の場合は、推測値を出さず、表示しないか `販売室数未取得` と分かる補助表示にする。
   - OH の定義が docs または spec に明記され、`remaining rooms` と混同しない。
   - 実装する場合は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、必要に応じて top の配布版 smoke、`git diff --check` が通過している。
 - metadata:
@@ -7650,7 +7650,7 @@ Later:
 
 統合判断:
 
-- 2026-06-02 に、未着手だった `RAU-UX-100` から `RAU-UX-105` と `RAU-AF-12` から `RAU-AF-17` を完了した。`RAU-UX-100` では、競合価格の現在値だけではなく、通常時の自社価格と競合価格の相対距離を baseline として使う設計を記録した。`RAU-UX-101` では 5 秒 pending の progress ring を追加した。`RAU-UX-102` では現ランク cell に `OH/キャパ` を追加した。`RAU-UX-103` では、browser-local decision は保存成功後に既存 lifecycle filter で非表示になり、rank change は送信前 guard、POST、反映確認の失敗を隠さないため無条件非表示にしない判断を記録した。`RAU-UX-104` と `RAU-UX-105` では、操作履歴からの自動 suppression または外部機械学習モデル導入は初期実装では行わず、必要な場合は明示設定によるクールダウン調整を別 task で扱う方針を記録した。`RAU-AF-12` から `RAU-AF-17` では、Analyze 日付ページ上部に read-only の料金調整候補一覧を追加し、top list から遷移した候補の highlight、配布版 smoke mode `analyze-recommendations`、反映操作を実装する前の write 安全条件を追加した。Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、bulk apply、自動反映、金額・差額・percent・forecast 数値・sales / ADR 数値の本文表示は変更していない。verify は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`git diff --check` が通過済みである。React Doctor は残診断 41 件で完走し、今回の bundle では既存診断を追加修正しない。Vite、esbuild、React Doctor を起動する build / fixture / marker / React Doctor は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。commit `6ec3c1e` を `origin/main` へ push し、Publish Userscript run `26794622573` は success になった。GitHub Pages published version は `0.1.0.364` であり、Tampermonkey dashboard から installed version を `0.1.0.363` から `0.1.0.364` へ更新した。配布版 top smoke は top row 10 件、React marker あり、primary actions wrappers 10 件、secondary action markers 10 件、status badge cells 10 件、UI component markers 54 件、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。配布版 Analyze smoke は Analyze 候補一覧 root 1 件、row 5 件、empty 0 件、write button 0 件、read-only state yes、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。この完了により Remaining Task Triage は空である。
+- 2026-06-02 に、未着手だった `RAU-UX-100` から `RAU-UX-105` と `RAU-AF-12` から `RAU-AF-17` を完了した。`RAU-UX-100` では、競合価格の現在値だけではなく、通常時の自社価格と競合価格の相対距離を baseline として使う設計を記録した。`RAU-UX-101` では 5 秒 pending の progress ring を追加した。`RAU-UX-102` では現ランク cell で現ランク値と販売室数を別行に分け、補助表示を `販売室数：current/max` にした。`RAU-UX-103` では、browser-local decision は保存成功後に既存 lifecycle filter で非表示になり、rank change は送信前 guard、POST、反映確認の失敗を隠さないため無条件非表示にしない判断を記録した。`RAU-UX-104` と `RAU-UX-105` では、操作履歴からの自動 suppression または外部機械学習モデル導入は初期実装では行わず、必要な場合は明示設定によるクールダウン調整を別 task で扱う方針を記録した。`RAU-AF-12` から `RAU-AF-17` では、Analyze 日付ページ上部に read-only の料金調整候補一覧を追加し、top list から遷移した候補の highlight、配布版 smoke mode `analyze-recommendations`、反映操作を実装する前の write 安全条件を追加した。Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、bulk apply、自動反映、金額・差額・percent・forecast 数値・sales / ADR 数値の本文表示は変更していない。verify は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`git diff --check` が通過済みである。React Doctor は残診断 41 件で完走し、今回の bundle では既存診断を追加修正しない。Vite、esbuild、React Doctor を起動する build / fixture / marker / React Doctor は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。commit `6ec3c1e` を `origin/main` へ push し、Publish Userscript run `26794622573` は success になった。GitHub Pages published version は `0.1.0.364` であり、Tampermonkey dashboard から installed version を `0.1.0.363` から `0.1.0.364` へ更新した。配布版 top smoke は top row 10 件、React marker あり、primary actions wrappers 10 件、secondary action markers 10 件、status badge cells 10 件、UI component markers 54 件、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。配布版 Analyze smoke は Analyze 候補一覧 root 1 件、row 5 件、empty 0 件、write button 0 件、read-only state yes、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。この完了により Remaining Task Triage は空である。
 - 2026-06-02 に、利用者が「学習化をしないと結論した場合は、カスタマイズ機能を検討するタスクを入れるのはどう」と示し、クールダウン設定の例として `長め`、`ふつう`、`短め`、`任意日数`、部屋タイプ別設定、LT 別設定を挙げたため、`RAU-UX-105` として task 化した。`RAU-UX-105` は `RAU-UX-104` の後続 task であり、操作判断から過剰推奨を学習化しない、または初期実装では見送る場合の代替策として、明示設定によるクールダウン調整の範囲を設計する。LT は `lead time` の略で、宿泊日までの日数を指す。`RAU-UX-105` は実装 task ではなく、設定範囲、保存対象、説明表示、非目標を決める docs-first task とする。利用者回答により、`RAU-UX-105` は `RAU-UX-104` の直後、Analyze 上部候補一覧 task より前に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、利用者が top 料金調整候補 list の操作体験と過剰推奨抑制に関する 4 件を追加で示したため、`RAU-UX-101` から `RAU-UX-104` として task 化した。`RAU-UX-101` は 5 秒 pending の残り時間を text と progress ring で示す UI 改善、`RAU-UX-102` は現ランク cell 内の OH / キャパ補助表示、`RAU-UX-103` は 5 秒満了後に対象 row を即時非表示にする操作後整理、`RAU-UX-104` は操作判断を過剰推奨抑制へ使えるか検討する docs-first task である。利用者回答により、この 4 件は Analyze 上部候補一覧 task より前に置く。`RAU-UX-103` の非表示タイミングは押下直後ではなく 5 秒満了後とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、利用者が「Analyze 画面トップに調整候補の一覧を出す実装」を安全に進める計画を求めたため、完了済み `RAU-UX-97` の一括反映込み設計を再開せず、read-only 表示から段階的に進める `RAU-AF-12` から `RAU-AF-17` として task 化した。`RAU-AF-12` は、Analyze 上部候補一覧の入力、表示列、非対象、top list との差分を確定する docs-first task である。`RAU-AF-13` から `RAU-AF-16` は、候補抽出 view model、read-only UI、top list からの highlight、配布版 smoke の順に進める。`RAU-AF-17` は Revenue Assistant write API に近い判断を含むため Later とし、単一行反映や一括反映を実装する前の read-only 調査 task に分けた。2026-06-02 の後続 task 化により、現在の実行順では `RAU-AF-12` は `RAU-UX-101` から `RAU-UX-104` の後に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。

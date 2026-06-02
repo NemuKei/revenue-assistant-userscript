@@ -229,7 +229,7 @@ function buildRow(options: {
             {
                 kind: "rankGap",
                 currentRankText: options.currentRank,
-                occupancyCapacityText: "OH/キャパ 8/12",
+                occupancyCapacityText: "販売室数：8/12",
                 title: "同じ宿泊日の全部屋タイプ rank を確認",
                 role: "current-rank",
                 entries: [
