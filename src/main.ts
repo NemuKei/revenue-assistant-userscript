@@ -118,7 +118,7 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
     : (GM_info.script?.name ?? "Revenue Assistant Userscript");
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
-const BOOKING_CURVE_REQUEST_INTERVAL_MS = 1000;
+const BOOKING_CURVE_REQUEST_INTERVAL_MS = 350;
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
 const CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const RANK_SEQUENCES_ENDPOINT = "/api/v1/rank_sequences";
@@ -139,14 +139,15 @@ class RevenueAssistantRequestError extends Error {
 
 const SALES_SETTING_WARM_CACHE_LOOKBACK_DAYS = 1;
 const SALES_SETTING_WARM_CACHE_LOOKAHEAD_MONTHS = 3;
-const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 1000;
+const SALES_SETTING_WARM_CACHE_WORKER_COUNT = 3;
+const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 350;
 const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 10 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_COOLDOWN_MS = 3 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
-const GROUP_ROOM_STYLE_VERSION = "20260502-warm-cache-marker-asof-v1";
+const GROUP_ROOM_STYLE_VERSION = "20260602-warm-cache-month-priority-v1";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
@@ -155,6 +156,12 @@ const SALES_SETTING_WARM_CACHE_CALENDAR_CELL_ATTRIBUTE = "data-ra-sales-setting-
 const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_STATE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker-state";
 const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE = "data-ra-sales-setting-warm-cache-calendar-marker-bar";
 const SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_PROGRESS_PROPERTY = "--ra-sales-setting-warm-cache-calendar-marker-progress";
+const SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-controls";
+const SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-control";
+const SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-button";
+const SALES_SETTING_WARM_CACHE_MONTH_KEY_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month";
+const SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-status";
+const SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-progress";
 const CALENDAR_LAST_CHANGE_ATTRIBUTE = "data-ra-calendar-last-change";
 const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
 const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
@@ -462,6 +469,7 @@ interface SalesSettingWarmCacheDateProgress {
 }
 
 interface SalesSettingWarmCacheState {
+    runId: number;
     status: SalesSettingWarmCacheStatus;
     facilityId: string | null;
     asOfDate: string | null;
@@ -477,6 +485,8 @@ interface SalesSettingWarmCacheState {
     errors: number;
     consecutiveErrors: number;
     currentTask: SalesSettingWarmCacheTask | null;
+    activeTasks: SalesSettingWarmCacheTask[];
+    priorityMonth: string | null;
     startedAt: number | null;
     runElapsedMs: number;
     cooldownUntil: number | null;
@@ -996,7 +1006,7 @@ const rankRecommendationRankLadderCache = new Map<string, Promise<RankRecommenda
 const lincolnSuggestStatusCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const lincolnSuggestStatusRangeCache = new Map<string, Promise<LincolnSuggestStatus[]>>();
 const bookingCurveRequestScheduler = createIntervalRequestScheduler({
-    concurrency: 1,
+    concurrency: SALES_SETTING_WARM_CACHE_WORKER_COUNT,
     intervalMs: BOOKING_CURVE_REQUEST_INTERVAL_MS
 });
 const interactionSyncTimeoutIds: number[] = [];
@@ -1031,6 +1041,8 @@ const latestRankRecommendationCurvePreviewSnapshotByKey = new Map<string, {
 const salesSettingCurrentSettingsPromiseCache = new Map<string, Promise<SalesSettingCurrentSettingsResponse>>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let salesSettingWarmCacheTimeoutId: number | null = null;
+let rankRecommendationWarmCacheSyncTimeoutId: number | null = null;
+let salesSettingWarmCacheRunSeq = 0;
 let competitorPriceSnapshotBackgroundTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundRunning = false;
 let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
@@ -3212,6 +3224,7 @@ function suspendCalendarFeatures(): void {
     cleanupSalesSettingGroupRooms();
     cleanupSalesSettingBookingCurveCards();
     cleanupSalesSettingRoomDeltas();
+    cleanupSalesSettingWarmCacheMonthControls();
     cleanupCurrentUiSalesSettingRoot();
     ensureGroupRoomToggle(false);
 }
@@ -3533,6 +3546,7 @@ async function readOrLoadBookingCurveRawSource(
 
 function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
     return {
+        runId: salesSettingWarmCacheRunSeq,
         status: "idle",
         facilityId: null,
         asOfDate: null,
@@ -3548,6 +3562,8 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
         errors: 0,
         consecutiveErrors: 0,
         currentTask: null,
+        activeTasks: [],
+        priorityMonth: null,
         startedAt: null,
         runElapsedMs: 0,
         cooldownUntil: null,
@@ -3626,7 +3642,13 @@ function resetCompetitorPriceSnapshotBackgroundProgress(): void {
     competitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
 }
 
-function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, facilityCacheKey: string, priorityStayDate: string | null): void {
+function scheduleSalesSettingWarmCache(
+    startDate: string,
+    batchDateKey: string,
+    facilityCacheKey: string,
+    priorityStayDate: string | null,
+    priorityMonth: string | null = salesSettingWarmCacheState.priorityMonth
+): void {
     if (!hasSalesSettingWarmCacheEligiblePage()) {
         renderSalesSettingWarmCacheIndicator();
         return;
@@ -3634,7 +3656,8 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
 
     const sameContext = salesSettingWarmCacheState.facilityId === facilityCacheKey
         && salesSettingWarmCacheState.asOfDate === batchDateKey
-        && salesSettingWarmCacheState.priorityStayDate === priorityStayDate;
+        && salesSettingWarmCacheState.priorityStayDate === priorityStayDate
+        && salesSettingWarmCacheState.priorityMonth === priorityMonth;
     if (sameContext && (salesSettingWarmCacheState.total > 0 || salesSettingWarmCacheState.status === "building")) {
         const prioritizedQueue = prioritizeSalesSettingWarmCacheQueueForRankRecommendations(salesSettingWarmCacheState.queue);
         salesSettingWarmCacheState = {
@@ -3654,16 +3677,18 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
 
     salesSettingWarmCacheState = {
         ...createInitialSalesSettingWarmCacheState(),
+        runId: ++salesSettingWarmCacheRunSeq,
         status: "building",
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
         priorityStayDate,
+        priorityMonth,
         targetFromDate: null,
         targetToDate: null
     };
     renderSalesSettingWarmCacheIndicator();
 
-    void buildSalesSettingWarmCacheQueue(startDate, priorityStayDate)
+    void buildSalesSettingWarmCacheQueue(startDate, priorityStayDate, priorityMonth)
         .then((queue) => {
             if (
                 salesSettingWarmCacheState.facilityId !== facilityCacheKey
@@ -3705,11 +3730,15 @@ function scheduleSalesSettingWarmCache(startDate: string, batchDateKey: string, 
         });
 }
 
-async function buildSalesSettingWarmCacheQueue(startDate: string, priorityStayDate: string | null): Promise<SalesSettingWarmCacheTask[]> {
+async function buildSalesSettingWarmCacheQueue(
+    startDate: string,
+    priorityStayDate: string | null,
+    priorityMonth: string | null
+): Promise<SalesSettingWarmCacheTask[]> {
     const roomGroups = await getRoomGroups();
     const tasks: SalesSettingWarmCacheTask[] = [];
     const taskKeys = new Set<string>();
-    const targetStayDates = buildSalesSettingWarmCacheTargetStayDates(startDate, priorityStayDate);
+    const targetStayDates = buildSalesSettingWarmCacheTargetStayDates(startDate, priorityStayDate, priorityMonth);
 
     for (const targetStayDate of targetStayDates) {
         const scopeTasks = buildSalesSettingWarmCacheScopeTasks(targetStayDate, roomGroups);
@@ -3885,7 +3914,11 @@ function buildSalesSettingWarmCacheTaskKey(task: SalesSettingWarmCacheTask): str
     ].join("|");
 }
 
-function buildSalesSettingWarmCacheTargetStayDates(startDate: string, priorityStayDate: string | null): string[] {
+function buildSalesSettingWarmCacheTargetStayDates(
+    startDate: string,
+    priorityStayDate: string | null,
+    priorityMonth: string | null
+): string[] {
     const targetStayDates: string[] = [];
     const seen = new Set<string>();
     const addDate = (stayDate: string | null): void => {
@@ -3903,6 +3936,12 @@ function buildSalesSettingWarmCacheTargetStayDates(startDate: string, prioritySt
             addDate(stayDate);
         }
         for (const stayDate of getSalesSettingWarmCacheMonthStayDates(priorityStayDate)) {
+            addDate(stayDate);
+        }
+    }
+
+    if (priorityMonth !== null) {
+        for (const stayDate of getSalesSettingWarmCacheMonthStayDates(`${priorityMonth}01`)) {
             addDate(stayDate);
         }
     }
@@ -4078,8 +4117,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
         return;
     }
 
-    const task = salesSettingWarmCacheState.queue.shift();
-    if (task === undefined) {
+    if (salesSettingWarmCacheState.queue.length === 0 && salesSettingWarmCacheState.activeTasks.length === 0) {
         finalizeSalesSettingWarmCacheRun("complete", null);
         return;
     }
@@ -4087,17 +4125,46 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
     if (salesSettingWarmCacheState.startedAt === null) {
         salesSettingWarmCacheState.startedAt = Date.now();
     }
-    salesSettingWarmCacheState = {
-        ...salesSettingWarmCacheState,
-        status: "running",
-        currentTask: task,
-        pauseReason: null
-    };
+
+    let startedWorkerCount = 0;
+    while (
+        salesSettingWarmCacheState.queue.length > 0
+        && salesSettingWarmCacheState.activeTasks.length < SALES_SETTING_WARM_CACHE_WORKER_COUNT
+    ) {
+        const task = salesSettingWarmCacheState.queue.shift();
+        if (task === undefined) {
+            break;
+        }
+
+        salesSettingWarmCacheState = {
+            ...salesSettingWarmCacheState,
+            status: "running",
+            currentTask: task,
+            activeTasks: [...salesSettingWarmCacheState.activeTasks, task],
+            pauseReason: null
+        };
+        startedWorkerCount += 1;
+        void runSalesSettingWarmCacheWorker(task, facilityId, asOfDate, salesSettingWarmCacheState.runId);
+    }
+
     renderSalesSettingWarmCacheIndicator();
 
+    if (startedWorkerCount === 0 && salesSettingWarmCacheState.activeTasks.length === 0) {
+        scheduleSalesSettingWarmCacheDrain();
+    }
+}
+
+async function runSalesSettingWarmCacheWorker(
+    task: SalesSettingWarmCacheTask,
+    facilityId: string,
+    asOfDate: string,
+    runId: number
+): Promise<void> {
     try {
         const taskResult = await runSalesSettingWarmCacheTask(task, facilityId, asOfDate);
-        const nextDelayMs = taskResult === "skipped" ? 0 : SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS;
+        if (!isCurrentSalesSettingWarmCacheContext(facilityId, asOfDate, runId)) {
+            return;
+        }
         markSalesSettingWarmCacheDateProgress(task, false);
         markRankRecommendationWarmCachePriorityTask(task, taskResult);
         salesSettingWarmCacheState = {
@@ -4106,20 +4173,57 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
             fetched: salesSettingWarmCacheState.fetched + (taskResult === "fetched" ? 1 : 0),
             skipped: salesSettingWarmCacheState.skipped + (taskResult === "skipped" ? 1 : 0),
             consecutiveErrors: 0,
-            currentTask: null,
+            activeTasks: removeSalesSettingWarmCacheActiveTask(salesSettingWarmCacheState.activeTasks, task),
+            currentTask: getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(task),
             ...(taskResult === "fetched" ? { lastFetchedAt: new Date().toISOString() } : {})
         };
-        renderSalesSettingWarmCacheIndicator();
         if (taskResult === "fetched" && isRankRecommendationWarmCachePriorityTask(task)) {
-            queueCalendarSync({ force: true, reason: "rank-recommendation-warm-cache" });
+            queueDebouncedRankRecommendationWarmCacheSync();
         }
-        scheduleSalesSettingWarmCacheDrain(nextDelayMs);
-        return;
     } catch (error: unknown) {
+        if (!isCurrentSalesSettingWarmCacheContext(facilityId, asOfDate, runId)) {
+            return;
+        }
         console.warn(`[${SCRIPT_NAME}] failed to warm booking curve raw source`, {
             task,
             error
         });
+        const failureAction = getSalesSettingWarmCacheFailureAction(error);
+        if (failureAction.kind === "pause") {
+            markSalesSettingWarmCacheDateProgress(task, true);
+            markRankRecommendationWarmCachePriorityTask(task, "error");
+            salesSettingWarmCacheState = {
+                ...salesSettingWarmCacheState,
+                processed: salesSettingWarmCacheState.processed + 1,
+                errors: salesSettingWarmCacheState.errors + 1,
+                consecutiveErrors: salesSettingWarmCacheState.consecutiveErrors + 1,
+                activeTasks: removeSalesSettingWarmCacheActiveTask(salesSettingWarmCacheState.activeTasks, task),
+                currentTask: getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(task)
+            };
+            pauseSalesSettingWarmCache(failureAction.reason, "error");
+            return;
+        }
+
+        if (failureAction.kind === "cooldown") {
+            const retryTask = buildSalesSettingWarmCacheRetryTask(task);
+            if (retryTask !== null) {
+                salesSettingWarmCacheState.queue.unshift(retryTask);
+            } else {
+                markSalesSettingWarmCacheDateProgress(task, true);
+                markRankRecommendationWarmCachePriorityTask(task, "error");
+            }
+            salesSettingWarmCacheState = {
+                ...salesSettingWarmCacheState,
+                processed: salesSettingWarmCacheState.processed + 1,
+                errors: salesSettingWarmCacheState.errors + 1,
+                consecutiveErrors: salesSettingWarmCacheState.consecutiveErrors + 1,
+                activeTasks: removeSalesSettingWarmCacheActiveTask(salesSettingWarmCacheState.activeTasks, task),
+                currentTask: getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(task)
+            };
+            startSalesSettingWarmCacheCooldown(failureAction.reason);
+            return;
+        }
+
         const retryTask = buildSalesSettingWarmCacheRetryTask(task);
         if (retryTask !== null) {
             salesSettingWarmCacheState.queue.push(retryTask);
@@ -4132,7 +4236,8 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
             processed: salesSettingWarmCacheState.processed + 1,
             errors: salesSettingWarmCacheState.errors + 1,
             consecutiveErrors: salesSettingWarmCacheState.consecutiveErrors + 1,
-            currentTask: null
+            activeTasks: removeSalesSettingWarmCacheActiveTask(salesSettingWarmCacheState.activeTasks, task),
+            currentTask: getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(task)
         };
 
         if (salesSettingWarmCacheState.consecutiveErrors >= SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS) {
@@ -4142,7 +4247,64 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
     }
 
     renderSalesSettingWarmCacheIndicator();
-    scheduleSalesSettingWarmCacheDrain();
+    scheduleSalesSettingWarmCacheDrain(0);
+}
+
+function getSalesSettingWarmCacheFailureAction(error: unknown): { kind: "retry"; reason: string } | { kind: "pause"; reason: string } | { kind: "cooldown"; reason: string } {
+    if (error instanceof RevenueAssistantRequestError) {
+        if (error.status === 401) {
+            return { kind: "pause", reason: "HTTP 401 ログイン確認" };
+        }
+        if (error.status === 403) {
+            return { kind: "pause", reason: "HTTP 403 権限確認" };
+        }
+        if (error.status === 429) {
+            return { kind: "cooldown", reason: "HTTP 429 待機" };
+        }
+        if (error.status >= 500) {
+            return { kind: "retry", reason: `HTTP ${error.status}` };
+        }
+        return { kind: "pause", reason: `HTTP ${error.status}` };
+    }
+
+    return { kind: "retry", reason: "network error" };
+}
+
+function isCurrentSalesSettingWarmCacheContext(facilityId: string, asOfDate: string, runId: number): boolean {
+    return salesSettingWarmCacheState.facilityId === facilityId
+        && salesSettingWarmCacheState.asOfDate === asOfDate
+        && salesSettingWarmCacheState.runId === runId;
+}
+
+function removeSalesSettingWarmCacheActiveTask(
+    activeTasks: SalesSettingWarmCacheTask[],
+    completedTask: SalesSettingWarmCacheTask
+): SalesSettingWarmCacheTask[] {
+    const completedTaskKey = buildSalesSettingWarmCacheTaskKey(completedTask);
+    let removed = false;
+    return activeTasks.filter((activeTask) => {
+        if (!removed && buildSalesSettingWarmCacheTaskKey(activeTask) === completedTaskKey) {
+            removed = true;
+            return false;
+        }
+        return true;
+    });
+}
+
+function getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(completedTask: SalesSettingWarmCacheTask): SalesSettingWarmCacheTask | null {
+    const remainingActiveTasks = removeSalesSettingWarmCacheActiveTask(salesSettingWarmCacheState.activeTasks, completedTask);
+    return remainingActiveTasks[0] ?? null;
+}
+
+function queueDebouncedRankRecommendationWarmCacheSync(): void {
+    if (rankRecommendationWarmCacheSyncTimeoutId !== null) {
+        return;
+    }
+
+    rankRecommendationWarmCacheSyncTimeoutId = window.setTimeout(() => {
+        rankRecommendationWarmCacheSyncTimeoutId = null;
+        queueCalendarSync({ force: true, reason: "rank-recommendation-warm-cache" });
+    }, 500);
 }
 
 function buildSalesSettingWarmCacheRetryTask(task: SalesSettingWarmCacheTask): SalesSettingWarmCacheTask | null {
@@ -4240,6 +4402,7 @@ function resetSalesSettingWarmCache(reason: string): void {
         window.clearTimeout(salesSettingWarmCacheTimeoutId);
         salesSettingWarmCacheTimeoutId = null;
     }
+    salesSettingWarmCacheRunSeq += 1;
     finalizeSalesSettingWarmCacheRun("idle", reason);
     salesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
     renderSalesSettingWarmCacheIndicator();
@@ -4249,10 +4412,12 @@ function finalizeSalesSettingWarmCacheRun(status: SalesSettingWarmCacheStatus, p
     const elapsedMs = getActiveSalesSettingWarmCacheRunElapsedMs();
     salesSettingWarmCacheState = {
         ...salesSettingWarmCacheState,
+        runId: ++salesSettingWarmCacheRunSeq,
         status,
         startedAt: null,
         runElapsedMs: salesSettingWarmCacheState.runElapsedMs + elapsedMs,
         currentTask: null,
+        activeTasks: [],
         pauseReason
     };
     renderSalesSettingWarmCacheIndicator();
@@ -4273,6 +4438,7 @@ function renderSalesSettingWarmCacheIndicator(): void {
     ) {
         existingElement?.remove();
         renderSalesSettingWarmCacheCalendarMarkers();
+        renderSalesSettingWarmCacheMonthControls(collectMonthlyCalendarCells());
         return;
     }
 
@@ -4313,6 +4479,7 @@ function renderSalesSettingWarmCacheIndicator(): void {
     }
 
     renderSalesSettingWarmCacheCalendarMarkers();
+    renderSalesSettingWarmCacheMonthControls(collectMonthlyCalendarCells());
 }
 
 function getSalesSettingWarmCacheStatusLabel(): string {
@@ -4372,6 +4539,7 @@ function getSalesSettingWarmCacheDetailLabel(): string {
         getSalesSettingWarmCachePriorityProgressLabel(),
         getRankRecommendationWarmCachePriorityProgressLabel(),
         taskLabel,
+        salesSettingWarmCacheState.activeTasks.length > 1 ? `worker ${salesSettingWarmCacheState.activeTasks.length}/${SALES_SETTING_WARM_CACHE_WORKER_COUNT}` : null,
         cooldownLabel,
         retryPendingCount > 0 ? `再試行待ち ${retryPendingCount}` : null,
         `保存 ${salesSettingWarmCacheState.fetched}`,
@@ -4927,7 +5095,7 @@ async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promi
             });
 
             if (!response.ok) {
-                throw new Error(`booking curve request failed: ${response.status}`);
+                throw new RevenueAssistantRequestError(BOOKING_CURVE_ENDPOINT, response.status);
             }
 
             return compactBookingCurveResponse((await response.json()) as BookingCurveResponse);
@@ -6498,6 +6666,7 @@ async function syncMonthlyCalendarGroupRooms(batchDateKey: string): Promise<void
     const cells = collectMonthlyCalendarCells();
     ensureGroupRoomStyles();
     ensureGroupRoomToggle(cells.length > 0);
+    renderSalesSettingWarmCacheMonthControls(cells);
 
     if (cells.length === 0) {
         cleanupMonthlyCalendarGroupRooms();
@@ -6521,6 +6690,148 @@ async function syncMonthlyCalendarGroupRooms(batchDateKey: string): Promise<void
 
         renderGroupRoomCount(cell, groupRoomCount);
     }));
+}
+
+function renderSalesSettingWarmCacheMonthControls(cells: MonthlyCalendarCell[]): void {
+    const existingElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}]`);
+    if (cells.length === 0 || activeAnalyzeDate !== null) {
+        existingElement?.remove();
+        return;
+    }
+
+    const calendarElement = resolveMonthlyCalendarContainerElement(cells);
+    const parentElement = calendarElement?.parentElement ?? null;
+    if (!(calendarElement instanceof HTMLElement) || !(parentElement instanceof HTMLElement)) {
+        existingElement?.remove();
+        return;
+    }
+
+    const monthKeys = getVisibleMonthlyCalendarMonthKeys(cells);
+    if (monthKeys.length === 0) {
+        existingElement?.remove();
+        return;
+    }
+
+    const controlsElement = existingElement ?? document.createElement("div");
+    controlsElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE, "");
+    controlsElement.replaceChildren(...monthKeys.map(createSalesSettingWarmCacheMonthControlElement));
+
+    if (controlsElement.parentElement !== parentElement || controlsElement.nextElementSibling !== calendarElement) {
+        parentElement.insertBefore(controlsElement, calendarElement);
+    }
+}
+
+function cleanupSalesSettingWarmCacheMonthControls(): void {
+    document.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}]`)?.remove();
+}
+
+function getVisibleMonthlyCalendarMonthKeys(cells: MonthlyCalendarCell[]): string[] {
+    const seen = new Set<string>();
+    const monthKeys: string[] = [];
+    for (const cell of cells) {
+        const monthKey = cell.stayDate.slice(0, 6);
+        if (!/^\d{6}$/.test(monthKey) || seen.has(monthKey)) {
+            continue;
+        }
+        seen.add(monthKey);
+        monthKeys.push(monthKey);
+    }
+    return monthKeys;
+}
+
+function createSalesSettingWarmCacheMonthControlElement(monthKey: string): HTMLElement {
+    const progress = getSalesSettingWarmCacheMonthProgress(monthKey);
+    const wrapperElement = document.createElement("div");
+    wrapperElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE, "");
+    wrapperElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_KEY_ATTRIBUTE, monthKey);
+    wrapperElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE, progress.status);
+
+    const buttonElement = document.createElement("button");
+    buttonElement.type = "button";
+    buttonElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE, "");
+    buttonElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_KEY_ATTRIBUTE, monthKey);
+    buttonElement.title = `${formatSalesSettingWarmCacheMonthLabel(monthKey)} の料金調整候補に必要な booking_curve データを優先取得`;
+    buttonElement.addEventListener("click", () => {
+        requestSalesSettingWarmCachePriorityMonth(monthKey);
+    });
+
+    const progressElement = document.createElement("span");
+    progressElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE, "");
+    progressElement.setAttribute("role", "img");
+    progressElement.setAttribute("aria-label", `${formatSalesSettingWarmCacheMonthLabel(monthKey)} ${progress.label}`);
+    progressElement.style.setProperty("--ra-sales-setting-warm-cache-month-progress", `${progress.percent}%`);
+
+    const labelElement = document.createElement("span");
+    labelElement.textContent = `${formatSalesSettingWarmCacheMonthLabel(monthKey)} 優先取得`;
+
+    buttonElement.append(progressElement, labelElement);
+
+    const statusElement = document.createElement("span");
+    statusElement.textContent = progress.label;
+
+    wrapperElement.append(buttonElement, statusElement);
+    return wrapperElement;
+}
+
+function requestSalesSettingWarmCachePriorityMonth(monthKey: string): void {
+    if (!/^\d{6}$/.test(monthKey)) {
+        return;
+    }
+
+    const batchDateKey = getCurrentBatchDateKey();
+    void resolveCurrentFacilityCacheKey()
+        .then((facilityCacheKey) => {
+            syncCacheBatch(batchDateKey, facilityCacheKey);
+            scheduleSalesSettingWarmCache(batchDateKey, batchDateKey, facilityCacheKey, activeAnalyzeDate, monthKey);
+            renderSalesSettingWarmCacheIndicator();
+            renderSalesSettingWarmCacheMonthControls(collectMonthlyCalendarCells());
+        })
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to request monthly warm cache priority`, {
+                monthKey,
+                error
+            });
+        });
+}
+
+function getSalesSettingWarmCacheMonthProgress(monthKey: string): { status: string; label: string; percent: number } {
+    const monthProgress = Object.entries(salesSettingWarmCacheState.dateProgress)
+        .filter(([stayDate]) => stayDate.startsWith(monthKey))
+        .map(([, progress]) => progress);
+    const total = monthProgress.reduce((sum, progress) => sum + progress.rawTotal + progress.referenceTotal + progress.sameWeekdayTotal, 0);
+    const done = monthProgress.reduce((sum, progress) => sum + progress.rawDone + progress.referenceDone + progress.sameWeekdayDone, 0);
+    const errors = monthProgress.reduce((sum, progress) => sum + progress.errors, 0);
+    const percent = total <= 0 ? 0 : Math.floor((done / total) * 100);
+    const isPriorityMonth = salesSettingWarmCacheState.priorityMonth === monthKey;
+
+    if (errors > 0) {
+        return { status: "error", label: `エラー ${errors}`, percent: 100 };
+    }
+
+    if (total > 0 && done >= total) {
+        return { status: "complete", label: "完了", percent: 100 };
+    }
+
+    if (salesSettingWarmCacheState.status === "cooldown" && isPriorityMonth) {
+        return { status: "cooldown", label: "クールダウン中", percent };
+    }
+
+    if (total > 0 && done > 0) {
+        return { status: "running", label: `取得中 ${percent}%`, percent: Math.max(8, percent) };
+    }
+
+    if (isPriorityMonth && (salesSettingWarmCacheState.status === "building" || salesSettingWarmCacheState.status === "running" || salesSettingWarmCacheState.status === "idle")) {
+        return { status: "queued", label: "待機中", percent: 0 };
+    }
+
+    return { status: "idle", label: "未優先", percent: 0 };
+}
+
+function formatSalesSettingWarmCacheMonthLabel(monthKey: string): string {
+    if (!/^\d{6}$/.test(monthKey)) {
+        return monthKey;
+    }
+    return `${monthKey.slice(0, 4)}-${monthKey.slice(4, 6)}`;
 }
 
 async function syncMonthlyCalendarLatestChanges(): Promise<void> {
@@ -16497,6 +16808,76 @@ function ensureGroupRoomStyles(): void {
             background: #eef4ff;
             border-color: #8fb2ea;
             color: #1f5fbf;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}] {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 6px;
+            margin: 0 0 8px;
+            padding: 0;
+            border: none;
+            background: transparent;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            min-height: 28px;
+            color: #50627a;
+            font-size: 11px;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE}] {
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+            height: 28px;
+            padding: 0 9px 0 7px;
+            border: 1px solid #c9d7e8;
+            border-radius: 6px;
+            background: #ffffff;
+            color: #243447;
+            cursor: pointer;
+            font: inherit;
+            box-shadow: 0 1px 2px rgba(35, 52, 71, 0.06);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE}]:hover,
+        [${SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE}]:focus-visible {
+            border-color: #7aa7dc;
+            background: #f4f9ff;
+            outline: none;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background:
+                conic-gradient(#3f8ed8 var(--ra-sales-setting-warm-cache-month-progress, 0%), #d9e3f0 0);
+            box-shadow: inset 0 0 0 4px #ffffff;
+            flex: 0 0 auto;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="complete"] [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
+            background:
+                conic-gradient(#2f9e63 100%, #d9e3f0 0);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="error"] [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
+            background:
+                conic-gradient(#c44f4f 100%, #d9e3f0 0);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="cooldown"] [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
+            background:
+                conic-gradient(#d49335 var(--ra-sales-setting-warm-cache-month-progress, 0%), #ead8bd 0);
         }
 
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {

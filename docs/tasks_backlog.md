@@ -7633,7 +7633,7 @@
 ### RAU-WC-18 booking_curve 取得高速化の安全上限を仕様へ反映する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 現在の `1秒に1件` の `/api/v4/booking_curve` 取得制限を、無制限化ではなく `開始間隔 350ms 以上`、`同時実行 3 件以下` の明示上限へ変更できるよう、実装前に仕様と判断理由を確定する。
 - スコープ:
@@ -7649,6 +7649,9 @@
   - `docs/context/DECISIONS.md` に、過去の短間隔連続 request 問題を踏まえ、無制限化ではなく上限付き高速化にする理由が記録されている。
   - HTTP 401、HTTP 403、HTTP 429、5xx、network error の扱いが、実装前に確認できる粒度で記録されている。
   - docs-only で終え、`git diff --check` が通過している。
+- 完了内容:
+  - `docs/spec_001_analyze_expansion.md` の負荷制限を、`開始間隔 350ms 以上`、`同時実行 3 件以下`、warm cache 最大 3 worker へ更新した。
+  - `docs/context/DECISIONS.md` に D-20260602-008 を追加し、無制限化ではなく上限付き高速化とする理由、HTTP 401 / 403 / 429 / 5xx / network error の扱い、月別優先取得の配置理由を記録した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -7657,7 +7660,7 @@
 ### RAU-WC-19 booking_curve warm cache を上限付き multi-worker 化する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `/api/v4/booking_curve` の read-only 取得を、`開始間隔 350ms 以上`、`同時実行 3 件以下` の範囲で高速化し、現状の 1 件/秒よりも体感上の取得完了を早くする。
 - スコープ:
@@ -7675,6 +7678,12 @@
   - warm cache worker 検証で、3 worker が queue を処理し、skip task は API request なしで進むことを確認できる。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
   - 実ブラウザ確認を同じ task で行わない場合は、未確認範囲として `RAU-WC-20` に渡す。
+- 実装内容:
+  - `BOOKING_CURVE_REQUEST_INTERVAL_MS` を 350ms にし、`bookingCurveRequestScheduler` の concurrency を 3 にした。
+  - `SALES_SETTING_WARM_CACHE_WORKER_COUNT = 3` を追加し、warm cache queue を最大 3 worker で処理するようにした。
+  - worker 完了時に `facilityId`、`asOfDate`、`runId` を確認し、月優先 queue の作り直し後に古い worker 結果が新しい進捗へ混ざらないようにした。
+  - 優先候補取得後の `queueCalendarSync()` は 500ms debounce にし、3 worker 化で短時間に再描画が連続しないようにした。
+  - `/api/v4/booking_curve` の HTTP error は `RevenueAssistantRequestError` として status を保持し、401 / 403 は停止、429 は cooldown、5xx / network error は retry に分けた。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: during-impl
@@ -7683,7 +7692,7 @@
 ### RAU-WC-20 高速化後の実ブラウザ throughput と安全停止を確認する
 
 - 状態:
-  - 未着手。
+  - ローカル verify 済み。配布版実ブラウザ確認は commit / push と Tampermonkey 更新後に追記する。
 - 目的:
   - `RAU-WC-19` の上限付き multi-worker 化が、通常 Chrome の Revenue Assistant 実画面で、取得速度を改善しつつ HTTP error、console error、page error、write API POST を発生させないことを確認する。
 - スコープ:
@@ -7709,7 +7718,7 @@
 ### RAU-WC-21 カレンダー上部の優先取得 UI 契約を確定する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - カレンダートップで先々の月を調整したい場合に、直近日付の取得だけが優先されて料金調整候補の根拠データが不足する状態を減らすため、表示月ごとの優先取得ボタンの契約を実装前に確定する。
 - スコープ:
@@ -7727,6 +7736,9 @@
   - 既存 warm cache queue、request scheduler、in-flight dedupe、document hidden 停止、cooldown、連続 error 停止を維持する前提が記録されている。
   - 料金調整候補 list 側ではなくカレンダー上部を第一候補にする理由が記録されている。
   - docs-only で終え、`git diff --check` が通過している。
+- 完了内容:
+  - `docs/spec_001_analyze_expansion.md` に、カレンダー上部の月別優先取得ボタン、`YYYY-MM 優先取得` の短い文言、円形 progress、`未優先`、`待機中`、`取得中 n%`、`完了`、`クールダウン中`、`エラー n` の状態を記録した。
+  - D-20260602-008 に、料金調整候補 list ではなくカレンダー上部へ置く理由を記録した。候補 list は根拠データ不足時に候補自体が出ない可能性があるため、取得対象を表示月として選べるカレンダー上部を入口にする。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -7735,7 +7747,7 @@
 ### RAU-WC-22 カレンダー上部に月別の優先取得ボタンと円形 progress を実装する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 利用者が表示中の先々の月を明示的に選び、その月の料金調整候補に必要な booking curve 関連データを直近日付より先に取得できるようにする。
 - スコープ:
@@ -7754,6 +7766,11 @@
   - 既存 warm cache indicator と月別 progress の件数や状態が矛盾しない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
   - 実ブラウザ確認を同じ task で行わない場合は、未確認範囲として `RAU-WC-23` に渡す。
+- 実装内容:
+  - 表示中カレンダーの `YYYYMM` ごとに月別優先取得 control を生成し、カレンダー container の直前へ表示する。
+  - 月別ボタン押下時に `priorityMonth` を指定して warm cache queue を作り直し、押した月の全 stay_date を通常の直近日付 queue より前へ置く。
+  - 月別 progress は既存 `dateProgress` から集計し、右下 warm cache indicator と同じ state を参照する。
+  - `scripts/run-distribution-smoke.mjs` の top mode に、月別 control 件数、button 件数、status、warm cache indicator text を出力する項目を追加した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: during-impl
@@ -7762,7 +7779,7 @@
 ### RAU-WC-23 優先取得ボタンの実ブラウザ動作と安全性を確認する
 
 - 状態:
-  - 未着手。
+  - ローカル verify 済み。配布版実ブラウザ確認は commit / push と Tampermonkey 更新後に追記する。
 - 目的:
   - カレンダー上部の月別優先取得ボタンが、通常 Chrome の Revenue Assistant 実画面で、先々の月の booking curve 関連 task を優先しつつ、write API POST や HTTP / console / page error を発生させないことを確認する。
 - スコープ:
@@ -7788,18 +7805,16 @@
 
 Now:
 
-- `RAU-WC-18` booking_curve 取得高速化の安全上限を仕様へ反映する
+- `RAU-WC-20` 高速化後の実ブラウザ throughput と安全停止を確認する
+- `RAU-WC-23` 優先取得ボタンの実ブラウザ動作と安全性を確認する
 
 Next:
 
-- `RAU-WC-21` カレンダー上部の優先取得 UI 契約を確定する
-- `RAU-WC-19` booking_curve warm cache を上限付き multi-worker 化する
+なし
 
 After Next:
 
-- `RAU-WC-20` 高速化後の実ブラウザ throughput と安全停止を確認する
-- `RAU-WC-22` カレンダー上部に月別の優先取得ボタンと円形 progress を実装する
-- `RAU-WC-23` 優先取得ボタンの実ブラウザ動作と安全性を確認する
+なし
 
 Later:
 

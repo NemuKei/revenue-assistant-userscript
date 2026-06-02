@@ -553,7 +553,13 @@ function collectModeMetricsInPage(selectedMode) {
                 "UI control markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"control-group\"]").length,
                 "UI row layout markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"row-layout\"]").length,
                 "UI popover markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"popover\"]").length,
-                "UI pending markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"pending-notice\"]").length
+                "UI pending markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"pending-notice\"]").length,
+                "warm cache month controls": doc.querySelectorAll("[data-ra-sales-setting-warm-cache-month-control]").length,
+                "warm cache month buttons": doc.querySelectorAll("[data-ra-sales-setting-warm-cache-month-button]").length,
+                "warm cache month statuses": Array.from(doc.querySelectorAll("[data-ra-sales-setting-warm-cache-month-control]"))
+                    .map((element) => `${element.getAttribute("data-ra-sales-setting-warm-cache-month") ?? "unknown"}=${element.getAttribute("data-ra-sales-setting-warm-cache-month-status") ?? "unknown"}`)
+                    .join(",") || "none",
+                "warm cache indicator text": textFrom("[data-ra-sales-setting-warm-cache-indicator]")
             };
         }
         if (selectedMode === "price-trends") {

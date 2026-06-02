@@ -274,15 +274,18 @@ BCL-tuned first wave の定義:
 
 負荷制限:
 
-- 初期実装の同時取得数は 1 とする。
-- request 間隔は 1.0 秒以上とする。
-- RAU が `loadBookingCurve()` から発行する `/api/v4/booking_curve` request は、current raw source、same-weekday source、reference source raw source のいずれでも、request 開始間隔を 1.0 秒以上にする。Revenue Assistant 本体が標準画面表示のために発行する request は RAU の制御対象ではない。
-- `reference source raw source` を取得するために reference curve request scheduler へ投入した `/api/v4/booking_curve` request も、request 開始間隔を 1.0 秒以上にする。warm cache task 自体が 1 件ずつ進んでいても、1 task 内部で複数の reference source request を短時間に連続開始しない。
+- RAU が `loadBookingCurve()` から発行する `/api/v4/booking_curve` request は、current raw source、same-weekday source、reference source raw source のいずれでも、request 開始間隔を 350ms 以上、同時実行数を 3 件以下にする。Revenue Assistant 本体が標準画面表示のために発行する request は RAU の制御対象ではない。
+- `reference source raw source` を取得するために reference curve request scheduler へ投入した `/api/v4/booking_curve` request も、同じ request scheduler を通す。これにより、warm cache worker が最大 3 件並行で進んでいても、`/api/v4/booking_curve` request の開始間隔 350ms 以上と同時実行 3 件以下を維持する。
+- warm cache queue は最大 3 worker で処理してよい。worker は task queue の処理単位であり、実際の `/api/v4/booking_curve` request 開始間隔と同時実行数は `loadBookingCurve()` 側の request scheduler が制御する。
 - IndexedDB または derived cache の既存 record により skip できる task は、API request を発行しないため、次 task へ即時に進めてよい。
 - 1 回の自動 warm cache 稼働時間は最大 10 分とする。
 - 1 回の自動 warm cache 稼働時間に達した場合は、3 分以上のクールダウン時間を置いた後に自動再開する。
 - 日次合計稼働時間の上限は設けない。負荷制御は、有限 queue、request 間隔、1 回の稼働時間、クールダウン、document hidden 中の一時停止、連続エラー停止で行う。
 - document が hidden の間は自動取得を一時停止する。
+- HTTP 401 はログイン状態の確認が必要な状態として扱い、自動 retry を続けず一時停止する。
+- HTTP 403 は権限または対象施設の確認が必要な状態として扱い、自動 retry を続けず一時停止する。
+- HTTP 429 は request 頻度に対する制限として扱い、即時 retry ではなくクールダウンへ入る。
+- HTTP 5xx と network error は一時的な失敗候補として扱い、同じ task を最大 2 回まで queue 末尾へ戻す。
 - 連続エラーが発生した場合は一時停止し、indicator でエラー件数と停止状態を表示する。
 - 利用者が Analyze 画面で操作している間も、既存表示やクリック操作を妨げないように、取得は低優先度の queue として扱う。
 
@@ -298,6 +301,9 @@ Indicator:
 - warm cache queue が現在走っていない日付に、保存済み raw source の存在を表示する場合は、現在取得中の progress bar と同じ見た目にしない。IndexedDB に同じ施設と stay_date の `/api/v4/booking_curve` raw source が 1 件以上ある日付を、セル下端中央の短い静的ラインとして表示する。現在取得中の progress bar、完了、エラー表示がある場合は、それらを優先し、保存済みシグナルは上書きしない。
 - 保存済みシグナルは、現在の `as_of_date` の raw source が 1 件以上ある日付と、過去 `as_of_date` の raw source だけがある日付を分ける。現在 `as_of_date` の raw source がある日付は緑の短い線、過去 `as_of_date` の raw source だけがある日付は灰色の短い線とする。この区別は raw source の存在を示すものであり、reference source raw source、derived reference curve、同曜日 raw source まで含めた完了を示すものではない。
 - indicator の完了日数は、完了定義を満たした stay_date の数を指す。取得が始まっているが完了していない stay_date は `進行 n日` として別に表示し、完了 0 日のままでも取得が進んでいることを確認できるようにする。
+- トップカレンダーでは、表示中の月ごとに月別優先取得ボタンをカレンダー上部へ表示する。ボタンは `YYYY-MM 優先取得` の短い文言、円形 progress、短い状態表示を持つ。状態は `未優先`、`待機中`、`取得中 n%`、`完了`、`クールダウン中`、`エラー n` を区別する。
+- 月別優先取得ボタンを押した場合、その `YYYYMM` の全 stay_date を通常の直近日付 queue より前に置く。Analyze 日付ページを開いている場合の `priorityStayDate` は引き続き最優先であり、月別優先取得はトップカレンダー上の明示操作として扱う。
+- 月別優先取得ボタンは既存の右下 warm cache indicator を置き換えない。右下 indicator は全体の queue 状態と詳細状態を表示し、月別ボタンは表示月ごとの優先取得入口と progress summary を表示する。
 - Analyze 日付ページでは、利用者が開いている stay_date の取得状況を percentage と件数で表示する。例: `この日 71%（5/7）`。
 - Analyze 日付ページの percentage は、少なくとも `raw source`、`reference curve`、`同曜日` の内訳を区別できる形にする。初期表示では `この日 raw 100% / 参考線 60% / 同曜日 100%` のように、どの段階が不足しているか分かる表示を優先する。
 - Analyze 日付ページの indicator では、booking_curve warm cache とは別に、競合価格 snapshot の保存状態も表示する。表示する状態は、未取得、保存中、保存済み、前回 snapshot あり、競合施設未設定による skip、保存失敗を区別する。
