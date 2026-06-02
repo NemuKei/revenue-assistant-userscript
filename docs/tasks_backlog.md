@@ -7630,19 +7630,95 @@
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`, `docs/context/DECISIONS.md`
 
+### RAU-WC-18 booking_curve 取得高速化の安全上限を仕様へ反映する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 現在の `1秒に1件` の `/api/v4/booking_curve` 取得制限を、無制限化ではなく `開始間隔 350ms 以上`、`同時実行 3 件以下` の明示上限へ変更できるよう、実装前に仕様と判断理由を確定する。
+- スコープ:
+  - 対象は RAU が `loadBookingCurve()` から発行する read-only の `/api/v4/booking_curve` request である。
+  - `current raw source`、`reference source raw source`、`same-weekday raw source` の request 間隔、同時実行上限、停止条件、error 分類、実ブラウザ検証の受け入れ条件を `docs/spec_001_analyze_expansion.md` と `docs/context/DECISIONS.md` に反映する。
+  - 既存の `document.hidden` 中の一時停止、1 回の稼働時間上限、cooldown、連続 error 停止、retry、重複 request key の in-flight dedupe は維持する前提で書く。
+- 非目標:
+  - この task では `src/`、`dist/`、Tampermonkey dashboard、Revenue Assistant 実画面を変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、価格や在庫の非公開データ保存は扱わない。
+  - hidden API の新規探索や request body / response body 全文の保存は行わない。
+- 受け入れ条件:
+  - `docs/spec_001_analyze_expansion.md` の `1.0 秒以上` 契約が、`350ms 以上` と `同時実行 3 件以下` を含む契約へ更新されている。
+  - `docs/context/DECISIONS.md` に、過去の短間隔連続 request 問題を踏まえ、無制限化ではなく上限付き高速化にする理由が記録されている。
+  - HTTP 401、HTTP 403、HTTP 429、5xx、network error の扱いが、実装前に確認できる粒度で記録されている。
+  - docs-only で終え、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/context/DECISIONS.md`
+
+### RAU-WC-19 booking_curve warm cache を上限付き multi-worker 化する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `/api/v4/booking_curve` の read-only 取得を、`開始間隔 350ms 以上`、`同時実行 3 件以下` の範囲で高速化し、現状の 1 件/秒よりも体感上の取得完了を早くする。
+- スコープ:
+  - `bookingCurveRequestScheduler` の開始間隔を 350ms にし、同時実行上限を 3 にする。
+  - `SALES_SETTING_WARM_CACHE_WORKER_COUNT = 3` を追加し、warm cache queue から最大 3 task を並行処理する。
+  - 表示中 top list / Analyze 候補に必要な `currentRaw x roomGroup` task の優先処理を維持し、優先 task 取得後の再描画は短時間に連発しないよう debounce する。
+  - skip task は API request を発行しないため、従来どおり即時進行させる。
+  - HTTP 401、HTTP 403、HTTP 429、5xx、network error の分類と停止または cooldown 処理を、`RAU-WC-18` の仕様に合わせる。
+- 非目標:
+  - 取得対象期間、request key、IndexedDB schema、raw source compact schema、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、`price_ranks` 系 endpoint は変更しない。
+  - 競合価格 snapshot queue、価格推移 background queue、月次 snapshot prefetch queue はこの task では高速化しない。
+- 受け入れ条件:
+  - source-level 検証で、同時実行上限 3、開始間隔 350ms 以上、同一 request key の in-flight dedupe が成立している。
+  - warm cache worker 検証で、3 worker が queue を処理し、skip task は API request なしで進むことを確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+  - 実ブラウザ確認を同じ task で行わない場合は、未確認範囲として `RAU-WC-20` に渡す。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: during-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+
+### RAU-WC-20 高速化後の実ブラウザ throughput と安全停止を確認する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-WC-19` の上限付き multi-worker 化が、通常 Chrome の Revenue Assistant 実画面で、取得速度を改善しつつ HTTP error、console error、page error、write API POST を発生させないことを確認する。
+- スコープ:
+  - CDP 接続付き通常 Chrome で Analyze 日付ページを 60 秒から 120 秒観測する。
+  - RAU 発行の `/api/v4/booking_curve` request だけを数え、Revenue Assistant 本体が標準画面表示のために発行する request は分けて扱う。
+  - request 開始間隔、平均 request 件数、同時実行数、HTTP 401 / 403 / 429 / 5xx、network error、console error、page error、監視対象 write API POST 件数を確認する。
+  - 未取得 task が少なく live request 件数で倍速を測れない場合は、source-level scheduler 検証を主証跡にし、実ブラウザでは skip 即時進行、indicator 表示、error 0 件を確認する。
+- 非目標:
+  - この task では実装を追加しない。必要な修正が見つかった場合は、原因と修正対象を別 task または `RAU-WC-19` の follow-up として戻す。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映の実送信は行わない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データを Git 管理へ入れない。
+- 受け入れ条件:
+  - 未取得 task が十分ある状態では、RAU 発行 `/api/v4/booking_curve` の平均開始件数が 1.8 件/秒以上である。
+  - 最小 request 開始間隔が概ね 300ms 未満へ崩れず、同時実行数が 3 を超えない。
+  - HTTP 401、HTTP 403、HTTP 429、5xx、console error、page error、監視対象 write API POST が 0 件である。
+  - 取得済み cache が多く live request 件数で倍速を測れない場合は、その理由、source-level 証跡、skip 即時進行、error 0 件を記録する。
+  - 必要に応じて GitHub Pages published version と Tampermonkey installed version を揃え、配布版 smoke で version mismatch がないことを確認する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: after-implementation
+  - `target-spec`: `README.md`
+
 ## Remaining Task Triage
 
 Now:
 
-- なし。
+- `RAU-WC-18` booking_curve 取得高速化の安全上限を仕様へ反映する
 
 Next:
 
-- なし。
+- `RAU-WC-19` booking_curve warm cache を上限付き multi-worker 化する
 
 After Next:
 
-- なし。
+- `RAU-WC-20` 高速化後の実ブラウザ throughput と安全停止を確認する
 
 Later:
 
@@ -7650,6 +7726,7 @@ Later:
 
 統合判断:
 
+- 2026-06-02 に、利用者が「データ取得の遅さ」が現在のボトルネックであり、安全に寄せすぎている感覚があるため、request 間隔だけでなく multi-worker 併用も含めて倍以上の改善を検討したいと示した。既存の `RAU-WC-01`、`RAU-WC-04`、`RAU-WC-11` は warm cache、request scheduler、in-flight dedupe の土台であり、現行仕様は `/api/v4/booking_curve` の開始間隔 1.0 秒以上を契約としている。今回の要望はその契約を見直す実装前判断を含むため、まず `RAU-WC-18` で安全上限と error 分類を仕様へ反映し、次に `RAU-WC-19` で `開始間隔 350ms 以上`、`同時実行 3 件以下` の multi-worker 実装を行い、最後に `RAU-WC-20` で通常 Chrome の実ブラウザ throughput と HTTP / console / page error 0 件を確認する。Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、価格や在庫の非公開データ保存は対象外である。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant 実画面状態は変更していない。
 - 2026-06-02 に、未着手だった `RAU-UX-100` から `RAU-UX-105` と `RAU-AF-12` から `RAU-AF-17` を完了した。`RAU-UX-100` では、競合価格の現在値だけではなく、通常時の自社価格と競合価格の相対距離を baseline として使う設計を記録した。`RAU-UX-101` では 5 秒 pending の progress ring を追加した。`RAU-UX-102` では現ランク cell で現ランク値と販売室数を別行に分け、補助表示を `販売室数：current/max` にした。`RAU-UX-103` では、browser-local decision は保存成功後に既存 lifecycle filter で非表示になり、rank change は送信前 guard、POST、反映確認の失敗を隠さないため無条件非表示にしない判断を記録した。`RAU-UX-104` と `RAU-UX-105` では、操作履歴からの自動 suppression または外部機械学習モデル導入は初期実装では行わず、必要な場合は明示設定によるクールダウン調整を別 task で扱う方針を記録した。`RAU-AF-12` から `RAU-AF-17` では、Analyze 日付ページ上部に read-only の料金調整候補一覧を追加し、top list から遷移した候補の highlight、配布版 smoke mode `analyze-recommendations`、反映操作を実装する前の write 安全条件を追加した。Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、bulk apply、自動反映、金額・差額・percent・forecast 数値・sales / ADR 数値の本文表示は変更していない。verify は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run react:doctor -- --verbose --diff false`、`git diff --check` が通過済みである。React Doctor は残診断 41 件で完走し、今回の bundle では既存診断を追加修正しない。Vite、esbuild、React Doctor を起動する build / fixture / marker / React Doctor は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。commit `6ec3c1e` を `origin/main` へ push し、Publish Userscript run `26794622573` は success になった。GitHub Pages published version は `0.1.0.364` であり、Tampermonkey dashboard から installed version を `0.1.0.363` から `0.1.0.364` へ更新した。配布版 top smoke は top row 10 件、React marker あり、primary actions wrappers 10 件、secondary action markers 10 件、status badge cells 10 件、UI component markers 54 件、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。配布版 Analyze smoke は Analyze 候補一覧 root 1 件、row 5 件、empty 0 件、write button 0 件、read-only state yes、console error 0 件、page error 0 件、監視対象 write API POST 0 件で pass した。この完了により Remaining Task Triage は空である。
 - 2026-06-02 に、利用者が「学習化をしないと結論した場合は、カスタマイズ機能を検討するタスクを入れるのはどう」と示し、クールダウン設定の例として `長め`、`ふつう`、`短め`、`任意日数`、部屋タイプ別設定、LT 別設定を挙げたため、`RAU-UX-105` として task 化した。`RAU-UX-105` は `RAU-UX-104` の後続 task であり、操作判断から過剰推奨を学習化しない、または初期実装では見送る場合の代替策として、明示設定によるクールダウン調整の範囲を設計する。LT は `lead time` の略で、宿泊日までの日数を指す。`RAU-UX-105` は実装 task ではなく、設定範囲、保存対象、説明表示、非目標を決める docs-first task とする。利用者回答により、`RAU-UX-105` は `RAU-UX-104` の直後、Analyze 上部候補一覧 task より前に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
 - 2026-06-02 に、利用者が top 料金調整候補 list の操作体験と過剰推奨抑制に関する 4 件を追加で示したため、`RAU-UX-101` から `RAU-UX-104` として task 化した。`RAU-UX-101` は 5 秒 pending の残り時間を text と progress ring で示す UI 改善、`RAU-UX-102` は現ランク cell 内の OH / キャパ補助表示、`RAU-UX-103` は 5 秒満了後に対象 row を即時非表示にする操作後整理、`RAU-UX-104` は操作判断を過剰推奨抑制へ使えるか検討する docs-first task である。利用者回答により、この 4 件は Analyze 上部候補一覧 task より前に置く。`RAU-UX-103` の非表示タイミングは押下直後ではなく 5 秒満了後とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version は変更していない。
