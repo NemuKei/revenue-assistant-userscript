@@ -1,5 +1,143 @@
 # tasks_backlog
 
+## Planned / Product Design Full-Screen Audit
+
+### RAU-UX-106 Product Design 全画面 audit の対象 surface と評価基準を固定する
+
+- 目的:
+  - `@product-design` を使った既存機能画面の順次ブラッシュアップを、個別画面の追加実装から始めず、全画面 audit の対象、証跡、評価基準、後続 task 化ルールから開始する。
+- スコープ:
+  - 対象 surface を、top 画面、Analyze 販売設定画面、Analyze 競合価格 / 価格推移 tab、月次実績画面、共通 UI primitive / fixture / smoke に分ける。
+  - Product Design workflow は `get-context` で brief を固定し、各画面 task では `audit` を使ってスクリーンショット証跡から改善候補を出す。
+  - capture 手段は、通常 Chrome のログイン済み状態、Tampermonkey、Revenue Assistant 実画面状態が必要な確認では Chrome拡張または Chrome DevTools Protocol を使い、開発中 fixture や静的確認ではアプリ内ブラウザまたは Playwright を使う方針にする。
+  - desktop と mobile の確認 viewport、スクリーンショット証跡の保存先、audit summary の記録先、次 task 化の条件を決める。
+  - 評価軸は、操作の見つけやすさ、情報密度、読み込み状態、空状態、エラー状態、focus / keyboard、スマホ表示、Revenue Assistant 標準 UI との干渉にする。
+- 非目標:
+  - runtime UI、`src/`、`dist/`、Tampermonkey installed version を変更すること。
+  - Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、自動反映、一括反映を変更すること。
+  - Product Design audit の前に個別画面をブラッシュアップ実装すること。
+  - Figma や外部 prototype を必須成果物にすること。
+- 受け入れ条件:
+  - 対象 surface、capture 手段、desktop / mobile viewport、評価軸、audit 出力先が `docs/tasks_backlog.md` または対象 docs に明記されている。
+  - 各 screen audit task が、スクリーンショット証跡、UX findings、アクセシビリティ risk、次に実装する task ID または実装不要と判断した理由を完了条件に持つ。
+  - `git diff --check -- docs/tasks_backlog.md docs/context/STATUS.md` が通る。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-required
+  - `target-spec`: none
+
+### RAU-UX-107 top 画面を Product Design audit し、次のブラッシュアップ task を切る
+
+- 目的:
+  - top 画面を Product Design audit の最初の対象にし、直近でブラッシュアップした候補 list と月別優先取得 strip を基準点として、次に実装する UI / UX 改善 task を切る。
+- スコープ:
+  - 対象はトップカレンダー、月別優先取得 strip、warm cache indicator、料金調整候補 list とする。
+  - 直近でブラッシュアップ済みの候補 list と優先取得ボタンは、再実装対象ではなく、全画面 audit の比較基準として確認する。
+  - desktop と mobile のスクリーンショット証跡から、次に確認する操作、読み込み中の状態、主要 action、補助 action、標準 UI との干渉を評価する。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonFingerprint、表示件数、filter、保存 schema を変更すること。
+  - Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version を変更すること。
+- 受け入れ条件:
+  - Product Design `audit` 用のスクリーンショット証跡が、desktop と mobile の両方で残っている。
+  - UX findings が、維持する点、修正候補、task 化する点、変更しない点に分けて記録されている。
+  - focus / keyboard、スマホ表示、読み込み状態、空状態、エラー状態、標準 UI との干渉に関する risk が明記されている。
+  - 次に実装する task ID が追加されている。実装しない改善候補は、実装しない理由が記録されている。
+  - 実装 task へ進む場合の最小 verify として、対象に応じて `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run smoke:distribution -- --mode top` の要否が指定されている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: audit-before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-108 Analyze 販売設定画面を Product Design audit し、次のブラッシュアップ task を切る
+
+- 目的:
+  - Analyze 販売設定画面で、top list から遷移した後に利用者が何を見るべきか、どの情報が重複しているか、読み込み状態が分かりやすいかを確認し、次に実装する UI / UX 改善 task を切る。
+- スコープ:
+  - 対象は全体 booking curve、室タイプ別 card、rank overview、Analyze 上部の料金調整候補一覧、個人 / 団体切替とする。
+  - 料金調整候補 top list との情報重複、遷移後に確認すべき項目、読み込み状態、partial data 表示、標準 UI との干渉を評価する。
+  - desktop と mobile のスクリーンショット証跡を使い、同じ日付、同じ候補、同じ部屋タイプで top 画面との見え方を比較する。
+- 非目標:
+  - Analyze 上部候補一覧へ反映操作、一括反映、自動反映、Revenue Assistant write API を追加すること。
+  - booking curve の計算契約、reference curve の入力、rank overview の business rule を変更すること。
+- 受け入れ条件:
+  - Product Design `audit` 用のスクリーンショット証跡が、desktop と mobile の両方で残っている。
+  - top list との情報重複、遷移後に見るべき項目、読み込み状態、個人 / 団体切替後の見え方に関する UX findings が記録されている。
+  - focus / keyboard、スマホ表示、読み込み状態、空状態、エラー状態、標準 UI との干渉に関する risk が明記されている。
+  - 次に実装する task ID が追加されている。実装しない改善候補は、実装しない理由が記録されている。
+  - 実装 task へ進む場合の最小 verify として、対象に応じて `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run smoke:distribution -- --mode analyze-recommendations` の要否が指定されている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: audit-before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-109 Analyze 競合価格 / 価格推移 tab を Product Design audit し、次のブラッシュアップ task を切る
+
+- 目的:
+  - Analyze の競合価格 / 価格推移 tab で、金額情報の表示密度、tooltip、見出し、filter、loading / empty / failure 表示を確認し、次に実装する UI / UX 改善 task を切る。
+- スコープ:
+  - 対象は競合価格 graph、公式価格推移 graph、部屋タイプ / 食事 filter、background queue、loading / empty / failure 表示とする。
+  - 金額情報を扱うため、表示密度、tooltip、誤読しやすい見出し、価格系列の比較対象、非公開データ保存なしの制約を確認する。
+  - Revenue Assistant 内の自分の契約アカウント、自施設、自分の権限内の read-only API を、人間の画面操作に近い頻度で確認する範囲に限定する。
+- 非目標:
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データを Git 管理または docs へ保存すること。
+  - OTA、競合サイト、第三者サイトの hidden API を実装対象にすること。
+  - 価格推移や競合価格の business rule を変更すること。
+- 受け入れ条件:
+  - Product Design `audit` 用のスクリーンショット証跡が、desktop と mobile の両方で残っている。
+  - 金額表示、tooltip、filter、background queue、loading / empty / failure 表示に関する UX findings が記録されている。
+  - 非公開データを保存しない制約、read-only 範囲、request / response body を残さない方針が audit note に明記されている。
+  - focus / keyboard、スマホ表示、読み込み状態、空状態、エラー状態、標準 UI との干渉に関する risk が明記されている。
+  - 次に実装する task ID が追加されている。実装しない改善候補は、実装しない理由が記録されている。
+  - 実装 task へ進む場合の最小 verify として、対象に応じて `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run smoke:distribution` の要否が指定されている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: audit-before-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-110 月次実績画面を Product Design audit し、次のブラッシュアップ task を切る
+
+- 目的:
+  - 月次実績画面を Product Design audit し、custom LT booking curve、比較 control、日次差分、詳細表示、empty / partial data fixture の改善候補を整理する。
+- スコープ:
+  - 対象は custom LT booking curve、compare / metric controls、日次差分 table、details 表示、empty / partial data fixture とする。
+  - `INTENT.md` の「top 画面と Analyze の調整判断を優先する」方針に従い、Analyze より優先しすぎない Later task として扱う。
+  - 月次実績画面だけで完結する視認性、操作の見つけやすさ、fixture と smoke の不足を確認する。
+- 非目標:
+  - 月次実績画面の metric 定義、booking curve 計算契約、外部 API request 範囲を変更すること。
+  - top 画面または Analyze 画面より先に月次実績の追加実装へ進むこと。
+- 受け入れ条件:
+  - Product Design `audit` 用のスクリーンショット証跡が、desktop と mobile の両方で残っている。
+  - custom LT booking curve、compare / metric controls、日次差分 table、details 表示、empty / partial data fixture に関する UX findings が記録されている。
+  - focus / keyboard、スマホ表示、読み込み状態、空状態、エラー状態、標準 UI との干渉に関する risk が明記されている。
+  - 次に実装する task ID が追加されている。実装しない改善候補は、実装しない理由が記録されている。
+  - 実装 task へ進む場合の最小 verify として、対象に応じて `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run smoke:distribution` の要否が指定されている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: audit-before-impl
+  - `target-spec`: `docs/spec_000_overview.md`
+
+### RAU-UX-111 audit 結果から共通 UI primitive / fixture / smoke 改善を切り出す
+
+- 目的:
+  - 各画面 audit で共通して出た UI / UX 課題を、画面単位の個別実装ではなく、共通 UI primitive、fixture、smoke の改善 task として切り出す。
+- スコープ:
+  - 対象は button、badge、filter、tooltip、loading、empty、mobile layout、fixture marker、distribution smoke の不足とする。
+  - 各画面 audit で少なくとも 2 画面以上に共通する課題だけを、共通改善候補として統合する。
+  - 既存 React component、Radix Popover、RAU root 限定 CSS、既存 fixture / smoke helper を優先する。
+- 非目標:
+  - 依存追加、依存更新、大規模 design system 化、全 CSS 再設計を行うこと。
+  - 画面固有の改善を、根拠なく共通 primitive へ移すこと。
+  - runtime UI を変更せずに完了扱いにすること。共通実装へ進む場合は、別 task ID と verify を切る。
+- 受け入れ条件:
+  - 2 画面以上の audit 結果から同じ種類の課題が確認できる場合だけ、共通 UI primitive / fixture / smoke 改善 task が追加されている。
+  - 共通化する入力、処理、出力、適用画面、適用しない画面、既存挙動を保持する条件が記録されている。
+  - 依存追加や大規模 design system 化を行わない理由、または明示承認が必要な理由が記録されている。
+  - 実装 task へ進む場合の最小 verify として、対象に応じて `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run smoke:distribution` の要否が指定されている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: audit-before-impl
+  - `target-spec`: `docs/spec_000_overview.md`, `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
 ## Recently Implemented / GUI Confirmed
 
 ### RAU-AF-11 booking curve の個人 / 団体切り替え直後に描画を維持する
@@ -7906,22 +8044,25 @@
 
 Now:
 
-- なし。
+- `RAU-UX-106` Product Design 全画面 audit の対象 surface と評価基準を固定する
 
 Next:
 
-- なし。
+- `RAU-UX-107` top 画面を Product Design audit し、次のブラッシュアップ task を切る
 
 After Next:
 
-- なし。
+- `RAU-UX-108` Analyze 販売設定画面を Product Design audit し、次のブラッシュアップ task を切る
+- `RAU-UX-109` Analyze 競合価格 / 価格推移 tab を Product Design audit し、次のブラッシュアップ task を切る
 
 Later:
 
-- なし。
+- `RAU-UX-110` 月次実績画面を Product Design audit し、次のブラッシュアップ task を切る
+- `RAU-UX-111` audit 結果から共通 UI primitive / fixture / smoke 改善を切り出す
 
 統合判断:
 
+- 2026-06-04 に、利用者が `@product-design` を使って既存機能画面を順次ブラッシュアップする task 作成を依頼したため、個別画面をいきなり改修せず、全画面を Product Design audit 対象として棚卸しする `RAU-UX-106` から `RAU-UX-111` を追加した。`RAU-UX-106` で `get-context` brief、対象 surface、capture 手段、desktop / mobile viewport、評価軸を固定する。`RAU-UX-107` は直近でブラッシュアップ済みの top 画面を全画面 audit の基準点にするため Now の次に置く。`RAU-UX-108` と `RAU-UX-109` は Analyze 画面内の調整判断と金額表示に関わるため After Next に置く。`RAU-UX-110` は `INTENT.md` の優先順位に従い、top 画面と Analyze より後の Later に置く。`RAU-UX-111` は各画面 audit の結果がそろってから共通 UI primitive / fixture / smoke 改善を切り出すため Later に置く。今回の task 作成では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API は変更していない。
 - 2026-06-02 に、未着手だった `RAU-WC-26`、`RAU-WC-24`、`RAU-WC-25` を完了した。`RAU-WC-26` では、月別優先取得 button はカレンダー上部へ維持し、button 押下後に料金調整候補 list の `対象月` filter を押した月へ切り替える方針を採用した。`RAU-WC-24` では、月別優先取得後の再評価 summary を top list summary の一時表示に限定し、比較対象を active candidate 件数、表示中候補件数、raw source 状態別件数、状態 badge 件数差分にした。`RAU-WC-25` では、配布版 top smoke に GET `/api/v4/booking_curve` の request count、HTTP status count、HTTP error count、平均 request 開始件数、最小 request 開始間隔、最大同時 request 数、warm cache worker count / capacity、fallback reason を追加した。正本は `docs/spec_001_analyze_expansion.md`、`docs/spec_003_rank_recommendation_signal.md`、`docs/context/DECISIONS.md`、README に反映した。commit `e5ae41d` を `origin/main` へ push し、Publish Userscript run `26805298528` は success になった。GitHub Pages published version と Tampermonkey installed version は `0.1.0.369` に揃っている。配布版 top smoke は Tampermonkey installed version `0.1.0.369` で pass した。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 2026-06-02 に、月別優先取得後の利用者導線と配布版 smoke に関する推奨 3 件を `RAU-WC-24`、`RAU-WC-25`、`RAU-WC-26` として task 化した。live backlog の重複確認では `RAU-WC-24`、`RAU-WC-25`、`RAU-WC-26` は存在せず、選択された 3 件と同じ責務境界の未着手 task も見つからなかった。`RAU-WC-26` は、優先取得 button の配置見直しと候補 list 側の操作導線を先に決める task であり、次の UI / UX 実装判断に直結するため Now とする。`RAU-WC-24` は、優先取得後に候補が増えたか、判断が変わったか、根拠不足が減ったかを表示する task であり、`RAU-WC-26` で導線と表示場所を決めた後の Next とする。`RAU-WC-25` は検証基盤として重要だが、利用者の操作導線と summary 表示の判断後に観測項目を確定しやすいため After Next とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、Tampermonkey installed version、Revenue Assistant 実画面状態は変更していない。
 - 2026-06-02 に、未着手だった `RAU-WC-18`、`RAU-WC-19`、`RAU-WC-20`、`RAU-WC-21`、`RAU-WC-22`、`RAU-WC-23` を完了した。booking curve warm cache は `開始間隔 350ms 以上`、`同時実行 3 件以下` の上限付き高速化になり、トップカレンダー上部には表示月ごとの `YYYY-MM 優先取得` button と円形 progress が追加された。配布版 `0.1.0.367` を Tampermonkey installed version `0.1.0.367` に揃え、配布版 top smoke と Chrome DevTools Protocol 観測で、月別 control 3 件、button 3 件、2026-08 優先取得時の `worker 3/3`、booking curve request 41 件、平均開始件数 2.25 件/秒、最小開始間隔 345ms、監視対象 write API POST 0 件、console error 0 件、page error 0 件を確認した。この完了により Remaining Task Triage は空である。
