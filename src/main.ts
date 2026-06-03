@@ -147,7 +147,7 @@ const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
-const GROUP_ROOM_STYLE_VERSION = "20260602-warm-cache-month-priority-v1";
+const GROUP_ROOM_STYLE_VERSION = "20260603-warm-cache-candidate-strip-v1";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
@@ -162,6 +162,8 @@ const SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE = "data-ra-sales-setting-w
 const SALES_SETTING_WARM_CACHE_MONTH_KEY_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month";
 const SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-status";
 const SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-progress";
+const SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-title";
+const SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-actions";
 const CALENDAR_LAST_CHANGE_ATTRIBUTE = "data-ra-calendar-last-change";
 const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
 const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
@@ -6700,8 +6702,7 @@ function renderSalesSettingWarmCacheMonthControls(cells: MonthlyCalendarCell[]):
     }
 
     const calendarElement = resolveMonthlyCalendarContainerElement(cells);
-    const parentElement = calendarElement?.parentElement ?? null;
-    if (!(calendarElement instanceof HTMLElement) || !(parentElement instanceof HTMLElement)) {
+    if (!(calendarElement instanceof HTMLElement)) {
         existingElement?.remove();
         return;
     }
@@ -6712,13 +6713,62 @@ function renderSalesSettingWarmCacheMonthControls(cells: MonthlyCalendarCell[]):
         return;
     }
 
+    const host = resolveSalesSettingWarmCacheMonthControlsHost(cells, calendarElement);
+    if (host === null) {
+        existingElement?.remove();
+        return;
+    }
+
     const controlsElement = existingElement ?? document.createElement("div");
     controlsElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE, "");
-    controlsElement.replaceChildren(...monthKeys.map(createSalesSettingWarmCacheMonthControlElement));
 
-    if (controlsElement.parentElement !== parentElement || controlsElement.nextElementSibling !== calendarElement) {
-        parentElement.insertBefore(controlsElement, calendarElement);
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE, "");
+    titleElement.textContent = "候補データ優先取得";
+
+    const actionsElement = document.createElement("div");
+    actionsElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE, "");
+    actionsElement.replaceChildren(...monthKeys.map(createSalesSettingWarmCacheMonthControlElement));
+
+    controlsElement.replaceChildren(titleElement, actionsElement);
+
+    if (controlsElement.parentElement !== host.parentElement || controlsElement.nextElementSibling !== host.insertBeforeElement) {
+        host.parentElement.insertBefore(controlsElement, host.insertBeforeElement);
     }
+}
+
+function resolveSalesSettingWarmCacheMonthControlsHost(
+    cells: MonthlyCalendarCell[],
+    calendarElement: HTMLElement
+): { parentElement: HTMLElement; insertBeforeElement: HTMLElement } | null {
+    const rankRecommendationElement = document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`);
+    const rankRecommendationParentElement = rankRecommendationElement?.parentElement ?? null;
+    if (rankRecommendationElement instanceof HTMLElement && rankRecommendationParentElement instanceof HTMLElement) {
+        return {
+            parentElement: rankRecommendationParentElement,
+            insertBeforeElement: rankRecommendationElement
+        };
+    }
+
+    const calendarParentElement = calendarElement.parentElement;
+    if (calendarParentElement instanceof HTMLElement) {
+        return {
+            parentElement: calendarParentElement,
+            insertBeforeElement: calendarElement
+        };
+    }
+
+    const firstCell = cells[0];
+    const fallbackElement = firstCell?.anchorElement.parentElement ?? null;
+    const fallbackParentElement = fallbackElement?.parentElement ?? null;
+    if (fallbackElement instanceof HTMLElement && fallbackParentElement instanceof HTMLElement) {
+        return {
+            parentElement: fallbackParentElement,
+            insertBeforeElement: fallbackElement
+        };
+    }
+
+    return null;
 }
 
 function cleanupSalesSettingWarmCacheMonthControls(): void {
@@ -9241,9 +9291,15 @@ function renderRankRecommendationList(
         rankOptions: options.rankOrder?.ranksHighToLow ?? []
     });
 
-    if (rootElement.parentElement !== host.parentElement || rootElement.previousElementSibling !== host.insertAfterElement) {
+    const warmCacheMonthControlsElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}]`);
+    const expectedPreviousElement = warmCacheMonthControlsElement?.parentElement === host.parentElement
+        && warmCacheMonthControlsElement.previousElementSibling === host.insertAfterElement
+        ? warmCacheMonthControlsElement
+        : host.insertAfterElement;
+
+    if (rootElement.parentElement !== host.parentElement || rootElement.previousElementSibling !== expectedPreviousElement) {
         rootElement.remove();
-        host.parentElement.insertBefore(rootElement, host.insertAfterElement.nextSibling);
+        host.parentElement.insertBefore(rootElement, expectedPreviousElement.nextSibling);
     }
 
     syncRankRecommendationReactList(rootElement, {
@@ -9279,6 +9335,7 @@ function renderRankRecommendationList(
         rows: viewModel.rows.map(buildRankRecommendationReactRowSnapshot)
     });
     hydrateRankRecommendationReactPreviewRows(viewModel);
+    renderSalesSettingWarmCacheMonthControls(collectMonthlyCalendarCells());
 }
 
 function buildRankRecommendationListViewModel(
@@ -16812,13 +16869,33 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}] {
             display: flex;
+            flex-wrap: nowrap;
+            align-items: center;
+            gap: 10px;
+            margin: 10px 0 8px;
+            padding: 8px 10px;
+            border: 1px solid #d6e2ee;
+            border-radius: 8px;
+            background: #f8fbff;
+            box-shadow: 0 1px 3px rgba(35, 52, 71, 0.06);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE}] {
+            flex: 0 0 auto;
+            color: #344a62;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE}] {
+            display: flex;
+            flex: 1 1 auto;
             flex-wrap: wrap;
             align-items: center;
-            gap: 6px;
-            margin: 0 0 8px;
-            padding: 0;
-            border: none;
-            background: transparent;
+            gap: 6px 8px;
+            min-width: 0;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}] {
@@ -18540,6 +18617,15 @@ function ensureGroupRoomStyles(): void {
         }
 
         @media (max-width: 900px) {
+            [${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}] {
+                flex-wrap: wrap;
+                align-items: flex-start;
+            }
+
+            [${SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE}] {
+                flex-basis: 100%;
+            }
+
             [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
                 width: 100%;
             }
