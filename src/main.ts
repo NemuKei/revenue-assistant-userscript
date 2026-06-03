@@ -17816,6 +17816,11 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.4;
         }
 
+        [${RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE}="summary"] {
+            display: grid;
+            gap: 2px;
+        }
+
         [${RANK_RECOMMENDATION_UI_COMPONENT_ATTRIBUTE}="control-group"] {
             display: flex;
             align-items: center;
@@ -17929,6 +17934,24 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] {
+            border-left: 4px solid transparent;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="high"] {
+            border-left-color: #b54646;
+            background: #fff8f7;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="medium"] {
+            border-left-color: #b98616;
+            background: #fffaf0;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="low"] {
+            border-left-color: #7f93aa;
+        }
+
         [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"],
         [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="decision-summary"],
         [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="stay-date"],
@@ -17946,13 +17969,32 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="high"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"] {
-            color: #b54646;
-            font-weight: 800;
+            color: #8b2f2f;
         }
 
         [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_PRIORITY_ATTRIBUTE}="medium"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"] {
-            color: #91620d;
+            color: #6d4a09;
+        }
+
+        [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"],
+        [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="decision-summary"],
+        [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="status"] {
             font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"] {
+            text-align: center;
+        }
+
+        [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="priority"]::after {
+            content: "";
+            display: block;
+            width: 28px;
+            height: 3px;
+            margin-top: 3px;
+            border-radius: 999px;
+            background: currentColor;
+            opacity: 0.55;
         }
 
         [${RANK_RECOMMENDATION_HISTORY_ATTRIBUTE}] {
@@ -17968,6 +18010,13 @@ function ensureGroupRoomStyles(): void {
         }
 
         [data-ra-rank-recommendation-recommended-action-label] {
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            min-height: 22px;
+            padding: 2px 7px;
+            border: 1px solid currentColor;
+            border-radius: 999px;
             font-weight: 800;
             white-space: nowrap;
         }
@@ -18065,12 +18114,17 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="raise_watch"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] {
-            color: #0c7a43;
+            color: #0c6b3b;
             font-weight: 800;
         }
 
         [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="lower_watch"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] {
-            color: #b54646;
+            color: #a13535;
+            font-weight: 800;
+        }
+
+        [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_ACTION_ATTRIBUTE}="watch"] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="recommended-action"] {
+            color: #475d75;
             font-weight: 800;
         }
 
@@ -18145,6 +18199,7 @@ function ensureGroupRoomStyles(): void {
 
         [data-ra-rank-recommendation-secondary-actions] {
             width: fit-content;
+            color: #315b8d;
         }
 
         [data-ra-rank-recommendation-secondary-actions] summary {
@@ -18292,9 +18347,28 @@ function ensureGroupRoomStyles(): void {
             cursor: pointer;
         }
 
+        [${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="analyze"] {
+            border-color: #315b8d;
+            background: #315b8d;
+            color: #ffffff;
+        }
+
+        [${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-change-submit"],
+        [${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-change-inline-submit"] {
+            border-color: #0c7a43;
+            background: #ecf8ef;
+            color: #0c5f35;
+        }
+
         [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}]:hover:not([disabled]) {
             border-color: #8fa4bf;
             background: #f3f7fb;
+        }
+
+        [${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="analyze"]:hover:not([disabled]) {
+            border-color: #244f7f;
+            background: #244f7f;
+            color: #ffffff;
         }
 
         [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}]:focus-visible {
@@ -18318,6 +18392,7 @@ function ensureGroupRoomStyles(): void {
             display: inline-flex;
             align-items: center;
             width: fit-content;
+            max-width: 100%;
             gap: 6px;
             margin-top: 6px;
             padding: 4px 6px;
@@ -18328,13 +18403,14 @@ function ensureGroupRoomStyles(): void {
             font-size: 11px;
             font-weight: 800;
             line-height: 1.3;
-            white-space: nowrap;
+            white-space: normal;
         }
 
         [${RANK_RECOMMENDATION_PENDING_RANK_CHANGE_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
             width: fit-content;
+            max-width: 100%;
             gap: 6px;
             margin-top: 6px;
             padding: 4px 6px;
@@ -18345,7 +18421,7 @@ function ensureGroupRoomStyles(): void {
             font-size: 11px;
             font-weight: 800;
             line-height: 1.3;
-            white-space: nowrap;
+            white-space: normal;
         }
 
         [${RANK_RECOMMENDATION_PENDING_DECISION_ATTRIBUTE}] [${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}],
@@ -18519,6 +18595,7 @@ function ensureGroupRoomStyles(): void {
             [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] {
                 padding: 8px 0;
                 border-top: 1px solid #e1e7ef;
+                border-left-width: 4px;
             }
 
             [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] td {
@@ -18569,6 +18646,20 @@ function ensureGroupRoomStyles(): void {
 
             [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="actions"]::before {
                 content: "操作";
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="actions"] {
+                align-items: start;
+            }
+
+            [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}] [${RANK_RECOMMENDATION_CELL_ROLE_ATTRIBUTE}="actions"] > * {
+                min-width: 0;
+            }
+
+            [data-ra-rank-recommendation-primary-actions],
+            [data-ra-rank-recommendation-secondary-actions],
+            [${RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE}] {
+                max-width: 100%;
             }
         }
 

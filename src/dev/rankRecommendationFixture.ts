@@ -257,7 +257,10 @@ function buildRow(options: {
             text: "Analyze",
             title: "Analyze で確認",
             href: `https://ra.jalan.net/analyze/${options.stayDate}`,
-            attrs: {}
+            attrs: {
+                "data-ra-rank-recommendation-button": "",
+                "data-ra-rank-recommendation-button-action": "analyze"
+            }
         },
         curvePreviewButton: {
             ...buildButton("曲線", "curve-preview-toggle"),
@@ -472,6 +475,57 @@ function installFixtureStyles(): void {
             white-space: nowrap;
         }
 
+        [data-ra-rank-recommendation-row] {
+            border-left: 4px solid transparent;
+        }
+
+        [data-ra-rank-recommendation-row][data-ra-rank-recommendation-priority="high"] {
+            border-left-color: #b54646;
+            background: #fff8f7;
+        }
+
+        [data-ra-rank-recommendation-row][data-ra-rank-recommendation-priority="medium"] {
+            border-left-color: #b98616;
+            background: #fffaf0;
+        }
+
+        [data-ra-rank-recommendation-row][data-ra-rank-recommendation-priority="low"] {
+            border-left-color: #7f93aa;
+        }
+
+        [data-ra-rank-recommendation-cell-role="priority"],
+        [data-ra-rank-recommendation-cell-role="decision-summary"],
+        [data-ra-rank-recommendation-cell-role="status"] {
+            font-weight: 800;
+        }
+
+        [data-ra-rank-recommendation-cell-role="priority"] {
+            text-align: center;
+        }
+
+        [data-ra-rank-recommendation-cell-role="priority"]::after {
+            content: "";
+            display: block;
+            width: 28px;
+            height: 3px;
+            margin-top: 3px;
+            border-radius: 999px;
+            background: currentColor;
+            opacity: 0.55;
+        }
+
+        [data-ra-rank-recommendation-recommended-action-label] {
+            display: inline-flex;
+            align-items: center;
+            width: fit-content;
+            min-height: 22px;
+            padding: 2px 7px;
+            border: 1px solid currentColor;
+            border-radius: 999px;
+            font-weight: 800;
+            white-space: nowrap;
+        }
+
         [data-ra-rank-recommendation-button],
         [data-ra-rank-recommendation-curve-popover] button {
             min-height: 26px;
@@ -483,6 +537,19 @@ function installFixtureStyles(): void {
             font-size: 12px;
             font-weight: 800;
             cursor: pointer;
+        }
+
+        [data-ra-rank-recommendation-button-action="analyze"] {
+            border-color: #315b8d;
+            background: #315b8d;
+            color: #ffffff;
+        }
+
+        [data-ra-rank-recommendation-button-action="rank-change-submit"],
+        [data-ra-rank-recommendation-button-action="rank-change-inline-submit"] {
+            border-color: #0c7a43;
+            background: #ecf8ef;
+            color: #0c5f35;
         }
 
         [data-ra-rank-recommendation-primary-actions],
@@ -607,6 +674,7 @@ function installFixtureStyles(): void {
             [data-ra-rank-recommendation-row] {
                 padding: 8px 0;
                 border-top: 1px solid #e1e7ef;
+                border-left-width: 4px;
             }
 
             [data-ra-rank-recommendation-list] td {
