@@ -41,7 +41,6 @@
   - `spec-governance`: `spec` 更新要否や更新先を判断するとき
   - `task-add-and-triage`: 新規タスク追加後に棚卸し、統合、実行順更新を同じ変更で行うとき
   - `verification-before-completion`: 完了報告前に verify を整理するとき
-  - `thread-contract-handoff`: 明示的な handoff 作成、handoff 復旧、長期中断後の正本再同期、既存 handoff prompt の照合が必要なとき
   - `second-brain-capture`: 作業結果、再開地点、判断理由、Codex から見た作業モデルを Obsidian SecondBrain へ保存するとき
   - `create-cli`: 新しい CLI、サブコマンド、引数体系、出力契約を設計または変更するとき
   - `playwright`: 反復可能なブラウザ操作、複数 viewport 確認、スクリーンショット比較、CI に近い画面確認を行うとき
