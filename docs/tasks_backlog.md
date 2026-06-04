@@ -1,5 +1,152 @@
 # tasks_backlog
 
+## Planned / Product Design And Warm Cache UX Follow-ups
+
+2026-06-04 に、Product Design audit の推奨候補 `RAU-UX-112` から `RAU-UX-115` と、利用者が追加した右下 indicator 廃止と `候補データ優先取得` strip の初期配置修正を、未着手 task として追加した。
+今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
+
+### RAU-UX-116 右下 warm cache indicator を廃止し、必要な状態表示を画面内の文脈へ移す
+
+- 目的:
+  - 画面右下に固定表示される warm cache indicator が Revenue Assistant 標準画面と料金調整候補 list の視認性を妨げているため、固定表示を廃止する。
+  - booking curve 取得、競合価格 snapshot、月別優先取得、Analyze 日付優先取得の状態は、利用者が次に操作する画面内の領域で確認できるようにする。
+- スコープ:
+  - `data-ra-sales-setting-warm-cache-indicator` で識別される右下固定 indicator の表示責務を棚卸しする。
+  - 全体 queue 状態、worker 数、対象日、保存済み、skip、失敗、停止、retry 待ち、競合価格 snapshot 状態のうち、どれを画面内のどの表示へ移すかを決める。
+  - top 画面では、月別優先取得 strip、料金調整候補 list summary、候補 row の状態 badge のいずれかへ状態を寄せる。
+  - Analyze 画面では、表示中 stay_date の booking curve / 競合価格状態を、Analyze 内の該当 section に寄せる。
+  - 右下固定 indicator を削除した後も、取得失敗、ログイン切れ、権限不足、クールダウン、retry 待ちが利用者から見えなくならないようにする。
+- 非目標:
+  - `/api/v4/booking_curve`、`/api/v1/price_trends`、競合価格 snapshot の request 範囲、request 件数、request 間隔、同時実行数を変更すること。
+  - IndexedDB schema、localStorage key、raw source compact schema、candidate scoring、rank change payload、Revenue Assistant write API を変更すること。
+  - 右下 indicator の見た目だけを小さくして存続させること。
+- 受け入れ条件:
+  - top 画面、Analyze 販売設定画面、価格推移 / 競合価格 tab で、右下固定 indicator が表示されない。
+  - 右下固定 indicator を削除しても、取得中、完了、skip、失敗、停止、retry 待ち、ログイン確認、権限確認の状態が、該当画面の文脈内で確認できる。
+  - 画面内の状態表示が、料金調整候補 list、Revenue Assistant 標準 UI、footer、固定 action を覆わない。
+  - desktop と mobile の fixture または配布版 smoke で、横 overflow と主要操作への重なりがない。
+  - 最小 verify として `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` を実行する。配布版確認へ進む場合は `npm run smoke:distribution -- --mode top` と、変更面に応じて `--mode price-trends` または `--mode analyze-recommendations` を実行する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-117 `候補データ優先取得` strip の初期表示位置を料金調整候補側に固定する
+
+- 目的:
+  - `候補データ優先取得` strip が最初にカレンダー上部へ表示され、その後に料金調整候補 list 側へ移動する挙動をなくす。
+  - 利用者が画面を開いた直後から、優先取得の入口を料金調整候補 list の直前にあるものとして認識できるようにする。
+- スコープ:
+  - 月別優先取得 strip の host 解決順、初回描画、Revenue Assistant の DOM 再描画後の再同期、fallback 条件を確認する。
+  - 料金調整候補 list の host が解決できる場合は、初回表示からカレンダー直後かつ料金調整候補 list 直前に配置する。
+  - 料金調整候補 list の host がまだ存在しない場合だけ、カレンダー上部 fallback を使う。
+  - 料金調整候補 list の host が後から解決できた場合は、二重表示を作らず、同じ strip を安定した位置へ移すか、初期 fallback を消してから候補 list 側へ描画する。
+- 非目標:
+  - 月別優先取得 button の押下処理、対象月 filter 切替、表示上限 reset、preview close、rank change pending 保護を変更すること。
+  - booking curve warm cache queue の優先順位、request 間隔、同時実行数、throughput 条件を変更すること。
+  - カレンダー側と料金調整候補 list 側の二重配置を採用すること。
+- 受け入れ条件:
+  - 料金調整候補 list の host が存在する top 画面では、`候補データ優先取得` strip が初回表示から料金調整候補 list の直前に出る。
+  - 初回描画後に strip がカレンダー上部から料金調整候補 list 側へ視覚的に移動する挙動が発生しない。
+  - 料金調整候補 list の host が存在しない状態では、入口が消えないようにカレンダー上部 fallback が表示される。
+  - カレンダー側と料金調整候補 list 側に同じ月の優先取得入口が同時表示されない。
+  - 最小 verify として `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` を実行する。配布版確認へ進む場合は `npm run smoke:distribution -- --mode top` で月別優先取得 control、button、status、監視対象 write API POST 0 件を確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-112 価格推移 / 競合価格 tab の failure state に次操作を表示する
+
+- 目的:
+  - 価格推移 / 競合価格 tab の failure state で、状態説明だけではなく、利用者が次に行う操作を状態別に確認できるようにする。
+  - `背景取得 19 / 128・失敗 3・停止 fixture failure` のような進行情報を読んだ後に、再取得、ログイン確認、権限確認、時間を置く、タブ再表示のどれを行うべきかで迷わないようにする。
+- スコープ:
+  - 価格推移 / 競合価格 tab の loading、empty、failure、停止、retry 待ち、HTTP 401、HTTP 403、HTTP 429、network error、HTTP 5xx の表示を確認する。
+  - 状態ごとに、利用者向けの次操作文言を追加または整理する。
+  - request body、response body、HAR、Cookie、token、credential、価格や在庫の非公開データを保存せず、fixture と smoke で確認できる表示に限定する。
+- 非目標:
+  - 価格推移、競合価格、booking curve の取得 adapter、request 範囲、request 件数、保存 schema を変更すること。
+  - 価格系列の計算、tooltip、filter、graph 表示の business rule を変更すること。
+  - Revenue Assistant write API、自動反映、一括反映を追加すること。
+- 受け入れ条件:
+  - failure state に、原因分類と次操作が状態別に表示される。
+  - HTTP 401 はログイン確認、HTTP 403 は権限確認、HTTP 429 は時間を置くまたはクールダウン、network error / HTTP 5xx は再取得または時間を置く操作として区別される。
+  - desktop と mobile の failure fixture で、次操作文言がグラフ、filter、標準 UI、footer を覆わない。
+  - 最小 verify として `npm run build:vite:fixture`、`npm run check:fixture-markers`、価格推移 failure fixture の desktop / mobile screenshot、`git diff --check` を実行する。配布版確認へ進む場合は `npm run smoke:distribution -- --mode price-trends` を実行する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-113 Analyze 上部候補一覧の役割を遷移元候補確認と同日他候補確認に分けるべきか比較する
+
+- 目的:
+  - top list から Analyze へ来た利用者が、遷移元候補の詳細確認と、同じ宿泊日の他候補の比較を混同しないようにする。
+  - Analyze 上部候補一覧の表示密度を増やす前に、役割、見出し、並び、highlight、empty state を整理する。
+- スコープ:
+  - 現在の Analyze 上部候補一覧が、遷移元候補、同日他候補、対象外候補、empty state をどう表示しているか確認する。
+  - 一覧を「遷移元候補の確認」と「同日他候補の確認」に分ける案と、現行一覧を維持する案を比較する。
+  - 分ける場合は、見出し、summary、highlight、empty state、mobile 表示、focus / keyboard の要件を決める。
+- 非目標:
+  - Analyze 上部候補一覧へ反映操作、一括反映、自動反映、Revenue Assistant write API を追加すること。
+  - candidate scoring、priority、confidence、reasonFingerprint、rank change payload を変更すること。
+  - top list の表示件数、filter、表示 mode を変更すること。
+- 受け入れ条件:
+  - 現行維持案と分割案について、利用者が何を見るか、何を比較するか、どの表示が重複するかが記録されている。
+  - 分割実装へ進む場合は、次の実装 task ID、対象ファイル、最小 verify が追加されている。
+  - 実装しない場合は、現行一覧を維持する理由と再評価条件が記録されている。
+  - 最小 verify として `npm run check`、`npm run build:vite:fixture`、`git diff --check` を実行する。配布版確認へ進む場合は `npm run smoke:distribution -- --mode analyze-recommendations` を実行する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: analysis-before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-114 月次実績画面の mobile fixture / screenshot coverage を追加する
+
+- 目的:
+  - 月次実績画面の custom LT booking curve、compare / metric controls、日次差分、details、empty / partial data が 390px 幅で読めるかを、実装前に確認できるようにする。
+  - 月次実績画面の追加改善を、top 画面と Analyze 画面の調整判断改善より先に広げすぎないよう、検証 coverage から整える。
+- スコープ:
+  - 月次 compact、empty、partial data の mobile fixture または screenshot を追加する。
+  - custom LT booking curve、compare / metric controls、日次差分 table、details summary、details table、empty / partial data message を確認対象にする。
+  - mobile 390px の横 overflow、button / control の折り返し、details の初期 open / closed、table の読み取り順を確認する。
+- 非目標:
+  - 月次実績画面の metric 定義、booking curve 計算契約、API request 範囲、保存 schema を変更すること。
+  - top 画面または Analyze 画面より先に、月次実績画面の新しい business logic を追加すること。
+- 受け入れ条件:
+  - 月次 compact / empty / partial data の mobile screenshot または fixture 確認値が残っている。
+  - custom LT booking curve、compare / metric controls、日次差分、details、empty / partial data の mobile 表示 risk が記録されている。
+  - 横 overflow、標準 UI との重なり、操作部品の見つけやすさに問題がある場合は、次の実装 task ID が追加されている。
+  - 最小 verify として `npm run build:vite:fixture`、月次 compact / empty / partial の mobile screenshot、`git diff --check` を実行する。配布版確認へ進む場合は `npm run smoke:distribution -- --mode monthly-progress` を実行する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-required
+  - `target-spec`: none
+
+### RAU-UX-115 top 画面の補助操作 `その他` details の実利用頻度を確認する
+
+- 目的:
+  - top 料金調整候補 row の補助操作 `様子見`、`対応不要`、`要点` を `その他` details 内に置く現行方針が、実利用で候補処理を遅くしていないか確認する。
+  - mobile で row 内操作が多い状態を維持してよいか、開閉頻度と操作順から判断する。
+- スコープ:
+  - 通常 Chrome または配布版 smoke で、`その他` details の開閉、補助操作の見つけやすさ、主要操作との干渉、pending notice との重なりを確認する。
+  - 実利用または fixture の観察結果から、現行維持、row footer への再配置、popover への再配置、補助操作の文言変更を比較する。
+  - 再配置が必要な場合は、別実装 task として対象操作、配置、focus / keyboard、mobile 表示、最小 verify を切る。
+- 非目標:
+  - この task だけで `様子見`、`対応不要`、`要点` の配置を変更すること。
+  - browser-local decision 保存、5 秒 pending、cancel、rank change pending、Revenue Assistant write API を変更すること。
+  - top list に金額、差額、percent、forecast 数値、sales / ADR 数値を直接表示すること。
+- 受け入れ条件:
+  - `その他` details の開閉頻度、補助操作が見つからず処理が止まる可能性、主要操作との干渉が記録されている。
+  - 現行維持、row footer、popover、文言変更の比較結果が記録されている。
+  - 再配置へ進む場合は、次の実装 task ID と最小 verify が追加されている。現行維持の場合は、再評価条件が記録されている。
+  - 最小 verify として `npm run check`、top fixture desktop / mobile screenshot、`git diff --check` を実行する。配布版確認へ進む場合は `npm run smoke:distribution -- --mode top` を実行する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: observation-before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Completed / Product Design Full-Screen Audit
 
 2026-06-04 に `RAU-UX-106` から `RAU-UX-111` を完了した。
@@ -7,7 +154,7 @@ Product Design `get-context` brief、対象 surface、capture 手段、desktop /
 今回の実装変更は、主要操作文言を本番と fixture でそろえるための `Analyzeで確認` と、英字混在を減らすための `ランク調整` 表示への変更に限定した。
 Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 Publish Userscript run `26920935454` は success で、GitHub Pages published version は `0.1.0.372` である。Chrome CDP は `connect ECONNREFUSED 127.0.0.1:9222` のため、Tampermonkey installed version は未確認である。
-次に実装する候補は、同 audit 文書の `Recommended Next Task Candidates` に `RAU-UX-112` から `RAU-UX-115` として提案した。これらは 2026-06-04 時点では Remaining Task Triage に入れていない。
+次に実装する候補は、同 audit 文書の `Recommended Next Task Candidates` に `RAU-UX-112` から `RAU-UX-115` として提案した。2026-06-04 の後続 task 化で、これらは未着手 task 本体と Remaining Task Triage へ反映済みである。
 
 ### RAU-UX-106 Product Design 全画面 audit の対象 surface と評価基準を固定する
 
@@ -8051,22 +8198,25 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- なし
+- `RAU-UX-116`: 右下 warm cache indicator を廃止し、必要な状態表示を画面内の文脈へ移す。
 
 Next:
 
-- なし
+- `RAU-UX-117`: `候補データ優先取得` strip の初期表示位置を料金調整候補側に固定する。
 
 After Next:
 
-- なし
+- `RAU-UX-112`: 価格推移 / 競合価格 tab の failure state に次操作を表示する。
+- `RAU-UX-113`: Analyze 上部候補一覧の役割を遷移元候補確認と同日他候補確認に分けるべきか比較する。
 
 Later:
 
-- なし
+- `RAU-UX-114`: 月次実績画面の mobile fixture / screenshot coverage を追加する。
+- `RAU-UX-115`: top 画面の補助操作 `その他` details の実利用頻度を確認する。
 
 統合判断:
 
+- 2026-06-04 に、Product Design audit の推奨候補 `RAU-UX-112` から `RAU-UX-115` と、利用者が追加した右下 indicator 廃止、`候補データ優先取得` strip の初期配置修正を task 化した。右下 indicator は視覚的な干渉が利用者の料金調整判断を妨げるため、`RAU-UX-116` として Now に置く。`候補データ優先取得` strip は、最初にカレンダー上部へ出てから料金調整候補 list 側へ移動すると、入口の場所と対象月 filter の関係を誤読しやすいため、`RAU-UX-117` として Next に置く。`RAU-UX-112` と `RAU-UX-113` は、failure state の次操作明示と Analyze 上部候補一覧の役割整理であり、top 画面の視覚干渉と初期配置のブレを解消した後に扱うため After Next とする。`RAU-UX-114` は月次実績画面の mobile coverage であり、`INTENT.md` の top 画面と Analyze 画面を先に優先する方針に従い Later とする。`RAU-UX-115` は実利用観察から補助操作の再配置要否を判断する task であり、直近の視覚的な妨げを直接直す task ではないため Later とする。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 - 2026-06-04 に、未着手だった `RAU-UX-106` から `RAU-UX-111` を完了した。Product Design audit の正本は `docs/context/PRODUCT_DESIGN_AUDIT.md` に置き、top 画面、Analyze 販売設定画面、Analyze 競合価格 / 価格推移 tab、月次実績画面、共通 UI primitive / fixture / smoke の findings を分けて記録した。fixture 証跡は Git 管理しない `.tmp/product-design-audit/` に保存した。mobile 390px では横 overflow はなかった。通常 Chrome の実ログイン profile を CDP 付きで起動する確認は、既存 Chrome が開いていたため repo script が停止した。既存 Chrome を強制終了しない方針にしたため、今回の live screenshot は未実施である。今回の実装変更は、fixture の `Analyze` 表示を `Analyzeで確認` にそろえ、`rank調整` を `ランク調整` にそろえる文言修正だけである。Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Publish Userscript run `26920935454` は success で、GitHub Pages published version は `0.1.0.372` である。Chrome CDP は `connect ECONNREFUSED 127.0.0.1:9222` のため、Tampermonkey installed version は未確認である。次に task 化する候補は `RAU-UX-112` から `RAU-UX-115` として `docs/context/PRODUCT_DESIGN_AUDIT.md` に提案し、Remaining Task Triage へは未投入とした。この完了により Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 2026-06-04 に、利用者が `@product-design` を使って既存機能画面を順次ブラッシュアップする task 作成を依頼したため、個別画面をいきなり改修せず、全画面を Product Design audit 対象として棚卸しする `RAU-UX-106` から `RAU-UX-111` を追加した。`RAU-UX-106` で `get-context` brief、対象 surface、capture 手段、desktop / mobile viewport、評価軸を固定する。`RAU-UX-107` は直近でブラッシュアップ済みの top 画面を全画面 audit の基準点にするため Now の次に置く。`RAU-UX-108` と `RAU-UX-109` は Analyze 画面内の調整判断と金額表示に関わるため After Next に置く。`RAU-UX-110` は `INTENT.md` の優先順位に従い、top 画面と Analyze より後の Later に置く。`RAU-UX-111` は各画面 audit の結果がそろってから共通 UI primitive / fixture / smoke 改善を切り出すため Later に置く。今回の task 作成では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API は変更していない。
 - 2026-06-02 に、未着手だった `RAU-WC-26`、`RAU-WC-24`、`RAU-WC-25` を完了した。`RAU-WC-26` では、月別優先取得 button はカレンダー上部へ維持し、button 押下後に料金調整候補 list の `対象月` filter を押した月へ切り替える方針を採用した。`RAU-WC-24` では、月別優先取得後の再評価 summary を top list summary の一時表示に限定し、比較対象を active candidate 件数、表示中候補件数、raw source 状態別件数、状態 badge 件数差分にした。`RAU-WC-25` では、配布版 top smoke に GET `/api/v4/booking_curve` の request count、HTTP status count、HTTP error count、平均 request 開始件数、最小 request 開始間隔、最大同時 request 数、warm cache worker count / capacity、fallback reason を追加した。正本は `docs/spec_001_analyze_expansion.md`、`docs/spec_003_rank_recommendation_signal.md`、`docs/context/DECISIONS.md`、README に反映した。commit `e5ae41d` を `origin/main` へ push し、Publish Userscript run `26805298528` は success になった。GitHub Pages published version と Tampermonkey installed version は `0.1.0.369` に揃っている。配布版 top smoke は Tampermonkey installed version `0.1.0.369` で pass した。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
