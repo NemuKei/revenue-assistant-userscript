@@ -99,6 +99,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - Playwright の最小再現ページでは、420px viewport で `documentElement.scrollWidth` と `clientWidth` がどちらも 420px、月別 control の button 矩形と progress 矩形の overlap は 2 件とも false だった。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check -- src\main.ts docs\context\STATUS.md docs\tasks_backlog.md` が通過した。Vite と esbuild を起動する build / fixture / marker は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。
   - commit `cbdc94c` を `origin/main` へ push し、Publish Userscript run `26924310212` は success になった。GitHub Pages published version は `0.1.0.374` である。
+  - Tampermonkey installed version は、Chrome DevTools Protocol が使えず、このセッションで Computer Use のクリック操作 tool も利用できなかったため未確認である。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: after-implementation
