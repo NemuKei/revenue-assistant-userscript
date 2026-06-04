@@ -22,6 +22,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、利用者が、レベアシタブを開いたまま別タブを見ている間もデータ取得を進めたいと示したため、`RAU-WC-28` として、booking curve warm cache と月別優先取得だけを対象にした `非表示中も取得` opt-in を実装する。自動再ログインは利用者が一旦不要と明示したため対象外にする。ID、password、Cookie、token、credential を保存または自動入力せず、HTTP 401 やログアウトらしい状態は既存どおりログイン確認として停止する。`RAU-WC-27` は先行月向け queue boost 全体の調査 task として残し、今回の opt-in 実装とは統合しない。今回の変更では、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、request 間隔、同時実行数、取得対象期間、保存 schema、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
 
+2026-06-04 に、`RAU-WC-28` の完了後に残る実画面確認として、`RAU-WC-29` を task 化した。`RAU-WC-29` は、通常 Chrome の Tampermonkey 実行版で `非表示中も取得` toggle、優先取得 button、status summary、progress bar が狭い画面幅でも重ならないこと、ON の状態でレベアシタブを開いたまま別タブへ移っても booking curve warm cache と月別優先取得が進むこと、ログアウトまたは HTTP 401 では自動再ログインせず停止することを確認する smoke task である。直前実装の実画面確認であり、実利用観察の `RAU-UX-120` や新規実装の `RAU-UX-125` より先に確認した方が手戻りを減らせるため、Remaining Task Triage は Now `RAU-WC-29`、Next `RAU-UX-120`、After Next `RAU-UX-125`、Later `RAU-CP-19`, `RAU-WC-27` とする。`docs/context/INTENT.md` は、request 数、タブ切替時の安定性、UI / UX の判断原則に関わるため関連ありとして確認したが、判断原則自体は更新しない。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -311,6 +313,37 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`, `docs/context/DECISIONS.md`
+
+### RAU-WC-29 `非表示中も取得` の実画面 smoke を行う
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-WC-28` で追加した `非表示中も取得` opt-in が、通常 Chrome の Tampermonkey 実行版と Revenue Assistant 実画面で、利用者の操作を妨げず安全に動くことを確認する。
+  - 実画面の狭い表示幅で、toggle、月別優先取得 button、status summary、progress bar が重ならないことを確認する。
+- スコープ:
+  - 通常 Chrome のログイン済み Revenue Assistant top page を対象にする。
+  - Tampermonkey installed version と GitHub Pages published version が一致していることを確認してから smoke を行う。
+  - `候補データ優先取得` strip の `非表示中も取得` toggle、先 6 か月カード、月別優先取得 button、status summary、progress bar、候補 list との位置関係を確認する。
+  - `非表示中も取得` を ON にした状態で、レベアシタブを開いたまま別タブへ移っても booking curve warm cache と月別優先取得が進むことを確認する。
+  - 監視対象 write API POST が 0 件であることを、可能な範囲で Chrome DevTools Protocol または smoke helper で確認する。
+- 非目標:
+  - runtime 実装、CSS、保存 schema、request 間隔、同時実行数、取得対象期間は変更しない。
+  - 自動再ログインは実装しない。
+  - ID、password、Cookie、token、credential を保存または自動入力しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - request body、response body、raw trace、HAR、Cookie、token、credential、価格や在庫の非公開データは Git 管理へ入れない。
+- 受け入れ条件:
+  - Tampermonkey installed version と GitHub Pages published version が一致している。
+  - 実画面で `data-ra-sales-setting-warm-cache-hidden-tab-toggle` が 1 件以上確認できる。
+  - 実画面の狭い表示幅で、`非表示中も取得` toggle、月別優先取得 button、status summary、progress bar が重ならず、横 overflow がない。
+  - `非表示中も取得` を ON にした状態で、レベアシタブを開いたまま別タブへ移った後も、booking curve request または月別優先取得 status の進行が確認できる。
+  - ログアウトまたは HTTP 401 相当の状態では、自動再ログインせず、既存のログイン確認または停止状態として扱われることを確認する。ログアウトを安全に再現できない場合は、実施しない理由と代替確認を `STATUS.md` に記録する。
+  - 監視対象 write API POST が 0 件である。自動確認できない場合は、確認できない理由を `STATUS.md` とこの backlog に記録する。
+- metadata:
+  - `spec-impact`: no
+  - `target-spec`: none
+  - `verify`: Tampermonkey version check, Chrome visual / DOM check, optional `npm run smoke:distribution -- --mode top`
 
 ## Completed / Product Design And Warm Cache UX Follow-ups
 
@@ -8518,23 +8551,25 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-120`: 補助操作 `その他` details の実利用頻度と再配置要否を確認する。
+- `RAU-WC-29`: `非表示中も取得` の実画面 smoke を行う。
 
 Next:
 
-- `RAU-UX-125`: 料金調整候補の対象月プルダウンを、優先取得と同じ先 6 か月へ拡大する。
+- `RAU-UX-120`: 補助操作 `その他` details の実利用頻度と再配置要否を確認する。
 
 After Next:
 
-- `RAU-CP-19`: 料金調整候補から競合価格グラフを押下時だけ開く導線を設計する。
+- `RAU-UX-125`: 料金調整候補の対象月プルダウンを、優先取得と同じ先 6 か月へ拡大する。
 
 Later:
 
+- `RAU-CP-19`: 料金調整候補から競合価格グラフを押下時だけ開く導線を設計する。
 - `RAU-WC-27`: 先行月向けデータ取得ブーストの安全な実装候補を調査する。
 
 統合判断:
 
 - 2026-06-04 に、利用者が示した 3 件の後続候補を `RAU-UX-125`、`RAU-CP-19`、`RAU-WC-27` として task 化した。`RAU-UX-125` は、完了済みの先 6 か月優先取得 UI と料金調整候補 list の対象月 filter をそろえ、未来月調整の操作距離を短くする実装候補であるため Next とする。競合価格グラフ導線は価値が高いが、押下時取得、cache、失敗時表示、同時クリック時の重複取得防止、request scope を先に決める必要があるため、`RAU-CP-19` として設計 task に分けて After Next とする。`RAU-CP-16` は 2026-05-31 に価格推移 background queue の long-run 確認 task として完了済みのため、新規 ID として再利用しない。`RAU-WC-27` は、単純な高速化ではなく queue 優先度と手動ブーストの調査であり、現行の `開始間隔 350ms 以上`、`同時実行 3 件以下`、監視対象 write API POST 0 件の安全条件を崩さない必要があるため Later とする。`docs/context/INTENT.md` は確認済みであり、表示密度、UI / UX、request 数、安定性の既存判断原則で今回の順序を説明できるため、判断原則は更新しない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
+- 2026-06-04 に、`RAU-WC-29` を追加し、Remaining Task Triage の Now に置いた。理由は、`RAU-WC-29` が直前実装 `RAU-WC-28` の実画面 smoke であり、通常 Chrome の Tampermonkey 実行版、狭い画面幅、タブ非表示中の進行、ログアウトまたは HTTP 401 時の停止を確認してから、別の実装 task へ進む方が手戻りを減らせるためである。`RAU-UX-120` は実利用観察 task として Next、`RAU-UX-125` は新規実装候補として After Next、`RAU-CP-19` と `RAU-WC-27` は設計または調査 task として Later に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 - 2026-06-04 に、`RAU-UX-121` を完了し、`RAU-UX-122` を追加した。`RAU-UX-121` では、`候補データ優先取得` の月別優先取得ボタン内から円形進捗インジケーターを外し、状態表示側へ移した。Playwright の最小再現ページでは、420px viewport で横 overflow なし、button 矩形と progress 矩形の overlap false を確認した。Publish Userscript run `26924310212` は success で、GitHub Pages published version は `0.1.0.374` である。Tampermonkey installed version と Revenue Assistant 実画面での重なり解消は未確認であるため、`RAU-UX-122` を Now に置く。`RAU-UX-120` は、`RAU-UX-122` の後に扱う実利用観察 task として Next に下げる。
 - 2026-06-04 に、`RAU-UX-118` と `RAU-UX-119` を完了した。Published version と installed version は `0.1.0.373` で一致した。通常 Chrome の Revenue Assistant top page では、旧右下 fixed indicator 0 件、候補 list 1 件、候補 row 10 件、inline status 1 件、`候補データ優先取得` strip 1 件、console error 0 件、横 overflow なしを確認した。Analyze page では、`data-ra-rank-recommendation-analyze-list` 1 件、候補 row 6 件、write 系 button 0 件、`遷移元候補の確認` と `同日他候補の確認` の表示を確認した。価格推移 tab では通常 graph 表示、SVG 5 件、inline status 1 件、右下 fixed indicator 0 件、console error 0 件を確認した。Chrome DevTools Protocol は使えなかったため、監視対象 write API POST 0 件は CDP smoke helper では自動確認していない。`RAU-UX-120` は、実利用中に `その他` details を開く頻度と、候補処理がそこで止まるかどうかを観察する task であるため、Now に残す。
 - 2026-06-04 に、前回完了報告で提案した後続確認を `RAU-UX-118` から `RAU-UX-120` として task 化した。`RAU-UX-118` は、GitHub Pages published version と Tampermonkey installed version が一致していない可能性を先に解消しないと、実画面確認が旧版確認になるため Now とする。`RAU-UX-119` は、最新配布版が実行されていることを確認した後に、inline status、`候補データ優先取得` strip、Analyze 上部候補一覧、価格推移 / 競合価格 tab の次操作表示が判断導線を妨げないか見るため Next とする。`RAU-UX-120` は、通常利用中の開閉頻度と重なりを観察してから再配置要否を決める task であり、直近の配布同期確認と表示位置確認より後でよいため After Next とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
