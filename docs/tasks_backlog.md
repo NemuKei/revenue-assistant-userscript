@@ -12,6 +12,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、利用者が `候補データ優先取得` の月別優先取得ボタンと円形進捗インジケーターの重なりを報告したため、`RAU-UX-121` として即時修正した。円形進捗インジケーターはボタン内から状態表示側へ移し、ボタン本文と進捗表示を別要素として配置する。`RAU-UX-120` は実利用中の `その他` details 観察 task であり、この表示不具合とは別軸のため Remaining Task Triage の Now に残す。
 
+2026-06-04 に、`RAU-UX-121` の公開版は `0.1.0.374` まで確認したが、通常 Chrome の Tampermonkey installed version と Revenue Assistant 実画面での重なり解消は未確認である。これは配布同期後に実画面で確認する必要があるため、`RAU-UX-122` として task 化し、Remaining Task Triage の Now に置く。`RAU-UX-120` は、`RAU-UX-122` の同期確認後に実利用観察へ進めるため Next に下げる。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -103,6 +105,27 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: after-implementation
+  - `target-spec`: none
+
+### RAU-UX-122 Tampermonkey `0.1.0.374` 同期と実画面重なり解消を確認する
+
+- 目的:
+  - GitHub Pages published version `0.1.0.374` を通常 Chrome の Tampermonkey installed version に反映し、Revenue Assistant top page の `候補データ優先取得` strip で月別優先取得ボタンと円形進捗インジケーターが重ならないことを確認する。
+- スコープ:
+  - 通常 Chrome の Tampermonkey dashboard または同等の更新手段で、Revenue Assistant Userscript を `0.1.0.374` へ更新する。
+  - Revenue Assistant top page を再読み込みし、`data-ra-sales-setting-warm-cache-month-control`、`data-ra-sales-setting-warm-cache-month-button`、`data-ra-sales-setting-warm-cache-month-progress` の矩形を確認する。
+  - 横 overflow、console error、旧右下 fixed indicator の再発有無を確認する。
+- 非目標:
+  - booking curve warm cache queue、request 間隔、同時実行数、優先月の選び方、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint は変更しない。
+  - Revenue Assistant の write API、rank 変更 POST、自動反映、一括反映は実行しない。
+- 受け入れ条件:
+  - Tampermonkey installed version が `0.1.0.374` であることを確認している。
+  - Revenue Assistant top page で、月別優先取得ボタンの本文と円形進捗インジケーターが重ならないことを DOM 矩形またはスクリーンショットで確認している。
+  - `data-ra-sales-setting-warm-cache-indicator` が 0 件である。
+  - console error 0 件、横 overflow なし、監視対象 write API POST 0 件を確認できる範囲で記録している。監視対象 write API POST 0 件を自動確認できない場合は、その理由を記録する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
   - `target-spec`: none
 
 ## Completed / Product Design And Warm Cache UX Follow-ups
@@ -8311,11 +8334,11 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-120`: 補助操作 `その他` details の実利用頻度と再配置要否を確認する。
+- `RAU-UX-122`: Tampermonkey `0.1.0.374` 同期と実画面重なり解消を確認する。
 
 Next:
 
-- なし。
+- `RAU-UX-120`: 補助操作 `その他` details の実利用頻度と再配置要否を確認する。
 
 After Next:
 
@@ -8327,6 +8350,7 @@ Later:
 
 統合判断:
 
+- 2026-06-04 に、`RAU-UX-121` を完了し、`RAU-UX-122` を追加した。`RAU-UX-121` では、`候補データ優先取得` の月別優先取得ボタン内から円形進捗インジケーターを外し、状態表示側へ移した。Playwright の最小再現ページでは、420px viewport で横 overflow なし、button 矩形と progress 矩形の overlap false を確認した。Publish Userscript run `26924310212` は success で、GitHub Pages published version は `0.1.0.374` である。Tampermonkey installed version と Revenue Assistant 実画面での重なり解消は未確認であるため、`RAU-UX-122` を Now に置く。`RAU-UX-120` は、`RAU-UX-122` の後に扱う実利用観察 task として Next に下げる。
 - 2026-06-04 に、`RAU-UX-118` と `RAU-UX-119` を完了した。Published version と installed version は `0.1.0.373` で一致した。通常 Chrome の Revenue Assistant top page では、旧右下 fixed indicator 0 件、候補 list 1 件、候補 row 10 件、inline status 1 件、`候補データ優先取得` strip 1 件、console error 0 件、横 overflow なしを確認した。Analyze page では、`data-ra-rank-recommendation-analyze-list` 1 件、候補 row 6 件、write 系 button 0 件、`遷移元候補の確認` と `同日他候補の確認` の表示を確認した。価格推移 tab では通常 graph 表示、SVG 5 件、inline status 1 件、右下 fixed indicator 0 件、console error 0 件を確認した。Chrome DevTools Protocol は使えなかったため、監視対象 write API POST 0 件は CDP smoke helper では自動確認していない。`RAU-UX-120` は、実利用中に `その他` details を開く頻度と、候補処理がそこで止まるかどうかを観察する task であるため、Now に残す。
 - 2026-06-04 に、前回完了報告で提案した後続確認を `RAU-UX-118` から `RAU-UX-120` として task 化した。`RAU-UX-118` は、GitHub Pages published version と Tampermonkey installed version が一致していない可能性を先に解消しないと、実画面確認が旧版確認になるため Now とする。`RAU-UX-119` は、最新配布版が実行されていることを確認した後に、inline status、`候補データ優先取得` strip、Analyze 上部候補一覧、価格推移 / 競合価格 tab の次操作表示が判断導線を妨げないか見るため Next とする。`RAU-UX-120` は、通常利用中の開閉頻度と重なりを観察してから再配置要否を決める task であり、直近の配布同期確認と表示位置確認より後でよいため After Next とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 - 2026-06-04 に、未着手だった `RAU-UX-116`、`RAU-UX-117`、`RAU-UX-112`、`RAU-UX-113`、`RAU-UX-114`、`RAU-UX-115` を完了した。右下固定 warm cache indicator は廃止し、取得状態を画面内文脈へ移した。`候補データ優先取得` strip は料金調整候補 list 予定位置へ初期表示する。価格推移 / 競合価格 tab は状態別の次操作を表示する。Analyze 上部候補一覧は、遷移元候補と同日他候補を分ける。月次 compact / empty / partial fixture と mobile screenshot coverage を追加した。top 画面の補助操作 `その他` details は、fixture 確認範囲では横 overflow や重なりがないため現行維持とした。これにより Remaining Task Triage は Now / Next / After Next / Later すべて空である。
