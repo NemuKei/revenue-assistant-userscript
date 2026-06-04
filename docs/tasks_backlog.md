@@ -1329,7 +1329,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
   - `spec-checkpoint`: before-impl
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
 
-## Recently Implemented / GUI Unconfirmed
+## Recently Implemented / Mixed GUI Confirmation
 
 ### RAU-RR-58 料金調整候補を対象月で絞り込めるようにする
 
