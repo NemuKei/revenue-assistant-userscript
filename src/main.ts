@@ -147,7 +147,7 @@ const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
-const GROUP_ROOM_STYLE_VERSION = "20260603-warm-cache-candidate-strip-v1";
+const GROUP_ROOM_STYLE_VERSION = "20260604-inline-warm-cache-status-v1";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
@@ -164,6 +164,8 @@ const SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE = "data-ra-sales-setting-w
 const SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-progress";
 const SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-title";
 const SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-actions";
+const SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-detail";
+const SALES_SETTING_WARM_CACHE_INLINE_STATUS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-inline-status";
 const CALENDAR_LAST_CHANGE_ATTRIBUTE = "data-ra-calendar-last-change";
 const CALENDAR_LAST_CHANGE_HOST_ATTRIBUTE = "data-ra-calendar-last-change-host";
 const GROUP_ROOM_TOGGLE_ATTRIBUTE = "data-ra-group-room-toggle";
@@ -297,6 +299,7 @@ const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_FACILITY_ATTRIBUTE = "data-ra-sales
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_SWATCH_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-swatch";
 const SALES_SETTING_COMPETITOR_PRICE_TOOLTIP_TONE_ATTRIBUTE = "data-ra-sales-setting-competitor-price-tooltip-tone";
 const SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE = "data-ra-sales-setting-competitor-price-empty";
+const SALES_SETTING_COMPETITOR_PRICE_NEXT_ACTION_ATTRIBUTE = "data-ra-sales-setting-competitor-price-next-action";
 const SALES_SETTING_PRICE_TREND_OVERVIEW_ATTRIBUTE = "data-ra-sales-setting-price-trend-overview";
 const SALES_SETTING_PRICE_TREND_OVERVIEW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-price-trend-overview-signature";
 const COMPETITOR_PRICE_GUEST_COUNTS = [1, 2, 3, 4] as const;
@@ -315,7 +318,7 @@ const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
     "#4f7f9f"
 ];
 const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-tooltip-facility-v9";
-const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-room-tooltip-v4";
+const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-next-action-v1";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
@@ -334,11 +337,6 @@ const SALES_SETTING_CURRENT_UI_DETAIL_WRAPPER_ATTRIBUTE = "data-ra-sales-setting
 const SALES_SETTING_CURRENT_UI_CAPACITY_ATTRIBUTE = "data-ra-sales-setting-current-ui-capacity";
 const SALES_SETTING_CURRENT_UI_CAPACITY_MAX_ATTRIBUTE = "data-ra-sales-setting-current-ui-capacity-max";
 const SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE = "data-ra-sales-setting-current-ui-supplements";
-const SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator";
-const SALES_SETTING_WARM_CACHE_INDICATOR_STATUS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator-status";
-const SALES_SETTING_WARM_CACHE_INDICATOR_DETAIL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator-detail";
-const SALES_SETTING_WARM_CACHE_INDICATOR_TOGGLE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator-toggle";
-const SALES_SETTING_WARM_CACHE_INDICATOR_MINIMIZED_ATTRIBUTE = "data-ra-sales-setting-warm-cache-indicator-minimized";
 const SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE = "data-ra-sales-setting-booking-curve-section";
 const SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE = "data-ra-sales-setting-booking-curve-kind";
 const SALES_SETTING_BOOKING_CURVE_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-booking-curve-signature";
@@ -1068,7 +1066,6 @@ let competitorPriceRoomTypeFilter: string | null = null;
 let competitorPriceMealTypeFilter: string | null = null;
 let priceTrendRoomTypeFilter: string | null = null;
 let priceTrendMealTypeFilter: string | null = null;
-let salesSettingWarmCacheIndicatorMinimized = false;
 let activeHref = "";
 let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
@@ -4431,57 +4428,73 @@ function getActiveSalesSettingWarmCacheRunElapsedMs(): number {
 
 function renderSalesSettingWarmCacheIndicator(): void {
     ensureGroupRoomStyles();
-    const existingElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE}]`);
-    if (
-        salesSettingWarmCacheState.status === "idle"
-        && salesSettingWarmCacheState.total === 0
-        && competitorPriceSnapshotUiState.status === "idle"
-        && competitorPriceSnapshotBackgroundProgress.status === "idle"
-    ) {
+    document.querySelectorAll<HTMLElement>("[data-ra-sales-setting-warm-cache-indicator]").forEach((element) => {
+        element.remove();
+    });
+    renderSalesSettingWarmCacheInlineStatus();
+    renderSalesSettingWarmCacheCalendarMarkers();
+    renderSalesSettingWarmCacheMonthControls(collectMonthlyCalendarCells());
+}
+
+function renderSalesSettingWarmCacheInlineStatus(): void {
+    const existingElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_INLINE_STATUS_ATTRIBUTE}]`);
+    if (!shouldShowSalesSettingWarmCacheInlineStatus()) {
         existingElement?.remove();
-        renderSalesSettingWarmCacheCalendarMarkers();
-        renderSalesSettingWarmCacheMonthControls(collectMonthlyCalendarCells());
         return;
     }
 
-    const indicatorElement = existingElement ?? document.createElement("div");
-    indicatorElement.setAttribute(SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE, "");
-    indicatorElement.setAttribute(
-        SALES_SETTING_WARM_CACHE_INDICATOR_MINIMIZED_ATTRIBUTE,
-        salesSettingWarmCacheIndicatorMinimized ? "true" : "false"
-    );
-
-    const statusElement = indicatorElement.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_INDICATOR_STATUS_ATTRIBUTE}]`) ?? document.createElement("div");
-    statusElement.setAttribute(SALES_SETTING_WARM_CACHE_INDICATOR_STATUS_ATTRIBUTE, "");
-    statusElement.textContent = getSalesSettingWarmCacheStatusLabel();
-
-    const detailElement = indicatorElement.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_INDICATOR_DETAIL_ATTRIBUTE}]`) ?? document.createElement("div");
-    detailElement.setAttribute(SALES_SETTING_WARM_CACHE_INDICATOR_DETAIL_ATTRIBUTE, "");
-    detailElement.textContent = getSalesSettingWarmCacheDetailLabel();
-
-    const toggleElement = indicatorElement.querySelector<HTMLButtonElement>(`[${SALES_SETTING_WARM_CACHE_INDICATOR_TOGGLE_ATTRIBUTE}]`) ?? document.createElement("button");
-    toggleElement.type = "button";
-    toggleElement.setAttribute(SALES_SETTING_WARM_CACHE_INDICATOR_TOGGLE_ATTRIBUTE, "");
-    toggleElement.textContent = salesSettingWarmCacheIndicatorMinimized ? "表示" : "最小化";
-    toggleElement.setAttribute(
-        "aria-label",
-        salesSettingWarmCacheIndicatorMinimized
-            ? "データ取得インジケーターの詳細を表示"
-            : "データ取得インジケーターを最小化"
-    );
-    toggleElement.onclick = () => {
-        salesSettingWarmCacheIndicatorMinimized = !salesSettingWarmCacheIndicatorMinimized;
-        renderSalesSettingWarmCacheIndicator();
-    };
-
-    indicatorElement.replaceChildren(statusElement, detailElement, toggleElement);
-
-    if (indicatorElement.parentElement !== document.body) {
-        document.body.append(indicatorElement);
+    const host = resolveSalesSettingWarmCacheInlineStatusHost();
+    if (host === null) {
+        existingElement?.remove();
+        return;
     }
 
-    renderSalesSettingWarmCacheCalendarMarkers();
-    renderSalesSettingWarmCacheMonthControls(collectMonthlyCalendarCells());
+    const statusElement = existingElement ?? document.createElement("div");
+    statusElement.setAttribute(SALES_SETTING_WARM_CACHE_INLINE_STATUS_ATTRIBUTE, "");
+    statusElement.textContent = [
+        getSalesSettingWarmCacheStatusLabel(),
+        getSalesSettingWarmCacheDetailLabel()
+    ].filter((part) => part !== "").join(" / ");
+
+    if (statusElement.parentElement !== host.parentElement || statusElement.previousElementSibling !== host.insertAfterElement) {
+        statusElement.remove();
+        host.parentElement.insertBefore(statusElement, host.insertAfterElement.nextSibling);
+    }
+}
+
+function shouldShowSalesSettingWarmCacheInlineStatus(): boolean {
+    return salesSettingWarmCacheState.status !== "idle"
+        || salesSettingWarmCacheState.total > 0
+        || competitorPriceSnapshotUiState.status !== "idle"
+        || competitorPriceSnapshotBackgroundProgress.status !== "idle";
+}
+
+function resolveSalesSettingWarmCacheInlineStatusHost(): { parentElement: HTMLElement; insertAfterElement: HTMLElement } | null {
+    const analyzeListElement = document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_ANALYZE_LIST_ATTRIBUTE}]`);
+    const analyzeListParent = analyzeListElement?.parentElement ?? null;
+    if (activeAnalyzeDate !== null && analyzeListElement instanceof HTMLElement && analyzeListParent instanceof HTMLElement) {
+        return { parentElement: analyzeListParent, insertAfterElement: analyzeListElement };
+    }
+
+    const overallSummaryElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`);
+    const overallSummaryParent = overallSummaryElement?.parentElement ?? null;
+    if (activeAnalyzeDate !== null && overallSummaryElement instanceof HTMLElement && overallSummaryParent instanceof HTMLElement) {
+        return { parentElement: overallSummaryParent, insertAfterElement: overallSummaryElement };
+    }
+
+    const rankRecommendationElement = document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`);
+    const rankRecommendationParent = rankRecommendationElement?.parentElement ?? null;
+    if (rankRecommendationElement instanceof HTMLElement && rankRecommendationParent instanceof HTMLElement) {
+        return { parentElement: rankRecommendationParent, insertAfterElement: rankRecommendationElement };
+    }
+
+    const currentUiRootElement = document.querySelector<HTMLElement>(`[${SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE}]`);
+    const currentUiRootParent = currentUiRootElement?.parentElement ?? null;
+    if (activeAnalyzeDate !== null && currentUiRootElement instanceof HTMLElement && currentUiRootParent instanceof HTMLElement) {
+        return { parentElement: currentUiRootParent, insertAfterElement: currentUiRootElement };
+    }
+
+    return null;
 }
 
 function getSalesSettingWarmCacheStatusLabel(): string {
@@ -6730,23 +6743,45 @@ function renderSalesSettingWarmCacheMonthControls(cells: MonthlyCalendarCell[]):
     actionsElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE, "");
     actionsElement.replaceChildren(...monthKeys.map(createSalesSettingWarmCacheMonthControlElement));
 
-    controlsElement.replaceChildren(titleElement, actionsElement);
+    const inlineStatusElement = document.createElement("div");
+    inlineStatusElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE, "");
+    inlineStatusElement.textContent = getSalesSettingWarmCacheMonthControlsStatusText();
+
+    controlsElement.replaceChildren(titleElement, actionsElement, inlineStatusElement);
 
     if (controlsElement.parentElement !== host.parentElement || controlsElement.nextElementSibling !== host.insertBeforeElement) {
         host.parentElement.insertBefore(controlsElement, host.insertBeforeElement);
     }
 }
 
+function getSalesSettingWarmCacheMonthControlsStatusText(): string {
+    if (!shouldShowSalesSettingWarmCacheInlineStatus()) {
+        return "表示中の月に必要な根拠データを先に取得できます。";
+    }
+    return [
+        getSalesSettingWarmCacheStatusLabel(),
+        getSalesSettingWarmCacheDetailLabel()
+    ].filter((part) => part !== "").join(" / ");
+}
+
 function resolveSalesSettingWarmCacheMonthControlsHost(
     cells: MonthlyCalendarCell[],
     calendarElement: HTMLElement
-): { parentElement: HTMLElement; insertBeforeElement: HTMLElement } | null {
+): { parentElement: HTMLElement; insertBeforeElement: ChildNode | null } | null {
     const rankRecommendationElement = document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`);
     const rankRecommendationParentElement = rankRecommendationElement?.parentElement ?? null;
     if (rankRecommendationElement instanceof HTMLElement && rankRecommendationParentElement instanceof HTMLElement) {
         return {
             parentElement: rankRecommendationParentElement,
             insertBeforeElement: rankRecommendationElement
+        };
+    }
+
+    const rankRecommendationHost = resolveRankRecommendationListHost();
+    if (rankRecommendationHost !== null) {
+        return {
+            parentElement: rankRecommendationHost.parentElement,
+            insertBeforeElement: rankRecommendationHost.insertAfterElement.nextSibling ?? null
         };
     }
 
@@ -7408,9 +7443,53 @@ function renderAnalyzeRankRecommendationList(
         emptyElement.setAttribute(RANK_RECOMMENDATION_ANALYZE_EMPTY_ATTRIBUTE, "");
         emptyElement.textContent = options.statusText ?? "この日付に表示できる料金調整候補はありません。";
         rootElement.replaceChildren(titleElement, metaElement, emptyElement);
+        renderSalesSettingWarmCacheInlineStatus();
         return;
     }
 
+    const focus = readPendingRankRecommendationFocus();
+    const focusedCandidates = focus === null
+        ? []
+        : candidates.filter((candidate) => focus.stayDate === candidate.stayDate && focus.roomGroupId === candidate.roomGroupId);
+    if (focusedCandidates.length > 0) {
+        const otherCandidates = candidates.filter((candidate) => !focusedCandidates.includes(candidate));
+        const focusedTitleElement = document.createElement("h3");
+        focusedTitleElement.textContent = "遷移元候補の確認";
+        const focusedMetaElement = document.createElement("p");
+        focusedMetaElement.textContent = "top 画面で選んだ候補です。まずこの行の根拠と状態を確認します。";
+        const otherTitleElement = document.createElement("h3");
+        otherTitleElement.textContent = "同日他候補の確認";
+        const otherMetaElement = document.createElement("p");
+        otherMetaElement.textContent = otherCandidates.length === 0
+            ? "同じ宿泊日に他の候補はありません。"
+            : "同じ宿泊日の他の部屋タイプ候補です。必要に応じて比較します。";
+        rootElement.replaceChildren(
+            titleElement,
+            metaElement,
+            focusedTitleElement,
+            focusedMetaElement,
+            createAnalyzeRankRecommendationTable(focusedCandidates, options.displayInfoByKey, focus),
+            otherTitleElement,
+            otherMetaElement,
+            ...(otherCandidates.length === 0 ? [] : [createAnalyzeRankRecommendationTable(otherCandidates, options.displayInfoByKey, focus)])
+        );
+        renderSalesSettingWarmCacheInlineStatus();
+        return;
+    }
+
+    rootElement.replaceChildren(
+        titleElement,
+        metaElement,
+        createAnalyzeRankRecommendationTable(candidates, options.displayInfoByKey, focus)
+    );
+    renderSalesSettingWarmCacheInlineStatus();
+}
+
+function createAnalyzeRankRecommendationTable(
+    candidates: readonly RankRecommendationCandidate[],
+    displayInfoByKey: ReadonlyMap<string, RankRecommendationDisplayInfo>,
+    focus: { stayDate: string; roomGroupId: string } | null
+): HTMLTableElement {
     const tableElement = document.createElement("table");
     const headerRowElement = document.createElement("tr");
     for (const label of ["部屋タイプ", "現ランク", "推奨", "根拠", "状態", "前回変更"]) {
@@ -7421,11 +7500,9 @@ function renderAnalyzeRankRecommendationList(
     }
     const theadElement = document.createElement("thead");
     theadElement.append(headerRowElement);
-
-    const focus = readPendingRankRecommendationFocus();
     const tbodyElement = document.createElement("tbody");
     for (const candidate of candidates) {
-        const displayInfo = options.displayInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate)) ?? null;
+        const displayInfo = displayInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate)) ?? null;
         const rowElement = document.createElement("tr");
         rowElement.setAttribute(RANK_RECOMMENDATION_ANALYZE_ROW_ATTRIBUTE, "");
         const isHighlighted = focus !== null
@@ -7443,7 +7520,7 @@ function renderAnalyzeRankRecommendationList(
         tbodyElement.append(rowElement);
     }
     tableElement.append(theadElement, tbodyElement);
-    rootElement.replaceChildren(titleElement, metaElement, tableElement);
+    return tableElement;
 }
 
 function appendAnalyzeRankRecommendationCell(rowElement: HTMLTableRowElement, text: string): void {
@@ -9335,6 +9412,7 @@ function renderRankRecommendationList(
         rows: viewModel.rows.map(buildRankRecommendationReactRowSnapshot)
     });
     hydrateRankRecommendationReactPreviewRows(viewModel);
+    renderSalesSettingWarmCacheInlineStatus();
     renderSalesSettingWarmCacheMonthControls(collectMonthlyCalendarCells());
 }
 
@@ -14758,7 +14836,12 @@ function renderPriceTrendOverviewAtTarget(
             const emptyElement = document.createElement("div");
             emptyElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_EMPTY_ATTRIBUTE, "");
             emptyElement.textContent = formatPriceTrendEmptyText(state);
-            containerElement.replaceChildren(titleElement, metaElement, emptyElement);
+            const nextActionElement = createPriceTrendNextActionElement(state);
+            containerElement.replaceChildren(
+                titleElement,
+                metaElement,
+                ...[emptyElement, nextActionElement].filter((element): element is HTMLElement => element !== null)
+            );
         } else {
             const controlsElement = createPriceTrendFilterControls(filters, roomTypeFilter, mealTypeFilter);
             if (filteredRecords.length === 0) {
@@ -14782,6 +14865,58 @@ function renderPriceTrendOverviewAtTarget(
     if (containerElement.parentElement !== sectionContainer || sectionContainer.lastElementChild !== containerElement) {
         sectionContainer.append(containerElement);
     }
+}
+
+function createPriceTrendNextActionElement(state: PriceTrendUiState): HTMLElement | null {
+    const text = formatPriceTrendNextActionText(state);
+    if (text === null) {
+        return null;
+    }
+    const element = document.createElement("div");
+    element.setAttribute(SALES_SETTING_COMPETITOR_PRICE_NEXT_ACTION_ATTRIBUTE, "");
+    element.textContent = text;
+    return element;
+}
+
+function formatPriceTrendNextActionText(state: PriceTrendUiState): string | null {
+    if (state.status === "loading") {
+        return "次操作: 取得完了までこのタブを開いたまま待つ。別日へ移動した場合は、戻った後に再取得状態を確認する。";
+    }
+    if (state.reason === "unsupported-stay-date") {
+        return "次操作: 89日以内の宿泊日で確認する。89日より先の宿泊日は競合価格 snapshot または Analyze の他の根拠で判断する。";
+    }
+    if (state.reason === "indexeddb-unavailable") {
+        return "次操作: ブラウザの保存領域を確認し、タブを再表示して再取得する。保存できない間はこの価格推移 graph を根拠にしない。";
+    }
+    if (state.status !== "error") {
+        return null;
+    }
+
+    const errorText = [
+        state.errorMessage,
+        priceTrendBackgroundQueueState.pauseReason
+    ].filter((value): value is string => value !== null).join(" ");
+    const statusMatch = errorText.match(/\b(?:HTTP\s*)?(401|403|429|5\d\d)\b/i);
+    const status = statusMatch?.[1] ?? null;
+    if (status === "401") {
+        return "次操作: Revenue Assistant に再ログインし、この価格推移タブを再表示して再取得する。";
+    }
+    if (status === "403") {
+        return "次操作: この施設または価格推移 API の閲覧権限を確認する。権限がない場合はこの graph を根拠にしない。";
+    }
+    if (status === "429") {
+        return "次操作: クールダウンのため時間を置き、同じタブを再表示して再取得する。連続で再読み込みしない。";
+    }
+    if (status !== null) {
+        return "次操作: サーバー応答が安定するまで時間を置き、このタブを再表示して再取得する。";
+    }
+    if (/network|fetch|timeout|failed to fetch/i.test(errorText)) {
+        return "次操作: 通信状態を確認し、このタブを再表示して再取得する。再発する場合は時間を置く。";
+    }
+    if (priceTrendBackgroundQueueState.status === "stopped") {
+        return "次操作: 停止理由を確認し、ログイン状態、権限、通信状態を確認してからタブを再表示する。";
+    }
+    return "次操作: タブを再表示して再取得する。再発する場合はログイン状態、権限、通信状態を確認する。";
 }
 
 function resolvePriceTrendTabSectionTarget(): HTMLElement | null {
@@ -17116,57 +17251,28 @@ function ensureGroupRoomStyles(): void {
             display: none;
         }
 
-        [${SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE}] {
-            position: fixed;
-            right: 18px;
-            bottom: 18px;
-            z-index: 2147483647;
-            min-width: 180px;
-            max-width: min(320px, calc(100vw - 36px));
-            border: 1px solid #cbd7e8;
-            border-radius: 8px;
-            background: rgba(255, 255, 255, 0.96);
-            box-shadow: 0 8px 24px rgba(32, 50, 76, 0.16);
-            color: #29384d;
+        [${SALES_SETTING_WARM_CACHE_INLINE_STATUS_ATTRIBUTE}],
+        [${SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE}] {
+            box-sizing: border-box;
+            max-width: 100%;
+            border: 1px solid #d6e0ec;
+            border-radius: 6px;
+            background: #f8fbff;
+            color: #344a62;
             font-size: 12px;
-            line-height: 1.35;
-            padding: 8px 10px;
-            pointer-events: auto;
-        }
-
-        [${SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_INDICATOR_MINIMIZED_ATTRIBUTE}="true"] {
-            min-width: 0;
-            max-width: min(240px, calc(100vw - 36px));
-            padding: 6px 8px;
-        }
-
-        [${SALES_SETTING_WARM_CACHE_INDICATOR_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_INDICATOR_MINIMIZED_ATTRIBUTE}="true"] [${SALES_SETTING_WARM_CACHE_INDICATOR_DETAIL_ATTRIBUTE}] {
-            display: none;
-        }
-
-        [${SALES_SETTING_WARM_CACHE_INDICATOR_STATUS_ATTRIBUTE}] {
-            font-weight: 800;
-        }
-
-        [${SALES_SETTING_WARM_CACHE_INDICATOR_DETAIL_ATTRIBUTE}] {
-            margin-top: 3px;
-            color: #5b6d86;
-            font-size: 11px;
-            font-weight: 600;
+            font-weight: 700;
+            line-height: 1.45;
             white-space: normal;
         }
 
-        [${SALES_SETTING_WARM_CACHE_INDICATOR_TOGGLE_ATTRIBUTE}] {
-            margin-top: 5px;
-            padding: 2px 6px;
-            border: 1px solid #b8c7dc;
-            border-radius: 4px;
-            background: #fff;
-            color: #3f5f8c;
-            font-size: 11px;
-            font-weight: 800;
-            line-height: 1.2;
-            cursor: pointer;
+        [${SALES_SETTING_WARM_CACHE_INLINE_STATUS_ATTRIBUTE}] {
+            margin: 8px 0 10px;
+            padding: 7px 9px;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE}] {
+            flex: 1 0 100%;
+            padding: 5px 7px;
         }
 
         [${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}] {
@@ -17841,6 +17947,18 @@ function ensureGroupRoomStyles(): void {
             color: #7a8794;
             font-size: 12px;
             font-weight: 700;
+        }
+
+        [${SALES_SETTING_COMPETITOR_PRICE_NEXT_ACTION_ATTRIBUTE}] {
+            margin-top: 6px;
+            padding: 7px 9px;
+            border-left: 4px solid #d49335;
+            background: #fff8e8;
+            color: #4f3a0c;
+            font-size: 12px;
+            font-weight: 800;
+            line-height: 1.45;
+            white-space: normal;
         }
 
         [${SALES_SETTING_RANK_DETAIL_ATTRIBUTE}] {
@@ -18581,9 +18699,26 @@ function ensureGroupRoomStyles(): void {
             line-height: 1.3;
         }
 
+        [${RANK_RECOMMENDATION_ANALYZE_LIST_ATTRIBUTE}] h3 {
+            margin: 10px 0 3px;
+            color: #243245;
+            font-size: 13px;
+            font-weight: 800;
+            line-height: 1.35;
+        }
+
+        [${RANK_RECOMMENDATION_ANALYZE_LIST_ATTRIBUTE}] p {
+            margin: 3px 0 5px;
+            color: #5b6b7d;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.4;
+        }
+
         [${RANK_RECOMMENDATION_ANALYZE_LIST_ATTRIBUTE}] table {
             width: 100%;
             border-collapse: collapse;
+            margin-top: 5px;
         }
 
         [${RANK_RECOMMENDATION_ANALYZE_LIST_ATTRIBUTE}] th,

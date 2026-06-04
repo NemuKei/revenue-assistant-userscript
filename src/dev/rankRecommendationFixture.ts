@@ -18,6 +18,8 @@ type FixtureState =
     | "long-room-name"
     | "preview-open"
     | "monthly-compact"
+    | "monthly-empty"
+    | "monthly-partial"
     | "price-trends-loading"
     | "price-trends-empty"
     | "price-trends-failure";
@@ -34,6 +36,8 @@ const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
     { value: "long-room-name", label: "長い部屋タイプ名" },
     { value: "preview-open", label: "preview open" },
     { value: "monthly-compact", label: "月次 compact view" },
+    { value: "monthly-empty", label: "月次 empty" },
+    { value: "monthly-partial", label: "月次 partial" },
     { value: "price-trends-loading", label: "価格推移 loading" },
     { value: "price-trends-empty", label: "価格推移 empty" },
     { value: "price-trends-failure", label: "価格推移 failure" }
@@ -361,19 +365,44 @@ function buildMetaTitle(state: FixtureState, rowCount: number): string {
 }
 
 function renderSecondaryFixtureState(container: HTMLElement, state: FixtureState): void {
-    if (state === "monthly-compact") {
+    if (state === "monthly-compact" || state === "monthly-empty" || state === "monthly-partial") {
+        const body = state === "monthly-empty"
+            ? `
+                <p data-ra-monthly-progress-empty>保存済み月次 snapshot がないため、LTブッキングカーブを表示できません。</p>
+                <details data-ra-monthly-progress-daily-diff-details>
+                    <summary>日次差分は未表示</summary>
+                    <p>現在月の保存後に増加、減少、変化なし、未観測を確認します。</p>
+                </details>
+            `
+            : state === "monthly-partial"
+                ? `
+                    <p data-ra-monthly-progress-partial>保存済み・比較不足あり / background 取得中 5 / 12・失敗 1</p>
+                    <table data-ra-monthly-progress-daily-diff-main-table>
+                        <tbody>
+                            <tr><td>7日前</td><td>増加</td><td>+4室</td></tr>
+                            <tr><td>14日前</td><td>未観測</td><td>-</td></tr>
+                        </tbody>
+                    </table>
+                    <details data-ra-monthly-progress-daily-diff-details open>
+                        <summary>変化なし / 未観測 4件</summary>
+                        <table><tbody><tr><td>21日前</td><td>変化なし</td></tr><tr><td>30日前</td><td>未観測</td></tr></tbody></table>
+                    </details>
+                `
+                : `
+                    <table data-ra-monthly-progress-daily-diff-main-table>
+                        <tbody>
+                            <tr><td>7日前</td><td>増加</td><td>+4室</td></tr>
+                            <tr><td>14日前</td><td>減少</td><td>-1室</td></tr>
+                        </tbody>
+                    </table>
+                    <details data-ra-monthly-progress-daily-diff-details>
+                        <summary>変化なし / 未観測 2件</summary>
+                        <table><tbody><tr><td>21日前</td><td>変化なし</td></tr><tr><td>30日前</td><td>未観測</td></tr></tbody></table>
+                    </details>
+                `;
         container.innerHTML = `
             <h2>月次実績 日次差分 compact view</h2>
-            <table data-ra-monthly-progress-daily-diff-main-table>
-                <tbody>
-                    <tr><td>7日前</td><td>増加</td><td>+4室</td></tr>
-                    <tr><td>14日前</td><td>減少</td><td>-1室</td></tr>
-                </tbody>
-            </table>
-            <details data-ra-monthly-progress-daily-diff-details>
-                <summary>変化なし / 未観測 2件</summary>
-                <table><tbody><tr><td>21日前</td><td>変化なし</td></tr><tr><td>30日前</td><td>未観測</td></tr></tbody></table>
-            </details>
+            ${body}
         `;
         return;
     }
@@ -384,9 +413,15 @@ function renderSecondaryFixtureState(container: HTMLElement, state: FixtureState
             : state === "price-trends-empty"
                 ? "対象データがないため graph を表示できません。"
                 : "背景取得 19 / 128・失敗 3・停止 fixture failure";
+        const nextAction = state === "price-trends-loading"
+            ? "次操作: 取得完了までこのタブを開いたまま待つ。"
+            : state === "price-trends-empty"
+                ? "次操作: 89日以内の宿泊日で確認する。"
+                : "次操作: ログイン状態、権限、通信状態を確認し、タブを再表示して再取得する。";
         container.innerHTML = `
             <h2>価格推移 supplement</h2>
             <p data-ra-price-trends-background-status>${message}</p>
+            <p data-ra-sales-setting-competitor-price-next-action>${nextAction}</p>
         `;
         return;
     }
