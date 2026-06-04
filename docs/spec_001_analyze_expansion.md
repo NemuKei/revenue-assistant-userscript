@@ -280,8 +280,9 @@ BCL-tuned first wave の定義:
 - IndexedDB または derived cache の既存 record により skip できる task は、API request を発行しないため、次 task へ即時に進めてよい。
 - 1 回の自動 warm cache 稼働時間は最大 10 分とする。
 - 1 回の自動 warm cache 稼働時間に達した場合は、3 分以上のクールダウン時間を置いた後に自動再開する。
-- 日次合計稼働時間の上限は設けない。負荷制御は、有限 queue、request 間隔、1 回の稼働時間、クールダウン、document hidden 中の一時停止、連続エラー停止で行う。
-- document が hidden の間は自動取得を一時停止する。
+- 日次合計稼働時間の上限は設けない。負荷制御は、有限 queue、request 間隔、1 回の稼働時間、クールダウン、document hidden 中の既定一時停止、連続エラー停止で行う。
+- document が hidden の間は自動取得を一時停止する。ただし、利用者が `候補データ優先取得` strip の `非表示中も取得` を ON にした場合だけ、レベアシタブを開いたまま別タブを見ている間も booking curve warm cache と月別優先取得を継続してよい。この opt-in は browser-local `localStorage` に保存し、既定値は OFF とする。非表示中も、request 開始間隔 350ms 以上、同時実行 3 件以下、1 回 10 分上限、3 分 cooldown、連続 error 停止、HTTP 401 ログイン確認、HTTP 403 権限確認、HTTP 429 cooldown を維持する。
+- `非表示中も取得` は自動再ログインを行わない。ログアウト、HTTP 401、認証切れらしい状態では取得を停止し、利用者に再ログインを促す表示に留める。userscript は ID、password、Cookie、token、credential を保存または自動入力しない。
 - HTTP 401 はログイン状態の確認が必要な状態として扱い、自動 retry を続けず一時停止する。
 - HTTP 403 は権限または対象施設の確認が必要な状態として扱い、自動 retry を続けず一時停止する。
 - HTTP 429 は request 頻度に対する制限として扱い、即時 retry ではなくクールダウンへ入る。
@@ -307,6 +308,7 @@ BCL-tuned first wave の定義:
 - 月別優先取得ボタンを押した場合、その `YYYYMM` の全 stay_date を通常の直近日付 queue より前に置く。Analyze 日付ページを開いている場合の `priorityStayDate` は引き続き最優先であり、月別優先取得はトップカレンダー上の明示操作として扱う。
 - 月別優先取得ボタンは、表示月ごとの優先取得入口と progress summary に加えて、全体 queue の短い状態も同じ strip 内に表示してよい。右下固定 indicator は使わない。
 - 月別優先取得ボタンの入力は、表示中カレンダーの月であり、料金調整候補の行や候補件数から対象月を推定しない。配置は、利用者が優先取得後に確認する料金調整候補 list の直前を第一候補とする。これにより、取得入口、`対象月` filter、候補根拠の確認を同じ作業領域で続けて読めるようにする。候補 list host が描画前でも解決できる状態では、初回から候補 list の直前に strip を置く。候補 list host が解決できない状態だけカレンダー上部へ fallback し、入口が消えないようにする。カレンダー側と候補 list 側の二重配置は採用しない。理由は、同じ月の同じ取得処理に対する入口が 2 箇所に分かれると、どちらが現在の対象月 filter と連動するのかを誤読しやすいためである。
+- `候補データ優先取得` strip には、`非表示中も取得` の opt-in toggle を表示してよい。ON の場合は strip の状態表示に `非表示中も取得ON` を含め、利用者が現在の取得条件を誤読しないようにする。
 - 月別優先取得ボタンを押した場合、料金調整候補 list の `対象月` filter は押した月へ切り替える。カレンダー表示月は、押したボタンが表示中カレンダー上の月を表すため、追加で変更しない。`対象月` filter を切り替える理由は、取得完了後に利用者が同じ月の候補をすぐ確認できるようにするためである。filter 切替時は既存の filter 変更と同じく、表示上限を初期値 10 件へ戻し、開いている booking curve preview と rank change preview を閉じる。rank change pending がある場合は、未確定操作を隠さないため filter 切替を遅延するか、pending 行が見える状態を維持する。どちらを採る場合でも、pending 中の Revenue Assistant write API 送信条件、取消条件、5 秒 timer は変更しない。
 - 月別優先取得の完了後は、料金調整候補 list 上部の summary に、対象月の再評価結果を短く表示してよい。比較する値は、取得開始直前と取得後再同期後の `対象月` filter 適用済み active candidate 件数、表示中候補件数、raw source 状態別件数、状態 badge の `取得中`、`確認不足`、`根拠あり` 件数である。表示文言は、`対象月 2026-08: 候補 +3件、確認不足 -5件` のような短い非数値中心の summary とし、金額、差額、percent、forecast 数値、sales / ADR 数値は出さない。比較結果は画面内 memory の一時 summary に留め、IndexedDB、localStorage、docs、Git 管理へ保存しない。保存する場合でも、最小識別情報は `facilityCacheKey`、対象 `YYYYMM`、比較時刻、件数差分、raw source 状態差分に限定し、request body、response body、raw trace、Cookie、token、credential、価格や在庫の非公開データは保存しない。
 - 配布版 top smoke では、月別優先取得の安全確認として、RAU 発行 `/api/v4/booking_curve` の request count、HTTP status count、HTTP error count、平均 request 開始件数、最小 request 開始間隔、最大同時 request 数、worker 表示、監視対象 write API POST 0 件を raw body なしで確認する。未取得 task が十分にある場合は、HTTP error 0 件、平均 request 開始件数、最小 request 開始間隔、最大同時 request 数を自動判定する。cache 済みで request count が少ない場合は、低 throughput を失敗扱いにせず、fallback 理由を出力する。

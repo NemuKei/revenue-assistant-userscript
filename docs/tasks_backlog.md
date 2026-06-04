@@ -20,6 +20,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、利用者が、料金調整候補まわりの後続候補として、対象月プルダウンの先 6 か月化、競合価格グラフの押下時表示、先行月向けデータ取得ブーストを示した。`docs/context/INTENT.md` の表示密度、UI / UX、request 数、安定性の判断原則を確認し、まず操作距離を短くする `RAU-UX-125` を Next に置く。競合価格グラフ導線は、対象日の競合価格取得、cache、失敗時表示、重複取得防止を先に設計する必要があるため `RAU-CP-19` として After Next に置く。`RAU-CP-16` は 2026-05-31 に価格推移 background queue の long-run 確認 task として完了済みのため、新規 task ID として再利用しない。先行月向け取得ブーストは、単純な高速化ではなく取得順序と queue 制御の調査が必要なため `RAU-WC-27` として Later に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 
+2026-06-04 に、利用者が、レベアシタブを開いたまま別タブを見ている間もデータ取得を進めたいと示したため、`RAU-WC-28` として、booking curve warm cache と月別優先取得だけを対象にした `非表示中も取得` opt-in を実装する。自動再ログインは利用者が一旦不要と明示したため対象外にする。ID、password、Cookie、token、credential を保存または自動入力せず、HTTP 401 やログアウトらしい状態は既存どおりログイン確認として停止する。`RAU-WC-27` は先行月向け queue boost 全体の調査 task として残し、今回の opt-in 実装とは統合しない。今回の変更では、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、request 間隔、同時実行数、取得対象期間、保存 schema、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -282,6 +284,33 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`, `README.md`
+
+### RAU-WC-28 `非表示中も取得` opt-in で warm cache を継続できるようにする
+
+- 状態:
+  - 完了。
+- 目的:
+  - レベアシタブを開いたまま別タブを見ている間も、利用者が明示的に許可した場合だけ、料金調整候補に必要な booking curve warm cache と月別優先取得を継続できるようにする。
+- スコープ:
+  - `候補データ優先取得` strip に `非表示中も取得` toggle を追加する。
+  - toggle は browser-local `localStorage` に保存し、既定値は OFF とする。
+  - ON の場合だけ、document hidden 時の booking curve warm cache pause を避ける。
+  - 状態表示には `非表示中も取得ON` を含め、現在の取得条件を誤読しないようにする。
+- 非目標:
+  - 自動再ログインは行わない。
+  - ID、password、Cookie、token、credential を保存または自動入力しない。
+  - 価格推移 background queue、競合価格 snapshot queue、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - request 間隔、同時実行数、取得対象期間、保存 schema、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+- 受け入れ条件:
+  - 既定 OFF の場合、タブ非表示時に booking curve warm cache は従来どおり `タブ非表示` で一時停止する。
+  - ON の場合、レベアシタブを開いたまま別タブを見ている間も booking curve warm cache drain が `タブ非表示` だけでは停止しない。
+  - ON / OFF の状態が `候補データ優先取得` strip から操作でき、ON の状態が status text で確認できる。
+  - HTTP 401、HTTP 403、HTTP 429、連続 error、run limit、cooldown の既存停止条件は維持されている。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`, `docs/context/DECISIONS.md`
 
 ## Completed / Product Design And Warm Cache UX Follow-ups
 

@@ -453,7 +453,7 @@ sales / ADR health の扱い:
 - top list には ADR、sales、比率、金額を直接表示しない。主要根拠に出す場合も、`ADR弱含み`、`売上弱含み`、`ADR・売上弱含み` のような非数値要約に留める。
 - `neutral` は内部 diagnostics として残してよいが、候補行の主要根拠を増やす目的では表示しない。実データでの発火率と false positive は後続 task で確認する。
 - sales / ADR health の `asOfDate` 比較では、`YYYYMMDD` と `YYYY-MM-DD` を混在させない。`booking_curve_raw_source:v2` の point date、`SalesAdrObservation.observedDate`、rank recommendation の `asOfDate` は比較前に同じ日付形式へ正規化し、asOfDate より後の将来 observation を current として使わない。
-- top list 候補の `booking_curve_raw_source:v2` coverage を増やす場合は、既存 warm cache の queue 内にある `currentRaw x roomGroup` task を、表示中の top candidates と一致する `stayDate x roomGroupId` から先に処理してよい。この優先化は既存 task の並び替えであり、対象日付範囲、request 件数、request 間隔、hidden tab pause、run limit、cooldown、重複排除、既存 raw source skip を変更しない。優先 task を新規取得した場合は、top list が保存済み raw source を読めるよう、calendar sync を強制再実行してよい。
+- top list 候補の `booking_curve_raw_source:v2` coverage を増やす場合は、既存 warm cache の queue 内にある `currentRaw x roomGroup` task を、表示中の top candidates と一致する `stayDate x roomGroupId` から先に処理してよい。この優先化は既存 task の並び替えであり、対象日付範囲、request 件数、request 間隔、run limit、cooldown、重複排除、既存 raw source skip を変更しない。hidden tab 中の取得継続は、`候補データ優先取得` strip の `非表示中も取得` が ON の場合だけ許可する opt-in であり、既定はタブ非表示時に一時停止する。優先 task を新規取得した場合は、top list が保存済み raw source を読めるよう、calendar sync を強制再実行してよい。
 
 weekday context と競合価格内自社料金位置の扱い:
 

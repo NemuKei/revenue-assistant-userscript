@@ -146,6 +146,7 @@ const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 10 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_COOLDOWN_MS = 3 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
 const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
+const SALES_SETTING_WARM_CACHE_ALLOW_HIDDEN_TAB_STORAGE_KEY = "revenue-assistant:sales-setting-warm-cache:v1:allow-hidden-tab";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
 const GROUP_ROOM_STYLE_VERSION = "20260604-inline-warm-cache-status-v1";
@@ -166,6 +167,7 @@ const SALES_SETTING_WARM_CACHE_MONTH_STATUS_SUMMARY_ATTRIBUTE = "data-ra-sales-s
 const SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-status-label";
 const SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-progress";
 const SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-title";
+const SALES_SETTING_WARM_CACHE_HIDDEN_TAB_TOGGLE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-hidden-tab-toggle";
 const SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-actions";
 const SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-detail";
 const SALES_SETTING_WARM_CACHE_INLINE_STATUS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-inline-status";
@@ -1133,7 +1135,9 @@ function installLifecycleConsistencyHooks(): void {
             scheduleSalesSettingWarmCacheDrain(0);
             resumePriceTrendBackgroundQueueAfterVisibility();
         } else {
-            pauseSalesSettingWarmCache("タブ非表示");
+            if (shouldPauseSalesSettingWarmCacheForHiddenTab()) {
+                pauseSalesSettingWarmCache("タブ非表示");
+            }
             stopPriceTrendBackgroundQueue("タブ非表示");
         }
     });
@@ -4069,6 +4073,26 @@ function canResumeSalesSettingWarmCache(): boolean {
         || salesSettingWarmCacheState.status === "cooldown";
 }
 
+function isSalesSettingWarmCacheHiddenTabAllowed(): boolean {
+    try {
+        return window.localStorage.getItem(SALES_SETTING_WARM_CACHE_ALLOW_HIDDEN_TAB_STORAGE_KEY) === "1";
+    } catch {
+        return false;
+    }
+}
+
+function setSalesSettingWarmCacheHiddenTabAllowed(allowed: boolean): void {
+    try {
+        window.localStorage.setItem(SALES_SETTING_WARM_CACHE_ALLOW_HIDDEN_TAB_STORAGE_KEY, allowed ? "1" : "0");
+    } catch (error: unknown) {
+        console.warn(`[${SCRIPT_NAME}] failed to persist warm cache hidden-tab setting`, { error });
+    }
+}
+
+function shouldPauseSalesSettingWarmCacheForHiddenTab(): boolean {
+    return document.visibilityState === "hidden" && !isSalesSettingWarmCacheHiddenTabAllowed();
+}
+
 function scheduleSalesSettingWarmCacheDrain(delayMs = SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS): void {
     if (salesSettingWarmCacheTimeoutId !== null) {
         return;
@@ -4087,7 +4111,7 @@ async function drainSalesSettingWarmCacheQueue(): Promise<void> {
         return;
     }
 
-    if (document.visibilityState === "hidden") {
+    if (shouldPauseSalesSettingWarmCacheForHiddenTab()) {
         pauseSalesSettingWarmCache("タブ非表示");
         return;
     }
@@ -6742,6 +6766,8 @@ function renderSalesSettingWarmCacheMonthControls(cells: MonthlyCalendarCell[]):
     titleElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE, "");
     titleElement.textContent = "候補データ優先取得";
 
+    const hiddenTabToggleElement = createSalesSettingWarmCacheHiddenTabToggleElement();
+
     const actionsElement = document.createElement("div");
     actionsElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE, "");
     actionsElement.replaceChildren(...monthKeys.map(createSalesSettingWarmCacheMonthControlElement));
@@ -6750,7 +6776,7 @@ function renderSalesSettingWarmCacheMonthControls(cells: MonthlyCalendarCell[]):
     inlineStatusElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE, "");
     inlineStatusElement.textContent = getSalesSettingWarmCacheMonthControlsStatusText();
 
-    controlsElement.replaceChildren(titleElement, actionsElement, inlineStatusElement);
+    controlsElement.replaceChildren(titleElement, hiddenTabToggleElement, actionsElement, inlineStatusElement);
 
     if (controlsElement.parentElement !== host.parentElement || controlsElement.nextElementSibling !== host.insertBeforeElement) {
         host.parentElement.insertBefore(controlsElement, host.insertBeforeElement);
@@ -6758,13 +6784,41 @@ function renderSalesSettingWarmCacheMonthControls(cells: MonthlyCalendarCell[]):
 }
 
 function getSalesSettingWarmCacheMonthControlsStatusText(): string {
+    const hiddenTabLabel = isSalesSettingWarmCacheHiddenTabAllowed() ? "非表示中も取得ON" : null;
     if (!shouldShowSalesSettingWarmCacheInlineStatus()) {
-        return "表示中の月に必要な根拠データを先に取得できます。";
+        return [
+            "表示中の月に必要な根拠データを先に取得できます。",
+            hiddenTabLabel
+        ].filter((part): part is string => part !== null).join(" / ");
     }
     return [
         getSalesSettingWarmCacheStatusLabel(),
-        getSalesSettingWarmCacheDetailLabel()
-    ].filter((part) => part !== "").join(" / ");
+        getSalesSettingWarmCacheDetailLabel(),
+        hiddenTabLabel
+    ].filter((part): part is string => part !== null && part !== "").join(" / ");
+}
+
+function createSalesSettingWarmCacheHiddenTabToggleElement(): HTMLElement {
+    const labelElement = document.createElement("label");
+    labelElement.setAttribute(SALES_SETTING_WARM_CACHE_HIDDEN_TAB_TOGGLE_ATTRIBUTE, "");
+    labelElement.title = "レベアシタブを開いたまま別タブを見ている間も、候補データ取得を続けます。ログアウト時は停止します。";
+
+    const inputElement = document.createElement("input");
+    inputElement.type = "checkbox";
+    inputElement.checked = isSalesSettingWarmCacheHiddenTabAllowed();
+    inputElement.addEventListener("change", () => {
+        setSalesSettingWarmCacheHiddenTabAllowed(inputElement.checked);
+        renderSalesSettingWarmCacheIndicator();
+        if (inputElement.checked && canResumeSalesSettingWarmCache()) {
+            scheduleSalesSettingWarmCacheDrain(0);
+        }
+    });
+
+    const textElement = document.createElement("span");
+    textElement.textContent = "非表示中も取得";
+
+    labelElement.append(inputElement, textElement);
+    return labelElement;
 }
 
 function resolveSalesSettingWarmCacheMonthControlsHost(
@@ -17054,6 +17108,8 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE}] {
+            grid-column: 1;
+            grid-row: 1;
             color: #344a62;
             font-size: 12px;
             font-weight: 800;
@@ -17061,7 +17117,37 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
+        [${SALES_SETTING_WARM_CACHE_HIDDEN_TAB_TOGGLE_ATTRIBUTE}] {
+            grid-column: 1;
+            grid-row: 2;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            width: fit-content;
+            padding: 6px 8px;
+            border: 1px solid #c5d3ea;
+            border-radius: 6px;
+            background: #ffffff;
+            color: #34425a;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.2;
+            cursor: pointer;
+            user-select: none;
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_HIDDEN_TAB_TOGGLE_ATTRIBUTE}] input {
+            width: 14px;
+            height: 14px;
+            margin: 0;
+            flex: 0 0 auto;
+            accent-color: #315b8d;
+        }
+
         [${SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE}] {
+            grid-column: 2;
+            grid-row: 1;
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
             align-items: stretch;
@@ -17382,6 +17468,7 @@ function ensureGroupRoomStyles(): void {
 
         [${SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE}] {
             grid-column: 2;
+            grid-row: 2;
             padding: 5px 7px;
         }
 
@@ -18866,12 +18953,20 @@ function ensureGroupRoomStyles(): void {
                 grid-template-columns: 1fr;
             }
 
+            [${SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE}],
+            [${SALES_SETTING_WARM_CACHE_HIDDEN_TAB_TOGGLE_ATTRIBUTE}],
+            [${SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE}] {
+                grid-column: 1;
+                grid-row: auto;
+            }
+
             [${SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE}] {
                 grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
             }
 
             [${SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE}] {
                 grid-column: 1;
+                grid-row: auto;
             }
 
             [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
