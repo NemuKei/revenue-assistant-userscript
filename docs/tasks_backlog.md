@@ -30,6 +30,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-UX-126` の完了報告で提示した次視点を `RAU-CP-20`、`RAU-CP-21`、`RAU-CP-22`、`RAU-WC-31`、`RAU-WC-32`、`RAU-UX-127` として task 化した。あわせて、`RAU-WC-27` の完了結果で候補化していた `RAU-WC-30` も正式 task として追加した。`docs/context/INTENT.md` は、競合価格 preview の表示密度、request 数、focus 復帰、safe queue、`その他` details の再配置判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新しない。Remaining Task Triage は Now `RAU-CP-20`, `RAU-WC-31`、Next `RAU-CP-21`, `RAU-WC-30`、After Next `RAU-CP-22`, `RAU-WC-32`、Later `RAU-UX-127` とする。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 
+2026-06-05 に、未着手だった `RAU-CP-20`、`RAU-CP-21`、`RAU-CP-22`、`RAU-WC-30`、`RAU-WC-31`、`RAU-WC-32`、`RAU-UX-127` を完了した。競合価格 preview は top row の `競合価格` button から押下時だけ開く row preview とし、保存済み snapshot の cache hit、未取得時の対象日限定取得、同一 `facility x stayDate` の in-flight dedupe、loading / stored / empty / error / retry state を持つ。配布版 `0.1.0.379` では GitHub Pages published version と Tampermonkey installed version が一致し、top smoke は pass した。top smoke では top row 10 件、competitor preview buttons 10 件、competitor preview rows 10 件、primary actions 10 件、secondary actions 10 件、console / page error 0 件、監視対象 write API POST 0 件だった。追加の実クリック確認では、競合価格 preview が 0 件から 1 件へ開き、`Escape` で 0 件へ閉じ、focus return true、console / page error 0 件、監視対象 write API POST 0 件だった。RAU warm cache smoke は `X-RAU-Request: booking-curve` header 付き request を RAU 発行分として分離し、標準画面 request は参考値として扱う。hidden-tab 実測手順は、`document.visibilityState` が信頼できない場合の代替証跡を README に記録した。`その他` details は、常時主操作に `競合価格` が増えた状態で補助操作まで展開すると密度が上がるため現行維持とした。Revenue Assistant write API endpoint、rank change payload、candidate scoring、priority、confidence、reasonFingerprint、保存 schema、request 間隔、同時実行数は変更していない。これにより Remaining Task Triage は Now / Next / After Next / Later すべて空である。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -347,7 +349,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-CP-20 競合価格 snapshot adapter / cache / in-flight dedupe を実装する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-CP-19` の設計に従い、top row から対象日の競合価格 preview を開く前提として、押下 row の `stayDate` だけを取得する adapter、cache hit、in-flight 重複排除を実装する。
   - 全候補 / 全日付の事前取得を避け、必要な候補だけを安全に取得できる状態にする。
@@ -427,6 +429,11 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 通常 Chrome の top page で競合価格 row preview を開閉できる。
   - `Escape` close と focus return を確認している。
   - console error 0 件、page error 0 件、監視対象 write API POST 0 件を確認している。自動確認できない場合は理由を `STATUS.md` とこの backlog に記録する。
+- 完了結果:
+  - commit `923e5be` を `origin/main` へ push し、Publish Userscript workflow `26986101632` は success になった。GitHub Pages published version は `0.1.0.379` である。
+  - Tampermonkey dashboard の `Revenue Assistant Userscript` を `0.1.0.379` へ更新した。`npm run userscript:version-check -- --installed-version 0.1.0.379 --open-url https://ra.jalan.net/` で published version と installed version は一致し、Chrome CDP reachable、Revenue Assistant page の RAU userscript root count 3、React marker mounted yes を確認した。
+  - `npm run smoke:distribution -- --installed-version 0.1.0.379 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail` は pass した。top row 10 件、competitor preview buttons 10 件、competitor preview rows 10 件、primary actions wrappers 10 件、secondary action markers 10 件、status badge cells 10 件、console / page error 0 件、監視対象 write API POST 0 件だった。
+  - 追加の Chrome CDP 実クリック確認では、`競合価格` preview が 0 件から 1 件へ開き、保存済み snapshot の preview text が表示され、`Escape` で 0 件へ閉じた。focus return は true、console / page error 0 件、監視対象 write API POST 0 件だった。
 - metadata:
   - `spec-impact`: no
   - `target-spec`: none
