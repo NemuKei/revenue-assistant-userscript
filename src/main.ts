@@ -1911,7 +1911,7 @@ function toggleRankRecommendationRankChangePreviewFromElement(element: HTMLEleme
     const nextOpen = element.getAttribute("aria-expanded") !== "true";
     rankRecommendationRankChangePreviewOpenState.set(key, nextOpen);
     element.setAttribute("aria-expanded", nextOpen ? "true" : "false");
-    element.textContent = nextOpen ? "rank調整を閉じる" : "rank調整";
+    element.textContent = nextOpen ? "ランク調整を閉じる" : "ランク調整";
 
     const rowElement = element.closest("tr");
     const previewRowElement = rowElement?.parentElement?.querySelector<HTMLTableRowElement>(
@@ -9517,10 +9517,10 @@ function buildRankRecommendationReactRowSnapshot(row: RankRecommendationListView
             )
         },
         rankChangeButton: {
-            text: isRankChangePreviewOpen ? "rank調整を閉じる" : "rank調整",
+            text: isRankChangePreviewOpen ? "ランク調整を閉じる" : "ランク調整",
             title: rankChangeProposal.enabled
-                ? "Analyzeへ移動せずに、この候補のrank変更 preview を表示"
-                : `rank調整不可: ${formatRankRecommendationRankChangeDisabledReasons(rankChangeProposal.disabledReasons)}`,
+                ? "Analyzeへ移動せずに、この候補のランク変更 preview を表示"
+                : `ランク調整不可: ${formatRankRecommendationRankChangeDisabledReasons(rankChangeProposal.disabledReasons)}`,
             expanded: isRankChangePreviewOpen,
             attrs: {
                 ...buildRankRecommendationBaseCandidateButtonAttrs(candidate),

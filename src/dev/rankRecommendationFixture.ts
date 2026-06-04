@@ -254,7 +254,7 @@ function buildRow(options: {
             { kind: "text", value: "有効", role: "status" }
         ],
         analyzeLink: {
-            text: "Analyze",
+            text: "Analyzeで確認",
             title: "Analyze で確認",
             href: `https://ra.jalan.net/analyze/${options.stayDate}`,
             attrs: {
@@ -281,7 +281,7 @@ function buildRow(options: {
             submitButton: buildButton("反映する", "rank-change-inline-submit")
         },
         rankChangeButton: {
-            ...buildButton("rank調整", "rank-change-preview-toggle"),
+            ...buildButton("ランク調整", "rank-change-preview-toggle"),
             expanded: options.rankOpen
         },
         snoozeButton: buildButton("様子見", "snooze"),
