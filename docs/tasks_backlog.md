@@ -14,6 +14,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、`RAU-UX-121` の公開版は `0.1.0.374` まで確認したが、通常 Chrome の Tampermonkey installed version と Revenue Assistant 実画面での重なり解消は未確認である。これは配布同期後に実画面で確認する必要があるため、`RAU-UX-122` として task 化し、Remaining Task Triage の Now に置く。`RAU-UX-120` は、`RAU-UX-122` の同期確認後に実利用観察へ進めるため Next に下げる。
 
+2026-06-04 に、利用者が Product Design plugin を指定し、`候補データ優先取得` のインジケーターはテキストベースで改行もなく UX 改善余地があると示した。`docs/context/INTENT.md` の「短時間で理解できる、シンプルで分かりやすい UI / UX を優先する」方針に沿い、`RAU-UX-123` として、月別優先取得の取得状態を状態 chip と細い progress bar へ整理する task を追加する。`RAU-UX-122` は `RAU-UX-123` の配布後にまとめて実画面確認した方が確認回数を減らせるため Next に下げ、`RAU-UX-120` は実利用観察 task として After Next に置く。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -126,6 +128,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
+  - `target-spec`: none
+
+### RAU-UX-123 月別優先取得の取得状態を chip と progress bar で表示する
+
+- 目的:
+  - `候補データ優先取得` strip の月別取得状態を、テキストだけに依存せず、状態 chip と細い progress bar で読めるようにする。
+  - 利用者が押す対象である `YYYY-MM 優先取得` button と、取得状態である `未優先`、`待機中`、`取得中 n%`、`完了`、`クールダウン中`、`エラー n` を視覚的に分ける。
+- スコープ:
+  - 対象は `data-ra-sales-setting-warm-cache-month-control` の DOM 構造と CSS である。
+  - 状態文言は chip として表示し、進捗率は横長の progress bar として表示する。
+  - `role="progressbar"`、`aria-valuemin`、`aria-valuemax`、`aria-valuenow`、`aria-valuetext` を設定し、色だけに依存しない状態説明を維持する。
+  - 狭い幅では button と status summary が折り返し、横 overflow や重なりが出ないようにする。
+- 非目標:
+  - booking curve warm cache queue、request 間隔、同時実行数、優先月の選び方、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint は変更しない。
+  - 状態文言、対象月、取得対象 stay_date の判定は変更しない。
+- 受け入れ条件:
+  - 月別優先取得の状態が chip と progress bar で表示される。
+  - button 本文、状態 chip、progress bar が重ならず、狭い幅では自然に折り返す。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+  - Playwright の最小再現または通常 Chrome の実画面で、横 overflow なし、button と status summary の重なりなしを確認している。
+- 完了結果:
+  - 月別優先取得の status summary に `data-ra-sales-setting-warm-cache-month-status-label` と `data-ra-sales-setting-warm-cache-month-progress` を追加し、状態 chip と横長の progress bar を表示する構造にした。
+  - progress bar には `role="progressbar"`、`aria-valuemin="0"`、`aria-valuemax="100"`、`aria-valuenow`、`aria-valuetext` を設定し、状態 chip の色だけに依存しない説明を維持した。
+  - `idle`、`queued`、`running`、`complete`、`cooldown`、`error` ごとに状態 chip と progress bar の色を分けた。button 本体は押下対象の `YYYY-MM 優先取得` だけを保持する。
+  - Playwright の最小再現では、420px viewport と 320px viewport のどちらでも `documentElement.scrollWidth === clientWidth` であり、button と status summary の overlap は false だった。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers` が通過した。Vite と esbuild を起動する build / fixture / marker は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: after-implementation
   - `target-spec`: none
 
 ## Completed / Product Design And Warm Cache UX Follow-ups

@@ -161,6 +161,8 @@ const SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE = "data-ra-sales-setting-
 const SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-button";
 const SALES_SETTING_WARM_CACHE_MONTH_KEY_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month";
 const SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-status";
+const SALES_SETTING_WARM_CACHE_MONTH_STATUS_SUMMARY_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-status-summary";
+const SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-status-label";
 const SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-progress";
 const SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-title";
 const SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE = "data-ra-sales-setting-warm-cache-month-actions";
@@ -6842,8 +6844,12 @@ function createSalesSettingWarmCacheMonthControlElement(monthKey: string): HTMLE
 
     const progressElement = document.createElement("span");
     progressElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE, "");
-    progressElement.setAttribute("role", "img");
+    progressElement.setAttribute("role", "progressbar");
     progressElement.setAttribute("aria-label", `${formatSalesSettingWarmCacheMonthLabel(monthKey)} ${progress.label}`);
+    progressElement.setAttribute("aria-valuemin", "0");
+    progressElement.setAttribute("aria-valuemax", "100");
+    progressElement.setAttribute("aria-valuenow", String(progress.percent));
+    progressElement.setAttribute("aria-valuetext", progress.label);
     progressElement.style.setProperty("--ra-sales-setting-warm-cache-month-progress", `${progress.percent}%`);
 
     const labelElement = document.createElement("span");
@@ -6852,7 +6858,14 @@ function createSalesSettingWarmCacheMonthControlElement(monthKey: string): HTMLE
     buttonElement.append(labelElement);
 
     const statusElement = document.createElement("span");
-    statusElement.append(progressElement, document.createTextNode(progress.label));
+    statusElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_STATUS_SUMMARY_ATTRIBUTE, "");
+    statusElement.setAttribute("aria-label", `${formatSalesSettingWarmCacheMonthLabel(monthKey)} ${progress.label}`);
+
+    const statusLabelElement = document.createElement("span");
+    statusLabelElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE, "");
+    statusLabelElement.textContent = progress.label;
+
+    statusElement.append(statusLabelElement, progressElement);
 
     wrapperElement.append(buttonElement, statusElement);
     return wrapperElement;
@@ -17037,19 +17050,20 @@ function ensureGroupRoomStyles(): void {
             display: inline-flex;
             align-items: center;
             flex-wrap: wrap;
-            gap: 5px 7px;
-            min-height: 28px;
+            gap: 6px 8px;
+            min-height: 32px;
             color: #50627a;
             font-size: 11px;
             font-weight: 700;
             line-height: 1.2;
+            max-width: 100%;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
-            height: 28px;
-            padding: 0 10px;
+            min-height: 30px;
+            padding: 0 11px;
             border: 1px solid #c9d7e8;
             border-radius: 6px;
             background: #ffffff;
@@ -17060,10 +17074,29 @@ function ensureGroupRoomStyles(): void {
             white-space: nowrap;
         }
 
-        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}] > span {
+        [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_SUMMARY_ATTRIBUTE}] {
+            display: inline-flex;
+            flex: 0 1 112px;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 3px;
+            min-width: 82px;
+            max-width: 128px;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
-            gap: 4px;
+            justify-content: center;
+            min-height: 18px;
+            padding: 0 7px;
+            border: 1px solid #c8d7e8;
+            border-radius: 999px;
+            background: #eef5fc;
+            color: #315b8d;
+            font-size: 11px;
+            font-weight: 800;
+            line-height: 1.2;
             white-space: nowrap;
         }
 
@@ -17075,28 +17108,64 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
-            width: 16px;
-            height: 16px;
-            border-radius: 50%;
+            display: block;
+            width: 100%;
+            height: 4px;
+            border-radius: 999px;
             background:
-                conic-gradient(#3f8ed8 var(--ra-sales-setting-warm-cache-month-progress, 0%), #d9e3f0 0);
-            box-shadow: inset 0 0 0 4px #ffffff;
+                linear-gradient(90deg, #3f8ed8 var(--ra-sales-setting-warm-cache-month-progress, 0%), #d9e3f0 0);
             flex: 0 0 auto;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="idle"] [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE}] {
+            border-color: #d7e0ea;
+            background: #f3f6f9;
+            color: #596a7c;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="queued"] [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE}] {
+            border-color: #d6c5a4;
+            background: #fff7e8;
+            color: #8a5f15;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="running"] [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE}] {
+            border-color: #b9d2ed;
+            background: #edf6ff;
+            color: #315b8d;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="complete"] [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
             background:
-                conic-gradient(#2f9e63 100%, #d9e3f0 0);
+                linear-gradient(90deg, #2f9e63 100%, #d9e3f0 0);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="complete"] [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE}] {
+            border-color: #b8ddc7;
+            background: #edf8f1;
+            color: #24734b;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="error"] [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
             background:
-                conic-gradient(#c44f4f 100%, #d9e3f0 0);
+                linear-gradient(90deg, #c44f4f 100%, #d9e3f0 0);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="error"] [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE}] {
+            border-color: #e1b9b9;
+            background: #fff0f0;
+            color: #9a3030;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="cooldown"] [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
             background:
-                conic-gradient(#d49335 var(--ra-sales-setting-warm-cache-month-progress, 0%), #ead8bd 0);
+                linear-gradient(90deg, #d49335 var(--ra-sales-setting-warm-cache-month-progress, 0%), #ead8bd 0);
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}][${SALES_SETTING_WARM_CACHE_MONTH_STATUS_ATTRIBUTE}="cooldown"] [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE}] {
+            border-color: #ddc394;
+            background: #fff5e4;
+            color: #8a5f15;
         }
 
         [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
