@@ -241,7 +241,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `buildRankRecommendationTargetMonthOptions()` は、優先取得月キーがある場合に同じ 6 か月を返し、active candidates が 0 件の月も `0件` として選択肢に残す。
   - live top path と fixture mode path は、`getSalesSettingWarmCachePriorityMonthKeys()` から同じ基準月を渡す。
   - fixture visual check では、1280px、420px、320px の各幅で `202607` から `202612` までの 6 か月 option、横 overflow false、control overlap 0 件を確認した。
-  - 通常 Chrome の `0.1.0.377` 配布版では、この task の新規実装は未配布のため、配布後 smoke で対象月 6 か月表示を再確認する。
+  - push 後の Publish Userscript workflow は成功し、Tampermonkey dashboard で `0.1.0.378` へ更新した。`npm run userscript:version-check -- --installed-version 0.1.0.378 --open-url https://ra.jalan.net/` では published version と installed version が一致し、`npm run smoke:distribution -- --installed-version 0.1.0.378 --mode top --url https://ra.jalan.net/ --seconds 30 --version-policy fail` は pass した。
+  - `0.1.0.378` 配布版の実 DOM では、対象月 option が `全ての月` と `202606` から `202611` までの 6 か月で、候補 0 件の `202609`、`202610`、`202611` も選択肢に残っていた。top page の横 overflow false、監視対象 write API POST 0 件、console / page error 0 件も確認した。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
