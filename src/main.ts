@@ -6849,10 +6849,10 @@ function createSalesSettingWarmCacheMonthControlElement(monthKey: string): HTMLE
     const labelElement = document.createElement("span");
     labelElement.textContent = `${formatSalesSettingWarmCacheMonthLabel(monthKey)} 優先取得`;
 
-    buttonElement.append(progressElement, labelElement);
+    buttonElement.append(labelElement);
 
     const statusElement = document.createElement("span");
-    statusElement.textContent = progress.label;
+    statusElement.append(progressElement, document.createTextNode(progress.label));
 
     wrapperElement.append(buttonElement, statusElement);
     return wrapperElement;
@@ -17036,21 +17036,20 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
-            gap: 6px;
+            flex-wrap: wrap;
+            gap: 5px 7px;
             min-height: 28px;
             color: #50627a;
             font-size: 11px;
             font-weight: 700;
             line-height: 1.2;
-            white-space: nowrap;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
-            gap: 5px;
             height: 28px;
-            padding: 0 9px 0 7px;
+            padding: 0 10px;
             border: 1px solid #c9d7e8;
             border-radius: 6px;
             background: #ffffff;
@@ -17058,6 +17057,14 @@ function ensureGroupRoomStyles(): void {
             cursor: pointer;
             font: inherit;
             box-shadow: 0 1px 2px rgba(35, 52, 71, 0.06);
+            white-space: nowrap;
+        }
+
+        [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}] > span {
+            display: inline-flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE}]:hover,

@@ -10,6 +10,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、`RAU-UX-118` と `RAU-UX-119` を完了した。`RAU-UX-120` は、単発の DOM 確認ではなく、実利用中に `その他` details を開く頻度と、候補処理がそこで止まるかどうかを観察する task であるため、Remaining Task Triage の Now に残す。
 
+2026-06-04 に、利用者が `候補データ優先取得` の月別優先取得ボタンと円形進捗インジケーターの重なりを報告したため、`RAU-UX-121` として即時修正した。円形進捗インジケーターはボタン内から状態表示側へ移し、ボタン本文と進捗表示を別要素として配置する。`RAU-UX-120` は実利用中の `その他` details 観察 task であり、この表示不具合とは別軸のため Remaining Task Triage の Now に残す。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -74,6 +76,32 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-UX-121 `候補データ優先取得` の月別優先取得ボタンと進捗表示の重なりを解消する
+
+- 目的:
+  - `候補データ優先取得` strip 内で、月別優先取得ボタンの文言と円形進捗インジケーターが重ならないようにする。
+  - 利用者が押す対象である `YYYY-MM 優先取得` ボタンと、取得状態である `取得中 n%`、`完了`、`未優先`、`待機中`、`クールダウン中`、`エラー n` を別々に読めるようにする。
+- スコープ:
+  - 対象は `data-ra-sales-setting-warm-cache-month-control` の DOM 構造と CSS である。
+  - 円形進捗インジケーターをボタン内ではなく状態表示側へ置く。
+  - 狭い幅では、ボタンと状態表示が必要に応じて折り返し、互いに被らないようにする。
+- 非目標:
+  - booking curve warm cache queue、request 間隔、同時実行数、優先月の選び方、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint は変更しない。
+  - ボタン文言、状態文言、対象月、取得対象 stay_date の判定は変更しない。
+- 受け入れ条件:
+  - 月別優先取得ボタンの本文と円形進捗インジケーターが別要素として表示され、重ならない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+  - 可能なら通常 Chrome の Revenue Assistant top page または配布版 smoke で、`候補データ優先取得` strip が 1 件以上あり、横 overflow がないことを確認する。
+- 完了結果:
+  - `createSalesSettingWarmCacheMonthControlElement` で、円形進捗インジケーターを button child から status child へ移した。
+  - CSS では月別 control を折り返し可能な inline-flex にし、button は押下文言だけを nowrap で保持し、status は円形進捗インジケーターと状態文言を横並びで保持するようにした。
+  - Playwright の最小再現ページでは、420px viewport で `documentElement.scrollWidth` と `clientWidth` がどちらも 420px、月別 control の button 矩形と progress 矩形の overlap は 2 件とも false だった。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check -- src\main.ts docs\context\STATUS.md docs\tasks_backlog.md` が通過した。Vite と esbuild を起動する build / fixture / marker は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: after-implementation
+  - `target-spec`: none
 
 ## Completed / Product Design And Warm Cache UX Follow-ups
 
