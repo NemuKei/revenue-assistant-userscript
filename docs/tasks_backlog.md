@@ -18,6 +18,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、利用者が、優先取得ボタンにまだデータ取得 indicator が邪魔をしていること、各月が縦に並んでいるが横に余裕があること、優先取得は表示中カレンダーだけに連動する必要がなくもっと先の月まで並べたいこと、データ取得 indicator 自体もテキストベースで分かりにくいことを示した。これは `RAU-UX-123` の状態 chip / progress bar 化だけでは目的を満たせないため、`RAU-UX-124` として、月別優先取得を横並びの先 6 か月カードへ再設計する task を追加して完了した。`RAU-UX-122` は、通常 Chrome を remote debugging port `9222` 付きで再起動し、Tampermonkey installed version `0.1.0.376` と Revenue Assistant 実画面を確認して完了した。`RAU-UX-120` は実利用観察 task として Now に戻す。
 
+2026-06-04 に、利用者が、料金調整候補まわりの後続候補として、対象月プルダウンの先 6 か月化、競合価格グラフの押下時表示、先行月向けデータ取得ブーストを示した。`docs/context/INTENT.md` の表示密度、UI / UX、request 数、安定性の判断原則を確認し、まず操作距離を短くする `RAU-UX-125` を Next に置く。競合価格グラフ導線は、対象日の競合価格取得、cache、失敗時表示、重複取得防止を先に設計する必要があるため `RAU-CP-19` として After Next に置く。`RAU-CP-16` は 2026-05-31 に価格推移 background queue の long-run 確認 task として完了済みのため、新規 task ID として再利用しない。先行月向け取得ブーストは、単純な高速化ではなく取得順序と queue 制御の調査が必要なため `RAU-WC-27` として Later に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -197,6 +199,89 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-impact`: no
   - `spec-checkpoint`: after-implementation
   - `target-spec`: none
+
+### RAU-UX-125 料金調整候補の対象月プルダウンを先 6 か月へ拡大する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 料金調整候補 list の `対象月` プルダウンを、カレンダー表示月だけではなく、`候補データ優先取得` の月カードと同じ先 6 か月へ広げる。
+  - 利用者が先行月のデータを優先取得した後、対象月プルダウンから同じ月をすぐ選べるようにする。
+- スコープ:
+  - 対象は top 画面の料金調整候補 list にある `対象月` filter の選択肢生成、選択状態、候補 list の絞り込みである。
+  - 表示する月は、優先取得月カードと同じ基準月から 6 か月分とする。
+  - 初期選択、表示上限、preview close、rank change pending 保護は、既存の対象月切替契約を維持する。
+  - 優先取得 button 押下後に対象月 filter を押下月へ切り替える既存挙動と矛盾しないようにする。
+- 非目標:
+  - candidate scoring、priority、confidence、reasonFingerprint、rank change payload、Revenue Assistant write API endpoint は変更しない。
+  - booking curve warm cache queue、request 間隔、同時実行数、保存 schema、Revenue Assistant API request 範囲は変更しない。
+  - この task では、競合価格グラフ導線やデータ取得ブーストは扱わない。
+- 受け入れ条件:
+  - `対象月` プルダウンに、優先取得月カードと同じ 6 か月分の選択肢が表示される。
+  - 未来月を選ぶと、料金調整候補 list がその月で絞り込まれる。
+  - 候補がない月を選んだ場合でも、既存の empty / summary 表示が崩れない。
+  - 狭い表示幅でも、対象月プルダウン、表示切替 button、表示上限 button、rank order control が重ならない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+  - 可能なら通常 Chrome の Revenue Assistant top page または配布版 smoke で、対象月 6 か月表示、候補 list の月 filter、横 overflow なし、監視対象 write API POST 0 件を確認する。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-CP-19 料金調整候補から競合価格グラフを押下時だけ開く導線を設計する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 料金調整候補 row から、対象日の競合価格グラフを必要なときだけ開ける導線を設計する。
+  - 常時表示の情報量を増やさず、競合価格を確認したい候補だけで対象日のデータ取得と graph 表示を行えるようにする。
+- スコープ:
+  - 対象は top 画面の料金調整候補 row、競合価格 snapshot 取得、押下時の preview 表示、取得状態表示、既存 cache 利用方針である。
+  - row には、曲線 button と同じように押したときだけ開く競合価格 graph 導線を設計する。
+  - graph を開くときに対象 stay_date の競合価格データが未取得または不足していれば取得を開始する。
+  - 設計では、取得中、取得失敗、データなし、再取得、同時クリック時の重複取得防止、既存 cache 利用、競合価格 API の request scope を明記する。
+  - `RAU-CP-19` では設計までを完了条件とし、runtime 実装は設計完了後に別 task として切り出す。
+- 非目標:
+  - この task では runtime UI 実装を追加しない。
+  - 全候補、全日付、全競合施設の事前取得は行わない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データは Git 管理へ入れない。
+- 受け入れ条件:
+  - 競合価格 graph button の表示条件、押下時の対象日、対象 room type、開閉挙動、focus 戻し、mobile 表示方針が明記されている。
+  - 競合価格データの取得開始条件、cache hit 条件、in-flight 重複取得防止、失敗時の retry / 再表示方針が明記されている。
+  - request scope と保存しないデータが `docs/spec_001_analyze_expansion.md`、`docs/context/DECISIONS.md`、またはこの backlog task に明記されている。
+  - 実装へ進む場合の follow-up task が、UI 実装、API adapter / cache、fixture / smoke verify を含む粒度で作れる状態になっている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-WC-27 先行月向けデータ取得ブーストの安全な実装候補を調査する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 先行月を優先して料金調整したい場合に、取得待ち時間を減らす方法を調査する。
+  - 単純に request を速くするのではなく、取得順序、queue 優先度、cache 再利用、手動ブーストのどれが安全に効果を出せるか判断する。
+- スコープ:
+  - 対象は booking curve warm cache queue、月別優先取得、候補 list の対象月 filter、配布版 top smoke の throughput 観測である。
+  - 現行の `開始間隔 350ms 以上`、`同時実行 3 件以下`、監視対象 write API POST 0 件の安全条件を前提にする。
+  - 調査候補は、優先月の queue 割り込み、利用者が選択した対象月の手動ブースト、取得済み月の cache 再利用、対象月変更時の優先度変更とする。
+  - 調査結果として、実装する候補、見送る候補、見送る理由、verify 条件を記録する。
+- 非目標:
+  - 無制限な並列化、rate limit 回避、認証回避、bot 検知回避は扱わない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - request body、response body、raw trace、HAR、Cookie、token、credential、価格や在庫の非公開データは保存しない。
+  - この task では runtime 実装を追加しない。実装は調査で採用案が決まった後の follow-up とする。
+- 受け入れ条件:
+  - 現行の月別優先取得で、先行月調整時に待ち時間が発生する具体的な場面が記録されている。
+  - 優先月の queue 割り込み、手動ブースト、cache 再利用、対象月変更時の優先度変更について、採用可否と理由が明記されている。
+  - 採用する場合は、request 間隔、同時実行数、HTTP error 0 件、監視対象 write API POST 0 件、console / page error 0 件をどう確認するかが明記されている。
+  - 採用案がある場合は、実装 task の目的、スコープ、受け入れ条件が作られている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`, `README.md`
 
 ## Completed / Product Design And Warm Cache UX Follow-ups
 
@@ -8408,18 +8493,19 @@ Now:
 
 Next:
 
-- なし。
+- `RAU-UX-125`: 料金調整候補の対象月プルダウンを、優先取得と同じ先 6 か月へ拡大する。
 
 After Next:
 
-- なし。
+- `RAU-CP-19`: 料金調整候補から競合価格グラフを押下時だけ開く導線を設計する。
 
 Later:
 
-- なし。
+- `RAU-WC-27`: 先行月向けデータ取得ブーストの安全な実装候補を調査する。
 
 統合判断:
 
+- 2026-06-04 に、利用者が示した 3 件の後続候補を `RAU-UX-125`、`RAU-CP-19`、`RAU-WC-27` として task 化した。`RAU-UX-125` は、完了済みの先 6 か月優先取得 UI と料金調整候補 list の対象月 filter をそろえ、未来月調整の操作距離を短くする実装候補であるため Next とする。競合価格グラフ導線は価値が高いが、押下時取得、cache、失敗時表示、同時クリック時の重複取得防止、request scope を先に決める必要があるため、`RAU-CP-19` として設計 task に分けて After Next とする。`RAU-CP-16` は 2026-05-31 に価格推移 background queue の long-run 確認 task として完了済みのため、新規 ID として再利用しない。`RAU-WC-27` は、単純な高速化ではなく queue 優先度と手動ブーストの調査であり、現行の `開始間隔 350ms 以上`、`同時実行 3 件以下`、監視対象 write API POST 0 件の安全条件を崩さない必要があるため Later とする。`docs/context/INTENT.md` は確認済みであり、表示密度、UI / UX、request 数、安定性の既存判断原則で今回の順序を説明できるため、判断原則は更新しない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 - 2026-06-04 に、`RAU-UX-121` を完了し、`RAU-UX-122` を追加した。`RAU-UX-121` では、`候補データ優先取得` の月別優先取得ボタン内から円形進捗インジケーターを外し、状態表示側へ移した。Playwright の最小再現ページでは、420px viewport で横 overflow なし、button 矩形と progress 矩形の overlap false を確認した。Publish Userscript run `26924310212` は success で、GitHub Pages published version は `0.1.0.374` である。Tampermonkey installed version と Revenue Assistant 実画面での重なり解消は未確認であるため、`RAU-UX-122` を Now に置く。`RAU-UX-120` は、`RAU-UX-122` の後に扱う実利用観察 task として Next に下げる。
 - 2026-06-04 に、`RAU-UX-118` と `RAU-UX-119` を完了した。Published version と installed version は `0.1.0.373` で一致した。通常 Chrome の Revenue Assistant top page では、旧右下 fixed indicator 0 件、候補 list 1 件、候補 row 10 件、inline status 1 件、`候補データ優先取得` strip 1 件、console error 0 件、横 overflow なしを確認した。Analyze page では、`data-ra-rank-recommendation-analyze-list` 1 件、候補 row 6 件、write 系 button 0 件、`遷移元候補の確認` と `同日他候補の確認` の表示を確認した。価格推移 tab では通常 graph 表示、SVG 5 件、inline status 1 件、右下 fixed indicator 0 件、console error 0 件を確認した。Chrome DevTools Protocol は使えなかったため、監視対象 write API POST 0 件は CDP smoke helper では自動確認していない。`RAU-UX-120` は、実利用中に `その他` details を開く頻度と、候補処理がそこで止まるかどうかを観察する task であるため、Now に残す。
 - 2026-06-04 に、前回完了報告で提案した後続確認を `RAU-UX-118` から `RAU-UX-120` として task 化した。`RAU-UX-118` は、GitHub Pages published version と Tampermonkey installed version が一致していない可能性を先に解消しないと、実画面確認が旧版確認になるため Now とする。`RAU-UX-119` は、最新配布版が実行されていることを確認した後に、inline status、`候補データ優先取得` strip、Analyze 上部候補一覧、価格推移 / 競合価格 tab の次操作表示が判断導線を妨げないか見るため Next とする。`RAU-UX-120` は、通常利用中の開閉頻度と重なりを観察してから再配置要否を決める task であり、直近の配布同期確認と表示位置確認より後でよいため After Next とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
