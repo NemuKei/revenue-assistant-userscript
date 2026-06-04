@@ -16,7 +16,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、利用者が Product Design plugin を指定し、`候補データ優先取得` のインジケーターはテキストベースで改行もなく UX 改善余地があると示した。`docs/context/INTENT.md` の「短時間で理解できる、シンプルで分かりやすい UI / UX を優先する」方針に沿い、`RAU-UX-123` として、月別優先取得の取得状態を状態 chip と細い progress bar へ整理する task を追加する。`RAU-UX-122` は `RAU-UX-123` の配布後にまとめて実画面確認した方が確認回数を減らせるため Next に下げ、`RAU-UX-120` は実利用観察 task として After Next に置く。
 
-2026-06-04 に、利用者が、優先取得ボタンにまだデータ取得 indicator が邪魔をしていること、各月が縦に並んでいるが横に余裕があること、優先取得は表示中カレンダーだけに連動する必要がなくもっと先の月まで並べたいこと、データ取得 indicator 自体もテキストベースで分かりにくいことを示した。これは `RAU-UX-123` の状態 chip / progress bar 化だけでは目的を満たせないため、`RAU-UX-124` として、月別優先取得を横並びの先 6 か月カードへ再設計する task を追加して完了する。`RAU-UX-122` は最新配布版の Tampermonkey installed version と Revenue Assistant 実画面確認 task として Now に残し、`RAU-UX-120` は実利用観察 task として Next に置く。
+2026-06-04 に、利用者が、優先取得ボタンにまだデータ取得 indicator が邪魔をしていること、各月が縦に並んでいるが横に余裕があること、優先取得は表示中カレンダーだけに連動する必要がなくもっと先の月まで並べたいこと、データ取得 indicator 自体もテキストベースで分かりにくいことを示した。これは `RAU-UX-123` の状態 chip / progress bar 化だけでは目的を満たせないため、`RAU-UX-124` として、月別優先取得を横並びの先 6 か月カードへ再設計する task を追加して完了した。`RAU-UX-122` は、通常 Chrome を remote debugging port `9222` 付きで再起動し、Tampermonkey installed version `0.1.0.376` と Revenue Assistant 実画面を確認して完了した。`RAU-UX-120` は実利用観察 task として Now に戻す。
 
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
@@ -127,6 +127,12 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - Revenue Assistant top page で、横並びの先 6 か月カード、月別優先取得ボタンの本文、状態 chip、progress bar が重ならないことを DOM 矩形またはスクリーンショットで確認している。
   - `data-ra-sales-setting-warm-cache-indicator` が 0 件である。
   - console error 0 件、横 overflow なし、監視対象 write API POST 0 件を確認できる範囲で記録している。監視対象 write API POST 0 件を自動確認できない場合は、その理由を記録する。
+- 完了結果:
+  - 通常 Chrome を remote debugging port `9222` 付きで再起動し、保存済み入力で Revenue Assistant にログインした。施設一覧から `ホテルソビアルなんば大国町` を開き、Revenue Assistant top page `https://ra.jalan.net/` を確認した。
+  - Tampermonkey dashboard の `Revenue Assistant Userscript` は `0.1.0.376`、`npm run userscript:version-check -- --installed-version 0.1.0.376` でも published version と installed version は `0.1.0.376` で一致した。
+  - 実画面 DOM 確認では、`data-ra-sales-setting-warm-cache-month-controls` 1 件、`data-ra-rank-recommendation-list` 1 件、旧 `data-ra-sales-setting-warm-cache-indicator` 0 件、月カード 6 件、行数 1、button text は `2026-06 取得` から `2026-11 取得`、status text は `取得中 0%` 3 件と `未優先` 3 件だった。
+  - 実画面 DOM 矩形では、各月カードに button、status summary、progress bar が存在し、button と status / progress の overlap は 0 件だった。`data-ra-sales-setting-warm-cache-month-controls` と actions の横 overflow は false だった。document 全体の横 overflow は Revenue Assistant 既存カレンダー幅を含む page 全体の値であり、月別優先取得 control 自体の overflow ではない。
+  - 初回の `npm run smoke:distribution -- --installed-version 0.1.0.376 --mode top --url https://ra.jalan.net/ --seconds 20 --version-policy fail` は、UI marker と write safety は通ったが、観測開始直後の booking curve throughput 判定で fail した。90 秒後の再実行では pass し、warm cache month controls 6 件、month buttons 6 件、statuses `202606=running,202607=running,202608=running,202609=idle,202610=idle,202611=idle`、old indicator text none、booking curve request count 13、HTTP error 0、average starts per second 2.38、min start interval 352ms、max concurrent requests 3、console error 0、page error 0、監視対象 write API POST 0 件だった。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -8398,11 +8404,11 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-122`: Tampermonkey `0.1.0.376` 同期と実画面表示を確認する。
+- `RAU-UX-120`: 補助操作 `その他` details の実利用頻度と再配置要否を確認する。
 
 Next:
 
-- `RAU-UX-120`: 補助操作 `その他` details の実利用頻度と再配置要否を確認する。
+- なし。
 
 After Next:
 
