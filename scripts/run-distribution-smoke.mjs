@@ -379,7 +379,8 @@ function createBookingCurveRequestObserver() {
                 startedAtMs: Date.now(),
                 status: null,
                 failed: false,
-                maxConcurrentAtStart: maxConcurrent
+                maxConcurrentAtStart: maxConcurrent,
+                source: getBookingCurveRequestSource(request.headers())
             };
             entries.push(entry);
             byRequest.set(request, entry);
@@ -423,7 +424,8 @@ function createBookingCurveCdpObserver() {
                 startedAtMs: Date.now(),
                 status: null,
                 failed: false,
-                maxConcurrentAtStart: maxConcurrent
+                maxConcurrentAtStart: maxConcurrent,
+                source: getBookingCurveRequestSource(request.headers ?? {})
             };
             entries.push(entry);
             byRequestId.set(event.params.requestId, entry);
@@ -459,7 +461,29 @@ function isBookingCurveRequest(method, value) {
     }
 }
 
+function getBookingCurveRequestSource(headers) {
+    const source = getHeaderValue(headers, "x-rau-request");
+    return source === "booking-curve" ? "rau-warm-cache" : "page";
+}
+
+function getHeaderValue(headers, name) {
+    const lowerName = name.toLowerCase();
+    for (const [key, value] of Object.entries(headers ?? {})) {
+        if (key.toLowerCase() === lowerName) {
+            return Array.isArray(value) ? String(value[0] ?? "") : String(value);
+        }
+    }
+    return "";
+}
+
 function summarizeBookingCurveRequests(entries) {
+    return {
+        ...summarizeBookingCurveRequestGroup("booking curve", entries),
+        ...summarizeBookingCurveRequestGroup("RAU warm cache", entries.filter((entry) => entry.source === "rau-warm-cache"))
+    };
+}
+
+function summarizeBookingCurveRequestGroup(prefix, entries) {
     const sortedEntries = entries.slice().sort((left, right) => left.startedAtMs - right.startedAtMs);
     const statuses = new Map();
     for (const entry of sortedEntries) {
@@ -481,16 +505,16 @@ function summarizeBookingCurveRequests(entries) {
     const httpErrorCount = sortedEntries.filter((entry) => entry.failed || (entry.status !== null && entry.status >= 400)).length;
     const fallbackReason = hasEnoughRequests
         ? "none"
-        : `booking_curve request count ${sortedEntries.length} is below ${BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS}; cache may already be warm or no monthly priority fetch was active`;
+        : `${prefix} request count ${sortedEntries.length} is below ${BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS}; cache may already be warm, no monthly priority fetch was active, or no RAU-tagged request was observed`;
 
     return {
-        "booking curve request count": sortedEntries.length,
-        "booking curve status counts": formatStatusCounts(statuses),
-        "booking curve HTTP error count": httpErrorCount,
-        "booking curve average starts per second": averageStartsPerSecond.toFixed(2),
-        "booking curve min start interval ms": intervals.length === 0 ? "n/a" : Math.min(...intervals),
-        "booking curve max concurrent requests": maxConcurrent,
-        "booking curve throughput fallback reason": fallbackReason
+        [`${prefix} request count`]: sortedEntries.length,
+        [`${prefix} status counts`]: formatStatusCounts(statuses),
+        [`${prefix} HTTP error count`]: httpErrorCount,
+        [`${prefix} average starts per second`]: averageStartsPerSecond.toFixed(2),
+        [`${prefix} min start interval ms`]: intervals.length === 0 ? "n/a" : Math.min(...intervals),
+        [`${prefix} max concurrent requests`]: maxConcurrent,
+        [`${prefix} throughput fallback reason`]: fallbackReason
     };
 }
 
@@ -529,25 +553,25 @@ function assessModeMetrics(mode, metrics, options) {
     if (mode === "top") {
         const rowCount = Number(metrics["top row count"]);
         const perRowMinimum = Number.isFinite(rowCount) && rowCount > 0 ? rowCount : 1;
-        const bookingCurveRequestCount = Number(metrics["booking curve request count"]);
-        const bookingCurveHttpErrorCount = Number(metrics["booking curve HTTP error count"]);
-        const bookingCurveAverageStartsPerSecond = Number(metrics["booking curve average starts per second"]);
-        const bookingCurveMinStartIntervalMs = Number(metrics["booking curve min start interval ms"]);
-        const bookingCurveMaxConcurrentRequests = Number(metrics["booking curve max concurrent requests"]);
+        const bookingCurveRequestCount = Number(metrics["RAU warm cache request count"]);
+        const bookingCurveHttpErrorCount = Number(metrics["RAU warm cache HTTP error count"]);
+        const bookingCurveAverageStartsPerSecond = Number(metrics["RAU warm cache average starts per second"]);
+        const bookingCurveMinStartIntervalMs = Number(metrics["RAU warm cache min start interval ms"]);
+        const bookingCurveMaxConcurrentRequests = Number(metrics["RAU warm cache max concurrent requests"]);
         const bookingCurveHasEnoughRequests = Number.isFinite(bookingCurveRequestCount)
             && bookingCurveRequestCount >= BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS;
         const bookingCurveThroughputFailures = bookingCurveHasEnoughRequests
             ? [
-                bookingCurveHttpErrorCount === 0 ? null : `booking curve HTTP error count must be 0, got ${bookingCurveHttpErrorCount}`,
+                bookingCurveHttpErrorCount === 0 ? null : `RAU warm cache HTTP error count must be 0, got ${bookingCurveHttpErrorCount}`,
                 Number.isFinite(bookingCurveAverageStartsPerSecond) && bookingCurveAverageStartsPerSecond >= BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND
                     ? null
-                    : `booking curve average starts per second must be at least ${BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND} when request count is ${bookingCurveRequestCount}, got ${metrics["booking curve average starts per second"]}`,
+                    : `RAU warm cache average starts per second must be at least ${BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND} when request count is ${bookingCurveRequestCount}, got ${metrics["RAU warm cache average starts per second"]}`,
                 Number.isFinite(bookingCurveMinStartIntervalMs) && bookingCurveMinStartIntervalMs >= BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS
                     ? null
-                    : `booking curve min start interval must be at least ${BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS}ms when request count is ${bookingCurveRequestCount}, got ${metrics["booking curve min start interval ms"]}`,
+                    : `RAU warm cache min start interval must be at least ${BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS}ms when request count is ${bookingCurveRequestCount}, got ${metrics["RAU warm cache min start interval ms"]}`,
                 Number.isFinite(bookingCurveMaxConcurrentRequests) && bookingCurveMaxConcurrentRequests <= BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY
                     ? null
-                    : `booking curve max concurrent requests must be at most ${BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY}, got ${metrics["booking curve max concurrent requests"]}`
+                    : `RAU warm cache max concurrent requests must be at most ${BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY}, got ${metrics["RAU warm cache max concurrent requests"]}`
             ]
             : [];
         return [
@@ -561,6 +585,7 @@ function assessModeMetrics(mode, metrics, options) {
             minCountFailure("secondary action markers", metrics["secondary action markers"], perRowMinimum),
             minCountFailure("status badge cells", metrics["status badge cells"], perRowMinimum),
             minCountFailure("curve preview buttons", metrics["curve preview buttons"], 1),
+            minCountFailure("competitor preview buttons", metrics["competitor preview buttons"], 1),
             minCountFailure("rank change buttons", metrics["rank change buttons"], 1),
             minCountFailure("decision buttons", metrics["decision buttons"], 1),
             minCountFailure("UI component markers", metrics["UI component markers"], 1),
@@ -751,6 +776,8 @@ function collectModeMetricsInPage(selectedMode) {
                 "secondary action markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"secondary-actions\"]").length,
                 "status badge cells": doc.querySelectorAll("[data-ra-rank-recommendation-cell-role=\"status\"]").length,
                 "curve preview buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"curve-preview-toggle\"]").length,
+                "competitor preview buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]").length,
+                "competitor preview rows": doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]").length,
                 "rank change buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"]").length,
                 "decision buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"snooze\"], [data-ra-rank-recommendation-button-action=\"dismiss\"]").length,
                 "UI component markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component]").length,

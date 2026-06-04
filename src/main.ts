@@ -234,6 +234,10 @@ const RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommenda
 const RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-cell";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-key";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-diagnostics";
+const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-row";
+const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-cell";
+const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_KEY_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-key";
+const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-status";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
@@ -558,6 +562,16 @@ interface MonthlyCalendarCell {
 type SalesSettingWarmCacheStoredMarkerState = "stored-current" | "stored-past";
 type SalesSettingWarmCacheDateMarkerState = "partial" | "complete" | "error" | SalesSettingWarmCacheStoredMarkerState;
 type RankRecommendationRawSourceStatus = "currentAsOf" | "pastAsOf" | "missing" | "loading" | "error";
+type RankRecommendationCompetitorPreviewStatus = "idle" | "loading" | "stored" | "empty" | "error";
+
+interface RankRecommendationCompetitorPreviewState {
+    status: RankRecommendationCompetitorPreviewStatus;
+    records: CompetitorPriceSnapshotRecord[];
+    latestRecord: CompetitorPriceSnapshotRecord | null;
+    previousRecord: CompetitorPriceSnapshotRecord | null;
+    message: string;
+    updatedAt: string | null;
+}
 
 interface SalesSettingCard {
     roomGroupName: string;
@@ -1023,6 +1037,9 @@ const competitorPriceSnapshotBackgroundQueue: CompetitorPriceSnapshotBackgroundT
 const salesSettingBookingCurveOpenState = new Map<string, boolean>();
 const salesSettingBookingCurveReferenceVisibilityState = new Map<SalesSettingBookingCurveReferenceKind, boolean>();
 const rankRecommendationCurvePreviewOpenState = new Map<string, boolean>();
+const rankRecommendationCompetitorPreviewOpenState = new Map<string, boolean>();
+const rankRecommendationCompetitorPreviewStateByKey = new Map<string, RankRecommendationCompetitorPreviewState>();
+const rankRecommendationCompetitorPreviewRequestByKey = new Map<string, Promise<RankRecommendationCompetitorPreviewState>>();
 const rankRecommendationRankChangePreviewOpenState = new Map<string, boolean>();
 const pendingRankRecommendationDecisionByKey = new Map<string, PendingRankRecommendationDecision>();
 const pendingRankRecommendationRankChangeByKey = new Map<string, PendingRankRecommendationRankChange>();
@@ -1043,6 +1060,7 @@ const latestRankRecommendationCurvePreviewSnapshotByKey = new Map<string, {
     candidate: RankRecommendationCandidate;
     curvePreviewInfo: RankRecommendationCurvePreviewInfo;
 }>();
+const latestRankRecommendationCandidateByCompetitorPreviewKey = new Map<string, RankRecommendationCandidate>();
 const salesSettingCurrentSettingsPromiseCache = new Map<string, Promise<SalesSettingCurrentSettingsResponse>>();
 let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let salesSettingWarmCacheTimeoutId: number | null = null;
@@ -1187,6 +1205,26 @@ function installInteractionHooks(): void {
                 event.preventDefault();
                 event.stopPropagation();
                 toggleRankRecommendationCurvePreviewFromElement(rankRecommendationCurvePreviewButton);
+                return;
+            }
+
+            const rankRecommendationCompetitorPreviewButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="competitor-preview-toggle"]`
+            );
+            if (rankRecommendationCompetitorPreviewButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                toggleRankRecommendationCompetitorPreviewFromElement(rankRecommendationCompetitorPreviewButton);
+                return;
+            }
+
+            const rankRecommendationCompetitorPreviewRetryButton = target.closest<HTMLButtonElement>(
+                `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="competitor-preview-retry"]`
+            );
+            if (rankRecommendationCompetitorPreviewRetryButton !== null) {
+                event.preventDefault();
+                event.stopPropagation();
+                requestRankRecommendationCompetitorPreviewFromElement(rankRecommendationCompetitorPreviewRetryButton);
                 return;
             }
 
@@ -1895,6 +1933,31 @@ function toggleRankRecommendationCurvePreviewFromElement(element: HTMLElement): 
     }
 }
 
+function toggleRankRecommendationCompetitorPreviewFromElement(element: HTMLElement): void {
+    const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
+    const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
+    if (stayDate === null || roomGroupId === null || stayDate === "" || roomGroupId === "") {
+        return;
+    }
+
+    const key = buildRankRecommendationCompetitorPreviewKey({ stayDate, roomGroupId });
+    const nextOpen = element.getAttribute("aria-expanded") !== "true";
+    rankRecommendationCompetitorPreviewOpenState.set(key, nextOpen);
+    element.setAttribute("aria-expanded", nextOpen ? "true" : "false");
+    element.textContent = nextOpen ? "競合価格を閉じる" : "競合価格";
+
+    const rowElement = element.closest("tr");
+    const previewRowElement = rowElement?.parentElement?.querySelector<HTMLTableRowElement>(
+        `tr[${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_KEY_ATTRIBUTE}="${cssEscapeAttributeValue(key)}"]`
+    );
+    if (previewRowElement !== null && previewRowElement !== undefined) {
+        previewRowElement.hidden = !nextOpen;
+    }
+    if (nextOpen) {
+        requestRankRecommendationCompetitorPreviewFromElement(element);
+    }
+}
+
 function toggleRankRecommendationRankChangePreviewFromElement(element: HTMLElement): void {
     const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
     const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
@@ -1933,6 +1996,7 @@ function handleRankRecommendationPreviewKeydown(event: KeyboardEvent): boolean {
 
     const previewButton = event.target.closest<HTMLButtonElement>(
         `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="curve-preview-toggle"],`
+        + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="competitor-preview-toggle"],`
         + `[${RANK_RECOMMENDATION_BUTTON_ATTRIBUTE}][${RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE}="rank-change-preview-toggle"]`
     );
     if (previewButton !== null && previewButton.getAttribute("aria-expanded") === "true") {
@@ -1943,6 +2007,7 @@ function handleRankRecommendationPreviewKeydown(event: KeyboardEvent): boolean {
 
     const previewRowElement = event.target.closest<HTMLTableRowElement>(
         `tr[${RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE}],`
+        + `tr[${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE}],`
         + `tr[${RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE}]`
     );
     if (previewRowElement === null || previewRowElement.id === "") {
@@ -1965,6 +2030,8 @@ function closeRankRecommendationPreviewFromButton(element: HTMLButtonElement): v
     const action = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE);
     if (action === "curve-preview-toggle") {
         toggleRankRecommendationCurvePreviewFromElement(element);
+    } else if (action === "competitor-preview-toggle") {
+        toggleRankRecommendationCompetitorPreviewFromElement(element);
     } else if (action === "rank-change-preview-toggle") {
         toggleRankRecommendationRankChangePreviewFromElement(element);
     }
@@ -2691,6 +2758,7 @@ function setRankRecommendationViewModeFromElement(element: HTMLElement): void {
     rankRecommendationViewMode = viewMode;
     rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
     rankRecommendationCurvePreviewOpenState.clear();
+    rankRecommendationCompetitorPreviewOpenState.clear();
     rankRecommendationRankChangePreviewOpenState.clear();
     queueCalendarSync({ force: true, reason: "rank-recommendation-view-mode" });
 }
@@ -2704,7 +2772,11 @@ function setRankRecommendationTargetMonthFromElement(element: HTMLSelectElement)
     rankRecommendationTargetMonth = targetMonth;
     rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
     rankRecommendationCurvePreviewOpenState.clear();
+    rankRecommendationCompetitorPreviewOpenState.clear();
     rankRecommendationRankChangePreviewOpenState.clear();
+    if (targetMonth !== null) {
+        requestSalesSettingWarmCachePriorityMonth(targetMonth);
+    }
     queueCalendarSync({ force: true, reason: "rank-recommendation-target-month" });
 }
 
@@ -5132,6 +5204,7 @@ async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promi
             const response = await fetch(url.toString(), {
                 credentials: "include",
                 headers: {
+                    "X-RAU-Request": "booking-curve",
                     "X-Requested-With": "XMLHttpRequest"
                 }
             });
@@ -9645,6 +9718,7 @@ function buildRankRecommendationReactRowSnapshot(row: RankRecommendationListView
         isRankChangeBlockedByScope
     } = row;
     const curvePreviewKey = buildRankRecommendationCurvePreviewKey(candidate);
+    const competitorPreviewKey = buildRankRecommendationCompetitorPreviewKey(candidate);
     const rankChangeKey = buildRankRecommendationRankChangeKey({
         facilityId: rankChangeProposal.facilityId,
         stayDate: rankChangeProposal.stayDate,
@@ -9681,6 +9755,15 @@ function buildRankRecommendationReactRowSnapshot(row: RankRecommendationListView
             attrs: {
                 ...buildRankRecommendationBaseCandidateButtonAttrs(candidate),
                 [RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE]: "curve-preview-toggle"
+            }
+        },
+        competitorPreviewButton: {
+            text: isRankRecommendationCompetitorPreviewOpen(candidate) ? "競合価格を閉じる" : "競合価格",
+            title: "この候補行だけで対象日の競合価格 preview を表示",
+            expanded: isRankRecommendationCompetitorPreviewOpen(candidate),
+            attrs: {
+                ...buildRankRecommendationBaseCandidateButtonAttrs(candidate),
+                [RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE]: "competitor-preview-toggle"
             }
         },
         curvePopoverItems: buildRankRecommendationCurvePopoverSnapshot(candidate, curvePreviewInfo),
@@ -9723,6 +9806,10 @@ function buildRankRecommendationReactRowSnapshot(row: RankRecommendationListView
         curvePreview: {
             key: curvePreviewKey,
             open: isCurvePreviewOpen
+        },
+        competitorPreview: {
+            key: competitorPreviewKey,
+            open: isRankRecommendationCompetitorPreviewOpen(candidate)
         },
         rankChangePreview: {
             key: rankChangeKey,
@@ -10019,12 +10106,24 @@ function buildRankRecommendationCurvePopoverSnapshot(
 }
 
 function hydrateRankRecommendationReactPreviewRows(viewModel: RankRecommendationListViewModel): void {
+    latestRankRecommendationCandidateByCompetitorPreviewKey.clear();
     for (const row of viewModel.rows) {
+        latestRankRecommendationCandidateByCompetitorPreviewKey.set(
+            buildRankRecommendationCompetitorPreviewKey(row.candidate),
+            row.candidate
+        );
         const curveCellElement = document.querySelector<HTMLElement>(
             `[${RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE}="${cssEscapeAttributeValue(buildRankRecommendationCurvePreviewKey(row.candidate))}"] [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}]`
         );
         if (curveCellElement !== null) {
             curveCellElement.replaceChildren(...createRankRecommendationCurvePreviewCellChildren(row.candidate, row.curvePreviewInfo));
+        }
+
+        const competitorCellElement = document.querySelector<HTMLElement>(
+            `[${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_KEY_ATTRIBUTE}="${cssEscapeAttributeValue(buildRankRecommendationCompetitorPreviewKey(row.candidate))}"] [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}]`
+        );
+        if (competitorCellElement !== null) {
+            competitorCellElement.replaceChildren(...createRankRecommendationCompetitorPreviewCellChildren(row.candidate));
         }
 
         const rankChangeKey = buildRankRecommendationRankChangeKey({
@@ -10694,6 +10793,185 @@ function formatRankRecommendationCurvePreviewDiagnostic(diagnostic: string): str
     }
 }
 
+function createRankRecommendationCompetitorPreviewCellChildren(candidate: RankRecommendationCandidate): Node[] {
+    const state = rankRecommendationCompetitorPreviewStateByKey.get(buildRankRecommendationCompetitorPreviewKey(candidate)) ?? {
+        status: "idle",
+        records: [],
+        latestRecord: null,
+        previousRecord: null,
+        message: "競合価格は必要なときだけ取得します。ボタンを押すと対象日の preview を開きます。",
+        updatedAt: null
+    } satisfies RankRecommendationCompetitorPreviewState;
+
+    const sectionElement = document.createElement("section");
+    sectionElement.setAttribute(RANK_RECOMMENDATION_COMPETITOR_PREVIEW_STATUS_ATTRIBUTE, state.status);
+    const titleElement = document.createElement("div");
+    titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE, "");
+    titleElement.textContent = `競合価格 preview（${formatCompactDateForDisplay(candidate.stayDate)} / ${candidate.roomGroupName}）`;
+    const messageElement = document.createElement("p");
+    messageElement.textContent = state.message;
+    sectionElement.append(titleElement, messageElement);
+
+    if (state.status === "stored" && state.records.length > 0) {
+        const chartSeries = buildCompetitorPriceGuestChartSeries(state.records, null, null);
+        const legendElement = createCompetitorPriceLegend(chartSeries.facilities);
+        const gridElement = document.createElement("div");
+        gridElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE, "");
+        for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
+            gridElement.append(createCompetitorPriceChartPanel(guestCount, chartSeries));
+        }
+        sectionElement.append(legendElement, gridElement);
+    }
+
+    if (state.status === "error" || state.status === "empty") {
+        const retryButtonElement = document.createElement("button");
+        retryButtonElement.type = "button";
+        retryButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ATTRIBUTE, "");
+        retryButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ACTION_ATTRIBUTE, "competitor-preview-retry");
+        retryButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE, candidate.stayDate);
+        retryButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_AS_OF_DATE_ATTRIBUTE, candidate.asOfDate);
+        retryButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE, candidate.roomGroupId);
+        retryButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_NAME_ATTRIBUTE, candidate.roomGroupName);
+        retryButtonElement.setAttribute(RANK_RECOMMENDATION_ACTION_ATTRIBUTE, candidate.action);
+        retryButtonElement.setAttribute(RANK_RECOMMENDATION_BUTTON_REASON_FINGERPRINT_ATTRIBUTE, candidate.reasonFingerprint);
+        retryButtonElement.setAttribute("aria-expanded", "true");
+        retryButtonElement.textContent = "再取得";
+        retryButtonElement.title = "対象日の競合価格 snapshot を再取得";
+        sectionElement.append(retryButtonElement);
+    }
+
+    return [sectionElement];
+}
+
+function requestRankRecommendationCompetitorPreviewFromElement(element: HTMLElement): void {
+    const stayDate = element.getAttribute(RANK_RECOMMENDATION_BUTTON_STAY_DATE_ATTRIBUTE);
+    const roomGroupId = element.getAttribute(RANK_RECOMMENDATION_BUTTON_ROOM_GROUP_ID_ATTRIBUTE);
+    const facilityId = activeFacilityCacheKey;
+    if (facilityId === null || stayDate === null || roomGroupId === null || stayDate === "" || roomGroupId === "") {
+        return;
+    }
+
+    const previewKey = buildRankRecommendationCompetitorPreviewKey({ stayDate, roomGroupId });
+    const requestKey = `${facilityId}:${stayDate}`;
+    rankRecommendationCompetitorPreviewStateByKey.set(previewKey, {
+        status: "loading",
+        records: [],
+        latestRecord: null,
+        previousRecord: null,
+        message: "競合価格を取得中です。対象日の snapshot だけを確認します。",
+        updatedAt: new Date().toISOString()
+    });
+    rerenderRankRecommendationCompetitorPreviewSurface(previewKey);
+
+    let request = rankRecommendationCompetitorPreviewRequestByKey.get(requestKey);
+    if (request === undefined) {
+        request = loadRankRecommendationCompetitorPreviewState(facilityId, stayDate)
+            .finally(() => {
+                rankRecommendationCompetitorPreviewRequestByKey.delete(requestKey);
+            });
+        rankRecommendationCompetitorPreviewRequestByKey.set(requestKey, request);
+    }
+
+    void request
+        .then((state) => {
+            rankRecommendationCompetitorPreviewStateByKey.set(previewKey, state);
+            rerenderRankRecommendationCompetitorPreviewSurface(previewKey);
+        })
+        .catch((error: unknown) => {
+            rankRecommendationCompetitorPreviewStateByKey.set(previewKey, {
+                status: "error",
+                records: [],
+                latestRecord: null,
+                previousRecord: null,
+                message: `取得に失敗しました。ログイン状態または競合施設設定を確認してください: ${formatUnknownErrorMessage(error)}`,
+                updatedAt: new Date().toISOString()
+            });
+            rerenderRankRecommendationCompetitorPreviewSurface(previewKey);
+        });
+}
+
+async function loadRankRecommendationCompetitorPreviewState(
+    facilityId: string,
+    stayDate: string
+): Promise<RankRecommendationCompetitorPreviewState> {
+    const existingSeries = await readCompetitorPriceSnapshotSeriesForStayDate(facilityId, stayDate);
+    if (existingSeries.latestRecord !== null) {
+        return buildRankRecommendationCompetitorPreviewStoredState(existingSeries.records, existingSeries.latestRecord, existingSeries.previousRecord, true);
+    }
+
+    const result = await persistCompetitorPriceSnapshotsForSource(facilityId, stayDate, "competitor-tab");
+    if (!result.stored || result.latestRecord === null) {
+        return {
+            status: result.reason === undefined ? "empty" : result.reason === "no-competitors" ? "empty" : "error",
+            records: [],
+            latestRecord: null,
+            previousRecord: null,
+            message: result.reason === "no-competitors"
+                ? "競合施設設定がないため preview を作成できません。Revenue Assistant の競合施設設定を確認してください。"
+                : result.reason === "indexeddb-unavailable"
+                    ? "ブラウザ保存を利用できないため preview を作成できません。"
+                    : "対象日の競合価格データはありません。",
+            updatedAt: new Date().toISOString()
+        };
+    }
+
+    const series = await readCompetitorPriceSnapshotSeriesForStayDate(facilityId, stayDate);
+    return buildRankRecommendationCompetitorPreviewStoredState(
+        series.records.length > 0 ? series.records : result.records,
+        series.latestRecord ?? result.latestRecord,
+        series.previousRecord ?? result.previousRecord,
+        false
+    );
+}
+
+function buildRankRecommendationCompetitorPreviewStoredState(
+    records: CompetitorPriceSnapshotRecord[],
+    latestRecord: CompetitorPriceSnapshotRecord,
+    previousRecord: CompetitorPriceSnapshotRecord | null,
+    cacheHit: boolean
+): RankRecommendationCompetitorPreviewState {
+    return {
+        status: records.length === 0 ? "empty" : "stored",
+        records,
+        latestRecord,
+        previousRecord,
+        message: `${cacheHit ? "保存済み snapshot を表示" : "取得した snapshot を表示"} / 取得 ${formatDateTimeForDisplay(latestRecord.fetchedAt)} / 競合 ${latestRecord.competitorSet.length}件`,
+        updatedAt: new Date().toISOString()
+    };
+}
+
+function rerenderRankRecommendationCompetitorPreviewSurface(previewKey: string): void {
+    const rowElement = document.querySelector<HTMLTableRowElement>(
+        `[${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE}][${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_KEY_ATTRIBUTE}="${cssEscapeAttributeValue(previewKey)}"]`
+    );
+    const cellElement = rowElement?.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}]`) ?? null;
+    const candidate = findRankRecommendationCandidateFromCompetitorPreviewKey(previewKey);
+    if (rowElement === null || cellElement === null || candidate === null) {
+        return;
+    }
+    rowElement.hidden = !isRankRecommendationCompetitorPreviewOpen(candidate);
+    cellElement.replaceChildren(...createRankRecommendationCompetitorPreviewCellChildren(candidate));
+}
+
+function findRankRecommendationCandidateFromCompetitorPreviewKey(previewKey: string): RankRecommendationCandidate | null {
+    return latestRankRecommendationCandidateByCompetitorPreviewKey.get(previewKey) ?? null;
+}
+
+function formatUnknownErrorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : String(error);
+}
+
+function isRankRecommendationCompetitorPreviewOpen(candidate: RankRecommendationCandidate): boolean {
+    return rankRecommendationCompetitorPreviewOpenState.get(buildRankRecommendationCompetitorPreviewKey(candidate)) === true;
+}
+
+function buildRankRecommendationCompetitorPreviewKey(parts: {
+    stayDate: string;
+    roomGroupId: string;
+}): string {
+    return `${parts.stayDate}:${parts.roomGroupId}`;
+}
+
 function isRankRecommendationCurvePreviewOpen(candidate: RankRecommendationCandidate): boolean {
     return rankRecommendationCurvePreviewOpenState.get(buildRankRecommendationCurvePreviewKey(candidate)) === true;
 }
@@ -10968,6 +11246,7 @@ function findLowestCommonElementAncestor(leftElement: HTMLElement, rightElement:
 
 function cleanupRankRecommendationList(): void {
     latestRankRecommendationCurvePreviewSnapshotByKey.clear();
+    latestRankRecommendationCandidateByCompetitorPreviewKey.clear();
     unmountRankRecommendationReactIsland();
     document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`)?.remove();
 }
@@ -18534,14 +18813,38 @@ function ensureGroupRoomStyles(): void {
             color: #6a7684;
         }
 
-        [${RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE}] td {
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE}] td,
+        [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE}] td {
             padding: 0 8px 10px;
             border-top: 0;
             white-space: normal;
         }
 
-        [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}] {
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}],
+        [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] {
             background: #f3f7fb;
+        }
+
+        [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] > section {
+            display: grid;
+            gap: 8px;
+            margin: 0;
+            padding: 10px;
+            border: 1px solid #d9e1ea;
+            border-radius: 6px;
+            background: #ffffff;
+        }
+
+        [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] p {
+            margin: 0;
+            color: #50627a;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1.45;
+        }
+
+        [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE}] {
+            margin: 0;
         }
 
         [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}] {

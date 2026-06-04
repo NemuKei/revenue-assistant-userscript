@@ -274,6 +274,10 @@ function buildRow(options: {
             ...buildButton("曲線", "curve-preview-toggle"),
             expanded: options.curveOpen
         },
+        competitorPreviewButton: {
+            ...buildButton(options.curveOpen ? "競合価格を閉じる" : "競合価格", "competitor-preview-toggle"),
+            expanded: options.curveOpen
+        },
         curvePopoverItems: [
             { label: "全体", value: "基準より遅い" },
             { label: "個人", value: "やや弱い" },
@@ -318,6 +322,10 @@ function buildRow(options: {
             }
             : null,
         curvePreview: {
+            key: options.key,
+            open: options.curveOpen
+        },
+        competitorPreview: {
             key: options.key,
             open: options.curveOpen
         },

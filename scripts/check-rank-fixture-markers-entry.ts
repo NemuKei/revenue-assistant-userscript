@@ -62,6 +62,8 @@ export function runRankFixtureMarkerCheck(): void {
         { name: "status message markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="status-message"/g), min: 1 },
         { name: "rank select markers", count: countMatches(renderedHtml, /data-ra-rank-recommendation-inline-rank-select/g), min: 1 },
         { name: "curve preview buttons", count: countMatches(renderedHtml, /data-ra-rank-recommendation-button-action="curve-preview-toggle"/g), min: rowCount },
+        { name: "competitor preview buttons", count: countMatches(renderedHtml, /data-ra-rank-recommendation-button-action="competitor-preview-toggle"/g), min: rowCount },
+        { name: "competitor preview rows", count: countMatches(renderedHtml, /data-ra-rank-recommendation-competitor-preview-row/g), min: rowCount },
         { name: "rank change buttons", count: countMatches(renderedHtml, /data-ra-rank-recommendation-button-action="rank-change-preview-toggle"/g), min: rowCount },
         { name: "decision buttons", count: countMatches(renderedHtml, /data-ra-rank-recommendation-button-action="(?:snooze|dismiss)"/g), min: rowCount * 2 }
     ];

@@ -43,6 +43,9 @@ const RANK_RECOMMENDATION_PENDING_RANK_CHANGE_KEY_ATTRIBUTE = "data-ra-rank-reco
 const RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-row";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-cell";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-key";
+const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-row";
+const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-cell";
+const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_KEY_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-key";
 
 type RankRecommendationReactMode = "live" | "fixture";
 
@@ -98,6 +101,7 @@ export interface RankRecommendationReactRowSnapshot {
     cells: readonly RankRecommendationReactCellSnapshot[];
     analyzeLink: RankRecommendationReactButtonSnapshot & { href: string };
     curvePreviewButton: RankRecommendationReactButtonSnapshot & { expanded: boolean };
+    competitorPreviewButton: RankRecommendationReactButtonSnapshot & { expanded: boolean };
     curvePopoverItems: readonly { label: string; value: string }[];
     inlineRankChange: {
         options: readonly { code: string; name: string }[];
@@ -126,6 +130,10 @@ export interface RankRecommendationReactRowSnapshot {
         title: string;
     } | null;
     curvePreview: {
+        key: string;
+        open: boolean;
+    };
+    competitorPreview: {
         key: string;
         open: boolean;
     };
@@ -464,6 +472,7 @@ function RankRecommendationReactCell(props: { cell: RankRecommendationReactCellS
 function RankRecommendationReactRowActions(props: { row: RankRecommendationReactRowSnapshot }): React.ReactElement {
     const row = props.row;
     const curvePreviewId = buildRankRecommendationPreviewRowId("curve", row.curvePreview.key);
+    const competitorPreviewId = buildRankRecommendationPreviewRowId("competitor", row.competitorPreview.key);
     const rankChangePreviewId = buildRankRecommendationPreviewRowId("rank-change", row.rankChangePreview.key);
     const shouldShowInlineRankChange = row.rankChangePreview.open
         || row.pendingRankChange !== null
@@ -477,6 +486,10 @@ function RankRecommendationReactRowActions(props: { row: RankRecommendationReact
             renderButton(row.curvePreviewButton, {
                 "aria-expanded": row.curvePreviewButton.expanded ? "true" : "false",
                 "aria-controls": curvePreviewId
+            }),
+            renderButton(row.competitorPreviewButton, {
+                "aria-expanded": row.competitorPreviewButton.expanded ? "true" : "false",
+                "aria-controls": competitorPreviewId
             }),
             renderButton(row.rankChangeButton, {
                 "aria-expanded": row.rankChangeButton.expanded ? "true" : "false",
@@ -513,6 +526,16 @@ function RankRecommendationReactPreviewRows(props: { row: RankRecommendationReac
         }, React.createElement("td", {
             colSpan: props.colSpan,
             [RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE]: ""
+        })),
+        React.createElement("tr", {
+            key: "competitor",
+            id: buildRankRecommendationPreviewRowId("competitor", row.competitorPreview.key),
+            [RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE]: "",
+            [RANK_RECOMMENDATION_COMPETITOR_PREVIEW_KEY_ATTRIBUTE]: row.competitorPreview.key,
+            hidden: !row.competitorPreview.open
+        }, React.createElement("td", {
+            colSpan: props.colSpan,
+            [RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE]: ""
         })),
         React.createElement("tr", {
             key: "rankChange",
@@ -690,6 +713,6 @@ function renderRankChangeResult(result: RankRecommendationReactRowSnapshot["rank
     }, result.message);
 }
 
-function buildRankRecommendationPreviewRowId(kind: "curve" | "rank-change", key: string): string {
+function buildRankRecommendationPreviewRowId(kind: "curve" | "competitor" | "rank-change", key: string): string {
     return `ra-rank-recommendation-${kind}-${key.replace(/[^A-Za-z0-9_-]+/g, "-")}`;
 }

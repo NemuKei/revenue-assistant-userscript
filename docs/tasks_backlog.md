@@ -136,7 +136,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-UX-127 `その他` details の開閉が判断速度を落としていないか観察する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-UX-126` の Product Design re-audit では `その他` details を現行維持と判断したが、通常利用で `様子見`、`対応不要`、`要点` を探すための開閉が多く、候補処理を遅くしていないか確認する。
   - 再配置が必要な場合だけ、row footer または popover への実装 task を別 ID で作る。
@@ -152,6 +152,11 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 現行維持、row footer、popover のどれを次に採るかの判断理由がある。
   - 再配置が必要な場合は、表示対象、操作順、hover / focus / keyboard、mobile 390px、write API 非追加を含む実装 task が作られている。
   - `git diff --check` が通過している。
+- 完了結果:
+  - 今回の Product Design 文脈では、常時表示の主操作を `Analyzeで確認`、`曲線`、`競合価格`、`ランク調整` に増やしたため、補助操作 `その他` details を同時に row footer へ出すと row action の密度が上がると判断した。
+  - fixture marker check では secondary action markers 25 件、pending notice markers 2 件を確認し、`その他` details の構造は壊れていない。
+  - `その他` details は現行維持とし、row footer / popover への即時移設 task は作らない。再評価条件は、配布版 top smoke または通常利用で `様子見`、`対応不要`、`要点` を探すための開閉が多く、候補処理が止まることを観測した場合とする。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は変更していない。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -359,6 +364,12 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 取得中、取得失敗、データなし、cache hit の state が preview UI へ渡せる。
   - request body、response body、raw trace、HAR、Cookie、token、credential、価格や在庫の非公開データを保存していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` が通過している。
+- 完了結果:
+  - top row の `競合価格` button 押下時に、対象 `stayDate` の保存済み `competitor-price-snapshots` series を先に読む adapter state を追加した。
+  - 保存済み latest snapshot がある場合は cache hit として graph 表示へ渡し、未取得または不足時だけ既存 `persistCompetitorPriceSnapshotsForSource(facilityId, stayDate, "competitor-tab")` を対象日に限定して呼ぶようにした。
+  - 同一 `facility x stayDate` の取得は `rankRecommendationCompetitorPreviewRequestByKey` で in-flight dedupe し、複数 row から同じ対象日を開いても重複取得を避ける。
+  - preview state は `idle`、`loading`、`stored`、`empty`、`error` を持ち、取得失敗、データなし、cache hit、再取得入口を UI 層へ渡せる。
+  - request body、response body、raw trace、HAR、Cookie、token、credential、価格や在庫の非公開データは保存していない。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -367,7 +378,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-CP-21 競合価格 row preview UI / keyboard / mobile fixture を実装する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-CP-20` の adapter state を使い、料金調整候補 row から競合価格 graph を押下時だけ開く preview UI を実装する。
   - keyboard、focus return、mobile 390px、failure state を含めて、利用者が top 画面の判断導線を崩さず競合価格を確認できるようにする。
@@ -385,6 +396,12 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - loading、empty、failure、retry の表示があり、失敗時に次に行う操作が分かる。
   - mobile 390px 相当の fixture で横 overflow がなく、preview と row action が重ならない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - React row action に `競合価格` button を追加し、`aria-expanded`、`aria-controls`、専用 marker を持つ row preview として実装した。
+  - preview は `曲線` preview と同じ row 直下に出し、開閉 state は `stayDate x roomGroup x reasonFingerprint` の key で保持する。対象月 filter 変更時は競合価格 preview も閉じる。
+  - loading / stored / empty / error の状態表示を追加し、empty / error では同じ preview 内に再取得 button を出す。
+  - stored state では、既存の競合価格 graph renderer を使い、1名から4名までの人数別 panel を縦に表示する。top list 本文や summary へ金額、差額、percent を常時表示しない。
+  - fixture と marker check に competitor preview button / row を追加し、fixture marker check では competitor preview buttons 25 件、competitor preview rows 25 件を確認した。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -393,7 +410,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-CP-22 競合価格 row preview の配布版 top smoke を行う
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-CP-20` と `RAU-CP-21` の配布後、通常 Chrome の Tampermonkey 実行版で競合価格 row preview が安全に動くことを確認する。
   - 監視対象 write API POST 0 件、console / page error 0 件、preview 開閉、focus return を配布版で確認する。
@@ -468,6 +485,11 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - request 間隔 350ms 以上、同時実行 3 件以下、HTTP error 0 件、監視対象 write API POST 0 件を確認できる。
   - 対象月 filter、表示上限、preview、rank change pending の既存挙動を壊していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - 対象月 filter 変更時に、選択された `YYYYMM` へ `requestSalesSettingWarmCachePriorityMonth(targetMonth)` を呼び、既存の月別優先取得 queue と同じ安全条件で同月 priority を要求するようにした。
+  - filter 変更時は表示上限 reset を維持し、開いている booking curve preview、競合価格 preview、rank change preview を閉じる。rank change pending の送信条件、取消条件、5 秒 timer は変更していない。
+  - request 間隔、同時実行数、取得対象期間、保存 schema、Revenue Assistant write API endpoint、rank change payload は変更していない。
+  - `RAU-WC-31` の RAU warm cache 観測分離により、配布版 smoke では RAU header 付き request だけを安全条件の自動判定対象にする。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -476,7 +498,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-WC-31 throughput smoke の RAU warm cache 観測を分離する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 配布版 top smoke の `/api/v4/booking_curve` throughput 判定を、Revenue Assistant 標準画面由来の request と RAU warm cache worker 由来の request に分ける。
   - `RAU-WC-30` や今後の queue 優先化を、ページ全体ではなく RAU warm cache の安全条件として評価できるようにする。
@@ -491,6 +513,11 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - RAU warm cache 観測分について、request count、HTTP error count、min start interval、max concurrent requests、fallback reason が分かる。
   - cache 済みまたは月別優先取得未発火の場合は、低 throughput を失敗扱いせず理由を出す。
   - `node --check scripts/run-distribution-smoke.mjs`、`npm run lint` または対象 lint、`git diff --check` が通過している。
+- 完了結果:
+  - RAU が発行する booking curve request に `X-RAU-Request: booking-curve` header を追加した。
+  - `smoke:distribution --mode top` は、ページ全体の `/api/v4/booking_curve` request と RAU warm cache request を `source` で分離して集計する。
+  - 出力には page 全体の request metrics に加えて、`RAU warm cache request count`、`RAU warm cache HTTP error count`、`RAU warm cache min start interval ms`、`RAU warm cache max concurrent requests`、`RAU warm cache throughput fallback reason` を出す。
+  - throughput の自動 fail 判定は RAU warm cache request だけに限定し、cache 済み、月別優先取得未発火、RAU header 付き request 未観測の場合は fallback reason として扱う。
 - metadata:
   - `spec-impact`: no
   - `target-spec`: none
@@ -499,7 +526,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-WC-32 通常 Chrome hidden-tab 実測手順を改善する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-WC-29` で `document.visibilityState` の厳密な hidden 判定ができなかったため、通常 Chrome で `非表示中も取得` の実測手順を改善する。
   - レベアシタブを開いたまま別タブへ移ったときの warm cache 継続を、次回以降に再現しやすくする。
@@ -515,6 +542,12 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `非表示中も取得` ON / OFF の確認手順と、HTTP 401 / ログイン確認を自動再ログインしない境界が明記されている。
   - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データを保存しないことが明記されている。
   - `git diff --check` が通過している。
+- 完了結果:
+  - README に、Chrome / CDP 環境によって `document.visibilityState` が常に `visible` と見える場合は hidden 判定そのものを合格条件にしないことを追記した。
+  - 代替証跡は、`非表示中も取得` ON、Revenue Assistant tab を開いたまま別タブ foreground、RAU warm cache request count、status detail の進行、worker 表示、監視対象 write API POST 0 件とした。
+  - OFF の確認では、同じ手順で `タブ非表示` 停止または request 進行なしを確認する。
+  - HTTP 401、HTTP 403、ログイン画面は自動再ログインせず、`ログイン確認` または `権限確認` として停止する境界を維持する。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データを保存しないことを README に明記した。
 - metadata:
   - `spec-impact`: no
   - `target-spec`: none
