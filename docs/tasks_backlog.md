@@ -16,6 +16,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、利用者が Product Design plugin を指定し、`候補データ優先取得` のインジケーターはテキストベースで改行もなく UX 改善余地があると示した。`docs/context/INTENT.md` の「短時間で理解できる、シンプルで分かりやすい UI / UX を優先する」方針に沿い、`RAU-UX-123` として、月別優先取得の取得状態を状態 chip と細い progress bar へ整理する task を追加する。`RAU-UX-122` は `RAU-UX-123` の配布後にまとめて実画面確認した方が確認回数を減らせるため Next に下げ、`RAU-UX-120` は実利用観察 task として After Next に置く。
 
+2026-06-04 に、利用者が、優先取得ボタンにまだデータ取得 indicator が邪魔をしていること、各月が縦に並んでいるが横に余裕があること、優先取得は表示中カレンダーだけに連動する必要がなくもっと先の月まで並べたいこと、データ取得 indicator 自体もテキストベースで分かりにくいことを示した。これは `RAU-UX-123` の状態 chip / progress bar 化だけでは目的を満たせないため、`RAU-UX-124` として、月別優先取得を横並びの先 6 か月カードへ再設計する task を追加して完了する。`RAU-UX-122` は最新配布版の Tampermonkey installed version と Revenue Assistant 実画面確認 task として Now に残し、`RAU-UX-120` は実利用観察 task として Next に置く。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -155,6 +157,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - Playwright の最小再現では、420px viewport と 320px viewport のどちらでも `documentElement.scrollWidth === clientWidth` であり、button と status summary の overlap は false だった。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers` が通過した。Vite と esbuild を起動する build / fixture / marker は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。
   - commit `18faea6` を `origin/main` へ push し、Publish Userscript run `26925696431` は success になった。GitHub Pages published version は `0.1.0.375` である。`npm run userscript:version-check` では installed version が `manual-check-required`、Chrome DevTools Protocol が `connect ECONNREFUSED 127.0.0.1:9222` だったため、Tampermonkey installed version と Revenue Assistant 実画面は未確認である。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: after-implementation
+  - `target-spec`: none
+
+### RAU-UX-124 月別優先取得を横並びの先 6 か月カードへ再設計する
+
+- 目的:
+  - `候補データ優先取得` strip の月別優先取得を、表示中カレンダーの月だけに限定せず、先 6 か月分を横並びの小さなカードとして表示する。
+  - button の押下対象と、取得状態 chip / progress bar を上下に分離し、データ取得 indicator が button を邪魔しないようにする。
+  - 状態をテキストだけに頼らず、chip と横長 progress bar の組み合わせで、未優先、待機中、取得中、完了、クールダウン中、エラーを読めるようにする。
+- スコープ:
+  - 対象は `data-ra-sales-setting-warm-cache-month-controls`、`data-ra-sales-setting-warm-cache-month-actions`、`data-ra-sales-setting-warm-cache-month-control` の月リスト生成、DOM 構造、CSS である。
+  - 表示する月は、表示中カレンダーの最初の月から 6 か月分とする。
+  - 月カード内では、button は `YYYY-MM 取得` の操作だけを表示し、状態 chip と progress bar は button の下に配置する。
+- 非目標:
+  - booking curve warm cache queue、request 間隔、同時実行数、優先月の queue 挿入方法、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint は変更しない。
+  - rank recommendation の candidate scoring、priority、confidence、reasonFingerprint、表示対象候補、rank change payload は変更しない。
+- 受け入れ条件:
+  - 月別優先取得が 6 か月分表示され、横幅に余裕がある表示では 1 行に並ぶ。
+  - 狭い幅では自然に複数行へ折り返し、横 overflow が発生しない。
+  - button、状態 chip、progress bar が重ならない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+  - 最小 DOM か通常 Chrome 実画面で、1280px、420px、320px 相当の横幅に対して、月カード数、行数、横 overflow、button と status / progress の overlap を確認している。
+- 完了結果:
+  - `SALES_SETTING_WARM_CACHE_PRIORITY_MONTH_BUTTON_COUNT` を 6 として追加し、`getSalesSettingWarmCachePriorityMonthKeys()` で表示中カレンダーの最初の月から 6 か月分の month key を生成するようにした。
+  - 月カードは CSS grid で横並びにし、各カード内で button、状態 chip、progress bar を上下に分離した。button text は `YYYY-MM 取得` とし、状態 chip と progress bar は button の下に固定した。
+  - Browser MCP の最小 DOM 確認では、1280px 相当で 6 か月が 1 行、420px 相当で 2 行、320px 相当で 3 行になった。各幅で横 overflow は false、button と status / progress の overlap は 0 件だった。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers` が通過した。Vite と esbuild を起動する build / fixture / marker は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: after-implementation

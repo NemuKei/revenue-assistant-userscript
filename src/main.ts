@@ -139,6 +139,7 @@ class RevenueAssistantRequestError extends Error {
 
 const SALES_SETTING_WARM_CACHE_LOOKBACK_DAYS = 1;
 const SALES_SETTING_WARM_CACHE_LOOKAHEAD_MONTHS = 3;
+const SALES_SETTING_WARM_CACHE_PRIORITY_MONTH_BUTTON_COUNT = 6;
 const SALES_SETTING_WARM_CACHE_WORKER_COUNT = 3;
 const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 350;
 const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 10 * 60 * 1000;
@@ -6722,7 +6723,7 @@ function renderSalesSettingWarmCacheMonthControls(cells: MonthlyCalendarCell[]):
         return;
     }
 
-    const monthKeys = getVisibleMonthlyCalendarMonthKeys(cells);
+    const monthKeys = getSalesSettingWarmCachePriorityMonthKeys(cells);
     if (monthKeys.length === 0) {
         existingElement?.remove();
         return;
@@ -6812,6 +6813,27 @@ function cleanupSalesSettingWarmCacheMonthControls(): void {
     document.querySelector<HTMLElement>(`[${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}]`)?.remove();
 }
 
+function getSalesSettingWarmCachePriorityMonthKeys(cells: MonthlyCalendarCell[]): string[] {
+    const visibleMonthKeys = getVisibleMonthlyCalendarMonthKeys(cells);
+    const firstMonthKey = visibleMonthKeys[0] ?? null;
+    if (firstMonthKey === null) {
+        return [];
+    }
+
+    const monthKeys: string[] = [];
+    for (let index = 0; index < SALES_SETTING_WARM_CACHE_PRIORITY_MONTH_BUTTON_COUNT; index += 1) {
+        const shiftedDate = shiftMonth(`${firstMonthKey}01`, index);
+        if (shiftedDate === null) {
+            continue;
+        }
+        const monthKey = shiftedDate.slice(0, 6);
+        if (/^\d{6}$/.test(monthKey)) {
+            monthKeys.push(monthKey);
+        }
+    }
+    return monthKeys;
+}
+
 function getVisibleMonthlyCalendarMonthKeys(cells: MonthlyCalendarCell[]): string[] {
     const seen = new Set<string>();
     const monthKeys: string[] = [];
@@ -6837,7 +6859,8 @@ function createSalesSettingWarmCacheMonthControlElement(monthKey: string): HTMLE
     buttonElement.type = "button";
     buttonElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE, "");
     buttonElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_KEY_ATTRIBUTE, monthKey);
-    buttonElement.title = `${formatSalesSettingWarmCacheMonthLabel(monthKey)} の料金調整候補に必要な booking_curve データを優先取得`;
+    const monthLabel = formatSalesSettingWarmCacheMonthLabel(monthKey);
+    buttonElement.title = `${monthLabel} の料金調整候補に必要な booking_curve データを優先取得`;
     buttonElement.addEventListener("click", () => {
         requestSalesSettingWarmCachePriorityMonth(monthKey);
     });
@@ -6845,7 +6868,7 @@ function createSalesSettingWarmCacheMonthControlElement(monthKey: string): HTMLE
     const progressElement = document.createElement("span");
     progressElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE, "");
     progressElement.setAttribute("role", "progressbar");
-    progressElement.setAttribute("aria-label", `${formatSalesSettingWarmCacheMonthLabel(monthKey)} ${progress.label}`);
+    progressElement.setAttribute("aria-label", `${monthLabel} ${progress.label}`);
     progressElement.setAttribute("aria-valuemin", "0");
     progressElement.setAttribute("aria-valuemax", "100");
     progressElement.setAttribute("aria-valuenow", String(progress.percent));
@@ -6853,13 +6876,13 @@ function createSalesSettingWarmCacheMonthControlElement(monthKey: string): HTMLE
     progressElement.style.setProperty("--ra-sales-setting-warm-cache-month-progress", `${progress.percent}%`);
 
     const labelElement = document.createElement("span");
-    labelElement.textContent = `${formatSalesSettingWarmCacheMonthLabel(monthKey)} 優先取得`;
+    labelElement.textContent = `${monthLabel} 取得`;
 
     buttonElement.append(labelElement);
 
     const statusElement = document.createElement("span");
     statusElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_STATUS_SUMMARY_ATTRIBUTE, "");
-    statusElement.setAttribute("aria-label", `${formatSalesSettingWarmCacheMonthLabel(monthKey)} ${progress.label}`);
+    statusElement.setAttribute("aria-label", `${monthLabel} ${progress.label}`);
 
     const statusLabelElement = document.createElement("span");
     statusLabelElement.setAttribute(SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE, "");
@@ -17016,20 +17039,21 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}] {
-            display: flex;
-            flex-wrap: nowrap;
-            align-items: center;
-            gap: 10px;
+            display: grid;
+            grid-template-columns: auto minmax(0, 1fr);
+            align-items: start;
+            gap: 6px 10px;
             margin: 10px 0 8px;
-            padding: 8px 10px;
+            padding: 10px;
             border: 1px solid #d6e2ee;
             border-radius: 8px;
             background: #f8fbff;
             box-shadow: 0 1px 3px rgba(35, 52, 71, 0.06);
+            max-width: 100%;
+            box-sizing: border-box;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_TITLE_ATTRIBUTE}] {
-            flex: 0 0 auto;
             color: #344a62;
             font-size: 12px;
             font-weight: 800;
@@ -17038,50 +17062,60 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE}] {
-            display: flex;
-            flex: 1 1 auto;
-            flex-wrap: wrap;
-            align-items: center;
-            gap: 6px 8px;
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(126px, 1fr));
+            align-items: stretch;
+            gap: 8px;
             min-width: 0;
+            width: 100%;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_CONTROL_ATTRIBUTE}] {
-            display: inline-flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 6px 8px;
-            min-height: 32px;
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+            gap: 5px;
+            min-width: 0;
+            min-height: 58px;
+            padding: 6px;
+            border: 1px solid #dde7f1;
+            border-radius: 7px;
+            background: #ffffff;
+            box-sizing: border-box;
             color: #50627a;
             font-size: 11px;
             font-weight: 700;
             line-height: 1.2;
-            max-width: 100%;
+            overflow: hidden;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_BUTTON_ATTRIBUTE}] {
             display: inline-flex;
             align-items: center;
-            min-height: 30px;
-            padding: 0 11px;
+            justify-content: center;
+            width: 100%;
+            min-width: 0;
+            min-height: 28px;
+            padding: 0 8px;
             border: 1px solid #c9d7e8;
             border-radius: 6px;
-            background: #ffffff;
+            background: #f9fbff;
             color: #243447;
             cursor: pointer;
             font: inherit;
-            box-shadow: 0 1px 2px rgba(35, 52, 71, 0.06);
+            font-weight: 800;
+            box-shadow: none;
             white-space: nowrap;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_SUMMARY_ATTRIBUTE}] {
             display: inline-flex;
-            flex: 0 1 112px;
+            flex: 0 0 auto;
             flex-direction: column;
             align-items: stretch;
             gap: 3px;
-            min-width: 82px;
-            max-width: 128px;
+            width: 100%;
+            min-width: 0;
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_STATUS_LABEL_ATTRIBUTE}] {
@@ -17110,7 +17144,7 @@ function ensureGroupRoomStyles(): void {
         [${SALES_SETTING_WARM_CACHE_MONTH_PROGRESS_ATTRIBUTE}] {
             display: block;
             width: 100%;
-            height: 4px;
+            height: 5px;
             border-radius: 999px;
             background:
                 linear-gradient(90deg, #3f8ed8 var(--ra-sales-setting-warm-cache-month-progress, 0%), #d9e3f0 0);
@@ -17347,7 +17381,7 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE}] {
-            flex: 1 0 100%;
+            grid-column: 2;
             padding: 5px 7px;
         }
 
@@ -18829,12 +18863,15 @@ function ensureGroupRoomStyles(): void {
 
         @media (max-width: 900px) {
             [${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}] {
-                flex-wrap: wrap;
-                align-items: flex-start;
+                grid-template-columns: 1fr;
             }
 
             [${SALES_SETTING_WARM_CACHE_MONTH_ACTIONS_ATTRIBUTE}] {
-                flex-basis: 100%;
+                grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+            }
+
+            [${SALES_SETTING_WARM_CACHE_MONTH_DETAIL_ATTRIBUTE}] {
+                grid-column: 1;
             }
 
             [${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}] {
