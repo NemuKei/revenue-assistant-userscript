@@ -1,6 +1,6 @@
 # Product Design Audit
 
-最終更新: 2026-06-04
+最終更新: 2026-06-05
 
 ## Purpose
 
@@ -29,6 +29,87 @@
   - 金額、差額、percent、forecast 数値、sales / ADR 数値は top list の本文へ直接表示しない既存契約を維持する。
 - interactivity level:
   - 実装へ進む場合は full interactivity を前提にする。つまり、hover、focus、keyboard、loading、empty、error、disabled、pending、cancel、mobile 表示を実装と verify の対象に含める。
+
+## Product Design Re-Audit 2026-06-05
+
+### Brief Playback
+
+- task: `RAU-UX-126`
+- 対象 surface: 最新配布版 `0.1.0.378` の top 料金調整候補 UI。
+- 対象要素:
+  - 対象月 filter。
+  - `候補データ優先取得` の先 6 か月カード。
+  - 補助操作 `その他` details。
+  - row action、status badge、pending 表示。
+  - 競合価格 preview の今後導線。
+  - 先行月 queue boost の入口候補。
+- 成功条件:
+  - 利用者が top 画面で対象月を選び、データ取得を待ち、候補を確認し、必要なら Analyze / 曲線 / ランク調整へ進むまでの操作順が短い。
+  - 情報量、装飾、追加入口が判断速度を落とさない。
+  - request 数、write API、安全な作業キューの既存契約を崩さない。
+- Product Design workflow:
+  - `product-design:get-context` を brief gate として使用した。
+  - 今回は既存 surface の audit / plan first であり、`ideate`、`image-to-code`、runtime UI 実装は行わない。
+
+### Evidence
+
+- `npm run userscript:version-check -- --installed-version 0.1.0.378 --open-url https://ra.jalan.net/`
+  - published version と installed version はどちらも `0.1.0.378`。
+  - Chrome CDP は reachable。
+  - Revenue Assistant page では login form candidate なし、calendar candidate あり、RAU userscript root count `3`、React marker mounted `yes`。
+- `npm run smoke:distribution -- --installed-version 0.1.0.378 --mode top --url https://ra.jalan.net/ --seconds 30 --version-policy fail`
+  - top row `10` 件、target month select `yes`。
+  - primary actions wrappers `10`、secondary action markers `10`、status badge cells `10`。
+  - warm cache month controls `6`、warm cache month buttons `6`。
+  - console error `0`、page error `0`、監視対象 write API POST `0`。
+  - booking curve request count は `0` で、cache 済みまたは月別優先取得未発火として fallback reason が出た。
+- `npm run check:fixture-markers`
+  - rank fixture marker check passed。
+  - fixture render roots `16`、row layout markers `25`、primary actions wrappers `25`、secondary action markers `25`、status badge cells `25`。
+- mobile evidence:
+  - `0.1.0.378` へつながる直前 bundle の fixture visual check で、1280px、420px、320px の各幅において対象月 option は 6 か月、横 overflow false、control overlap `0` 件だった。
+  - 今回の再 audit では同じ source surface の fixture marker を再確認し、mobile 表示を壊す DOM 欠落は確認されなかった。
+
+### Findings
+
+- 対象月 filter:
+  - 優先取得月カードと同じ先 6 か月にそろっており、対象月を選んで候補を確認する操作距離は短い。
+  - 候補 0 件の未来月も option に残すことで、データ不足の月を先に見つけられる。
+  - 追加の filter UI は不要である。現行 select は Revenue Assistant 標準画面に対して干渉が小さい。
+- `候補データ優先取得`:
+  - 先 6 か月カードは、表示中カレンダーだけに縛られず、先行月を先に取得したい実務に合っている。
+  - button、status summary、progress bar が分離され、直近の問題だった button 内 indicator の邪魔さは解消済みである。
+  - これ以上の高速化入口を増やすと、`INTENT.md` の request 数より安定性を優先する原則に反するため、現時点では新しい request 増加 UI を追加しない。
+- 補助操作 `その他`:
+  - primary action と secondary action が分離され、誤押下防止と表示密度のバランスは現行維持でよい。
+  - 実利用で `様子見`、`対応不要`、`要点` を見つけられず候補処理が止まる観測が出るまでは、row footer や popover への移設 task は作らない。
+- row action / status badge:
+  - 常時表示 action は `Analyzeで確認`、`曲線`、`ランク調整` に絞られており、top 画面で次操作を選びやすい。
+  - status badge は非数値の状態を短く示し、top list 本文へ金額、差額、percent、forecast 数値、sales / ADR 数値を増やさない契約に合っている。
+- 競合価格 preview の今後導線:
+  - `RAU-CP-19` の設計どおり、押下時だけの row preview として進める方針は現行 top UI と整合する。
+  - 常時 graph や常時金額表示は、表示密度を上げて判断を遅くするため採用しない。
+- 先行月 queue boost:
+  - 入口は既存の対象月 filter と先 6 か月カードで足りている。
+  - request 間隔短縮、同時実行数増加、新しい強制取得 button は採用しない。
+  - `RAU-WC-27` の方針どおり、queue 順序、cache hit、表示中候補の優先化で扱う。
+
+### Rejected Ideas
+
+- 競合価格 graph を top row に常時展開する案:
+  - 表示密度が上がり、top 画面の短時間判断を妨げるため不採用。
+- `その他` details を今すぐ row footer / popover へ移す案:
+  - 現行 smoke と fixture では重なりや横 overflow がなく、補助操作を常時露出すると誤押下と高さ増加のリスクがあるため不採用。
+- 先行月向けの新しい高速取得 button や request concurrency 増加:
+  - request 数より安定性を優先する `INTENT.md` の原則に反するため不採用。
+
+### Result
+
+今回の Product Design re-audit では、`0.1.0.378` の top 料金調整候補 UI に対して即時の runtime UI 実装 task は追加しない。
+現行の対象月 filter、先 6 か月の優先取得カード、`その他` details、row action、status badge は、利用者が最短で候補確認へ進むための構造として維持する。
+
+残リスクは、競合価格 row preview の実装時に keyboard / focus return / mobile 390px / failure state を再検証すること、および通常利用で `その他` details の開閉が判断速度を落とす観測が出た場合に再配置を再評価することである。
+Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。
 
 ## Audit Evidence
 

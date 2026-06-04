@@ -103,7 +103,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-UX-126 Product Design で `0.1.0.378` 料金調整候補 top UI を audit する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 直前の goal bundle で Product Design plugin を使わずに完了した UI / UX 変更を、最新配布版 `0.1.0.378` の料金調整候補 top UI として改めて audit する。
   - 対象月 filter、`候補データ優先取得` の月カード、補助操作 `その他`、row action、status badge、競合価格 preview の今後導線、先行月 queue boost の入口候補が、利用者の最短判断を妨げないか確認する。
@@ -117,6 +117,14 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `docs/context/INTENT.md` の UI / UX、request 数、安全な作業キューの原則との整合が確認されている。
   - 改善が必要な場合は、実装 task の目的、スコープ、受け入れ条件、verify が作られている。改善不要の場合は、現行維持の理由が記録されている。
   - Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema を変更しないことが明記されている。
+- 完了結果:
+  - Product Design plugin の `get-context` を brief gate として使い、`0.1.0.378` の top 料金調整候補 UI を audit / plan first で確認した。結果は `docs/context/PRODUCT_DESIGN_AUDIT.md` の `Product Design Re-Audit 2026-06-05` に記録した。
+  - live evidence は `npm run userscript:version-check -- --installed-version 0.1.0.378 --open-url https://ra.jalan.net/` と `npm run smoke:distribution -- --installed-version 0.1.0.378 --mode top --url https://ra.jalan.net/ --seconds 30 --version-policy fail` で確認した。published version と installed version は `0.1.0.378` で一致し、top row 10 件、対象月 select あり、月カード 6 件、primary actions 10 件、secondary actions 10 件、status badge 10 件、console / page error 0 件、監視対象 write API POST 0 件だった。
+  - fixture evidence は `npm run check:fixture-markers` で確認した。fixture render roots 16 件、row layout markers 25 件、primary actions wrappers 25 件、secondary action markers 25 件、status badge cells 25 件だった。
+  - desktop は live DOM / smoke、mobile は直前 bundle の 1280px / 420px / 320px fixture visual check と今回の fixture marker check を audit 入力にした。直前 fixture visual check では横 overflow false、control overlap 0 件だった。
+  - 対象月 filter、先 6 か月の優先取得カード、`その他` details、row action、status badge は現行維持と判断した。競合価格 preview は `RAU-CP-19` の押下時 row preview 方針と整合し、常時 graph 表示は採用しない。先行月 queue boost は新しい高速取得 UI や同時実行数増加ではなく、既存の対象月 filter と月カードを入口にする。
+  - 即時の runtime UI 実装 task は追加しない。再評価条件は、競合価格 row preview 実装時の keyboard / focus return / mobile / failure state、または通常利用で `その他` details の開閉が判断速度を落とす観測が出た場合とする。
+  - Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -8610,7 +8618,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-126`: Product Design で `0.1.0.378` 料金調整候補 top UI を audit する。
+- なし。
 
 Next:
 
@@ -8626,6 +8634,7 @@ Later:
 
 統合判断:
 
+- 2026-06-05 に、`RAU-UX-126` を完了した。Product Design plugin の `get-context` を brief gate として使い、`0.1.0.378` の top 料金調整候補 UI を audit / plan first で確認した。結果は `docs/context/PRODUCT_DESIGN_AUDIT.md` に記録した。live evidence は `npm run userscript:version-check -- --installed-version 0.1.0.378 --open-url https://ra.jalan.net/` と `npm run smoke:distribution -- --installed-version 0.1.0.378 --mode top --url https://ra.jalan.net/ --seconds 30 --version-policy fail`、fixture evidence は `npm run check:fixture-markers` である。対象月 filter、先 6 か月の優先取得カード、`その他` details、row action、status badge は現行維持と判断した。競合価格 preview は押下時 row preview 方針、先行月 queue boost は既存の対象月 filter と月カードを入口にする方針で進める。常時 graph 表示、`その他` details の即時移設、新しい高速取得 UI、request concurrency 増加は採用しない。即時の runtime UI 実装 task は追加しない。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。これにより Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 2026-06-05 に、直前の goal bundle で Product Design plugin を使わずに UI / UX 変更を完了したことを `RAU-UX-126` として task 化し、Remaining Task Triage の Now に置いた。理由は、`RAU-UX-126` が最新配布版 `0.1.0.378` の料金調整候補 top UI に対する audit / plan first task であり、次の runtime UI 実装や競合価格 preview 実装へ進む前に、Product Design 観点で表示密度、操作距離、折り返し、横 overflow、keyboard / focus 懸念を確認する必要があるためである。既存の Product Design audit task (`RAU-UX-106` から `RAU-UX-111`) は `0.1.0.372` 時点の既存 UI surface を対象にしたものであり、今回の `0.1.0.378` 配布版再 audit とは対象が異なる。`docs/context/INTENT.md` は、表示密度、UI / UX、request 数、安定性の判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新しない。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 - 2026-06-04 に、利用者が示した 3 件の後続候補を `RAU-UX-125`、`RAU-CP-19`、`RAU-WC-27` として task 化した。`RAU-UX-125` は、完了済みの先 6 か月優先取得 UI と料金調整候補 list の対象月 filter をそろえ、未来月調整の操作距離を短くする実装候補であるため Next とする。競合価格グラフ導線は価値が高いが、押下時取得、cache、失敗時表示、同時クリック時の重複取得防止、request scope を先に決める必要があるため、`RAU-CP-19` として設計 task に分けて After Next とする。`RAU-CP-16` は 2026-05-31 に価格推移 background queue の long-run 確認 task として完了済みのため、新規 ID として再利用しない。`RAU-WC-27` は、単純な高速化ではなく queue 優先度と手動ブーストの調査であり、現行の `開始間隔 350ms 以上`、`同時実行 3 件以下`、監視対象 write API POST 0 件の安全条件を崩さない必要があるため Later とする。`docs/context/INTENT.md` は確認済みであり、表示密度、UI / UX、request 数、安定性の既存判断原則で今回の順序を説明できるため、判断原則は更新しない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 - 2026-06-04 に、`RAU-WC-29` を追加し、Remaining Task Triage の Now に置いた。理由は、`RAU-WC-29` が直前実装 `RAU-WC-28` の実画面 smoke であり、通常 Chrome の Tampermonkey 実行版、狭い画面幅、タブ非表示中の進行、ログアウトまたは HTTP 401 時の停止を確認してから、別の実装 task へ進む方が手戻りを減らせるためである。`RAU-UX-120` は実利用観察 task として Next、`RAU-UX-125` は新規実装候補として After Next、`RAU-CP-19` と `RAU-WC-27` は設計または調査 task として Later に置く。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
