@@ -111,20 +111,20 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: after-implementation
   - `target-spec`: none
 
-### RAU-UX-122 Tampermonkey `0.1.0.375` 同期と実画面表示を確認する
+### RAU-UX-122 Tampermonkey `0.1.0.376` 同期と実画面表示を確認する
 
 - 目的:
-  - GitHub Pages published version `0.1.0.375` を通常 Chrome の Tampermonkey installed version に反映し、Revenue Assistant top page の `候補データ優先取得` strip で月別優先取得ボタン、状態 chip、progress bar が重ならないことを確認する。
+  - GitHub Pages published version `0.1.0.376` を通常 Chrome の Tampermonkey installed version に反映し、Revenue Assistant top page の `候補データ優先取得` strip で横並びの先 6 か月カード、月別優先取得ボタン、状態 chip、progress bar が重ならないことを確認する。
 - スコープ:
-  - 通常 Chrome の Tampermonkey dashboard または同等の更新手段で、Revenue Assistant Userscript を `0.1.0.375` へ更新する。
+  - 通常 Chrome の Tampermonkey dashboard または同等の更新手段で、Revenue Assistant Userscript を `0.1.0.376` へ更新する。
   - Revenue Assistant top page を再読み込みし、`data-ra-sales-setting-warm-cache-month-control`、`data-ra-sales-setting-warm-cache-month-button`、`data-ra-sales-setting-warm-cache-month-progress` の矩形を確認する。
   - 横 overflow、console error、旧右下 fixed indicator の再発有無を確認する。
 - 非目標:
   - booking curve warm cache queue、request 間隔、同時実行数、優先月の選び方、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint は変更しない。
   - Revenue Assistant の write API、rank 変更 POST、自動反映、一括反映は実行しない。
 - 受け入れ条件:
-  - Tampermonkey installed version が `0.1.0.375` であることを確認している。
-  - Revenue Assistant top page で、月別優先取得ボタンの本文、状態 chip、progress bar が重ならないことを DOM 矩形またはスクリーンショットで確認している。
+  - Tampermonkey installed version が `0.1.0.376` であることを確認している。
+  - Revenue Assistant top page で、横並びの先 6 か月カード、月別優先取得ボタンの本文、状態 chip、progress bar が重ならないことを DOM 矩形またはスクリーンショットで確認している。
   - `data-ra-sales-setting-warm-cache-indicator` が 0 件である。
   - console error 0 件、横 overflow なし、監視対象 write API POST 0 件を確認できる範囲で記録している。監視対象 write API POST 0 件を自動確認できない場合は、その理由を記録する。
 - metadata:
@@ -186,6 +186,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 月カードは CSS grid で横並びにし、各カード内で button、状態 chip、progress bar を上下に分離した。button text は `YYYY-MM 取得` とし、状態 chip と progress bar は button の下に固定した。
   - Browser MCP の最小 DOM 確認では、1280px 相当で 6 か月が 1 行、420px 相当で 2 行、320px 相当で 3 行になった。各幅で横 overflow は false、button と status / progress の overlap は 0 件だった。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers` が通過した。Vite と esbuild を起動する build / fixture / marker は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して実行した。
+  - commit `ecdc23c` を `origin/main` へ push し、Publish Userscript run `26926661406` は success になった。GitHub Pages published version は `0.1.0.376` である。`npm run userscript:version-check` では installed version が `manual-check-required`、Chrome DevTools Protocol が `connect ECONNREFUSED 127.0.0.1:9222` だったため、Tampermonkey installed version と Revenue Assistant 実画面は未確認である。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: after-implementation
@@ -8397,7 +8398,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-122`: Tampermonkey `0.1.0.375` 同期と実画面表示を確認する。
+- `RAU-UX-122`: Tampermonkey `0.1.0.376` 同期と実画面表示を確認する。
 
 Next:
 
