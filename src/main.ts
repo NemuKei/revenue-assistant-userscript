@@ -7135,7 +7135,7 @@ function renderRankRecommendationListFixture(
         rankOrder,
         viewMode: "all",
         targetMonth: null,
-        targetMonthOptions: buildRankRecommendationTargetMonthOptions(candidates),
+        targetMonthOptions: buildRankRecommendationTargetMonthOptions(candidates, getSalesSettingWarmCachePriorityMonthKeys([...cells])),
         hiddenSummary: {
             userDecision: 0,
             resolvedRankChange: 0,
@@ -7310,7 +7310,10 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statuses,
         batchDateKey
     );
-    const targetMonthOptions = buildRankRecommendationTargetMonthOptions(resolvedFilterResult.candidates);
+    const targetMonthOptions = buildRankRecommendationTargetMonthOptions(
+        resolvedFilterResult.candidates,
+        getSalesSettingWarmCachePriorityMonthKeys(collectMonthlyCalendarCells())
+    );
     const effectiveTargetMonth = resolveRankRecommendationEffectiveTargetMonth(rankRecommendationTargetMonth, targetMonthOptions);
     if (effectiveTargetMonth !== rankRecommendationTargetMonth) {
         rankRecommendationTargetMonth = effectiveTargetMonth;
@@ -8931,7 +8934,8 @@ function applyRankRecommendationViewModeFilter(
 }
 
 function buildRankRecommendationTargetMonthOptions(
-    candidates: readonly RankRecommendationCandidate[]
+    candidates: readonly RankRecommendationCandidate[],
+    preferredMonthKeys: readonly string[] = []
 ): RankRecommendationTargetMonthOption[] {
     const countByMonth = new Map<string, number>();
     for (const candidate of candidates) {
@@ -8941,6 +8945,12 @@ function buildRankRecommendationTargetMonthOptions(
         }
 
         countByMonth.set(month, (countByMonth.get(month) ?? 0) + 1);
+    }
+
+    if (preferredMonthKeys.length > 0) {
+        return preferredMonthKeys
+            .filter((month) => /^\d{6}$/.test(month))
+            .map((month) => ({ month, count: countByMonth.get(month) ?? 0 }));
     }
 
     return Array.from(countByMonth.entries())

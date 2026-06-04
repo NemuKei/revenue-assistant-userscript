@@ -108,11 +108,15 @@ export function buildFixtureSnapshot(state: FixtureState): RankRecommendationRea
         emptyText,
         controls: {
             targetMonth: {
-                currentValue: "2026-07",
+                currentValue: "202607",
                 options: [
-                    { value: "all", label: "全ての月" },
-                    { value: "2026-07", label: "2026年7月" },
-                    { value: "2026-08", label: "2026年8月" }
+                    { value: "all", label: "全ての月 (12件)" },
+                    { value: "202607", label: "2026年7月 (6件)" },
+                    { value: "202608", label: "2026年8月 (6件)" },
+                    { value: "202609", label: "2026年9月 (0件)" },
+                    { value: "202610", label: "2026年10月 (0件)" },
+                    { value: "202611", label: "2026年11月 (0件)" },
+                    { value: "202612", label: "2026年12月 (0件)" }
                 ]
             },
             viewMode: {

@@ -24,6 +24,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-04 に、`RAU-WC-28` の完了後に残る実画面確認として、`RAU-WC-29` を task 化した。`RAU-WC-29` は、通常 Chrome の Tampermonkey 実行版で `非表示中も取得` toggle、優先取得 button、status summary、progress bar が狭い画面幅でも重ならないこと、ON の状態でレベアシタブを開いたまま別タブへ移っても booking curve warm cache と月別優先取得が進むこと、ログアウトまたは HTTP 401 では自動再ログインせず停止することを確認する smoke task である。直前実装の実画面確認であり、実利用観察の `RAU-UX-120` や新規実装の `RAU-UX-125` より先に確認した方が手戻りを減らせるため、Remaining Task Triage は Now `RAU-WC-29`、Next `RAU-UX-120`、After Next `RAU-UX-125`、Later `RAU-CP-19`, `RAU-WC-27` とする。`docs/context/INTENT.md` は、request 数、タブ切替時の安定性、UI / UX の判断原則に関わるため関連ありとして確認したが、判断原則自体は更新しない。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 
+2026-06-05 に、未着手だった `RAU-WC-29`、`RAU-UX-120`、`RAU-UX-125`、`RAU-CP-19`、`RAU-WC-27` を完了した。`RAU-WC-29` では、Tampermonkey dashboard 上の installed version が `0.1.0.377`、GitHub Pages published version も `0.1.0.377` であることを確認した。実画面 DOM では `非表示中も取得` toggle 1 件、月カード 6 件、390px 相当の月別 control overflow false、button と status / progress の overlap 0 件、監視対象 write API POST 0 件を確認した。CDP で別タブ foreground を試したが、Chrome 側が全 page の `document.visibilityState` を `visible` と返したため、document hidden の厳密判定はできなかった。代替確認として、`非表示中も取得` ON、月別優先取得押下、別タブ foreground 操作後の 20 秒観測で booking curve request 3 件と status detail の進行を確認した。`RAU-UX-120` では、実画面 smoke の primary actions 10 件、secondary action markers 10 件、pending marker 0 件、console / page error 0 件、既存 fixture の mobile overflow なしを根拠に、補助操作 `その他` details は現行維持と判断した。`RAU-UX-125` では、対象月 filter を優先取得月カードと同じ先 6 か月へ広げ、候補 0 件の月も empty 表示で受けるようにした。fixture visual check では 1280px、420px、320px の各幅で対象月 option が `202607` から `202612` まで 6 か月、横 overflow false、control overlap 0 件だった。`RAU-CP-19` では、競合価格 graph 導線を押下時だけの row preview として設計し、cache hit、未取得時 fetch、in-flight 重複排除、失敗 / データなし / 再取得、focus return、mobile 方針を `docs/spec_001_analyze_expansion.md` と `docs/spec_003_rank_recommendation_signal.md` に反映した。`RAU-WC-27` では、先行月ブーストを request 間隔短縮や同時実行数増加ではなく、queue 順序、cache hit、対象月 filter と表示中候補の優先化で扱う方針を `D-20260605-001` と spec に反映した。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -74,6 +76,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 ### RAU-UX-120 補助操作 `その他` details の実利用頻度と再配置要否を確認する
 
+- 状態:
+  - 完了。
 - 目的:
   - top 画面で `その他` details を開く頻度が高く、候補処理の速度を落としているか確認する。
   - pending notice、`様子見`、`対応不要`、`要点`、主要操作との重なりを観察し、row footer または popover へ移す必要があるか判断する。
@@ -84,6 +88,11 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 受け入れ条件:
   - `その他` details を現行維持するか、row footer / popover へ移すかの判断理由が記録されている。
   - 再配置が必要な場合は、実装 task の目的、スコープ、受け入れ条件が作られている。
+- 完了結果:
+  - 実画面 smoke では primary actions wrappers 10 件、secondary action markers 10 件、pending marker 0 件、console error 0 件、page error 0 件だった。
+  - 直近 fixture visual check と今回の live DOM では、主要操作と `その他` details の重なりや横 overflow は確認されなかった。
+  - 現時点では、`Analyzeで確認`、`曲線`、`rank調整` を常時表示し、`要点`、`様子見`、`対応不要` を `その他` details に畳む現行配置を維持する。
+  - 再配置条件は、通常利用で `様子見`、`対応不要`、`要点` が見つからず候補処理が止まること、または pending notice と details が重なって取消が見えにくいことを観測した場合とする。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -207,7 +216,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-UX-125 料金調整候補の対象月プルダウンを先 6 か月へ拡大する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 料金調整候補 list の `対象月` プルダウンを、カレンダー表示月だけではなく、`候補データ優先取得` の月カードと同じ先 6 か月へ広げる。
   - 利用者が先行月のデータを優先取得した後、対象月プルダウンから同じ月をすぐ選べるようにする。
@@ -227,6 +236,12 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 狭い表示幅でも、対象月プルダウン、表示切替 button、表示上限 button、rank order control が重ならない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
   - 可能なら通常 Chrome の Revenue Assistant top page または配布版 smoke で、対象月 6 か月表示、候補 list の月 filter、横 overflow なし、監視対象 write API POST 0 件を確認する。
+- 完了結果:
+  - `docs/spec_003_rank_recommendation_signal.md` に、top 画面では `候補データ優先取得` の先 6 か月カードと同じ基準月を対象月 filter の選択肢にする契約を反映した。
+  - `buildRankRecommendationTargetMonthOptions()` は、優先取得月キーがある場合に同じ 6 か月を返し、active candidates が 0 件の月も `0件` として選択肢に残す。
+  - live top path と fixture mode path は、`getSalesSettingWarmCachePriorityMonthKeys()` から同じ基準月を渡す。
+  - fixture visual check では、1280px、420px、320px の各幅で `202607` から `202612` までの 6 か月 option、横 overflow false、control overlap 0 件を確認した。
+  - 通常 Chrome の `0.1.0.377` 配布版では、この task の新規実装は未配布のため、配布後 smoke で対象月 6 か月表示を再確認する。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -235,7 +250,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-CP-19 料金調整候補から競合価格グラフを押下時だけ開く導線を設計する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 料金調整候補 row から、対象日の競合価格グラフを必要なときだけ開ける導線を設計する。
   - 常時表示の情報量を増やさず、競合価格を確認したい候補だけで対象日のデータ取得と graph 表示を行えるようにする。
@@ -255,6 +270,10 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 競合価格データの取得開始条件、cache hit 条件、in-flight 重複取得防止、失敗時の retry / 再表示方針が明記されている。
   - request scope と保存しないデータが `docs/spec_001_analyze_expansion.md`、`docs/context/DECISIONS.md`、またはこの backlog task に明記されている。
   - 実装へ進む場合の follow-up task が、UI 実装、API adapter / cache、fixture / smoke verify を含む粒度で作れる状態になっている。
+- 完了結果:
+  - `docs/spec_001_analyze_expansion.md` に、top row から開く競合価格 graph でも全候補 / 全日付を事前取得せず、押下 row の `stayDate` だけを対象にする request scope と data handling を追記した。
+  - `docs/spec_003_rank_recommendation_signal.md` に、`競合価格` preview の表示条件、row 直下 preview、`Escape` close、focus return、対象 room type の未確認時注意、cache hit、未取得時 fetch、in-flight 重複排除、取得中 / 失敗 / データなし / 再取得表示を追記した。
+  - 実装へ進む場合の分割候補は、`RAU-CP-20`: 競合価格 snapshot adapter / cache / in-flight dedupe、`RAU-CP-21`: row preview UI / keyboard / mobile fixture、`RAU-CP-22`: 配布版 top smoke / write POST 0 件確認である。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-implementation
@@ -263,7 +282,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-WC-27 先行月向けデータ取得ブーストの安全な実装候補を調査する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 先行月を優先して料金調整したい場合に、取得待ち時間を減らす方法を調査する。
   - 単純に request を速くするのではなく、取得順序、queue 優先度、cache 再利用、手動ブーストのどれが安全に効果を出せるか判断する。
@@ -282,6 +301,12 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 優先月の queue 割り込み、手動ブースト、cache 再利用、対象月変更時の優先度変更について、採用可否と理由が明記されている。
   - 採用する場合は、request 間隔、同時実行数、HTTP error 0 件、監視対象 write API POST 0 件、console / page error 0 件をどう確認するかが明記されている。
   - 採用案がある場合は、実装 task の目的、スコープ、受け入れ条件が作られている。
+- 完了結果:
+  - 待ち時間が発生する場面は、先 6 か月の対象月を選んだ直後に、その月の `currentRaw x roomGroup` raw source が未保存で、通常 queue が近い日付や別 scope を先に処理している場合である。
+  - 採用する候補は、優先月の queue 割り込み、取得済み月の cache hit 再利用、対象月 filter 変更時の同月手動ブースト入口の近接表示、表示中候補と一致する `currentRaw x roomGroup` task の優先化である。
+  - 見送る候補は、350ms 未満への request 間隔短縮、同時実行 3 件超への拡大、非表示中取得の既定 ON 化、競合価格 snapshot queue への同時適用、自動再ログイン、Revenue Assistant write API 連動である。
+  - `D-20260605-001` と `docs/spec_001_analyze_expansion.md` に、先行月ブーストは速度上限緩和ではなく queue 順序と cache 再利用で扱う方針を反映した。
+  - 実装へ進む場合の分割候補は、`RAU-WC-30`: 対象月 filter 変更時の同月 boost 入口 / queue 優先化、`RAU-WC-31`: throughput smoke の RAU warm cache 観測分離、`RAU-WC-32`: 通常 Chrome hidden-tab 実測手順の改善である。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -317,7 +342,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-WC-29 `非表示中も取得` の実画面 smoke を行う
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `RAU-WC-28` で追加した `非表示中も取得` opt-in が、通常 Chrome の Tampermonkey 実行版と Revenue Assistant 実画面で、利用者の操作を妨げず安全に動くことを確認する。
   - 実画面の狭い表示幅で、toggle、月別優先取得 button、status summary、progress bar が重ならないことを確認する。
@@ -340,6 +365,14 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `非表示中も取得` を ON にした状態で、レベアシタブを開いたまま別タブへ移った後も、booking curve request または月別優先取得 status の進行が確認できる。
   - ログアウトまたは HTTP 401 相当の状態では、自動再ログインせず、既存のログイン確認または停止状態として扱われることを確認する。ログアウトを安全に再現できない場合は、実施しない理由と代替確認を `STATUS.md` に記録する。
   - 監視対象 write API POST が 0 件である。自動確認できない場合は、確認できない理由を `STATUS.md` とこの backlog に記録する。
+- 完了結果:
+  - Tampermonkey dashboard で Revenue Assistant Userscript は `0.1.0.377`、`npm run userscript:version-check -- --installed-version 0.1.0.377` でも GitHub Pages published version と installed version は一致した。
+  - 実画面 DOM で `data-ra-sales-setting-warm-cache-hidden-tab-toggle` 1 件、月カード 6 件、button text `2026-06 取得` から `2026-11 取得` を確認した。
+  - 390px 相当の月別 control では overflow false、button と status / progress の overlap 0 件だった。document 全体の overflow は Revenue Assistant 既存カレンダー幅を含むため、月別 control 自体の判定とは分けて扱う。
+  - `非表示中も取得` を ON にして月別優先取得を押した後、status detail は `非表示中も取得ON` を含み、20 秒観測で booking curve request が 3 件進んだ。監視対象 write API POST は 0 件だった。
+  - Chrome CDP で別タブ foreground を試したが、全 page の `document.visibilityState` が `visible` と返ったため、document hidden の厳密確認はできなかった。代替確認として、別タブ foreground 操作後の request 進行と status 進行を記録した。
+  - ログアウト / HTTP 401 の実再現は、実アカウントのログアウト操作を伴い作業を中断しやすいため実施しなかった。既存実装と `D-20260604-001` では、HTTP 401 は自動再ログインせず `HTTP 401 ログイン確認` で停止する契約である。
+  - `npm run smoke:distribution -- --installed-version 0.1.0.377 --mode top --url https://ra.jalan.net/ --seconds 30 --version-policy fail` と 90 秒版は、UI marker、console / page error 0 件、監視対象 write API POST 0 件は通ったが、ページ全体の `/api/v4/booking_curve` throughput 判定で fail した。90 秒版では request count 43、HTTP error 0、min start interval 349ms、max concurrent requests 4、average starts per second 0.48 だった。smoke は Revenue Assistant 標準画面と RAU 表示同期分も含むページ全体の endpoint 観測であり、RAU warm cache worker だけの上限判定としては `RAU-WC-31` で分離する。
 - metadata:
   - `spec-impact`: no
   - `target-spec`: none
