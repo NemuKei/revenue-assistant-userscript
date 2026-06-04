@@ -1,5 +1,80 @@
 # tasks_backlog
 
+## Active / Post-publish Distribution And Live UX Checks
+
+2026-06-04 に、前回完了報告で提案した後続確認を `RAU-UX-118` から `RAU-UX-120` として task 化した。
+`RAU-UX-118` は、GitHub Pages published version `0.1.0.373` と Tampermonkey installed version を揃えた後、通常 Chrome の Revenue Assistant 画面で新しい配布版 UI が実行されていることを確認する task である。配布版の同期確認ができていない状態では、右下固定 indicator 廃止や inline status 表示位置を実画面で評価しても旧版を見ている可能性があるため Now とする。
+`RAU-UX-119` は、配布版同期後の実画面で、warm cache inline status、`候補データ優先取得` strip、Analyze 上部候補一覧、価格推移 / 競合価格 tab の次操作表示が、利用者の判断導線を妨げない位置に出ているか確認する task である。これは `RAU-UX-118` の同期確認を前提にするため Next とする。
+`RAU-UX-120` は、top 画面の補助操作 `その他` details を実利用で開く頻度と、pending notice や主要操作との重なりを観察し、row footer または popover へ移す必要があるか判断する task である。これは通常利用中の観察が必要で、直近の配布同期確認より後でよいため After Next とする。
+Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、IndexedDB schema、localStorage key、raw source compact schema、保存 schema、runtime UI 実装は、この task 化時点では変更していない。
+
+2026-06-04 に、`RAU-UX-118` と `RAU-UX-119` を完了した。`RAU-UX-120` は、単発の DOM 確認ではなく、実利用中に `その他` details を開く頻度と、候補処理がそこで止まるかどうかを観察する task であるため、Remaining Task Triage の Now に残す。
+
+### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
+
+- 目的:
+  - GitHub Pages published version `0.1.0.373` と Tampermonkey installed version が一致している前提で、通常 Chrome の Revenue Assistant 画面に最新配布版が反映されていることを確認する。
+  - 右下固定 warm cache indicator が 0 件になり、画面内の `候補データ優先取得` strip と料金調整候補 list が表示されることを確認する。
+- スコープ:
+  - 通常 Chrome の Revenue Assistant top / Analyze 表示中 page を対象にする。
+  - `npm run userscript:version-check -- --installed-version 0.1.0.373` または同等の version reconciliation を使う。
+  - 可能なら `npm run smoke:distribution -- --installed-version 0.1.0.373 --mode top --url https://ra.jalan.net/ --version-policy fail` を実行する。Chrome DevTools Protocol が使えない場合は、Chrome 拡張で DOM marker を確認し、CDP 不可を verify 境界として記録する。
+- 受け入れ条件:
+  - GitHub Pages published version が `0.1.0.373` である。
+  - 通常 Chrome の Revenue Assistant 画面で、RAU userscript root または料金調整候補 list marker が 1 件以上ある。
+  - `data-ra-sales-setting-warm-cache-indicator` が 0 件である。
+  - `data-ra-sales-setting-warm-cache-month-controls` または `data-ra-rank-recommendation-list` が 1 件以上ある。
+  - 監視対象 write API POST 0 件を自動確認できた場合は記録する。自動確認できない場合は、確認できない理由を `STATUS.md` とこの backlog に記録する。
+- 完了結果:
+  - `npm run userscript:version-check -- --installed-version 0.1.0.373` で、GitHub Pages published version と手入力 installed version はどちらも `0.1.0.373` だった。
+  - Chrome DevTools Protocol は `connect ECONNREFUSED 127.0.0.1:9222` のため使えなかった。監視対象 write API POST 0 件は CDP smoke helper では自動確認していない。
+  - 通常 Chrome の Revenue Assistant top page で、料金調整候補 list 1 件、候補 row 10 件、`data-ra-sales-setting-warm-cache-indicator` 0 件、`data-ra-sales-setting-warm-cache-inline-status` 1 件、`data-ra-sales-setting-warm-cache-month-controls` 1 件、console error 0 件を確認した。
+  - top page の viewport 幅 1440px に対して `documentElement.scrollWidth` は 1440px であり、横 overflow は確認されなかった。
+- metadata:
+  - `spec-impact`: no
+  - `target-spec`: none
+  - `verify`: `npm run userscript:version-check -- --installed-version 0.1.0.373`, Chrome DOM marker check, optional `npm run smoke:distribution -- --installed-version 0.1.0.373 --mode top --url https://ra.jalan.net/ --version-policy fail`
+
+### RAU-UX-119 実画面で inline status と次操作表示の位置を確認する
+
+- 目的:
+  - 配布版同期後の実画面で、warm cache inline status、`候補データ優先取得` strip、Analyze 上部候補一覧、価格推移 / 競合価格 tab の次操作表示が、利用者の判断順を妨げないことを確認する。
+- スコープ:
+  - top / Analyze / 価格推移または競合価格 tab を対象にする。
+  - 表示位置、標準 UI との重なり、横 overflow、主要操作 `Analyzeで確認`、`曲線`、`ランク調整` の視認性を確認する。
+  - 実装変更は行わない。表示位置の問題が見つかった場合は、別 task として実装修正に分ける。
+- 受け入れ条件:
+  - top 画面では `候補データ優先取得` strip が候補 list の文脈に表示される。
+  - 右下固定 indicator は表示されない。
+  - 料金調整候補 list の主要操作が、inline status や strip に隠れない。
+  - 確認結果を `STATUS.md` とこの backlog に記録する。
+- 完了結果:
+  - top page では `候補データ優先取得` strip と inline status が料金調整候補 list の文脈に表示され、右下固定 indicator は 0 件だった。
+  - top page では `Analyzeで確認` button が 10 件、`その他` details が 10 件表示され、console error は 0 件だった。今回表示中の 10 件は `送信不可` 状態を含むため、`曲線` と `ランク調整` button は 0 件だった。
+  - `Analyzeで確認` から遷移した `https://ra.jalan.net/analyze/2026-06-10` で、`data-ra-rank-recommendation-analyze-list` が 1 件、候補 row が 6 件、write 系 button が 0 件だった。表示 text には `この日の料金調整候補`、`遷移元候補の確認`、`同日他候補の確認` が含まれていた。
+  - 価格推移 tab では、通常 graph が表示され、`競合価格 最安値推移（90日版）`、SVG 5 件、背景取得状況、inline status 1 件、右下固定 indicator 0 件、console error 0 件を確認した。今回の価格推移 tab は failure state ではないため、`data-ra-sales-setting-competitor-price-next-action` は 0 件だった。
+- metadata:
+  - `spec-impact`: no
+  - `target-spec`: none
+  - `verify`: Chrome visual / DOM check
+
+### RAU-UX-120 補助操作 `その他` details の実利用頻度と再配置要否を確認する
+
+- 目的:
+  - top 画面で `その他` details を開く頻度が高く、候補処理の速度を落としているか確認する。
+  - pending notice、`様子見`、`対応不要`、`要点`、主要操作との重なりを観察し、row footer または popover へ移す必要があるか判断する。
+- スコープ:
+  - 通常 Chrome の実利用観察を対象にする。
+  - 今回の task では UI 実装を変更しない。
+  - 再配置が必要な場合は、表示対象、操作順、hover / focus / keyboard、mobile 390px、write API 非追加を含む実装 task を別に作る。
+- 受け入れ条件:
+  - `その他` details を現行維持するか、row footer / popover へ移すかの判断理由が記録されている。
+  - 再配置が必要な場合は、実装 task の目的、スコープ、受け入れ条件が作られている。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
 ## Completed / Product Design And Warm Cache UX Follow-ups
 
 2026-06-04 に、未着手だった `RAU-UX-116`、`RAU-UX-117`、`RAU-UX-112`、`RAU-UX-113`、`RAU-UX-114`、`RAU-UX-115` を完了した。
@@ -8206,7 +8281,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- なし。
+- `RAU-UX-120`: 補助操作 `その他` details の実利用頻度と再配置要否を確認する。
 
 Next:
 
@@ -8222,6 +8297,8 @@ Later:
 
 統合判断:
 
+- 2026-06-04 に、`RAU-UX-118` と `RAU-UX-119` を完了した。Published version と installed version は `0.1.0.373` で一致した。通常 Chrome の Revenue Assistant top page では、旧右下 fixed indicator 0 件、候補 list 1 件、候補 row 10 件、inline status 1 件、`候補データ優先取得` strip 1 件、console error 0 件、横 overflow なしを確認した。Analyze page では、`data-ra-rank-recommendation-analyze-list` 1 件、候補 row 6 件、write 系 button 0 件、`遷移元候補の確認` と `同日他候補の確認` の表示を確認した。価格推移 tab では通常 graph 表示、SVG 5 件、inline status 1 件、右下 fixed indicator 0 件、console error 0 件を確認した。Chrome DevTools Protocol は使えなかったため、監視対象 write API POST 0 件は CDP smoke helper では自動確認していない。`RAU-UX-120` は、実利用中に `その他` details を開く頻度と、候補処理がそこで止まるかどうかを観察する task であるため、Now に残す。
+- 2026-06-04 に、前回完了報告で提案した後続確認を `RAU-UX-118` から `RAU-UX-120` として task 化した。`RAU-UX-118` は、GitHub Pages published version と Tampermonkey installed version が一致していない可能性を先に解消しないと、実画面確認が旧版確認になるため Now とする。`RAU-UX-119` は、最新配布版が実行されていることを確認した後に、inline status、`候補データ優先取得` strip、Analyze 上部候補一覧、価格推移 / 競合価格 tab の次操作表示が判断導線を妨げないか見るため Next とする。`RAU-UX-120` は、通常利用中の開閉頻度と重なりを観察してから再配置要否を決める task であり、直近の配布同期確認と表示位置確認より後でよいため After Next とする。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 - 2026-06-04 に、未着手だった `RAU-UX-116`、`RAU-UX-117`、`RAU-UX-112`、`RAU-UX-113`、`RAU-UX-114`、`RAU-UX-115` を完了した。右下固定 warm cache indicator は廃止し、取得状態を画面内文脈へ移した。`候補データ優先取得` strip は料金調整候補 list 予定位置へ初期表示する。価格推移 / 競合価格 tab は状態別の次操作を表示する。Analyze 上部候補一覧は、遷移元候補と同日他候補を分ける。月次 compact / empty / partial fixture と mobile screenshot coverage を追加した。top 画面の補助操作 `その他` details は、fixture 確認範囲では横 overflow や重なりがないため現行維持とした。これにより Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 2026-06-04 に、Product Design audit の推奨候補 `RAU-UX-112` から `RAU-UX-115` と、利用者が追加した右下 indicator 廃止、`候補データ優先取得` strip の初期配置修正を task 化した。右下 indicator は視覚的な干渉が利用者の料金調整判断を妨げるため、`RAU-UX-116` として Now に置く。`候補データ優先取得` strip は、最初にカレンダー上部へ出てから料金調整候補 list 側へ移動すると、入口の場所と対象月 filter の関係を誤読しやすいため、`RAU-UX-117` として Next に置く。`RAU-UX-112` と `RAU-UX-113` は、failure state の次操作明示と Analyze 上部候補一覧の役割整理であり、top 画面の視覚干渉と初期配置のブレを解消した後に扱うため After Next とする。`RAU-UX-114` は月次実績画面の mobile coverage であり、`INTENT.md` の top 画面と Analyze 画面を先に優先する方針に従い Later とする。`RAU-UX-115` は実利用観察から補助操作の再配置要否を判断する task であり、直近の視覚的な妨げを直接直す task ではないため Later とする。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 - 2026-06-04 に、未着手だった `RAU-UX-106` から `RAU-UX-111` を完了した。Product Design audit の正本は `docs/context/PRODUCT_DESIGN_AUDIT.md` に置き、top 画面、Analyze 販売設定画面、Analyze 競合価格 / 価格推移 tab、月次実績画面、共通 UI primitive / fixture / smoke の findings を分けて記録した。fixture 証跡は Git 管理しない `.tmp/product-design-audit/` に保存した。mobile 390px では横 overflow はなかった。通常 Chrome の実ログイン profile を CDP 付きで起動する確認は、既存 Chrome が開いていたため repo script が停止した。既存 Chrome を強制終了しない方針にしたため、今回の live screenshot は未実施である。今回の実装変更は、fixture の `Analyze` 表示を `Analyzeで確認` にそろえ、`rank調整` を `ランク調整` にそろえる文言修正だけである。Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、pending 秒数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Publish Userscript run `26920935454` は success で、GitHub Pages published version は `0.1.0.372` である。Chrome CDP は `connect ECONNREFUSED 127.0.0.1:9222` のため、Tampermonkey installed version は未確認である。次に task 化する候補は `RAU-UX-112` から `RAU-UX-115` として `docs/context/PRODUCT_DESIGN_AUDIT.md` に提案し、Remaining Task Triage へは未投入とした。この完了により Remaining Task Triage は Now / Next / After Next / Later すべて空である。
