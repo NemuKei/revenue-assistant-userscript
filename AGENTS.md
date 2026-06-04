@@ -309,6 +309,13 @@ Product Design を frontend 作業の必須依存にはしない。Product Desig
 Product Design を使う場合でも、既存 codebase の framework、routing、component、design token、test、build、preview の確認は省略しない。
 Product Design が visual brief や prototype の前段を担当し、repo 内実装と検証を `frontend-skill` の手順で閉じる場合は、どちらの workflow がどの入力、処理、出力を担当したかを最終報告で分けて書く。
 
+### Frontend Plugin Role Split
+
+- `@product-design` は、既存 Revenue Assistant 画面に追加する userscript UI の目的、情報設計、UX audit、改善方針を整理するときに使う。広い UI 改善では、原則として audit / plan first とし、即 runtime UI 実装へ飛ばない。
+- `@build-web-data-visualization` は、booking curve、価格推移、競合価格、月次実績などの graph / chart / tooltip / series / mobile 可読性を判断するときに使う。表示すべき値、常時表示と on-demand 表示、hover 依存、系列数、凡例、fallback 表示を検討する。
+- `@build-web-apps` は、方針が固まった frontend 実装、React / Vite / UI component、fixture preview、browser 確認を進めるときに使う。既存 repo の build、userscript distribution、Tampermonkey smoke、write API 0 件確認の契約を優先する。
+- 迷う場合は、画面全体の判断は `@product-design`、graph 表現の判断は `@build-web-data-visualization`、repo 内実装と検証は `@build-web-apps` として分ける。
+
 ### Browser Tool Routing
 
 ブラウザ操作が必要な場合は、先に目的を分類し、目的に合う手段を選ぶ。
