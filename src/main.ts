@@ -70,9 +70,11 @@ import {
     PRICE_TREND_ROOM_TYPE_REQUESTS,
     buildAllPriceTrendRequestScopes,
     fetchAndPersistPriceTrendRecords,
+    loadPriceTrendRequestContext,
     readLatestPriceTrendRecordsForStayDate,
     type PriceTrendGuestCount,
     type PriceTrendRequestScope,
+    type PriceTrendRequestContext,
     type PriceTrendRecord
 } from "./priceTrendStore";
 import {
@@ -1080,6 +1082,7 @@ let priceTrendBackgroundQueueTimeoutId: number | null = null;
 let priceTrendBackgroundQueueRunning = false;
 let priceTrendBackgroundQueue: PriceTrendRequestScope[] = [];
 let priceTrendBackgroundQueueState: PriceTrendBackgroundQueueState = createInitialPriceTrendBackgroundQueueState();
+let priceTrendRequestContext: PriceTrendRequestContext | null = null;
 let pendingCompetitorPriceTabSnapshotRequest: PendingCompetitorPriceTabSnapshotRequest | null = null;
 let pendingPriceTrendTabRequest: PendingPriceTrendTabRequest | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
@@ -6225,10 +6228,13 @@ async function runPriceTrendFetch(
     void refreshPriceTrendRecords(facilityCacheKey, analysisDate);
 
     try {
+        const requestContext = await loadPriceTrendRequestContext();
+        priceTrendRequestContext = requestContext;
         const result = await fetchAndPersistPriceTrendRecords({
             facilityId: facilityCacheKey,
             stayDate: analysisDate,
-            scopes: initialScopes
+            scopes: initialScopes,
+            requestContext
         });
         if (!result.stored) {
             priceTrendUiState = {
@@ -6336,6 +6342,7 @@ function resetPriceTrendBackgroundQueue(reason: string): void {
     }
     priceTrendBackgroundQueueRunning = false;
     priceTrendBackgroundQueue = [];
+    priceTrendRequestContext = null;
     priceTrendBackgroundQueueState = {
         ...createInitialPriceTrendBackgroundQueueState(),
         pauseReason: reason
@@ -6395,10 +6402,13 @@ async function drainPriceTrendBackgroundQueue(): Promise<void> {
     renderPriceTrendOverviewFromState();
 
     try {
+        const requestContext = priceTrendRequestContext ?? await loadPriceTrendRequestContext();
+        priceTrendRequestContext = requestContext;
         const result = await fetchAndPersistPriceTrendRecords({
             facilityId,
             stayDate,
-            scopes: [scope]
+            scopes: [scope],
+            requestContext
         });
         priceTrendBackgroundQueueState = {
             ...priceTrendBackgroundQueueState,

@@ -46,6 +46,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点のデータ取得点検で見つけた価格推移 background queue の取得準備コストを `RAU-CP-24` として task 化した。`src/priceTrendStore.ts` では `fetchAndPersistPriceTrendRecords()` のたびに `/api/v2/yad/info` と `/api/v2/competitors` から request context を作り直しており、初回 16 scope の後に 112 scope を 1 秒間隔で処理する background queue では、価格推移本体とは別の準備 request が繰り返される余地がある。重複確認では、`RAU-CP-14` は価格推移 background queue の実装済み task、`RAU-CP-16` は long-run 確認済み task、`D-20260530-002` は 1 秒間隔と停止条件の契約であり、request context 共有の実装 task は未着手である。`RAU-CP-24` は、価格推移本体の 1 秒間隔、対象 scope、保存 schema、Revenue Assistant write API 非対象を変えず、短命 cache または queue session context 共有で準備 request だけを減らせるかを判断・実装する task とする。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり先に確認したいので、Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next `RAU-CP-24`、Later なしとする。
 
+2026-06-05 に、`RAU-CP-24` を完了した。価格推移 tab の初回取得前に `PriceTrendRequestContext` を 1 回作り、初回 16 scope と background 112 scope の `fetchAndPersistPriceTrendRecords()` に同じ context を渡すことで、`/api/v2/yad/info` と `/api/v2/competitors` の準備取得を各 scope ごとに繰り返さないようにした。context 共有は in-memory の価格推移 tab session に限定し、queue reset で破棄する。`/api/v1/price_trends` の対象 scope、1 秒間隔、停止条件、保存 schema、Revenue Assistant write API、rank change payload は変更していない。spec-governance 判定では、外部表示、入出力契約、保存 schema、受け入れ条件を変えない内部最適化であるため、`docs/spec_001_analyze_expansion.md` は更新不要とした。`smoke:distribution --mode price-trends` は実ログイン済み Revenue Assistant へ触れるため、明示承認なしでは実行していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -363,7 +365,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 価格推移 tab の background queue で、各 scope 取得前に `/api/v2/yad/info` と `/api/v2/competitors` を繰り返し読む準備コストを減らせるか確認する。
   - 価格推移本体の `/api/v1/price_trends` scope、1 秒間隔、停止条件、保存 schema を変えずに、体感待ち時間と余分な read request を削る。
@@ -380,10 +382,19 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 実装する場合は、価格推移の初回 16 scope と background 112 scope の契約を維持し、準備 request の重複だけを減らしている。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
   - 可能なら `smoke:distribution --mode price-trends` または同等の安全な fixture / DOM 証跡で、監視対象 write API POST 0 件、console / page error 0 件を確認する。実ログイン済み Revenue Assistant へ触れる smoke は明示承認がある場合だけ行う。
+- 完了結果:
+  - `priceTrendStore` は任意の `PriceTrendRequestContext` を受け取り、渡されない場合だけ従来どおり `/api/v2/yad/info` と `/api/v2/competitors` から context を作る。
+  - `main.ts` は価格推移 tab の初回取得前に `loadPriceTrendRequestContext()` を 1 回実行し、初回 16 scope と background 112 scope の `fetchAndPersistPriceTrendRecords()` に同じ context を渡す。
+  - context 共有は in-memory の価格推移 tab session に限定する。`resetPriceTrendBackgroundQueue()` で破棄されるため、対象日変更、対象画面外、再表示、再取得時には次の session で再取得される。
+  - stale risk は、同じ価格推移 tab session 中に Revenue Assistant 側の競合施設設定を変更した場合に、その session の background queue へ即時反映されない点である。永続 cache ではなく session 内共有に留めたため、次回 tab 表示または queue reset 後は再取得される。
+  - `/api/v1/price_trends` の対象 scope、初回 16 scope、background 112 scope、1 秒間隔、停止条件、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
+  - spec-governance 判定では、外部表示、入出力契約、保存 schema、受け入れ条件を変えない内部最適化であるため、`docs/spec_001_analyze_expansion.md` は更新不要とした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`npm run check`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+  - `smoke:distribution --mode price-trends` は実ログイン済み Revenue Assistant へ触れるため、明示承認なしでは実行していない。
 - metadata:
-  - `spec-impact`: unknown
-  - `spec-checkpoint`: before-implementation
-  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, optional approved `npm run smoke:distribution -- --mode price-trends`, `git diff --check`
 
 ### RAU-UX-121 `候補データ優先取得` の月別優先取得ボタンと進捗表示の重なりを解消する

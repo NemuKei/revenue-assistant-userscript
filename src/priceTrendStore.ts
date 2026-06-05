@@ -103,6 +103,7 @@ export interface FetchAndPersistPriceTrendOptions {
     facilityId: string;
     stayDate: string;
     scopes?: readonly PriceTrendRequestScope[];
+    requestContext?: PriceTrendRequestContext;
 }
 
 export interface FetchAndPersistPriceTrendResult {
@@ -111,7 +112,7 @@ export interface FetchAndPersistPriceTrendResult {
     reason?: "indexeddb-unavailable" | "no-yad-nos" | "unsupported-stay-date";
 }
 
-interface PriceTrendRequestContext {
+export interface PriceTrendRequestContext {
     facilities: PriceTrendFacility[];
     ownYadNo: string;
     competitorYadNos: string[];
@@ -154,7 +155,7 @@ export async function readLatestPriceTrendRecordsForStayDate(
 async function fetchAndPersistPriceTrendRecordsInternal(
     options: FetchAndPersistPriceTrendOptions
 ): Promise<FetchAndPersistPriceTrendResult> {
-    const requestContext = await buildPriceTrendRequestContext();
+    const requestContext = options.requestContext ?? await loadPriceTrendRequestContext();
     const yadNos = [requestContext.ownYadNo, ...requestContext.competitorYadNos].filter((yadNo) => yadNo !== "");
     if (yadNos.length === 0) {
         return {
@@ -255,7 +256,7 @@ function buildPriceTrendScopeKey(scope: PriceTrendRequestScope): string {
     ].join("|");
 }
 
-async function buildPriceTrendRequestContext(): Promise<PriceTrendRequestContext> {
+export async function loadPriceTrendRequestContext(): Promise<PriceTrendRequestContext> {
     const [yadInfo, competitors] = await Promise.all([
         fetchJson<PriceTrendYadInfoApiResponse>(YAD_INFO_ENDPOINT),
         fetchJson<PriceTrendCompetitorApiEntry[]>(COMPETITORS_ENDPOINT)
