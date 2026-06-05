@@ -2839,11 +2839,16 @@ function parseRankRecommendationRankOrderInput(
         .split(/[,\n>、]+/u)
         .map((token) => token.trim())
         .filter((token) => token !== "");
-    const normalizedRanks = rankLadder.flatMap((entry) => {
+    const normalizedRanks: Array<{ code: string; name: string }> = [];
+    for (const entry of rankLadder) {
         const code = entry.price_rank_code?.trim() ?? "";
         const name = entry.price_rank_name?.trim() ?? "";
-        return code === "" || name === "" ? [] : [{ code, name }];
-    });
+        if (code === "" || name === "") {
+            continue;
+        }
+
+        normalizedRanks.push({ code, name });
+    }
     if (normalizedRanks.length === 0) {
         return {
             ok: false,

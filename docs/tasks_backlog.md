@@ -82,6 +82,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-CP-48` を完了した。`buildRankRecommendationCurveEvidenceByKey()` は、rank recommendation current settings response から curve evidence request を作るときに、外側 current setting と内側 room group の両方で `flatMap()` を使い、skip path で空配列、hit path で 1 要素配列を作ってから `Promise.all` に渡していた。loop で valid request だけを `evidenceRequests` へ push するようにし、request 準備時の中間配列生成を減らした。重複確認では、`RAU-CP-31` から `RAU-CP-34` は raw source read 共有、`RAU-CP-45` は reference curve repeated scan、`RAU-CP-47` は月次 response compact の `map().filter()` 1 pass 化であり、rank evidence request 準備の nested `flatMap()` 削減は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。visible stay date filter、空 roomGroupId skip、stay date 単位の own price position evidence promise reuse、`readRankRecommendationCurveEvidence()` の戻り値から null を除外して Map にする契約、Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた rank ladder 正規化の中間配列生成を `RAU-CP-49` として task 化して完了した。`resolveRankRecommendationRankOrder()` と `parseRankRecommendationRankOrderInput()` は、rank ladder entry の code / name が有効な場合だけ正規化 rank を使うが、従来は `flatMap()` で skip path に空配列、hit path に 1 要素配列を作っていた。loop で valid rank だけを push するようにし、rank order 解決と手動入力 parse の不要な中間配列を減らした。重複確認では、`RAU-CP-48` は curve evidence request 準備、`RAU-CP-45` は reference curve repeated scan であり、rank ladder 正規化は未着手だった。rank code / name の trim と null / empty 除外、rank 名 number parse、manual override、settings screen order fallback、rank順序入力 validation message、rank order source、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は rank order、表示速度、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -452,6 +454,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `response.suggest_output_current_settings` と `rm_room_groups` を loop し、visible stay date と non-empty roomGroupId の request だけを `evidenceRequests` へ push するようにした。
   - stay date 単位の own price position evidence promise reuse、共有 `rawSourceReader`、`Promise.all` による parallel wait、`null` 除外後の `Map` 化は維持した。
   - Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-49 rank ladder 正規化の skip 用 `flatMap()` を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - rank order 解決と rank 順序手動入力 parse で、無効 rank を除外するためだけに作る空配列 / 1 要素配列を減らす。
+- スコープ:
+  - 対象は `src/rankRecommendation.ts` の `resolveRankRecommendationRankOrder()` と、`src/main.ts` の `parseRankRecommendationRankOrderInput()` である。
+  - rank ladder entry を loop し、code / name が有効な rank だけを正規化配列へ push する。
+- 非目標:
+  - rank code / name の trim と null / empty 除外、rank 名 number parse は変更しない。
+  - manual override、settings screen order fallback、rank順序入力 validation message、rank order source は変更しない。
+  - candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - code または name が空 / null の rank ladder entry は従来どおり除外される。
+  - valid rank の code / name / orderValue は従来どおり作られる。
+  - rank ladder が空または全 entry 無効の場合の `rank_ladder_missing` と manual input error は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `resolveRankRecommendationRankOrder()` は `flatMap()` ではなく loop で valid rank だけを `normalized` へ push するようにした。
+  - `parseRankRecommendationRankOrderInput()` は `flatMap()` ではなく loop で valid rank だけを `normalizedRanks` へ push するようにした。
+  - rank order source、manual override、settings screen fallback、validation message、candidate scoring、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no

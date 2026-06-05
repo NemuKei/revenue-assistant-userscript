@@ -625,15 +625,16 @@ export function resolveRankRecommendationRankOrder(options: {
     rankLadder: readonly RankRecommendationRankLadderEntry[];
     override?: RankRecommendationRankOrderOverride | null;
 }): RankRecommendationRankOrderResolution {
-    const normalized = options.rankLadder.flatMap((entry) => {
+    const normalized: Array<{ code: string; name: string; orderValue: number | null }> = [];
+    for (const entry of options.rankLadder) {
         const code = normalizeNullableText(entry.price_rank_code);
         const name = normalizeNullableText(entry.price_rank_name);
         if (code === null || name === null) {
-            return [];
+            continue;
         }
 
-        return [{ code, name, orderValue: parseRankNameNumber(name) }];
-    });
+        normalized.push({ code, name, orderValue: parseRankNameNumber(name) });
+    }
     if (normalized.length === 0) {
         return {
             source: "unresolved",
