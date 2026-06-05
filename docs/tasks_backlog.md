@@ -555,6 +555,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-35 sales setting reference data の source read を curve kind 単位で共有する
+
+- 状態:
+  - 完了。
+- 目的:
+  - Analyze / sales setting の booking curve reference data を、reference curve cache miss 時に少し速くする。
+  - 同じ reference data 読み込み内で、同じ curve kind の raw source 群を segment ごとに読み直さない。
+- スコープ:
+  - 対象は `loadSalesSettingBookingCurveReferenceData()` と `loadSalesSettingReferenceCurveResult()` の reference source 読み込みである。
+  - `recent_weighted_90` と `seasonal_component` は candidate stay dates が異なるため、それぞれ別 promise として共有する。
+- 非目標:
+  - reference curve cache key、reference curve 計算結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - 同一 reference data 読み込み内の reference curve cache miss 時に、同じ curve kind の source read promise が segment 間で共有される。
+  - `recent_weighted_90` と `seasonal_component` は別 source read promise のままである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `loadSalesSettingBookingCurveReferenceData()` に curve kind 単位の `referenceSourcesByKind` を追加した。
+  - `loadSalesSettingReferenceCurveResult()` は、呼び出し側から共有 source loader を渡された場合にそれを使うようにした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:

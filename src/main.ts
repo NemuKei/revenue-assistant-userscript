@@ -12712,6 +12712,21 @@ async function loadSalesSettingBookingCurveReferenceData(
     batchDateKey: string,
     rmRoomGroupId?: string
 ): Promise<SalesSettingBookingCurveReferenceData | null> {
+    const referenceSourcesByKind = new Map<ReferenceCurveKind, Promise<BookingCurveResponseSource[]>>();
+    const getReferenceSources = (
+        curveKind: ReferenceCurveKind,
+        stayDates: string[],
+        scope: CurveScope
+    ): Promise<BookingCurveResponseSource[]> => {
+        const cached = referenceSourcesByKind.get(curveKind);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const request = loadSalesSettingReferenceCurveSources(stayDates, batchDateKey, scope, rmRoomGroupId);
+        referenceSourcesByKind.set(curveKind, request);
+        return request;
+    };
     const [
         recentOverall,
         seasonalOverall,
@@ -12720,12 +12735,12 @@ async function loadSalesSettingBookingCurveReferenceData(
         recentGroup,
         seasonalGroup
     ] = await Promise.all([
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "all", "recent_weighted_90", rmRoomGroupId),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "all", "seasonal_component", rmRoomGroupId),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "transient", "recent_weighted_90", rmRoomGroupId),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "transient", "seasonal_component", rmRoomGroupId),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "group", "recent_weighted_90", rmRoomGroupId),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "group", "seasonal_component", rmRoomGroupId)
+        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "all", "recent_weighted_90", rmRoomGroupId, getReferenceSources),
+        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "all", "seasonal_component", rmRoomGroupId, getReferenceSources),
+        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "transient", "recent_weighted_90", rmRoomGroupId, getReferenceSources),
+        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "transient", "seasonal_component", rmRoomGroupId, getReferenceSources),
+        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "group", "recent_weighted_90", rmRoomGroupId, getReferenceSources),
+        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "group", "seasonal_component", rmRoomGroupId, getReferenceSources)
     ]);
 
     if (
@@ -12796,7 +12811,12 @@ async function loadSalesSettingReferenceCurveResult(
     batchDateKey: string,
     segment: CurveSegment,
     curveKind: "recent_weighted_90" | "seasonal_component",
-    rmRoomGroupId?: string
+    rmRoomGroupId?: string,
+    getReferenceSources?: (
+        curveKind: ReferenceCurveKind,
+        stayDates: string[],
+        scope: CurveScope
+    ) => Promise<BookingCurveResponseSource[]>
 ): Promise<ReferenceCurveResult | null> {
     const facilityId = await resolveCurrentFacilityCacheKey();
     const scope: CurveScope = rmRoomGroupId === undefined ? "hotel" : "roomGroup";
@@ -12837,7 +12857,9 @@ async function loadSalesSettingReferenceCurveResult(
                     targetMonth,
                     weekday
                 });
-            const sources = await loadSalesSettingReferenceCurveSources(candidateStayDates, batchDateKey, scope, rmRoomGroupId);
+            const sources = await (getReferenceSources === undefined
+                ? loadSalesSettingReferenceCurveSources(candidateStayDates, batchDateKey, scope, rmRoomGroupId)
+                : getReferenceSources(curveKind, candidateStayDates, scope));
             const input = buildCurveInputFromBookingCurveResponses({
                 facilityId,
                 asOfDate: normalizedBatchDate,
