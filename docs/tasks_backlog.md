@@ -92,6 +92,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた月次 preview SVG axis tick 抽出の中間配列生成を `RAU-CP-53` として task 化して完了した。`createMonthlyProgressPanelSvg()` は、active tick index から `pointsByMonth[0]` の point を取り出すときに、`map()` で point / undefined の中間配列を作ってから `filter()` で undefined を落としていた。loop で valid tick point だけを `axisTicks` へ push するようにし、月次 preview SVG 描画準備時の不要な中間配列を減らした。重複確認では、`RAU-CP-46` は月次 preview の比較 snapshot read 並列化、`RAU-CP-47` は月次 response compact、`RAU-CP-52` は forecast diagnostics warning 集約であり、月次 preview SVG axis tick 抽出は未着手だった。active tick index の順序、undefined tick 除外、tick count、x position、y axis max、月次 preview model、月次 API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI の表示契約は変更していない。`docs/context/INTENT.md` は表示速度、UI / UX、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた seasonal component 候補日生成の中間配列生成を `RAU-CP-54` として task 化して完了した。`getSeasonalComponentCandidateStayDates()` は、seasonal component の候補宿泊日を作るときに `yearsBack` を `flatMap()` し、shift 不能な月や bounds 不明の path で空配列を返していた。loop で valid shifted month の weekday dates だけを `candidateStayDates` へ push するようにし、季節型 reference curve 候補日生成時の不要な中間配列を減らした。重複確認では、`RAU-CP-45` は reference curve の repeated scan、`RAU-CP-52` は forecast diagnostics warning 集約、`RAU-CP-53` は月次 preview SVG axis tick 抽出であり、seasonal component 候補日生成は未着手だった。`yearsBack` の順序、invalid target month / weekday の early return、shift 不能な月と bounds 不明の skip、weekday date 列挙結果、reference curve 計算結果、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は表示速度、reference curve、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -609,6 +611,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 完了結果:
   - `map().filter()` をやめ、valid tick point だけを loop で `axisTicks` へ push するようにした。
   - 月次 API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI の表示契約は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-54 seasonal component 候補日生成を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - seasonal component の候補宿泊日生成で、`flatMap()` によって作る skip path の空配列と中間配列を減らす。
+- スコープ:
+  - 対象は `src/curveCore.ts` の `getSeasonalComponentCandidateStayDates()` である。
+  - `yearsBack` を loop し、valid shifted month の weekday dates だけを `candidateStayDates` へ push する。
+- 非目標:
+  - `yearsBack` の順序、invalid target month / weekday の early return、shift 不能な月と bounds 不明の skip は変更しない。
+  - weekday date 列挙結果、reference curve 計算結果、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - valid shifted month ごとの weekday dates は従来どおり `yearsBack` 順で連結される。
+  - shifted month または bounds が取れない yearBack は従来どおり skip される。
+  - seasonal component reference curve とその diagnostics の入力候補日 contract は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `flatMap()` をやめ、valid shifted month の weekday dates だけを loop で `candidateStayDates` へ push するようにした。
+  - reference curve 計算結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no

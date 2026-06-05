@@ -943,15 +943,20 @@ export function getSeasonalComponentCandidateStayDates(options: {
     }
 
     const yearsBack = options.yearsBack ?? [1, 2];
-    return yearsBack.flatMap((yearBack) => {
+    const candidateStayDates: string[] = [];
+    for (const yearBack of yearsBack) {
         const shiftedMonth = shiftYearMonth(targetMonth, -12 * yearBack);
         if (shiftedMonth === null) {
-            return [];
+            continue;
         }
 
         const bounds = getYearMonthBounds(shiftedMonth);
-        return bounds === null ? [] : enumerateWeekdayDates(bounds.firstDate, bounds.lastDate, options.weekday);
-    });
+        if (bounds === null) {
+            continue;
+        }
+        candidateStayDates.push(...enumerateWeekdayDates(bounds.firstDate, bounds.lastDate, options.weekday));
+    }
+    return candidateStayDates;
 }
 
 export function normalizeDateKey(value: string): string | null {
