@@ -15840,17 +15840,22 @@ function selectCompetitorPriceRecordsForRoomTypeFilter(
     records: CompetitorPriceSnapshotRecord[],
     roomTypeFilter: string | null
 ): CompetitorPriceSnapshotRecord[] {
+    const unspecifiedRecords: CompetitorPriceSnapshotRecord[] = [];
+    const roomTypeRequestRecords: CompetitorPriceSnapshotRecord[] = [];
+    for (const record of records) {
+        if (isUnspecifiedCompetitorPriceRecord(record)) {
+            unspecifiedRecords.push(record);
+        }
+        if (roomTypeFilter !== null && recordMatchesCompetitorPriceRoomTypeRequest(record, roomTypeFilter)) {
+            roomTypeRequestRecords.push(record);
+        }
+    }
+
     if (roomTypeFilter === null) {
-        const unspecifiedRecords = records.filter(isUnspecifiedCompetitorPriceRecord);
         return unspecifiedRecords.length > 0 ? unspecifiedRecords : records;
     }
 
-    const roomTypeRequestRecords = records.filter((record) => recordMatchesCompetitorPriceRoomTypeRequest(record, roomTypeFilter));
-    if (roomTypeRequestRecords.length > 0) {
-        return roomTypeRequestRecords;
-    }
-
-    return records.filter(isUnspecifiedCompetitorPriceRecord);
+    return roomTypeRequestRecords.length > 0 ? roomTypeRequestRecords : unspecifiedRecords;
 }
 
 function isUnspecifiedCompetitorPriceRecord(record: CompetitorPriceSnapshotRecord): boolean {
