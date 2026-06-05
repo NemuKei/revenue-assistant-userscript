@@ -70,6 +70,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた rank recommendation sync 内の raw source read 重複を `RAU-CP-33` として task 化して完了した。top 料金調整候補 sync は、候補生成用の curve evidence と表示用の curve preview info で同じ `booking_curve_raw_source` key を別々に IndexedDB read する余地があった。1 回の sync 内だけで使う `createRankRecommendationRawSourceRecordReader()` を追加し、top sync では候補生成、preview info、preview reference source の raw source read promise を同じ key で共有し、Analyze sync では候補生成用 evidence の raw source read を同じ reader 経由に揃える。cache は sync 呼び出し内に限定し、次回 sync や別画面には持ち越さない。重複確認では、`RAU-CP-32` は preview reference data 内の curve kind 別 source read 共有であり、候補生成と preview info の間の raw source read 共有とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、直前の Build Web Apps 静的点検で残した推奨を `RAU-CP-43` として task 化した。`selectCompetitorPriceRecordsForRoomTypeFilter()` は、roomType filter 指定時に request label 一致 record を `filter()` し、見つからない場合に unspecified record をもう一度 `filter()` している。これを 1 回の走査で request label 一致 record と unspecified record を集める実装 task とし、競合価格 preview / tab の部屋タイプ record 選択の不要な repeated scan を減らす。重複確認では、`RAU-CP-36` から `RAU-CP-42` は snapshot series、chart series、tooltip、range 計算の最適化であり、部屋タイプ record selection の 1 pass 化は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。`RAU-CP-43` は local static 実装と通常 verify で閉じられるため Now とし、`RAU-UX-130` は Next、`RAU-UX-131` は After Next とする。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-CP-43`、Next `RAU-UX-130`、After Next `RAU-UX-131`、Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -383,6 +385,30 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
   - `verify`: Product Design observation note, Chrome / Browser DOM or visual evidence, `git diff --check`
+
+### RAU-CP-43 競合価格 room type record selection を 1 pass にする
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 競合価格 preview / tab の部屋タイプ record 選択で、同じ `records` を複数回 `filter()` する path を 1 回の走査へまとめる。
+  - roomType filter 指定時の request label 一致 record と unspecified fallback record を同時に集め、不要な repeated scan を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `selectCompetitorPriceRecordsForRoomTypeFilter()` である。
+  - `roomTypeFilter === null` では従来どおり unspecified record があればそれを優先し、なければ全 records を返す。
+  - roomType filter 指定時は従来どおり request label 一致 record があればそれを優先し、なければ unspecified record を返す。
+- 非目標:
+  - 競合価格 API request 範囲、request 件数、保存 schema、room type mapping、preview UI、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - `selectCompetitorPriceRecordsForRoomTypeFilter()` が、request label 一致 record と unspecified record を 1 回の loop で収集している。
+  - roomType null / request label hit / request label miss fallback の戻り値優先順位が既存と同じである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
 ### RAU-UX-132 `smoke:distribution` で mobile 390px の競合価格 preview interaction を記録できるようにする
 
