@@ -42,6 +42,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-UX-129` を完了した。Product Design の audit / plan first として、`競合価格` が top row の primary action に増えた後の `その他` details 再配置要否を確認した。Build Web Data Visualization の観点では、競合価格 graph は押下時 preview 内だけに閉じ、top row 本文へ金額、差額、percent を増やさない前提を維持した。Build Web Apps の観点では、current fixture を `npm run build:vite:fixture` で生成し、mobile 390px の `candidates`、`decision-pending`、`preview-open` state で `documentElement.scrollWidth` `390`、横 overflow false、visible action group overlap `0` 件を確認した。`npm run check:fixture-markers` では primary actions wrappers `25` 件、secondary action markers `25` 件、pending notice markers `2` 件、competitor preview buttons / rows `25` 件、decision buttons `50` 件を確認した。`その他` details は、補助操作を常時表示から外して primary action と分離できており、row footer 化や popover 化を正当化する evidence はないため現行維持とした。runtime UI、`src/`、`dist/`、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`docs/context/INTENT.md` は、表示密度、UI / UX、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 
+2026-06-05 に、直前完了報告で残した確認視点を `RAU-UX-130` と `RAU-UX-131` として task 化した。`RAU-UX-130` は、current fixture ではなく配布版または同等の実データ preview で、mobile 390px の競合価格 graph、部屋タイプ対応 note、preview 縦スクロール量、横 overflow、focus return、監視対象 write API POST 0 件を確認する task である。`RAU-UX-131` は、通常利用で競合価格 preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いか、`confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として誤読されていないか、`その他` details の開閉が候補処理を止めていないかを観察する task である。重複確認では、`RAU-UX-128` は graph 密度の docs audit、`RAU-UX-129` は current fixture の action density audit として完了済みであり、今回の 2 件は実データ / 通常利用の後続観察であるため分ける。`docs/context/INTENT.md` は、表示密度、UI / UX、安全な作業キュー、request 数の判断に関わるため関連ありだが、既存原則で説明できるため更新していない。runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -301,6 +303,60 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: not-needed
   - `target-spec`: none
   - `verify`: Product Design audit note, `npm run check:fixture-markers`, `npm run build:vite:fixture`, mobile fixture layout check, `git diff --check`
+
+### RAU-UX-130 実データ競合価格 preview を mobile 390px で visual smoke する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - current fixture ではなく、配布版または同等の実データ preview で、競合価格 graph を開いた mobile 390px の縦スクロール量と読み順を確認する。
+  - `RAU-UX-128` / `RAU-UX-129` で現行維持にした判断が、実データ graph でも成立するか確認する。
+- スコープ:
+  - 対象は top 料金調整候補 row の `競合価格` preview、部屋タイプ対応 note、graph、primary action、`その他` details、pending notice、focus return、mobile 390px 相当である。
+  - 通常 Chrome の Tampermonkey 実行版、配布版 top smoke、または実データに近い安全な fixture / visual smoke を使う。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データは Git 管理へ入れない。
+- 非目標:
+  - この task では preview UI を直接変更しない。
+  - 常時 graph 表示、金額 / 差額 / percent の top list 本文表示、自動反映、一括反映は扱わない。
+  - Revenue Assistant write API、rank 変更 POST は扱わない。
+- 受け入れ条件:
+  - mobile 390px 相当で、競合価格 preview open 時の横 overflow、preview 縦スクロール量、graph と部屋タイプ対応 note の読み順、primary / secondary action / pending notice の重なり有無が記録されている。
+  - `confirmed` / `ambiguous` / `unknown` の note が graph より先に読めるか、または読みにくい場合の理由が記録されている。
+  - 監視対象 write API POST 0 件、console / page error 0 件、focus return の可否が確認されている。自動確認できない場合は、確認できない理由を記録する。
+  - 変更が必要な場合は、表示対象、keyboard / focus、mobile、fixture / smoke、write API 非追加を含む実装 task が作られている。
+  - `git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `verify`: Chrome / Browser visual smoke, optional `npm run smoke:distribution -- --mode top`, `git diff --check`
+
+### RAU-UX-131 通常利用で競合価格 preview と `その他` details が判断速度を落としていないか観察する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 通常利用で、競合価格 preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いか、または `その他` details の開閉が候補処理を止めていないか確認する。
+  - 実利用証跡がある場合だけ、preview の要約化、二段階表示、`その他` details の row footer / popover 化を別 task として切る。
+- スコープ:
+  - 対象は top 料金調整候補 row の `競合価格` preview、`confirmed` / `ambiguous` / `unknown` note、Analyze / 曲線 / ランク調整への次操作、`その他` details、`様子見`、`対応不要`、`要点`、pending notice である。
+  - 通常 Chrome の実利用観察、配布版 top smoke の操作ログ、または同等の安全な DOM / visual 証跡を使う。
+  - この task では runtime UI を変更しない。
+- 非目標:
+  - preview の即時要約化、二段階表示、`その他` details の即時移設はこの task では行わない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - 競合価格 preview open 後に、利用者が Analyze / 曲線 / ランク調整へ進むか、preview だけで判断できるかが記録されている。
+  - `confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として誤読される兆候の有無が記録されている。
+  - `その他` details を探す開閉が多いか、`様子見` / `対応不要` / `要点` を見つけられず候補処理が止まるかが記録されている。
+  - 現行維持、preview 要約化 / 二段階表示、row footer、popover のどれを次に採るかの判断理由がある。
+  - 変更が必要な場合は、表示対象、操作順、hover / focus / keyboard、mobile 390px、write API 非追加を含む実装 task が作られている。
+  - `git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `verify`: Product Design observation note, Chrome / Browser DOM or visual evidence, `git diff --check`
 
 ### RAU-UX-121 `候補データ優先取得` の月別優先取得ボタンと進捗表示の重なりを解消する
 
@@ -8970,11 +9026,11 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- なし。
+- `RAU-UX-130`: 実データ競合価格 preview を mobile 390px で visual smoke する。
 
 Next:
 
-- なし。
+- `RAU-UX-131`: 通常利用で競合価格 preview と `その他` details が判断速度を落としていないか観察する。
 
 After Next:
 
@@ -8985,6 +9041,8 @@ Later:
 - なし。
 
 統合判断:
+
+- 2026-06-05 に、直前完了報告で残した確認視点を `RAU-UX-130` と `RAU-UX-131` として task 化した。`RAU-UX-130` は、current fixture ではなく配布版または同等の実データ preview で、mobile 390px の競合価格 graph、部屋タイプ対応 note、preview 縦スクロール量、横 overflow、focus return、監視対象 write API POST 0 件を確認する task である。`RAU-UX-131` は、通常利用で競合価格 preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いか、`confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として誤読されていないか、`その他` details の開閉が候補処理を止めていないかを観察する task である。重複確認では、`RAU-UX-128` は graph 密度の docs audit、`RAU-UX-129` は current fixture の action density audit として完了済みであり、今回の 2 件は実データ / 通常利用の後続観察であるため分ける。`docs/context/INTENT.md` は、表示密度、UI / UX、安全な作業キュー、request 数の判断に関わるため関連ありだが、既存原則で説明できるため更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
 - 2026-06-05 に、`RAU-UX-129` を完了した。Product Design の audit / plan first として、`競合価格` が top row の primary action に増えた後の `その他` details 再配置要否を確認した。current fixture marker check と mobile 390px layout check では、primary / secondary action、pending notice、competitor preview button、preview open state の構造が維持され、390px 横 overflow false、visible action group overlap 0 件だった。`その他` details は、補助操作を常時表示から外して primary action と分離できているため現行維持とし、row footer / popover への即時移設 task は追加しない。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。これにより Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 
