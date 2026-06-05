@@ -74,6 +74,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた価格推移 record filter の不要判定を `RAU-CP-44` として task 化して完了した。`selectPriceTrendRecordsForFilters()` は roomType filter が指定されている path でも、`hasCompletePriceTrendSpecificRoomTypeRecords(records)` で全 records を追加走査していた。この complete 判定は `roomTypeFilter === null` のときだけ、指定なし表示で specific room type records を優先するために必要なため、roomType filter 指定時は実行しないようにした。重複確認では、`RAU-CP-43` は競合価格 snapshot records の room type selection であり、価格推移 record filter の complete 判定 skip とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。価格推移 API request 範囲、request 件数、保存順序、保存 schema、background queue 停止条件、Revenue Assistant write API、rank change payload、価格推移 tab UI、競合価格 preview / tab UI、candidate scoring、priority、confidence、reasonFingerprint は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた reference curve の repeated scan を `RAU-CP-45` として task 化して完了した。`getRecentWeighted90CandidateStayDates()` は numeric tick の範囲計算で `filter()` と `map()` の中間配列を作ってから `Math.min` / `Math.max` しており、`buildActComparisonDiagnostics()` は同じ curve points を `lt === 0` と `lt === "ACT"` の 2 回 `find()` していた。どちらも 1 回の loop にまとめ、`0` / `ACT` が両方見つかった時点で探索を止めるようにした。重複確認では、`RAU-CP-42` は chart point の y 軸 range 計算、`RAU-UX-82` は latest / earliest selection の single pass 化であり、reference curve candidate stay date と ACT comparison diagnostics の repeated scan は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。reference curve 計算結果、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -333,6 +335,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: not-needed
   - `target-spec`: none
   - `verify`: Product Design audit note, `npm run check:fixture-markers`, `npm run build:vite:fixture`, mobile fixture layout check, `git diff --check`
+
+### RAU-CP-45 reference curve candidate / ACT diagnostics の repeated scan を 1 pass にする
+
+- 状態:
+  - 完了。
+- 目的:
+  - reference curve の candidate stay date と ACT comparison diagnostics で、同じ points / ticks を小さく複数走査している箇所を 1 pass に寄せる。
+- スコープ:
+  - 対象は `src/curveCore.ts` の `getRecentWeighted90CandidateStayDates()` と `buildActComparisonDiagnostics()` である。
+  - `getRecentWeighted90CandidateStayDates()` は numeric tick の `filter()` / `map()` 中間配列を作らず、1 回の loop で `minStartOffset` と `maxEndOffset` を更新する。
+  - `buildActComparisonDiagnostics()` は `lt === 0` と `lt === "ACT"` の 2 回 `find()` ではなく、1 回の loop で最初に見つかった point を保持し、両方見つかったら early exit する。
+- 非目標:
+  - reference curve の計算式、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - numeric tick がない場合の default range `-90` / `-1` が維持されている。
+  - `0` / `ACT` point の rooms と source count は従来どおり最初に見つかった point を使う。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `getRecentWeighted90CandidateStayDates()` は numeric tick を 1 回走査して `minStartOffset` と `maxEndOffset` を更新するようにした。
+  - `buildActComparisonDiagnostics()` は curve points を 1 回走査し、zero lead point と ACT point が両方見つかった時点で探索を止めるようにした。
+  - reference curve 計算結果、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
 ### RAU-UX-130 実データ競合価格 preview を mobile 390px で visual smoke する
 

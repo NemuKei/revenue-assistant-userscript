@@ -902,9 +902,15 @@ export function getRecentWeighted90CandidateStayDates(options: {
         return [];
     }
 
-    const numericTicks = options.ticks.filter((tick): tick is number => typeof tick === "number");
-    const minStartOffset = Math.min(...numericTicks.map((tick) => -(90 - tick)), -90);
-    const maxEndOffset = Math.max(...numericTicks, -1);
+    let minStartOffset = -90;
+    let maxEndOffset = -1;
+    for (const tick of options.ticks) {
+        if (typeof tick !== "number") {
+            continue;
+        }
+        minStartOffset = Math.min(minStartOffset, -(90 - tick));
+        maxEndOffset = Math.max(maxEndOffset, tick);
+    }
     const startDate = shiftDate(asOfDate, minStartOffset);
     const endDate = shiftDate(asOfDate, maxEndOffset);
     if (startDate === null || endDate === null) {
@@ -1367,8 +1373,19 @@ function clampForecastRooms(value: number, capacityRooms: number | null | undefi
 }
 
 function buildActComparisonDiagnostics(points: CurvePoint[]): ReferenceCurveActComparisonDiagnostics {
-    const zeroLeadPoint = points.find((point) => point.lt === 0);
-    const actPoint = points.find((point) => point.lt === "ACT");
+    let zeroLeadPoint: CurvePoint | undefined;
+    let actPoint: CurvePoint | undefined;
+    for (const point of points) {
+        if (zeroLeadPoint === undefined && point.lt === 0) {
+            zeroLeadPoint = point;
+        }
+        if (actPoint === undefined && point.lt === "ACT") {
+            actPoint = point;
+        }
+        if (zeroLeadPoint !== undefined && actPoint !== undefined) {
+            break;
+        }
+    }
     const zeroLeadRooms = zeroLeadPoint?.rooms ?? null;
     const actRooms = actPoint?.rooms ?? null;
 
