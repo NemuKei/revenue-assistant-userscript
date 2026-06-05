@@ -7362,6 +7362,20 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         return;
     }
 
+    const decisionRecordsRequest = readRankRecommendationDecisionRecords()
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation decisions`, { error });
+            return [] as RankRecommendationDecisionRecord[];
+        });
+    const statusesRequest = getLincolnSuggestStatusesForRange(dateRange.fromDateKey, dateRange.toDateKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to load rank recommendation resolved statuses`, {
+                fromDateKey: dateRange.fromDateKey,
+                toDateKey: dateRange.toDateKey,
+                error
+            });
+            return [] as LincolnSuggestStatus[];
+        });
     const curveEvidenceByKey = await buildRankRecommendationCurveEvidenceByKey(response, {
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
@@ -7384,20 +7398,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         rankLadder,
         rankOrderOverride
     });
-    const decisionRecords = await readRankRecommendationDecisionRecords()
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation decisions`, { error });
-            return [] as RankRecommendationDecisionRecord[];
-        });
-    const statuses = await getLincolnSuggestStatusesForRange(dateRange.fromDateKey, dateRange.toDateKey)
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to load rank recommendation resolved statuses`, {
-                fromDateKey: dateRange.fromDateKey,
-                toDateKey: dateRange.toDateKey,
-                error
-            });
-            return [] as LincolnSuggestStatus[];
-        });
+    const [decisionRecords, statuses] = await Promise.all([decisionRecordsRequest, statusesRequest]);
     const decisionFilterResult = applyRankRecommendationDecisionFilter(candidates, decisionRecords, batchDateKey);
     const resolvedFilterResult = applyResolvedRankRecommendationFilter(
         decisionFilterResult.candidates,
@@ -7530,6 +7531,19 @@ async function syncAnalyzeRankRecommendationList(
     }
 
     const visibleStayDates = new Set([analysisDate]);
+    const decisionRecordsRequest = readRankRecommendationDecisionRecords()
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read analyze rank recommendation decisions`, { error });
+            return [] as RankRecommendationDecisionRecord[];
+        });
+    const statusesRequest = getLincolnSuggestStatuses(analysisDate)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to load analyze rank recommendation resolved statuses`, {
+                analysisDate,
+                error
+            });
+            return [] as LincolnSuggestStatus[];
+        });
     const curveEvidenceByKey = await buildRankRecommendationCurveEvidenceByKey(response, {
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
@@ -7551,19 +7565,7 @@ async function syncAnalyzeRankRecommendationList(
         rankLadder,
         rankOrderOverride
     });
-    const decisionRecords = await readRankRecommendationDecisionRecords()
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to read analyze rank recommendation decisions`, { error });
-            return [] as RankRecommendationDecisionRecord[];
-        });
-    const statuses = await getLincolnSuggestStatuses(analysisDate)
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to load analyze rank recommendation resolved statuses`, {
-                analysisDate,
-                error
-            });
-            return [] as LincolnSuggestStatus[];
-        });
+    const [decisionRecords, statuses] = await Promise.all([decisionRecordsRequest, statusesRequest]);
     const decisionFilterResult = applyRankRecommendationDecisionFilter(candidates, decisionRecords, batchDateKey);
     const resolvedFilterResult = applyResolvedRankRecommendationFilter(decisionFilterResult.candidates, statuses, batchDateKey);
     const displayInfoByKey = buildRankRecommendationDisplayInfoByKey(

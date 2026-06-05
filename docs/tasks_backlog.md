@@ -54,6 +54,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた料金調整候補 sync 準備の waterfall を `RAU-CP-27` として task 化して完了した。`prepareSalesSettingSyncData()` は、current UI card の販売室数 capacity 表示更新で `current_settings` を待ってから、room groups と booking curve metrics を取得していた。capacity 表示更新は同じ cards にだけ依存し、room group ID 解決や hotel metrics の結果には依存しないため、capacity 更新、room groups 取得、hotel metrics 取得を同時に開始するようにした。`current_settings`、`room_groups`、`booking_curve` の対象 endpoint、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた料金調整候補 list / Analyze list の補助 read waterfall を `RAU-CP-28` として task 化して完了した。`syncRankRecommendationList()` と `syncAnalyzeRankRecommendationList()` は current settings と rank ladder 取得に成功した後、curve evidence を読み終えてから browser-local decision records と Lincoln suggestion status を読み始めていた。decision records と status は candidate filtering / display info に必要だが、curve evidence 自体には依存しないため、current settings 成功後に curve evidence と同時に開始するようにした。current settings が失敗した場合は従来どおり後続 read を開始しない。`current_settings`、Lincoln suggest status、IndexedDB decision store、booking curve raw source、reference curve、competitor price snapshot の対象範囲、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -483,6 +485,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `prepareSalesSettingSyncData()` は、`populateCurrentUiSalesSettingCapacities()`、`getRoomGroups()`、`loadSalesSettingBookingCurveMetrics()` を先に promise として開始し、room groups / hotel metrics の結果を受け取った後に capacity 更新の完了も待つ形にした。
   - `populateCurrentUiSalesSettingCapacities()` 内の `current_settings` 取得、capacity DOM 更新、失敗時 fallback は変更していない。
   - `current_settings`、`room_groups`、`booking_curve` の対象 endpoint、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-28 料金調整候補 list の補助 read 待ちを並列化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - top 料金調整候補 list と Analyze 候補 list の同期で、curve evidence を読み終えてから decision records / Lincoln suggestion status を読み始める waterfall を減らす。
+  - 成功 path の request 数や対象 endpoint を増やさず、独立した read の開始順だけを詰める。
+- スコープ:
+  - 対象は `src/main.ts` の `syncRankRecommendationList()` と `syncAnalyzeRankRecommendationList()` である。
+  - current settings と rank ladder が取得できた後、curve evidence、browser-local decision records、Lincoln suggestion status を同時に開始する。
+- 非目標:
+  - current settings 失敗時に後続 read を増やさない。
+  - candidate scoring、priority、confidence、reasonFingerprint、rank order、candidate filter、display limit、preview graph、保存 schema は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - top list では `buildRankRecommendationCurveEvidenceByKey()` と `readRankRecommendationDecisionRecords()` と `getLincolnSuggestStatusesForRange()` が、current settings 成功後に同時開始される。
+  - Analyze list では `buildRankRecommendationCurveEvidenceByKey()` と `readRankRecommendationDecisionRecords()` と `getLincolnSuggestStatuses()` が、current settings 成功後に同時開始される。
+  - decision records / statuses の fallback と warning は従来どおり維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - top list / Analyze list の両方で、decision records request と statuses request を curve evidence の前に promise として開始し、candidate filtering / display info の前に `Promise.all` で受け取るようにした。
+  - current settings が `null` の error path では従来どおり render error で return するため、decision/status/curve evidence の後続 read は開始しない。
+  - `current_settings`、Lincoln suggest status、IndexedDB decision store、booking curve raw source、reference curve、competitor price snapshot の対象範囲、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
