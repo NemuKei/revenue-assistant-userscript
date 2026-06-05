@@ -299,11 +299,10 @@ async function persistCompetitorPriceSnapshotInternal(
         };
     }
 
-    const previousRecord = await readLatestCompetitorPriceSnapshot(
-        options.facilityId,
-        requestContext.conditionSignature
-    );
-    const response = await loadCompetitorPrices(requestContext.url);
+    const [previousRecord, response] = await Promise.all([
+        readLatestCompetitorPriceSnapshot(options.facilityId, requestContext.conditionSignature),
+        loadCompetitorPrices(requestContext.url)
+    ]);
     const fetchedAt = new Date().toISOString();
     const record: CompetitorPriceSnapshotRecord = {
         snapshotKey: buildCompetitorPriceSnapshotKey(options.facilityId, requestContext.conditionSignature, fetchedAt),

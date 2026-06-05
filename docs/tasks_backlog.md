@@ -640,6 +640,33 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-38 競合価格 snapshot 保存時の前回 record read と価格 fetch を重ねる
+
+- 状態:
+  - 完了。
+- 目的:
+  - 競合価格 snapshot 保存で、前回 snapshot read と価格 fetch の待ち時間を重ねる。
+  - 価格取得 request の URL や payload に依存しない IndexedDB read を先に待ち切らない。
+- スコープ:
+  - 対象は `src/competitorPriceSnapshotStore.ts` の `persistCompetitorPriceSnapshotInternal()` である。
+  - `previousRecord` は従来どおり同じ condition の保存済み latest snapshot として返す。
+- 非目標:
+  - 競合価格 API request 範囲、request 件数、保存順序、保存 schema、background queue 停止条件、Revenue Assistant write API、rank 変更 POST、preview UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - `readLatestCompetitorPriceSnapshot()` と `loadCompetitorPrices()` が独立処理として同時に開始される。
+  - `previousRecord`、保存 record、`stored` / `indexeddb-unavailable` の戻り値契約は従来どおりである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `persistCompetitorPriceSnapshotInternal()` で `readLatestCompetitorPriceSnapshot()` と `loadCompetitorPrices()` を `Promise.all` で待つようにした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:
