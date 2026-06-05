@@ -525,6 +525,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-34 weekday context raw source read を sync 内 reader へ揃える
+
+- 状態:
+  - 完了。
+- 目的:
+  - rank recommendation の weekday context evidence で、同曜日候補の `booking_curve_raw_source` read を sync 内の共有 reader に揃える。
+  - `RAU-CP-33` で共有した raw source read promise の範囲から漏れていた direct read path を減らし、同一 sync 内の IndexedDB read 待ちを少し短くする。
+- スコープ:
+  - 対象は `buildRankRecommendationWeekdayContextEvidence()` と、その呼び出し元である `readRankRecommendationCurveEvidence()` である。
+  - 共有範囲は `syncRankRecommendationList()` または `syncAnalyzeRankRecommendationList()` の 1 回の呼び出し内に限定する。
+- 非目標:
+  - Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更しない。
+  - weekday context の閾値、対象同曜日、diagnostics、表示文言は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - weekday context の同曜日 raw source read が、呼び出し元から渡された `RankRecommendationRawSourceRecordReader` を使う。
+  - 呼び出し元から reader が渡されない場合も、従来どおり同じ key の raw source を読める。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `buildRankRecommendationWeekdayContextEvidence()` に任意の `rawSourceReader` を追加した。
+  - `readRankRecommendationCurveEvidence()` は、既存の sync 内 reader を weekday context evidence へ渡すようにした。
+  - direct な raw source cache key 組み立てと `readBookingCurveRawSourceRecord()` 呼び出しを、共有 reader 呼び出しへ置き換えた。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:

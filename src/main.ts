@@ -8437,7 +8437,8 @@ async function readRankRecommendationCurveEvidence(options: {
             stayDate: options.stayDate,
             asOfDate: options.asOfDate,
             roomGroupId: options.roomGroupId,
-            currentTransientRooms
+            currentTransientRooms,
+            rawSourceReader
         }),
         options.ownPricePositionEvidence
     ]);
@@ -8615,6 +8616,7 @@ async function buildRankRecommendationWeekdayContextEvidence(options: {
     asOfDate: string;
     roomGroupId: string;
     currentTransientRooms: number | null;
+    rawSourceReader?: RankRecommendationRawSourceRecordReader;
 }): Promise<{ signal: RankRecommendationWeekdayContextSignal | null; diagnostics: string[] }> {
     const diagnostics: string[] = [];
     if (options.currentTransientRooms === null) {
@@ -8633,28 +8635,15 @@ async function buildRankRecommendationWeekdayContextEvidence(options: {
         return { signal: null, diagnostics };
     }
 
+    const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
+        facilityId: options.facilityId,
+        asOfDate: options.asOfDate
+    });
     await Promise.all(candidateStayDates.map(async (stayDate) => {
-        const query = buildBookingCurveQuerySignature(stayDate, options.roomGroupId);
-        const rawSourceKey = buildBookingCurveRawSourceCacheKey({
-            facilityId: options.facilityId,
+        const record = await rawSourceReader({
             stayDate,
-            asOfDate: options.asOfDate,
-            scope: "roomGroup",
-            roomGroupId: options.roomGroupId,
-            endpoint: BOOKING_CURVE_ENDPOINT,
-            query
+            roomGroupId: options.roomGroupId
         });
-        const record = await readBookingCurveRawSourceRecord(rawSourceKey)
-            .catch((error: unknown) => {
-                console.warn(`[${SCRIPT_NAME}] failed to read weekday context source`, {
-                    targetStayDate: options.stayDate,
-                    sourceStayDate: stayDate,
-                    asOfDate: options.asOfDate,
-                    roomGroupId: options.roomGroupId,
-                    error
-                });
-                return undefined;
-            });
         if (record === undefined) {
             return;
         }
