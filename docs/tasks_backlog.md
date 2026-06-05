@@ -736,6 +736,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-58 curve preview max value 準備を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - top 料金調整候補の curve preview y 軸最大値を決める際の、series values / marker values / filtered values の中間配列と `Math.max(...values)` spread を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `resolveRankRecommendationCurvePreviewMaxValue()` である。
+  - preview series と rank marker を loop し、finite number の最大値だけを更新する。
+- 非目標:
+  - `response.max_room_count` 優先、finite number だけ採用、最小値 1 は変更しない。
+  - overall / secondary の current / recent / seasonal series、overall / secondary rank marker の採用対象は変更しない。
+  - reference curve 表示結果、tooltip、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - `response.max_room_count` が正の finite number の場合は従来どおりそれを返す。
+  - `response.max_room_count` が使えない場合は、series values と marker values の finite number の最大値、または 1 を返す。
+  - curve preview の y 軸最大値と表示契約は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `flatMap()`、marker values spread、filtered values 配列をやめ、loop で `maxValue` だけを更新するようにした。
+  - reference curve 表示結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-UX-130 実データ競合価格 preview を mobile 390px で visual smoke する
 
 - 状態:

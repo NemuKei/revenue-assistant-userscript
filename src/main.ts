@@ -8330,21 +8330,35 @@ function resolveRankRecommendationCurvePreviewMaxValue(
         return response.max_room_count;
     }
 
-    const seriesValues = [
+    const previewSeries = [
         curveData.overall.current,
         curveData.overall.recent,
         curveData.overall.seasonal,
         curveData.secondary.current,
         curveData.secondary.recent,
         curveData.secondary.seasonal
-    ].flatMap((series) => series?.values ?? []);
-    const markerValues = [
-        ...curveData.overallRankMarkers.map((marker) => marker.value),
-        ...curveData.secondaryRankMarkers.map((marker) => marker.value)
     ];
-    const values = [...seriesValues, ...markerValues]
-        .filter((value): value is number => typeof value === "number" && Number.isFinite(value));
-    return Math.max(1, ...values);
+    let maxValue = 1;
+    const updateMaxValue = (value: unknown): void => {
+        if (typeof value === "number" && Number.isFinite(value) && value > maxValue) {
+            maxValue = value;
+        }
+    };
+    for (const series of previewSeries) {
+        if (series === null || series === undefined) {
+            continue;
+        }
+        for (const value of series.values) {
+            updateMaxValue(value);
+        }
+    }
+    for (const marker of curveData.overallRankMarkers) {
+        updateMaxValue(marker.value);
+    }
+    for (const marker of curveData.secondaryRankMarkers) {
+        updateMaxValue(marker.value);
+    }
+    return maxValue;
 }
 
 async function readRankRecommendationCurveEvidence(options: {
