@@ -48,6 +48,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-CP-24` を完了した。価格推移 tab の初回取得前に `PriceTrendRequestContext` を 1 回作り、初回 16 scope と background 112 scope の `fetchAndPersistPriceTrendRecords()` に同じ context を渡すことで、`/api/v2/yad/info` と `/api/v2/competitors` の準備取得を各 scope ごとに繰り返さないようにした。context 共有は in-memory の価格推移 tab session に限定し、queue reset で破棄する。`/api/v1/price_trends` の対象 scope、1 秒間隔、停止条件、保存 schema、Revenue Assistant write API、rank change payload は変更していない。spec-governance 判定では、外部表示、入出力契約、保存 schema、受け入れ条件を変えない内部最適化であるため、`docs/spec_001_analyze_expansion.md` は更新不要とした。`smoke:distribution --mode price-trends` は実ログイン済み Revenue Assistant へ触れるため、明示承認なしでは実行していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた競合価格 snapshot の取得準備コストを `RAU-CP-25` として task 化して完了した。`persistCompetitorPriceSnapshotsForSource()` は同じ宿泊日の `指定なし` と部屋タイプ別 snapshot を順番に保存するが、従来は各 request 前に `/api/v2/competitors` を読み直していた。`CompetitorPriceRequestContextBase` を 1 回作り、同じ宿泊日内の `persistCompetitorPriceSnapshot()` へ渡すことで、競合施設一覧の準備取得を snapshot 条件ごとに繰り返さないようにした。context 共有は 1 回の `persistCompetitorPriceSnapshotsForSource()` 呼び出し内に限定する。`/api/v5/competitor_prices` の対象条件、保存順序、background queue 停止条件、保存 schema、Revenue Assistant write API、rank change payload、request 間隔、同時実行数は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -396,6 +398,37 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: not-needed
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, optional approved `npm run smoke:distribution -- --mode price-trends`, `git diff --check`
+
+### RAU-CP-25 競合価格 snapshot の competitors 再取得を減らす
+
+- 状態:
+  - 完了。
+- 目的:
+  - 競合価格 snapshot 保存時に、`指定なし` と部屋タイプ別 request のたびに `/api/v2/competitors` を読み直す準備コストを減らす。
+  - 競合価格本体の `/api/v5/competitor_prices` 条件、保存順序、background queue の安全条件を変えずに、余分な read request を削る。
+- スコープ:
+  - 対象は `src/competitorPriceSnapshotStore.ts` の `persistCompetitorPriceSnapshot()` / request context 生成と、`src/main.ts` の `persistCompetitorPriceSnapshotsForSource()` の受け渡しである。
+  - context 共有は 1 回の `persistCompetitorPriceSnapshotsForSource()` 呼び出し内に限定する。
+- 非目標:
+  - `/api/v5/competitor_prices` の対象条件、request 間隔、同時実行数、background queue 停止条件は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データは Git 管理へ入れない。
+- 受け入れ条件:
+  - 同じ宿泊日の snapshot 保存中に、競合施設一覧 context が 1 回だけ作られ、各部屋タイプ snapshot へ渡される。
+  - `persistCompetitorPriceSnapshot()` 単体呼び出しは、context が渡されない場合でも従来どおり自分で context を作れる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `CompetitorPriceRequestContextBase` と `loadCompetitorPriceRequestContextBase()` を追加し、競合施設一覧の normalize 済み `competitorSet` を共有できるようにした。
+  - `persistCompetitorPriceSnapshotsForSource()` は、同じ宿泊日の snapshot 保存前に context base を 1 回作り、`指定なし` と部屋タイプ別の `persistCompetitorPriceSnapshot()` へ渡す。
+  - `persistCompetitorPriceSnapshot()` は `requestContextBase` がない場合だけ従来どおり `/api/v2/competitors` から context base を作るため、既存の単体呼び出し contract は維持する。
+  - stale risk は、同じ `persistCompetitorPriceSnapshotsForSource()` 呼び出し中に Revenue Assistant 側の競合施設設定を変更した場合に、その呼び出し内の残り request へ即時反映されない点である。永続 cache や queue session cache ではなく、1 回の保存処理内だけの共有に留める。
+  - `/api/v5/competitor_prices` の対象条件、保存順序、background queue 停止条件、保存 schema、Revenue Assistant write API、rank change payload、request 間隔、同時実行数は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
 ### RAU-UX-121 `候補データ優先取得` の月別優先取得ボタンと進捗表示の重なりを解消する
 

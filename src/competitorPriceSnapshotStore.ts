@@ -89,6 +89,7 @@ export interface PersistCompetitorPriceSnapshotOptions {
     stayDate: string;
     source?: "analyze-open" | "competitor-tab";
     jalanRoomTypes?: string[] | null;
+    requestContextBase?: CompetitorPriceRequestContextBase;
 }
 
 export interface PersistCompetitorPriceSnapshotResult {
@@ -107,6 +108,10 @@ export interface CompetitorPriceSnapshotSeries {
     records: CompetitorPriceSnapshotRecord[];
     latestRecord: CompetitorPriceSnapshotRecord | null;
     previousRecord: CompetitorPriceSnapshotRecord | null;
+}
+
+export interface CompetitorPriceRequestContextBase {
+    competitorSet: CompetitorPriceSnapshotCompetitor[];
 }
 
 interface CompetitorPriceRequestContext {
@@ -139,7 +144,11 @@ export function buildCompetitorPriceConditionSignature(condition: CompetitorPric
 export async function persistCompetitorPriceSnapshot(
     options: PersistCompetitorPriceSnapshotOptions
 ): Promise<PersistCompetitorPriceSnapshotResult> {
-    const requestContext = await buildCompetitorPriceRequestContext(options.stayDate, options.jalanRoomTypes ?? null);
+    const requestContext = buildCompetitorPriceRequestContext(
+        options.stayDate,
+        options.jalanRoomTypes ?? null,
+        options.requestContextBase ?? await loadCompetitorPriceRequestContextBase()
+    );
     if (requestContext === null) {
         return {
             stored: false,
@@ -301,21 +310,12 @@ async function persistCompetitorPriceSnapshotInternal(
     };
 }
 
-async function buildCompetitorPriceRequestContext(
+function buildCompetitorPriceRequestContext(
     stayDate: string,
-    jalanRoomTypes: string[] | null
-): Promise<CompetitorPriceRequestContext | null> {
-    const competitors = await loadCompetitors();
-    const competitorSet = competitors
-        .map((competitor) => ({
-            yadNo: normalizeString(competitor.yad_no),
-            name: normalizeString(competitor.name)
-        }))
-        .filter((competitor): competitor is CompetitorPriceSnapshotCompetitor => (
-            competitor.yadNo !== null
-            && competitor.name !== null
-        ));
-
+    jalanRoomTypes: string[] | null,
+    requestContextBase: CompetitorPriceRequestContextBase
+): CompetitorPriceRequestContext | null {
+    const { competitorSet } = requestContextBase;
     if (competitorSet.length === 0) {
         return null;
     }
@@ -348,6 +348,21 @@ async function buildCompetitorPriceRequestContext(
         query: url.searchParams.toString(),
         url: url.toString(),
         conditionSignature: buildCompetitorPriceConditionSignature(searchCondition)
+    };
+}
+
+export async function loadCompetitorPriceRequestContextBase(): Promise<CompetitorPriceRequestContextBase> {
+    const competitors = await loadCompetitors();
+    return {
+        competitorSet: competitors
+            .map((competitor) => ({
+                yadNo: normalizeString(competitor.yad_no),
+                name: normalizeString(competitor.name)
+            }))
+            .filter((competitor): competitor is CompetitorPriceSnapshotCompetitor => (
+                competitor.yadNo !== null
+                && competitor.name !== null
+            ))
     };
 }
 

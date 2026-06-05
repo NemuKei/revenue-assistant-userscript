@@ -59,8 +59,10 @@ import {
     writeBookingCurveRawSourceRecord
 } from "./bookingCurveRawSourceStore";
 import {
+    loadCompetitorPriceRequestContextBase,
     persistCompetitorPriceSnapshot,
     readCompetitorPriceSnapshotSeriesForStayDate,
+    type CompetitorPriceRequestContextBase,
     type CompetitorPriceSnapshotPlan,
     type CompetitorPriceSnapshotRecord
 } from "./competitorPriceSnapshotStore";
@@ -6710,13 +6712,15 @@ async function persistCompetitorPriceSnapshotsForSource(
     const records: CompetitorPriceSnapshotRecord[] = [];
     let previousRecord: CompetitorPriceSnapshotRecord | null = null;
     let skipReason: "indexeddb-unavailable" | "no-competitors" | undefined;
+    const requestContextBase: CompetitorPriceRequestContextBase = await loadCompetitorPriceRequestContextBase();
 
     for (const jalanRoomTypes of roomTypeRequests) {
         const result = await persistCompetitorPriceSnapshot({
             facilityId: facilityCacheKey,
             stayDate: analysisDate,
             source,
-            jalanRoomTypes
+            jalanRoomTypes,
+            requestContextBase
         });
         if (!result.stored) {
             skipReason = result.reason;
