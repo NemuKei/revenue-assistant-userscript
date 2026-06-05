@@ -68,6 +68,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview reference data の raw source read 重複を `RAU-CP-32` として task 化して完了した。top 料金調整候補の曲線 preview reference data は、reference curve cache miss 時に、同じ curve kind (`recent_weighted_90` / `seasonal_component`) の raw source 群を segment (`all` / `transient` / `group`) ごとに読み直す余地があった。同一 preview 内では curve kind ごとの `readRankRecommendationCurvePreviewReferenceSources()` promise を共有し、cache miss 時の IndexedDB raw source read を segment 間で再利用する。重複確認では、`RAU-CP-31` は preview info hit path の保存状態 read 削減であり、reference data cache miss 時の source read 共有とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。reference curve cache key、reference curve 計算結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた rank recommendation sync 内の raw source read 重複を `RAU-CP-33` として task 化して完了した。top 料金調整候補 sync は、候補生成用の curve evidence と表示用の curve preview info で同じ `booking_curve_raw_source` key を別々に IndexedDB read する余地があった。1 回の sync 内だけで使う `createRankRecommendationRawSourceRecordReader()` を追加し、top sync では候補生成、preview info、preview reference source の raw source read promise を同じ key で共有し、Analyze sync では候補生成用 evidence の raw source read を同じ reader 経由に揃える。cache は sync 呼び出し内に限定し、次回 sync や別画面には持ち越さない。重複確認では、`RAU-CP-32` は preview reference data 内の curve kind 別 source read 共有であり、候補生成と preview info の間の raw source read 共有とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -488,6 +490,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `buildRankRecommendationCurvePreviewReferenceData()` に curve kind 単位の `referenceSourcesByKind` を追加した。
   - `readRankRecommendationCurvePreviewReferenceResult()` は、呼び出し側から共有 source loader を渡された場合にそれを使うようにした。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-33 rank recommendation sync 内の raw source read を共有する
+
+- 状態:
+  - 完了。
+- 目的:
+  - top 料金調整候補 sync で、候補生成と曲線 preview 情報が同じ `booking_curve_raw_source` を読み直す回数を減らす。
+  - sync 1 回の中だけで raw source read promise を共有し、表示までの待ちを少し短くする。
+- スコープ:
+  - 対象は `buildRankRecommendationCurveEvidenceByKey()`、`buildRankRecommendationCurvePreviewInfoByKey()`、`readRankRecommendationCurvePreviewReferenceSources()` の raw source read である。
+  - 共有範囲は `syncRankRecommendationList()` または `syncAnalyzeRankRecommendationList()` の 1 回の呼び出し内に限定する。Analyze 側は候補生成用 evidence の raw source read を対象にする。
+- 非目標:
+  - Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - 同じ sync 内で同じ raw source key を読む場合、同じ promise が再利用される。
+  - 次回 sync や別画面には raw source read cache を持ち越さない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `createRankRecommendationRawSourceRecordReader()` を追加した。
+  - top の rank recommendation sync で reader を作り、evidence、preview info、preview reference source へ渡すようにした。
+  - Analyze の rank recommendation sync では、evidence の raw source read を同じ reader 経由に揃えた。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed

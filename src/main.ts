@@ -55,6 +55,7 @@ import {
     readBookingCurveRawSourceStoredRoomGroupStatus,
     readBookingCurveRawSourceStoredStayDateStatuses,
     readBookingCurveRawSourceRecord,
+    type BookingCurveRawSourceRecord,
     type BookingCurveRawSourceStoredRoomGroupStatus,
     writeBookingCurveRawSourceRecord
 } from "./bookingCurveRawSourceStore";
@@ -7366,10 +7367,15 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             });
             return [] as LincolnSuggestStatus[];
         });
+    const rawSourceReader = createRankRecommendationRawSourceRecordReader({
+        facilityId: facilityCacheKey,
+        asOfDate: batchDateKey
+    });
     const curveEvidenceByKey = await buildRankRecommendationCurveEvidenceByKey(response, {
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
-        visibleStayDates: new Set(cells.map((cell) => cell.stayDate))
+        visibleStayDates: new Set(cells.map((cell) => cell.stayDate)),
+        rawSourceReader
     });
 
     const rankOrderOverride = readRankRecommendationRankOrderOverride(facilityCacheKey);
@@ -7416,7 +7422,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     const curvePreviewInfoByKey = await buildRankRecommendationCurvePreviewInfoByKey(visibleCandidates, {
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
-        statuses
+        statuses,
+        rawSourceReader
     });
     rememberRankRecommendationCurvePreviewSnapshot(visibleCandidates, curvePreviewInfoByKey);
     const hiddenSummary = {
@@ -7534,10 +7541,15 @@ async function syncAnalyzeRankRecommendationList(
             });
             return [] as LincolnSuggestStatus[];
         });
+    const rawSourceReader = createRankRecommendationRawSourceRecordReader({
+        facilityId: facilityCacheKey,
+        asOfDate: batchDateKey
+    });
     const curveEvidenceByKey = await buildRankRecommendationCurveEvidenceByKey(response, {
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
-        visibleStayDates
+        visibleStayDates,
+        rawSourceReader
     });
     const rankOrderOverride = readRankRecommendationRankOrderOverride(facilityCacheKey);
     const rankOrderResolution = resolveRankRecommendationRankOrder({
@@ -7805,14 +7817,62 @@ function formatRankRecommendationCurrentSettingsErrorStatus(error: unknown): str
     return "料金調整候補: current settings を取得できませんでした";
 }
 
+interface RankRecommendationRawSourceRecordReader {
+    (options: {
+        stayDate: string;
+        roomGroupId: string;
+    }): Promise<BookingCurveRawSourceRecord | undefined>;
+}
+
+function createRankRecommendationRawSourceRecordReader(options: {
+    facilityId: string;
+    asOfDate: string;
+}): RankRecommendationRawSourceRecordReader {
+    const pendingByKey = new Map<string, Promise<BookingCurveRawSourceRecord | undefined>>();
+    return ({ stayDate, roomGroupId }) => {
+        const query = buildBookingCurveQuerySignature(stayDate, roomGroupId);
+        const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+            facilityId: options.facilityId,
+            stayDate,
+            asOfDate: options.asOfDate,
+            scope: "roomGroup",
+            roomGroupId,
+            endpoint: BOOKING_CURVE_ENDPOINT,
+            query
+        });
+        const cached = pendingByKey.get(rawSourceKey);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const request = readBookingCurveRawSourceRecord(rawSourceKey)
+            .catch((error: unknown) => {
+                console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation booking curve raw source`, {
+                    stayDate,
+                    asOfDate: options.asOfDate,
+                    roomGroupId,
+                    error
+                });
+                return undefined;
+            });
+        pendingByKey.set(rawSourceKey, request);
+        return request;
+    };
+}
+
 async function buildRankRecommendationCurveEvidenceByKey(
     response: RankRecommendationCurrentSettingsResponse,
     options: {
         facilityId: string;
         asOfDate: string;
         visibleStayDates: Set<string>;
+        rawSourceReader?: RankRecommendationRawSourceRecordReader;
     }
 ): Promise<Map<string, RankRecommendationCurveEvidence>> {
+    const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
+        facilityId: options.facilityId,
+        asOfDate: options.asOfDate
+    });
     const ownPricePositionEvidenceByStayDate = new Map<string, Promise<RankRecommendationOwnPricePositionEvidence>>();
     const getOwnPricePositionEvidence = (stayDate: string): Promise<RankRecommendationOwnPricePositionEvidence> => {
         const cached = ownPricePositionEvidenceByStayDate.get(stayDate);
@@ -7845,7 +7905,8 @@ async function buildRankRecommendationCurveEvidenceByKey(
                 stayDate,
                 asOfDate: options.asOfDate,
                 roomGroupId,
-                ownPricePositionEvidence: getOwnPricePositionEvidence(stayDate)
+                ownPricePositionEvidence: getOwnPricePositionEvidence(stayDate),
+                rawSourceReader
             })];
         });
     }));
@@ -7859,8 +7920,13 @@ async function buildRankRecommendationCurvePreviewInfoByKey(
         facilityId: string;
         asOfDate: string;
         statuses: readonly LincolnSuggestStatus[];
+        rawSourceReader?: RankRecommendationRawSourceRecordReader;
     }
 ): Promise<Map<string, RankRecommendationCurvePreviewInfo>> {
+    const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
+        facilityId: options.facilityId,
+        asOfDate: options.asOfDate
+    });
     const rankHistoryByStayDate = new Map<string, Map<string, SalesSettingRankHistoryEvent[]>>();
     const getRankHistory = (candidate: RankRecommendationCandidate): SalesSettingRankHistoryEvent[] => {
         let historyByRoomGroupName = rankHistoryByStayDate.get(candidate.stayDate);
@@ -7877,7 +7943,8 @@ async function buildRankRecommendationCurvePreviewInfoByKey(
             candidate,
             facilityId: options.facilityId,
             asOfDate: options.asOfDate,
-            rankHistory: getRankHistory(candidate)
+            rankHistory: getRankHistory(candidate),
+            rawSourceReader
         });
         return [key, previewInfo] as const;
     }));
@@ -7889,27 +7956,16 @@ async function readRankRecommendationCurvePreviewInfo(options: {
     facilityId: string;
     asOfDate: string;
     rankHistory: SalesSettingRankHistoryEvent[];
+    rawSourceReader?: RankRecommendationRawSourceRecordReader;
 }): Promise<RankRecommendationCurvePreviewInfo> {
-    const query = buildBookingCurveQuerySignature(options.candidate.stayDate, options.candidate.roomGroupId);
-    const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+    const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
         facilityId: options.facilityId,
-        stayDate: options.candidate.stayDate,
-        asOfDate: options.asOfDate,
-        scope: "roomGroup",
-        roomGroupId: options.candidate.roomGroupId,
-        endpoint: BOOKING_CURVE_ENDPOINT,
-        query
+        asOfDate: options.asOfDate
     });
-    const record = await readBookingCurveRawSourceRecord(rawSourceKey)
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation curve preview source`, {
-                stayDate: options.candidate.stayDate,
-                asOfDate: options.asOfDate,
-                roomGroupId: options.candidate.roomGroupId,
-                error
-            });
-            return undefined;
-        });
+    const record = await rawSourceReader({
+        stayDate: options.candidate.stayDate,
+        roomGroupId: options.candidate.roomGroupId
+    });
 
     if (record === undefined) {
         const storedRoomGroupStatus = await readBookingCurveRawSourceStoredRoomGroupStatus(
@@ -7942,7 +7998,8 @@ async function readRankRecommendationCurvePreviewInfo(options: {
         candidate: options.candidate,
         facilityId: options.facilityId,
         asOfDate: options.asOfDate,
-        response
+        response,
+        rawSourceReader
     });
     const currentOverallRoomCount = normalizeBookingCurveRoomCount(point.all?.this_year_room_sum);
     const diagnostics = collectRankRecommendationCurvePreviewDiagnostics(referenceData);
@@ -8037,6 +8094,7 @@ async function buildRankRecommendationCurvePreviewReferenceData(options: {
     facilityId: string;
     asOfDate: string;
     response: BookingCurveResponse;
+    rawSourceReader?: RankRecommendationRawSourceRecordReader;
 }): Promise<SalesSettingBookingCurveReferenceData> {
     const referenceSourcesByKind = new Map<ReferenceCurveKind, Promise<BookingCurveResponseSource[]>>();
     const getReferenceSources = (
@@ -8052,7 +8110,8 @@ async function buildRankRecommendationCurvePreviewReferenceData(options: {
             facilityId: options.facilityId,
             asOfDate: options.asOfDate,
             roomGroupId: options.candidate.roomGroupId,
-            stayDates
+            stayDates,
+            ...(options.rawSourceReader === undefined ? {} : { rawSourceReader: options.rawSourceReader })
         });
         referenceSourcesByKind.set(curveKind, request);
         return request;
@@ -8202,6 +8261,7 @@ async function readRankRecommendationCurvePreviewReferenceSources(options: {
     asOfDate: string;
     roomGroupId: string;
     stayDates: readonly string[];
+    rawSourceReader?: RankRecommendationRawSourceRecordReader;
 }): Promise<BookingCurveResponseSource[]> {
     const asOfDateKey = toCompactDateKey(options.asOfDate);
     if (asOfDateKey === null) {
@@ -8212,27 +8272,16 @@ async function readRankRecommendationCurvePreviewReferenceSources(options: {
         const compactStayDate = toCompactDateKey(stayDate);
         return compactStayDate === null ? [] : [compactStayDate];
     })));
-    const records = await Promise.all(uniqueStayDates.map(async (stayDate) => {
-        const rawSourceKey = buildBookingCurveRawSourceCacheKey({
-            facilityId: options.facilityId,
+    const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
+        facilityId: options.facilityId,
+        asOfDate: asOfDateKey
+    });
+    const records = await Promise.all(uniqueStayDates.map(async (stayDate) => (
+        rawSourceReader({
             stayDate,
-            asOfDate: asOfDateKey,
-            scope: "roomGroup",
-            roomGroupId: options.roomGroupId,
-            endpoint: BOOKING_CURVE_ENDPOINT,
-            query: buildBookingCurveQuerySignature(stayDate, options.roomGroupId)
-        });
-        return readBookingCurveRawSourceRecord(rawSourceKey)
-            .catch((error: unknown) => {
-                console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation preview reference source`, {
-                    stayDate,
-                    asOfDate: asOfDateKey,
-                    roomGroupId: options.roomGroupId,
-                    error
-                });
-                return undefined;
-            });
-    }));
+            roomGroupId: options.roomGroupId
+        })
+    )));
 
     return records
         .filter((record): record is NonNullable<typeof record> => record !== undefined)
@@ -8286,28 +8335,17 @@ async function readRankRecommendationCurveEvidence(options: {
     asOfDate: string;
     roomGroupId: string;
     ownPricePositionEvidence: Promise<RankRecommendationOwnPricePositionEvidence>;
+    rawSourceReader?: RankRecommendationRawSourceRecordReader;
 }): Promise<[string, RankRecommendationCurveEvidence] | null> {
-    const query = buildBookingCurveQuerySignature(options.stayDate, options.roomGroupId);
-    const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+    const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
         facilityId: options.facilityId,
-        stayDate: options.stayDate,
-        asOfDate: options.asOfDate,
-        scope: "roomGroup",
-        roomGroupId: options.roomGroupId,
-        endpoint: BOOKING_CURVE_ENDPOINT,
-        query
+        asOfDate: options.asOfDate
     });
     const evidenceKey = buildRankRecommendationEvidenceKey(options.stayDate, options.roomGroupId);
-    const record = await readBookingCurveRawSourceRecord(rawSourceKey)
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation curve evidence`, {
-                stayDate: options.stayDate,
-                asOfDate: options.asOfDate,
-                roomGroupId: options.roomGroupId,
-                error
-            });
-            return undefined;
-        });
+    const record = await rawSourceReader({
+        stayDate: options.stayDate,
+        roomGroupId: options.roomGroupId
+    });
 
     if (record === undefined) {
         const ownPricePositionEvidence = await options.ownPricePositionEvidence;
