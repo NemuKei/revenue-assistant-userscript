@@ -80,6 +80,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた月次 response compact の中間配列生成を `RAU-CP-47` として task 化して完了した。`compactMonthlyBookingCurvePoints()` は、月次 `/api/v1/booking_curve/monthly` response の points を `map()` で null 混じりの中間配列へ変換してから `filter()` で invalid date を落としていた。1 回の loop で valid point だけを push するようにし、月次 response 保存時の不要な中間配列を減らした。重複確認では、`RAU-CP-46` は月次 preview の比較 snapshot read 並列化であり、月次 response compact の `map().filter()` 1 pass 化とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。invalid date 除外、`this_year_sum` / `last_year_sum` の number 判定、null fallback、保存 schema、月次 API request 範囲、background prefetch、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、直前の Build Web Apps 静的点検で残した推奨を `RAU-CP-48` として task 化した。`buildRankRecommendationCurveEvidenceByKey()` は、rank recommendation current settings response から curve evidence request を作るときに、外側 current setting と内側 room group の両方で `flatMap()` を使い、skip path で空配列、hit path で 1 要素配列を作ってから `Promise.all` に渡している。これは API request 数や並列性を変えずに、loop で request 配列へ push するだけで中間配列を減らせる余地がある。重複確認では、`RAU-CP-31` から `RAU-CP-34` は raw source read 共有、`RAU-CP-45` は reference curve repeated scan、`RAU-CP-47` は月次 response compact の `map().filter()` 1 pass 化であり、rank evidence request 準備の nested `flatMap()` 削減は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。今回の task 化では、runtime UI、`src/`、`dist`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Remaining Task Triage は Now `RAU-CP-48`、Next `RAU-UX-130`、After Next `RAU-UX-131`、Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -418,6 +420,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `compactMonthlyBookingCurvePoints()` は 1 回の loop で valid point だけを `compactPoints` へ push するようにした。
   - invalid date 除外、`this_year_sum` / `last_year_sum` の number 判定、null fallback、保存 schema、月次 API request 範囲、background prefetch、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-48 rank evidence request 準備の nested `flatMap()` を loop 化する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - rank recommendation current settings response から curve evidence request を作る処理で、skip path の空配列と hit path の 1 要素配列を減らす。
+  - `Promise.all` の並列性と取得対象を維持したまま、request 準備時の中間配列生成を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `buildRankRecommendationCurveEvidenceByKey()` である。
+  - `response.suggest_output_current_settings` と `rm_room_groups` を loop し、visible stay date と `roomGroupId` が有効なものだけ `readRankRecommendationCurveEvidence()` request 配列へ push する。
+  - `ownPricePositionEvidenceByStayDate` による stay date 単位の promise reuse と、既存 `rawSourceReader` の共有は維持する。
+- 非目標:
+  - Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数は変更しない。
+  - `current_settings` response shape、booking curve raw source read key、reference curve、competitor price snapshot、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - 保存 schema、Revenue Assistant write API、rank change payload、runtime UI、`dist` は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - visible stay date に含まれない current setting は従来どおり evidence request を作らない。
+  - `roomGroupId` が空の room group は従来どおり evidence request を作らない。
+  - 同じ stay date の `ownPricePositionEvidence` promise reuse が維持されている。
+  - `readRankRecommendationCurveEvidence()` の戻り値を `Promise.all` で待ち、`null` を除外して `Map` にする既存契約が維持されている。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
