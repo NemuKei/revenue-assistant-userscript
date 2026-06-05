@@ -667,6 +667,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-39 競合価格 chart series の最安値 scan を guest count 別 1 pass にする
+
+- 状態:
+  - 完了。
+- 目的:
+  - 競合価格 preview / tab の chart series 生成で、同じ snapshot record の plans を guest count ごとに繰り返し走査しない。
+  - record ごとに 1 回の走査で guest count 別の施設最安値 Map を作る。
+- スコープ:
+  - 対象は `src/main.ts` の `buildCompetitorPriceGuestChartSeries()` と最安値抽出 helper である。
+  - 既存の guest count 単位 scan helper は、新しい guest count 別 Map helper へ置き換える。
+- 非目標:
+  - 競合価格 API request 範囲、request 件数、保存順序、保存 schema、background queue 停止条件、Revenue Assistant write API、rank 変更 POST、preview / tab UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - `buildCompetitorPriceGuestChartSeries()` が snapshot record ごとに plans を 1 回走査して guest count 別の最安値を再利用する。
+  - 候補生成側の own price position evidence も同じ guest count 別 Map を使う。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `buildMinimumCompetitorPricesByGuestCount()` を追加し、record ごとに plans を 1 回走査して guest count 別 Map を作るようにした。
+  - `buildCompetitorPriceGuestChartSeries()` はその Map を guest count ごとに参照する。
+  - 候補生成側の own price position evidence も同じ Map を参照するようにした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:

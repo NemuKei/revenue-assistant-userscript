@@ -8732,9 +8732,10 @@ async function buildRankRecommendationOwnPricePositionEvidence(options: {
     let lowCount = 0;
     let highCount = 0;
     let comparableCount = 0;
+    const minimumPricesByGuestCount = buildMinimumCompetitorPricesByGuestCount(record, null, null);
 
     for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
-        const minimumPrices = findMinimumCompetitorPrices(record, guestCount, null, null);
+        const minimumPrices = minimumPricesByGuestCount.get(guestCount) ?? new Map();
         const ownPrice = minimumPrices.get(ownYadNo)?.price ?? null;
         if (ownPrice === null) {
             continue;
@@ -15994,9 +15995,10 @@ function buildCompetitorPriceGuestChartSeries(
                 });
             }
         }
+        const minimumPricesByGuestCount = buildMinimumCompetitorPricesByGuestCount(record, roomTypeFilter, mealTypeFilter);
         for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
             const points = pointsByGuestCount.get(guestCount) ?? [];
-            for (const [yadNo, minimumPrice] of findMinimumCompetitorPrices(record, guestCount, roomTypeFilter, mealTypeFilter)) {
+            for (const [yadNo, minimumPrice] of minimumPricesByGuestCount.get(guestCount)?.entries() ?? []) {
                 points.push({
                     fetchDate,
                     yadNo,
@@ -16584,23 +16586,25 @@ function buildCompetitorPriceFacilities(record: CompetitorPriceSnapshotRecord): 
     return facilities;
 }
 
-function findMinimumCompetitorPrices(
+type CompetitorPriceMinimumByFacility = Map<string, { price: number; roomType: string | null }>;
+
+function buildMinimumCompetitorPricesByGuestCount(
     record: CompetitorPriceSnapshotRecord,
-    guestCount: number,
     roomTypeFilter: string | null,
     mealTypeFilter: string | null
-): Map<string, { price: number; roomType: string | null }> {
-    const minimumPrices = new Map<string, { price: number; roomType: string | null }>();
+): Map<number, CompetitorPriceMinimumByFacility> {
+    const minimumPricesByGuestCount = new Map<number, CompetitorPriceMinimumByFacility>();
     for (const plan of flattenCompetitorPricePlansWithOwn(record)) {
         if (
             plan.price === null
-            || plan.numGuests !== guestCount
+            || plan.numGuests === null
             || (roomTypeFilter !== null && formatRoomTypeForDisplay(plan.jalanFacilityRoomType ?? "") !== roomTypeFilter)
             || (mealTypeFilter !== null && plan.mealType !== mealTypeFilter)
         ) {
             continue;
         }
 
+        const minimumPrices = minimumPricesByGuestCount.get(plan.numGuests) ?? new Map();
         const currentPrice = minimumPrices.get(plan.yadNo);
         if (currentPrice === undefined || plan.price < currentPrice.price) {
             minimumPrices.set(plan.yadNo, {
@@ -16608,8 +16612,9 @@ function findMinimumCompetitorPrices(
                 roomType: plan.jalanFacilityRoomType
             });
         }
+        minimumPricesByGuestCount.set(plan.numGuests, minimumPrices);
     }
-    return minimumPrices;
+    return minimumPricesByGuestCount;
 }
 
 function flattenCompetitorPricePlansWithOwn(record: CompetitorPriceSnapshotRecord): CompetitorPriceSnapshotPlan[] {
