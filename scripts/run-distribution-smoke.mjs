@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
+import assert from "node:assert/strict";
 import { chromium } from "playwright-core";
 import {
     BOOKING_CURVE_ENDPOINT,
@@ -24,6 +25,12 @@ const WRITE_ENDPOINTS = [
 ];
 async function main() {
     const args = parseArgs(process.argv.slice(2));
+    if (args["self-test"] === "true") {
+        runSelfTest();
+        console.log("distribution smoke self-test passed");
+        return;
+    }
+
     const cdpUrl = args["cdp-url"] ?? process.env.CHROME_CDP_URL ?? DEFAULT_CDP_URL;
     const distPath = args["dist"] ?? DEFAULT_DIST_PATH;
     const publishedUrl = args["published-url"] ?? DEFAULT_PUBLISHED_URL;
@@ -566,6 +573,50 @@ function assessModeMetrics(mode, metrics, options) {
         minCountFailure("monthly daily diff count", metrics["monthly daily diff count"], 1),
         minCountFailure("monthly daily diff rows", metrics["monthly daily diff rows"], 1)
     ].filter((failure) => failure !== null);
+}
+
+function runSelfTest() {
+    const passingTopMetrics = {
+        "top row count": 1,
+        "React marker mounted": "yes",
+        "target month select": "yes",
+        "view mode buttons": 1,
+        "display limit buttons": 1,
+        "rank order control": "yes",
+        "primary actions wrappers": 1,
+        "secondary action markers": 1,
+        "status badge cells": 1,
+        "curve preview buttons": 1,
+        "competitor preview buttons": 1,
+        "rank change buttons": 1,
+        "decision buttons": 1,
+        "UI component markers": 1,
+        "UI control markers": 1,
+        "UI row layout markers": 1,
+        "UI popover markers": 1,
+        "RAU warm cache request count": 0,
+        "top competitor preview interaction": "yes",
+        "top competitor preview open rows": 1,
+        "top competitor preview horizontal overflow": "no",
+        "top competitor preview graph or empty state": "yes",
+        "top competitor preview focus returned": "yes"
+    };
+    assert.deepEqual(
+        assessModeMetrics("top", passingTopMetrics, { allowEmptyPriceTrends: false }),
+        []
+    );
+
+    const overflowFailures = assessModeMetrics("top", {
+        ...passingTopMetrics,
+        "top competitor preview horizontal overflow": "yes"
+    }, { allowEmptyPriceTrends: false });
+    assert(overflowFailures.some((failure) => failure.includes("horizontal overflow")));
+
+    const focusFailures = assessModeMetrics("top", {
+        ...passingTopMetrics,
+        "top competitor preview focus returned": "no"
+    }, { allowEmptyPriceTrends: false });
+    assert(focusFailures.some((failure) => failure.includes("focus returned")));
 }
 
 function assessVersionRelationship(options) {

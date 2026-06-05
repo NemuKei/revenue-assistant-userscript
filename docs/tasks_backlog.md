@@ -62,6 +62,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-UX-130` の実データ確認を進める前提として、`smoke:distribution --mode top` に mobile 390px の競合価格 preview interaction 証跡を出す `RAU-UX-132` を task 化して完了した。live Revenue Assistant を開く `userscript:version-check --open-url https://ra.jalan.net/` は、この環境の承認審査で通常 Chrome / Tampermonkey session への接触として拒否されたため、迂回せず live 実行は行っていない。代わりに、既存 smoke helper へ `--viewport-width 390 --top-open-competitor-preview` を追加し、top の `競合価格` preview を 1 件開いた状態の viewport width、document scroll width、横 overflow、preview open row、graph / empty state、部屋タイプ note 検出、preview 縦スクロール量、Escape 後の focus return を出力できるようにした。監視対象 write API POST、console / page error、既存 top selector、RAU warm cache throughput 判定は既存 smoke 判定を維持する。この task では live Revenue Assistant、Tampermonkey installed version、runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、`RAU-UX-132` で追加した mobile 390px 競合価格 preview metrics の fail 判定を live 非依存で確認するため、`RAU-UX-133` として `check:distribution-smoke-fixture` を追加して完了した。`node ./scripts/run-distribution-smoke.mjs --self-test` は live Chrome、Revenue Assistant、Tampermonkey、GitHub Pages 公開版へ接続せず、synthetic top metrics だけで、preview open、横 overflow なし、graph / empty state、focus return の pass 条件と、横 overflow / focus return failure を検出できることを確認する。これにより、`RAU-UX-130` の live 実行前に helper の判定ロジックだけをローカルで検証できる。runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`node --check scripts/run-distribution-smoke.mjs`、`npm run check:distribution-smoke-fixture`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -405,6 +407,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: not-needed
   - `target-spec`: none
   - `verify`: `node --check scripts/run-distribution-smoke.mjs`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-UX-133 mobile 390px 競合価格 preview smoke metrics の self-test を追加する
+
+- 状態:
+  - 完了。
+- 目的:
+  - `RAU-UX-132` で追加した mobile 390px 競合価格 preview metrics の pass / fail 判定を、live Chrome / Revenue Assistant なしで確認できるようにする。
+  - `RAU-UX-130` の live 実行前に、helper の判定ロジックだけを synthetic metrics で検証する。
+- スコープ:
+  - 対象は `scripts/run-distribution-smoke.mjs` と `package.json`、README の fixture 手順である。
+  - `node ./scripts/run-distribution-smoke.mjs --self-test` と `npm run check:distribution-smoke-fixture` を追加する。
+- 非目標:
+  - この task では live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+  - runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、request 間隔、同時実行数、保存 schema は変更しない。
+- 受け入れ条件:
+  - self-test は synthetic top metrics で、mobile competitor preview interaction の pass 条件が fail にならないことを確認する。
+  - 横 overflow あり、focus return なしの synthetic metrics が fail として検出される。
+  - `node --check scripts/run-distribution-smoke.mjs`、`npm run check:distribution-smoke-fixture`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `scripts/run-distribution-smoke.mjs --self-test` を追加した。
+  - `package.json` に `check:distribution-smoke-fixture` を追加した。
+  - README の synthetic fixture 手順に `check:distribution-smoke-fixture` を追加した。
+  - `node --check scripts/run-distribution-smoke.mjs`、`npm run check:distribution-smoke-fixture`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `node --check scripts/run-distribution-smoke.mjs`, `npm run check:distribution-smoke-fixture`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 

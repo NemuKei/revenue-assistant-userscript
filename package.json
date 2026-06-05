@@ -27,6 +27,7 @@
         "userscript:version-check": "node ./scripts/check-userscript-version.mjs",
         "smoke:write-posts": "node ./scripts/monitor-write-api-posts.mjs",
         "smoke:distribution": "node ./scripts/run-distribution-smoke.mjs",
+        "check:distribution-smoke-fixture": "node ./scripts/run-distribution-smoke.mjs --self-test",
         "check:booking-curve-smoke-fixture": "node ./scripts/check-booking-curve-smoke-fixture.mjs"
     },
     "devDependencies": {
