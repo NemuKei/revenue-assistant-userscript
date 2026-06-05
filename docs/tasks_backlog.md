@@ -56,6 +56,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた料金調整候補 list / Analyze list の補助 read waterfall を `RAU-CP-28` として task 化して完了した。`syncRankRecommendationList()` と `syncAnalyzeRankRecommendationList()` は current settings と rank ladder 取得に成功した後、curve evidence を読み終えてから browser-local decision records と Lincoln suggestion status を読み始めていた。decision records と status は candidate filtering / display info に必要だが、curve evidence 自体には依存しないため、current settings 成功後に curve evidence と同時に開始するようにした。current settings が失敗した場合は従来どおり後続 read を開始しない。`current_settings`、Lincoln suggest status、IndexedDB decision store、booking curve raw source、reference curve、competitor price snapshot の対象範囲、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた Analyze 料金調整候補 sync 内の Lincoln suggestion status 再利用を `RAU-CP-29` として task 化して完了した。`syncSalesSettingGroupRooms()` は Analyze sync 内で `getLincolnSuggestStatuses(analysisDate)` を読み、`latestSalesSettingRankStatusesSnapshot` へ保存しているが、その直後に走る `syncSalesSettingRankInsights()` は同じ日付の snapshot がある場合でも `getLincolnSuggestStatuses(analysisDate)` を再度呼んでいた。日付単位の Promise cache により追加 network fetch は発生しないが、同じ sync 内で取得済みの status snapshot を直接再利用すれば、不要な cache lookup / promise await / fallback 経路を避けられる。`syncSalesSettingRankInsights()` は同じ `analysisDate` の `latestSalesSettingRankStatusesSnapshot` がある場合はそれを使い、ない場合だけ従来どおり `getLincolnSuggestStatuses()` へ fallback する。`syncSalesSettingRankInsights()` と `applyPendingRankRecommendationFocus()` の順序は、rank insight 描画後に focus scroll する既存挙動を守るため変更しない。Lincoln suggest status の対象 endpoint、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence、reasonFingerprint は変更していない。`docs/context/INTENT.md` は request 数、画面遷移や focus 復帰の安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -515,6 +517,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - top list / Analyze list の両方で、decision records request と statuses request を curve evidence の前に promise として開始し、candidate filtering / display info の前に `Promise.all` で受け取るようにした。
   - current settings が `null` の error path では従来どおり render error で return するため、decision/status/curve evidence の後続 read は開始しない。
   - `current_settings`、Lincoln suggest status、IndexedDB decision store、booking curve raw source、reference curve、competitor price snapshot の対象範囲、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-29 Analyze 料金調整候補 sync の取得済み rank status を再利用する
+
+- 状態:
+  - 完了。
+- 目的:
+  - Analyze 料金調整候補 sync で、同じ日付の Lincoln suggestion status を `syncSalesSettingGroupRooms()` 後に `syncSalesSettingRankInsights()` が再度 cache 経由で読み直す軽い重複待ちを減らす。
+  - request 数や対象 endpoint を増やさず、同じ sync 内で取得済みの status snapshot を再利用する。
+- スコープ:
+  - 対象は `src/main.ts` の `syncSalesSettingRankInsights()` である。
+  - `latestSalesSettingRankStatusesSnapshot.analysisDate` が対象 `analysisDate` と一致する場合だけ snapshot を使い、一致しない場合は従来どおり `getLincolnSuggestStatuses()` へ fallback する。
+- 非目標:
+  - `syncSalesSettingRankInsights()` と `applyPendingRankRecommendationFocus()` の順序は変更しない。rank insight 描画後に focus scroll する既存挙動を守る。
+  - Lincoln suggest status の対象範囲、request 間隔、同時実行数、保存 schema は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - 同じ `analysisDate` の `latestSalesSettingRankStatusesSnapshot` がある場合、`syncSalesSettingRankInsights()` は `getLincolnSuggestStatuses()` を呼ばずに status array を使う。
+  - snapshot がない場合、従来どおり `getLincolnSuggestStatuses()` を呼び、失敗時は error log と空配列 fallback を維持する。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `syncSalesSettingRankInsights()` は、同じ `analysisDate` の `latestSalesSettingRankStatusesSnapshot` がある場合にその `statuses` を使い、ない場合だけ `getLincolnSuggestStatuses()` を await するようにした。
+  - 既存の `getLincolnSuggestStatuses()` cache による network dedupe は維持し、cache miss / snapshot miss の fallback path も維持している。
+  - `syncSalesSettingRankInsights()` と `applyPendingRankRecommendationFocus()` の順序は変更していないため、rank insight 描画後に focus summary / scroll を適用する挙動は維持する。
+  - `current_settings`、Lincoln suggest status、booking curve、room groups、IndexedDB decision store の対象範囲、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no

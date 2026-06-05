@@ -12107,14 +12107,17 @@ async function syncSalesSettingRankInsights(
     cancelSalesSettingSupplementCleanup();
     ensureGroupRoomStyles();
 
-    const statuses = await getLincolnSuggestStatuses(analysisDate)
-        .catch((error: unknown) => {
-            console.error(`[${SCRIPT_NAME}] failed to load lincoln suggest statuses`, {
-                analysisDate,
-                error
+    const statuses = latestSalesSettingRankStatusesSnapshot !== null
+        && latestSalesSettingRankStatusesSnapshot.analysisDate === analysisDate
+        ? latestSalesSettingRankStatusesSnapshot.statuses
+        : await getLincolnSuggestStatuses(analysisDate)
+            .catch((error: unknown) => {
+                console.error(`[${SCRIPT_NAME}] failed to load lincoln suggest statuses`, {
+                    analysisDate,
+                    error
+                });
+                return [] as LincolnSuggestStatus[];
             });
-            return [] as LincolnSuggestStatus[];
-        });
     if (isSyncContextStale(syncContext)) {
         return;
     }
