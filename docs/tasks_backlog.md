@@ -696,6 +696,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-40 価格系 chart SVG の施設別 points 走査を Map 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - 競合価格 / 価格推移 chart SVG 描画で、施設系列ごとに全 points を `filter().sort()` し直さない。
+  - 取得済み response から chart DOM を作るローカル処理を軽くする。
+- スコープ:
+  - 対象は `src/main.ts` の `createCompetitorPriceChartSvg()`、`createPriceTrendChartSvg()`、価格推移 facilities 生成、競合価格 facilities 色 index である。
+  - 施設別 chart points の grouped sort helper を追加する。
+- 非目標:
+  - 競合価格 / 価格推移 API request 範囲、request 件数、保存順序、保存 schema、background queue 停止条件、Revenue Assistant write API、rank 変更 POST、preview / tab UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - 競合価格 chart と価格推移 chart が、施設ごとに全 points を繰り返し `filter()` せず、事前に grouped Map を参照して SVG path を作る。
+  - 価格推移 facilities は `find` + `filter` の複数走査ではなく 1 走査で own / competitor series を作る。
+  - 競合価格 facilities の competitor color index は、既存 facility Map を毎回配列化して数えない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `buildCompetitorPriceChartPointsByFacility()` と `buildPriceTrendChartPointsByFacility()` を追加し、points を施設別に grouped sort してから SVG path / marker 生成に使うようにした。
+  - `buildPriceTrendFacilities()` を 1 走査化した。
+  - `buildCompetitorPriceGuestChartSeries()` の competitor color index を counter で持つようにした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:

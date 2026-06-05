@@ -15755,21 +15755,29 @@ function buildPriceTrendFacilities(record: PriceTrendRecord | null): CompetitorP
         return [];
     }
 
-    const ownFacility = record.facilities.find((facility) => facility.role === "own");
-    const competitorFacilities = record.facilities.filter((facility) => facility.role === "competitor");
-    return [
-        ...(ownFacility === undefined
-            ? []
-            : [{
-                yadNo: ownFacility.yadNo,
+    let ownFacility: CompetitorPriceFacilitySeries | null = null;
+    const competitorFacilities: CompetitorPriceFacilitySeries[] = [];
+    for (const facility of record.facilities) {
+        if (facility.role === "own") {
+            ownFacility = {
+                yadNo: facility.yadNo,
                 name: "自社",
                 color: COMPETITOR_PRICE_OWN_SERIES_COLOR
-            }]),
-        ...competitorFacilities.map((facility, index) => ({
-            yadNo: facility.yadNo,
-            name: facility.name,
-            color: COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS[index % COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS.length] ?? "#50627a"
-        }))
+            };
+        } else if (facility.role === "competitor") {
+            competitorFacilities.push({
+                yadNo: facility.yadNo,
+                name: facility.name,
+                color: COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS[competitorFacilities.length % COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS.length] ?? "#50627a"
+            });
+        }
+    }
+
+    return [
+        ...(ownFacility === null
+            ? []
+            : [ownFacility]),
+        ...competitorFacilities
     ];
 }
 
@@ -15977,6 +15985,7 @@ function buildCompetitorPriceGuestChartSeries(
 ): CompetitorPriceGuestChartSeries {
     const fetchDates = dailyRecords.map((record) => formatCompetitorPriceFetchDate(record.fetchedAt));
     const facilityMap = new Map<string, CompetitorPriceFacilitySeries>();
+    let competitorSeriesCount = 0;
     const pointsByGuestCount = new Map<number, CompetitorPriceChartPoint[]>();
     for (const guestCount of COMPETITOR_PRICE_GUEST_COUNTS) {
         pointsByGuestCount.set(guestCount, []);
@@ -15986,13 +15995,14 @@ function buildCompetitorPriceGuestChartSeries(
         const fetchDate = formatCompetitorPriceFetchDate(record.fetchedAt);
         for (const facility of buildCompetitorPriceFacilities(record)) {
             if (!facilityMap.has(facility.yadNo)) {
-                const competitorSeriesIndex = Array.from(facilityMap.values())
-                    .filter((seriesFacility) => seriesFacility.name !== "自社")
-                    .length;
+                const competitorSeriesIndex = competitorSeriesCount;
                 facilityMap.set(facility.yadNo, {
                     ...facility,
                     color: getCompetitorPriceFacilitySeriesColor(facility, competitorSeriesIndex)
                 });
+                if (facility.name !== "自社") {
+                    competitorSeriesCount += 1;
+                }
             }
         }
         const minimumPricesByGuestCount = buildMinimumCompetitorPricesByGuestCount(record, roomTypeFilter, mealTypeFilter);
@@ -16144,10 +16154,9 @@ function createCompetitorPriceChartSvg(
     guideLineElement.setAttribute("stroke-dasharray", "3 3");
     svgElement.append(guideLineElement);
 
+    const pointsByFacility = buildCompetitorPriceChartPointsByFacility(points, fetchDateIndexByDate);
     for (const facility of facilities) {
-        const facilityPoints = points
-            .filter((point) => point.yadNo === facility.yadNo)
-            .sort((left, right) => (fetchDateIndexByDate.get(left.fetchDate) ?? -1) - (fetchDateIndexByDate.get(right.fetchDate) ?? -1));
+        const facilityPoints = pointsByFacility.get(facility.yadNo) ?? [];
         if (facilityPoints.length === 0) {
             continue;
         }
@@ -16211,6 +16220,22 @@ function createCompetitorPriceChartSvg(
     }
 
     return svgElement;
+}
+
+function buildCompetitorPriceChartPointsByFacility(
+    points: CompetitorPriceChartPoint[],
+    fetchDateIndexByDate: Map<string, number>
+): Map<string, CompetitorPriceChartPoint[]> {
+    const pointsByFacility = new Map<string, CompetitorPriceChartPoint[]>();
+    for (const point of points) {
+        const facilityPoints = pointsByFacility.get(point.yadNo) ?? [];
+        facilityPoints.push(point);
+        pointsByFacility.set(point.yadNo, facilityPoints);
+    }
+    for (const facilityPoints of pointsByFacility.values()) {
+        facilityPoints.sort((left, right) => (fetchDateIndexByDate.get(left.fetchDate) ?? -1) - (fetchDateIndexByDate.get(right.fetchDate) ?? -1));
+    }
+    return pointsByFacility;
 }
 
 function createPriceTrendChartSvg(
@@ -16295,10 +16320,9 @@ function createPriceTrendChartSvg(
     guideLineElement.setAttribute("stroke-dasharray", "3 3");
     svgElement.append(guideLineElement);
 
+    const pointsByFacility = buildPriceTrendChartPointsByFacility(points, leadTimeIndexByDays);
     for (const facility of facilities) {
-        const facilityPoints = points
-            .filter((point) => point.yadNo === facility.yadNo)
-            .sort((left, right) => (leadTimeIndexByDays.get(left.leadTimeDays) ?? -1) - (leadTimeIndexByDays.get(right.leadTimeDays) ?? -1));
+        const facilityPoints = pointsByFacility.get(facility.yadNo) ?? [];
         if (facilityPoints.length === 0) {
             continue;
         }
@@ -16350,6 +16374,22 @@ function createPriceTrendChartSvg(
     }
 
     return svgElement;
+}
+
+function buildPriceTrendChartPointsByFacility(
+    points: PriceTrendChartPoint[],
+    leadTimeIndexByDays: Map<number, number>
+): Map<string, PriceTrendChartPoint[]> {
+    const pointsByFacility = new Map<string, PriceTrendChartPoint[]>();
+    for (const point of points) {
+        const facilityPoints = pointsByFacility.get(point.yadNo) ?? [];
+        facilityPoints.push(point);
+        pointsByFacility.set(point.yadNo, facilityPoints);
+    }
+    for (const facilityPoints of pointsByFacility.values()) {
+        facilityPoints.sort((left, right) => (leadTimeIndexByDays.get(left.leadTimeDays) ?? -1) - (leadTimeIndexByDays.get(right.leadTimeDays) ?? -1));
+    }
+    return pointsByFacility;
 }
 
 function shouldShowPriceTrendLeadTimeTick(leadTimeDays: number): boolean {
