@@ -8038,6 +8038,25 @@ async function buildRankRecommendationCurvePreviewReferenceData(options: {
     asOfDate: string;
     response: BookingCurveResponse;
 }): Promise<SalesSettingBookingCurveReferenceData> {
+    const referenceSourcesByKind = new Map<ReferenceCurveKind, Promise<BookingCurveResponseSource[]>>();
+    const getReferenceSources = (
+        curveKind: ReferenceCurveKind,
+        stayDates: readonly string[]
+    ): Promise<BookingCurveResponseSource[]> => {
+        const cached = referenceSourcesByKind.get(curveKind);
+        if (cached !== undefined) {
+            return cached;
+        }
+
+        const request = readRankRecommendationCurvePreviewReferenceSources({
+            facilityId: options.facilityId,
+            asOfDate: options.asOfDate,
+            roomGroupId: options.candidate.roomGroupId,
+            stayDates
+        });
+        referenceSourcesByKind.set(curveKind, request);
+        return request;
+    };
     const buildReference = (segment: CurveSegment, curveKind: ReferenceCurveKind): Promise<ReferenceCurveResult | null> => (
         readRankRecommendationCurvePreviewReferenceResult({
             facilityId: options.facilityId,
@@ -8046,7 +8065,8 @@ async function buildRankRecommendationCurvePreviewReferenceData(options: {
             roomGroupId: options.candidate.roomGroupId,
             response: options.response,
             segment,
-            curveKind
+            curveKind,
+            getReferenceSources
         })
     );
     const [
@@ -8083,6 +8103,10 @@ async function readRankRecommendationCurvePreviewReferenceResult(options: {
     response: BookingCurveResponse;
     segment: CurveSegment;
     curveKind: ReferenceCurveKind;
+    getReferenceSources?: (
+        curveKind: ReferenceCurveKind,
+        stayDates: readonly string[]
+    ) => Promise<BookingCurveResponseSource[]>;
 }): Promise<ReferenceCurveResult | null> {
     const normalizedStayDate = normalizeDateKey(options.stayDate);
     const normalizedAsOfDate = normalizeDateKey(options.asOfDate);
@@ -8133,12 +8157,14 @@ async function readRankRecommendationCurvePreviewReferenceResult(options: {
             targetMonth,
             weekday
         });
-    const sources = await readRankRecommendationCurvePreviewReferenceSources({
-        facilityId: options.facilityId,
-        asOfDate: options.asOfDate,
-        roomGroupId: options.roomGroupId,
-        stayDates: candidateStayDates
-    });
+    const sources = await (options.getReferenceSources === undefined
+        ? readRankRecommendationCurvePreviewReferenceSources({
+            facilityId: options.facilityId,
+            asOfDate: options.asOfDate,
+            roomGroupId: options.roomGroupId,
+            stayDates: candidateStayDates
+        })
+        : options.getReferenceSources(options.curveKind, candidateStayDates));
     if (sources.length > 0) {
         const input = buildCurveInputFromBookingCurveResponses({
             facilityId: options.facilityId,

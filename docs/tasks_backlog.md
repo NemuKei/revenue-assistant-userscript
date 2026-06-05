@@ -66,6 +66,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview info の IndexedDB read を `RAU-CP-31` として task 化して完了した。top 料金調整候補の曲線 preview 情報は、対象 `booking_curve_raw_source` が見つかっている hit path でも、raw source missing diagnostics 用の `readBookingCurveRawSourceStoredRoomGroupStatus()` を追加で待っていた。保存状態確認は raw source missing 時にだけ必要なため、hit path では省略し、missing 時だけ読むようにした。これにより、表示済み raw source から preview を作る通常 path の IndexedDB read を候補ごとに 1 回減らす。重複確認では、`RAU-CP-24` から `RAU-CP-30` は API request 準備、waterfall、status 再利用、warm cache raw source read の最適化であり、preview info hit path の保存状態 read 削減は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview reference data の raw source read 重複を `RAU-CP-32` として task 化して完了した。top 料金調整候補の曲線 preview reference data は、reference curve cache miss 時に、同じ curve kind (`recent_weighted_90` / `seasonal_component`) の raw source 群を segment (`all` / `transient` / `group`) ごとに読み直す余地があった。同一 preview 内では curve kind ごとの `readRankRecommendationCurvePreviewReferenceSources()` promise を共有し、cache miss 時の IndexedDB raw source read を segment 間で再利用する。重複確認では、`RAU-CP-31` は preview info hit path の保存状態 read 削減であり、reference data cache miss 時の source read 共有とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。reference curve cache key、reference curve 計算結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -458,6 +460,33 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 完了結果:
   - `readRankRecommendationCurvePreviewInfo()` の保存状態 read を `record === undefined` 分岐内へ移動した。
   - 表示済み raw source から preview を作る hit path の IndexedDB read を候補ごとに 1 回減らした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-32 booking curve preview reference data の source read を curve kind 単位で共有する
+
+- 状態:
+  - 完了。
+- 目的:
+  - top 料金調整候補の曲線 preview reference data を、reference curve cache miss 時に少し速くする。
+  - 同じ preview 内で、同じ curve kind の raw source 群を segment ごとに読み直さない。
+- スコープ:
+  - 対象は `buildRankRecommendationCurvePreviewReferenceData()` と `readRankRecommendationCurvePreviewReferenceResult()` の reference source 読み込みである。
+  - `recent_weighted_90` と `seasonal_component` は candidate stay dates が異なるため、それぞれ別 promise として共有する。
+- 非目標:
+  - reference curve cache key、reference curve 計算結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - 同一 preview 内の reference curve cache miss 時に、同じ curve kind の source read promise が segment 間で共有される。
+  - `recent_weighted_90` と `seasonal_component` は別 source read promise のままである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `buildRankRecommendationCurvePreviewReferenceData()` に curve kind 単位の `referenceSourcesByKind` を追加した。
+  - `readRankRecommendationCurvePreviewReferenceResult()` は、呼び出し側から共有 source loader を渡された場合にそれを使うようにした。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
