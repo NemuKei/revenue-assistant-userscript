@@ -111,6 +111,77 @@
 残リスクは、競合価格 row preview の実装時に keyboard / focus return / mobile 390px / failure state を再検証すること、および通常利用で `その他` details の開閉が判断速度を落とす観測が出た場合に再配置を再評価することである。
 Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。
 
+## Competitor Preview Density Audit 2026-06-05
+
+### Brief Playback
+
+- task: `RAU-UX-128`
+- 対象 surface: `0.1.0.379` で追加した top 料金調整候補 row の `競合価格` preview。
+- 対象要素:
+  - primary action の `競合価格` button。
+  - 押下時だけ開く row preview。
+  - loading / stored / empty / error / retry state。
+  - `RAU-CP-23` で追加した `confirmed` / `ambiguous` / `unknown` の部屋タイプ対応 note。
+  - 人数別の競合価格 preview graph。
+- 成功条件:
+  - top list 本文には金額、差額、percent、forecast 数値、sales / ADR 数値を増やさない。
+  - preview を開いた利用者が、部屋タイプ対応の確度、graph の対象範囲、次に Analyze / 曲線 / ランク調整へ進むべきかを短時間で読める。
+  - graph を初期表示から削る場合は、keyboard / focus / mobile / fixture / smoke / write API 非追加を含む実装 task に分ける。
+- Product Design workflow:
+  - Product Design の `user-context` preflight では保存済み user context は見つからなかった。
+  - 今回は backlog 上の task brief と repo 内 evidence を入力にした既存 surface audit / plan first であり、`ideate`、`image-to-code`、runtime UI 実装は行わない。
+- Data Visualization workflow:
+  - `@build-web-data-visualization` の観点では、preview graph は順位や推奨金額を直接決める chart ではなく、競合価格 snapshot の文脈を確認する補助 chart として扱う。
+  - 読み筋は、state message、部屋タイプ対応 note、graph の順にし、`confirmed` 以外では caveat を先に読む前提にする。
+
+### Evidence
+
+- `RAU-CP-22` の配布版 `0.1.0.379` top smoke:
+  - top row `10` 件、competitor preview buttons `10` 件、competitor preview rows `10` 件。
+  - primary actions `10`、secondary actions `10`、console / page error `0` 件、監視対象 write API POST `0` 件。
+  - 実クリック確認では、競合価格 preview が `0` 件から `1` 件へ開き、`Escape` で `0` 件へ閉じ、focus return は true だった。
+- `RAU-CP-23` の implementation verify:
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - fixture marker check では competitor preview buttons `25` 件、competitor preview rows `25` 件を確認した。
+- `RAU-CP-23` の graph contract:
+  - `confirmed` は snapshot 側 label が候補 `roomGroupName` に一意に含まれる場合だけで、その label で preview graph を絞り込む。
+  - `ambiguous` と `unknown` は強い絞り込みをせず、preview 内で部屋タイプ対応未確認を明示する。
+  - この分類は表示絞り込み用であり、candidate scoring、priority、confidence、reasonFingerprint には使わない。
+
+### Findings
+
+- preview の開閉方式:
+  - graph は常時表示ではなく、利用者が `競合価格` を押したときだけ開く。top list の通常状態では表示密度を増やさないため、現行方針を維持する。
+  - `Escape` close と focus return は直近 smoke で確認済みであり、二段階表示へ分ける前に必要な最低限の操作契約は満たしている。
+- graph の情報量:
+  - 人数別 graph は、開いた preview 内では情報量が多いが、競合価格 snapshot の確認目的には自然である。
+  - top list 本文へ金額や差額を出していないため、常時視界に入る情報量は増えていない。
+  - 初期表示を要約だけにすると、利用者が再度詳細を開く操作を要求され、現時点の evidence では操作距離短縮より利点が小さい。
+- 部屋タイプ対応 note:
+  - `RAU-CP-23` の `confirmed` / `ambiguous` / `unknown` note により、graph を推奨根拠として過読する risk は下がった。
+  - `ambiguous` / `unknown` では caveat が先に見えるため、表示密度を削るより、現在の caveat-first の読み順を維持する方が安全である。
+- mobile / narrow viewport:
+  - 直近の fixture marker と prior mobile evidence では preview row 構造は維持されている。
+  - ただし、実データ graph を開いた mobile 390px の縦スクロール量は未確認である。ここは `RAU-UX-129` の実利用観察、または今後の preview visual smoke が必要になった時点で扱う。
+
+### Rejected Ideas
+
+- 競合価格 preview graph を top row に常時表示する案:
+  - top list の最速判断を妨げるため不採用。
+- 初期表示を要約だけにして graph を二段階表示に分ける案:
+  - 現時点では、開いた preview 内の graph が判断を妨げている live evidence がない。
+  - 二段階表示にすると、graph 確認までの操作が増え、cache hit 時の利点を薄める。
+- top list 本文へ金額、差額、percent を短い summary として追加する案:
+  - 既存の非数値 top list 契約を崩し、競合価格を候補方向の主因として誤読させるため不採用。
+
+### Result
+
+`RAU-UX-128` では、競合価格 preview graph を現行維持とする。
+要約中心 / 二段階表示への runtime UI 変更 task は追加しない。
+
+再評価条件は、mobile 390px 相当で preview を開いたときに候補 row の処理が進みにくいこと、`confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として解釈されること、または通常利用で preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いことを観測した場合である。
+Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。
+
 ## Audit Evidence
 
 保存先は Git 管理しない `.tmp/product-design-audit/` と `.tmp/ux-116-117-112-114-115-visual/` である。

@@ -36,6 +36,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-CP-23` を完了した。競合価格 preview は、保存済み snapshot の部屋タイプ label と候補 `roomGroupName` の対応を `confirmed`、`ambiguous`、`unknown` の 3 段階に分ける。`confirmed` は snapshot 側 label が `roomGroupName` に一意に含まれる場合だけとし、その label で preview graph を絞り込む。`ambiguous` と `unknown` では強い絞り込みをせず、部屋タイプ対応未確認を preview 内に明示し、金額推奨や候補方向の主因には使わない。対応分類は表示絞り込み用であり、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant write API endpoint、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。Build Web Data Visualization の観点では、graph の読み筋を「confirmed だけ絞る / ambiguous と unknown は caveat を見せる」に固定し、hover 依存や常時金額表示は増やしていない。Build Web Apps の観点では、既存 row preview flow、cache hit、in-flight dedupe、loading / empty / error / retry state を維持した。Remaining Task Triage は Now `RAU-UX-128`、Next `RAU-WC-33`、After Next `RAU-UX-129`、Later なしである。
 
+2026-06-05 に、`RAU-UX-128` を完了した。Product Design の audit / plan first として、`0.1.0.379` で追加した top row の `競合価格` preview graph の表示密度を再評価した。Product Design の `user-context` preflight では保存済み user context がなかったため、backlog 上の task brief、直近の `RAU-CP-22` 配布版 top smoke、`RAU-CP-23` の fixture marker / build verify、`docs/context/PRODUCT_DESIGN_AUDIT.md` の既存 audit を入力にした。Build Web Data Visualization の観点では、競合価格 graph は候補方向や推奨金額を直接決める chart ではなく、snapshot 文脈を確認する補助 chart とし、state message、部屋タイプ対応 note、graph の順に読む caveat-first の構造を維持する。graph は押下時 preview 内だけにあり、top list 本文へ金額、差額、percent を増やしていないため、要約中心 / 二段階表示への runtime UI 変更 task は追加しない。再評価条件は、mobile 390px 相当で preview を開いたときに候補 row の処理が進みにくいこと、`confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として解釈されること、または通常利用で preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いことを観測した場合である。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。Remaining Task Triage は Now `RAU-WC-33`、Next `RAU-UX-129`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -202,7 +204,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-UX-128 Product Design で競合価格 preview graph の表示密度を再評価する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - `0.1.0.379` で追加した競合価格 preview graph が、top 画面の最速判断を妨げるほど情報過多になっていないか Product Design 観点で再評価する。
   - 必要な場合だけ、初期表示を要約中心にし、詳細 graph を二段階表示へ分ける task を切る。
@@ -219,10 +221,18 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - preview graph を現行維持するか、要約中心 / 二段階表示へ変えるかの判断理由がある。
   - 変更が必要な場合は、表示対象、keyboard / focus、mobile、fixture / smoke、write API 非追加を含む実装 task が作られている。
   - `git diff --check` が通過している。
+- 完了結果:
+  - Product Design の audit / plan first として `docs/context/PRODUCT_DESIGN_AUDIT.md` の `Competitor Preview Density Audit 2026-06-05` に結果を記録した。
+  - Product Design の `user-context` preflight では保存済み user context がなかったため、backlog 上の task brief、`RAU-CP-22` の配布版 top smoke、`RAU-CP-23` の fixture marker / build verify、既存 Product Design audit を入力にした。
+  - Build Web Data Visualization の観点では、競合価格 graph は候補方向や推奨金額を直接決める chart ではなく、snapshot 文脈を確認する補助 chart として扱う。読み筋は state message、部屋タイプ対応 note、graph の順にする。
+  - graph は押下時 preview 内だけにあり、top list 本文へ金額、差額、percent を増やしていないため、現行維持と判断した。要約中心 / 二段階表示への runtime UI 変更 task は追加しない。
+  - 再評価条件は、mobile 390px 相当で preview を開いたときに候補 row の処理が進みにくいこと、`confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として解釈されること、または通常利用で preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いことを観測した場合とする。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、request 間隔、同時実行数、保存 schema は変更していない。
 - metadata:
-  - `spec-impact`: unknown
-  - `spec-checkpoint`: before-implementation
-  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: Product Design audit note, `git diff --check`
 
 ### RAU-WC-33 cache 済み状態でも RAU warm cache priority を確認できる smoke fixture を設計する
 
@@ -8940,21 +8950,23 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-128`: Product Design で競合価格 preview graph の表示密度を再評価する。
+- `RAU-WC-33`: cache 済み状態でも RAU warm cache priority を確認できる smoke fixture を設計する。
 
 Next:
 
-- `RAU-WC-33`: cache 済み状態でも RAU warm cache priority を確認できる smoke fixture を設計する。
+- `RAU-UX-129`: `競合価格` 追加後の `その他` details 再配置要否を観察する。
 
 After Next:
 
-- `RAU-UX-129`: `競合価格` 追加後の `その他` details 再配置要否を観察する。
+- なし。
 
 Later:
 
 - なし。
 
 統合判断:
+
+- 2026-06-05 に、`RAU-UX-128` を完了した。Product Design の audit / plan first として競合価格 preview graph の表示密度を再評価し、`docs/context/PRODUCT_DESIGN_AUDIT.md` に記録した。Build Web Data Visualization の観点では、graph は候補方向や推奨金額を直接決める chart ではなく、snapshot 文脈を確認する補助 chart として扱う。`RAU-CP-23` の部屋タイプ対応 note により caveat-first の読み筋が作れており、graph は押下時 preview 内だけにあるため、現時点では要約中心 / 二段階表示への runtime UI 変更 task は追加しない。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。次は `RAU-WC-33` の controlled smoke / fixture 設計へ進む。
 
 - 2026-06-05 に、`RAU-CP-23` を完了した。競合価格 preview は `confirmed` の場合だけ部屋タイプ label で graph を絞り込み、`ambiguous` / `unknown` では部屋タイプ対応未確認を明示して全体 snapshot を表示する。これは表示絞り込み用であり、候補方向、金額推奨、confidence 補正には使わない。Build Web Data Visualization の観点では、chart の読み筋を caveat-first に保ち、常時金額表示や hover-only 解釈は増やさない。Build Web Apps の観点では、既存 row preview、cache hit、in-flight dedupe、loading / stored / empty / error / retry state を維持する。次は、Product Design の brief gate から `RAU-UX-128` の audit / plan first に進む。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。
 
