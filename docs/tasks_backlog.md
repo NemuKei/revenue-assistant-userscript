@@ -583,6 +583,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-36 競合価格 snapshot series の latest / previous 選択を軽くする
+
+- 状態:
+  - 完了。
+- 目的:
+  - 競合価格 preview が読む保存済み snapshot series の response 後処理を少し軽くする。
+  - sort 済み records から `latestRecord` と `previousRecord` を選ぶ際の中間 filter 配列を減らす。
+- スコープ:
+  - 対象は `src/competitorPriceSnapshotStore.ts` の `buildCompetitorPriceSnapshotSeries()` である。
+  - 保存済み records の順序、`latestRecord` の選択規則、`previousRecord` の同一 condition 判定は維持する。
+- 非目標:
+  - 競合価格 API request 範囲、Revenue Assistant write API、rank 変更 POST、request 間隔、同時実行数、保存 schema、preview UI、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - `buildCompetitorPriceSnapshotSeries()` が `latestRecord` と `previousRecord` のために追加の filter 配列を作らない。
+  - `readLatestCompetitorPriceSnapshot()` の単体 latest selection は従来どおり使える。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `latestUnspecifiedRecord` を sort 済み records の loop で選ぶようにした。
+  - `previousRecord` は latest と同じ `conditionSignature` かつ別 `snapshotKey` の record を loop で選ぶようにした。
+  - `readLatestCompetitorPriceSnapshot()` で使う `selectLatestCompetitorPriceSnapshotRecord()` は維持した。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:

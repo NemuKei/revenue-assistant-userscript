@@ -225,9 +225,22 @@ function buildCompetitorPriceSnapshotSeries(snapshots: CompetitorPriceSnapshotRe
     const records = snapshots
         .slice()
         .sort((left, right) => left.fetchedAt.localeCompare(right.fetchedAt));
-    const latestRecord = selectLatestCompetitorPriceSnapshotRecord(
-        records.filter(isUnspecifiedCompetitorPriceSnapshotRecord)
-    )
+    let latestUnspecifiedRecord: CompetitorPriceSnapshotRecord | null = null;
+    for (const record of records) {
+        if (
+            latestUnspecifiedRecord === null
+            && isUnspecifiedCompetitorPriceSnapshotRecord(record)
+        ) {
+            latestUnspecifiedRecord = record;
+        } else if (
+            latestUnspecifiedRecord !== null
+            && isUnspecifiedCompetitorPriceSnapshotRecord(record)
+            && record.fetchedAt.localeCompare(latestUnspecifiedRecord.fetchedAt) > 0
+        ) {
+            latestUnspecifiedRecord = record;
+        }
+    }
+    const latestRecord = latestUnspecifiedRecord
         ?? records[records.length - 1]
         ?? null;
     if (latestRecord === null) {
@@ -238,12 +251,18 @@ function buildCompetitorPriceSnapshotSeries(snapshots: CompetitorPriceSnapshotRe
         };
     }
 
-    const previousRecord = selectLatestCompetitorPriceSnapshotRecord(
-        records.filter((snapshot) => (
-            snapshot.snapshotKey !== latestRecord.snapshotKey
-            && snapshot.conditionSignature === latestRecord.conditionSignature
-        ))
-    ) ?? null;
+    let previousRecord: CompetitorPriceSnapshotRecord | null = null;
+    for (const record of records) {
+        if (
+            record.snapshotKey === latestRecord.snapshotKey
+            || record.conditionSignature !== latestRecord.conditionSignature
+        ) {
+            continue;
+        }
+        if (previousRecord === null || record.fetchedAt.localeCompare(previousRecord.fetchedAt) > 0) {
+            previousRecord = record;
+        }
+    }
 
     return {
         records,
