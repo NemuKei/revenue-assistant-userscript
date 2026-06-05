@@ -3933,18 +3933,20 @@ function addSalesSettingWarmCacheTask(tasks: SalesSettingWarmCacheTask[], taskKe
 
 function rememberRankRecommendationWarmCachePriorityCandidates(candidates: RankRecommendationCandidate[]): void {
     const seen = new Set<string>();
-    rankRecommendationWarmCachePriorityCandidates = candidates.flatMap((candidate) => {
+    const priorityCandidates: RankRecommendationWarmCachePriorityCandidate[] = [];
+    for (const candidate of candidates) {
         const taskKey = buildRankRecommendationWarmCachePriorityTaskKey(candidate.stayDate, candidate.roomGroupId);
         if (seen.has(taskKey)) {
-            return [];
+            continue;
         }
 
         seen.add(taskKey);
-        return [{
+        priorityCandidates.push({
             stayDate: candidate.stayDate,
             roomGroupId: candidate.roomGroupId
-        }];
-    });
+        });
+    }
+    rankRecommendationWarmCachePriorityCandidates = priorityCandidates;
 }
 
 function clearRankRecommendationWarmCachePriorityCandidates(): void {

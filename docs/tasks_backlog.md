@@ -94,6 +94,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた seasonal component 候補日生成の中間配列生成を `RAU-CP-54` として task 化して完了した。`getSeasonalComponentCandidateStayDates()` は、seasonal component の候補宿泊日を作るときに `yearsBack` を `flatMap()` し、shift 不能な月や bounds 不明の path で空配列を返していた。loop で valid shifted month の weekday dates だけを `candidateStayDates` へ push するようにし、季節型 reference curve 候補日生成時の不要な中間配列を減らした。重複確認では、`RAU-CP-45` は reference curve の repeated scan、`RAU-CP-52` は forecast diagnostics warning 集約、`RAU-CP-53` は月次 preview SVG axis tick 抽出であり、seasonal component 候補日生成は未着手だった。`yearsBack` の順序、invalid target month / weekday の early return、shift 不能な月と bounds 不明の skip、weekday date 列挙結果、reference curve 計算結果、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は表示速度、reference curve、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた warm cache priority candidates 準備の中間配列生成を `RAU-CP-55` として task 化して完了した。`rememberRankRecommendationWarmCachePriorityCandidates()` は、rank recommendation candidates から warm cache priority candidates を作るときに、重複候補の skip path で空配列、採用 path で 1 要素配列を返す `flatMap()` を使っていた。loop で初出の `stayDate x roomGroupId` だけを `priorityCandidates` へ push するようにし、warm cache 優先候補準備時の不要な中間配列を減らした。重複確認では、`RAU-WC-30` は queue 優先化の実装、`RAU-CP-48` は rank evidence request 準備、`RAU-CP-50` は rank gap context 準備であり、warm cache priority candidates の dedupe / list 準備は未着手だった。初出順 dedupe、priority task key、warm cache queue の優先順、request 範囲、request 件数、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -640,6 +642,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 完了結果:
   - `flatMap()` をやめ、valid shifted month の weekday dates だけを loop で `candidateStayDates` へ push するようにした。
   - reference curve 計算結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-55 warm cache priority candidates 準備を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - rank recommendation candidates から warm cache priority candidates を作る際の、skip path 空配列 / 採用 path 1 要素配列を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `rememberRankRecommendationWarmCachePriorityCandidates()` である。
+  - candidate を loop し、初出の `stayDate x roomGroupId` だけを `priorityCandidates` へ push する。
+- 非目標:
+  - 初出順 dedupe、priority task key、warm cache queue の優先順は変更しない。
+  - request 範囲、request 件数、request 間隔、同時実行数、保存 schema は変更しない。
+  - candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - 同じ `stayDate x roomGroupId` の candidate は従来どおり最初の 1 件だけ priority candidates に残る。
+  - priority candidates の順序は従来どおり input candidates の初出順である。
+  - `prioritizeSalesSettingWarmCacheQueueForRankRecommendations()` が受け取る priority order は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `flatMap()` をやめ、初出 candidate だけを loop で `priorityCandidates` へ push するようにした。
+  - warm cache queue の優先順、request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
