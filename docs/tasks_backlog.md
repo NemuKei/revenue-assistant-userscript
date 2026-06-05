@@ -38,6 +38,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-UX-128` を完了した。Product Design の audit / plan first として、`0.1.0.379` で追加した top row の `競合価格` preview graph の表示密度を再評価した。Product Design の `user-context` preflight では保存済み user context がなかったため、backlog 上の task brief、直近の `RAU-CP-22` 配布版 top smoke、`RAU-CP-23` の fixture marker / build verify、`docs/context/PRODUCT_DESIGN_AUDIT.md` の既存 audit を入力にした。Build Web Data Visualization の観点では、競合価格 graph は候補方向や推奨金額を直接決める chart ではなく、snapshot 文脈を確認する補助 chart とし、state message、部屋タイプ対応 note、graph の順に読む caveat-first の構造を維持する。graph は押下時 preview 内だけにあり、top list 本文へ金額、差額、percent を増やしていないため、要約中心 / 二段階表示への runtime UI 変更 task は追加しない。再評価条件は、mobile 390px 相当で preview を開いたときに候補 row の処理が進みにくいこと、`confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として解釈されること、または通常利用で preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いことを観測した場合である。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。Remaining Task Triage は Now `RAU-WC-33`、Next `RAU-UX-129`、After Next / Later なしである。
 
+2026-06-05 に、`RAU-WC-33` を完了した。`smoke:distribution --mode top` の RAU warm cache metrics 判定を `scripts/booking-curve-smoke-metrics.mjs` へ分離し、live smoke と synthetic fixture が同じ request count、HTTP error count、min start interval、max concurrent requests、fallback reason 判定を使うようにした。`npm run check:booking-curve-smoke-fixture` を追加し、`warm-cache`、`safe-active`、`unsafe-fast`、`unsafe-concurrent`、`http-error` の synthetic scenario で、cache 済み fallback、正常 throughput、危険な開始間隔、危険な同時実行、HTTP error を実 request なしで確認できるようにした。Data Analytics の観点では、判定指標を RAU tagged request count、HTTP error count、min start interval、max concurrent requests に限定し、page 全体 request は参考値、RAU warm cache request 5 件未満は cache 済みまたは未発火の fallback reason として扱う。Build Web Apps の観点では、既存 `smoke:distribution` の CDP / selector / write API 判定を維持したまま、検証入口だけを増やした。README に live smoke で request count が少ない場合の読み方と synthetic fixture command を追加した。Revenue Assistant live request、Revenue Assistant write API、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、保存 schema は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-129`、Next / After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -237,7 +239,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-WC-33 cache 済み状態でも RAU warm cache priority を確認できる smoke fixture を設計する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - live top smoke で RAU warm cache request count が少ない、または 0 件になる cache 済み状態でも、対象月 filter boost と RAU warm cache request 分離の効果を再現確認できるようにする。
   - live 環境の cache 状態に依存しすぎない検証入口を作る。
@@ -253,10 +255,17 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - cache 済み live 状態でも、RAU warm cache priority の確認ができない理由を fallback reason として説明できる。
   - controlled fixture または安全な setup 手順により、RAU warm cache request count、HTTP error count、min start interval、max concurrent requests を確認できる。
   - 実装する場合は `node --check scripts/run-distribution-smoke.mjs`、対象 lint、`git diff --check` が通過している。
+- 完了結果:
+  - `smoke:distribution --mode top` の RAU warm cache metrics 集計と throughput 判定を `scripts/booking-curve-smoke-metrics.mjs` へ分離し、live smoke と synthetic fixture が同じ判定を使うようにした。
+  - `npm run check:booking-curve-smoke-fixture` を追加した。`warm-cache` は RAU tagged request 0 件でも fallback reason が出て throughput fail にならないことを確認する。`safe-active` は RAU tagged request 5 件、HTTP error 0 件、min start interval 350ms、max concurrent 3 件で pass することを確認する。
+  - `unsafe-fast`、`unsafe-concurrent`、`http-error` は、それぞれ min start interval 100ms、max concurrent 4 件、HTTP error 1 件を synthetic metrics として与え、同じ判定が危険値を検出することを確認する。
+  - README に live top smoke で RAU warm cache request count が 5 件未満になった場合の読み方と、実 request なしで判定を確認する synthetic fixture command を追加した。
+  - Data Analytics の観点では、指標を RAU tagged request count、HTTP error count、min start interval、max concurrent requests に限定し、page 全体 request は参考値、RAU warm cache request 5 件未満は cache 済みまたは未発火の fallback reason として扱う。
+  - Revenue Assistant live request、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、request 間隔、同時実行数、保存 schema は変更していない。
 - metadata:
   - `spec-impact`: no
   - `target-spec`: none
-  - `verify`: `node --check scripts/run-distribution-smoke.mjs`, controlled smoke if implemented, `git diff --check`
+  - `verify`: `node --check scripts/run-distribution-smoke.mjs`, `node --check scripts/booking-curve-smoke-metrics.mjs`, `node --check scripts/check-booking-curve-smoke-fixture.mjs`, `npm run check:booking-curve-smoke-fixture`, `npm run lint`, `git diff --check`
 
 ### RAU-UX-129 `競合価格` 追加後の `その他` details 再配置要否を観察する
 
@@ -8950,11 +8959,11 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-WC-33`: cache 済み状態でも RAU warm cache priority を確認できる smoke fixture を設計する。
+- `RAU-UX-129`: `競合価格` 追加後の `その他` details 再配置要否を観察する。
 
 Next:
 
-- `RAU-UX-129`: `競合価格` 追加後の `その他` details 再配置要否を観察する。
+- なし。
 
 After Next:
 
@@ -8965,6 +8974,8 @@ Later:
 - なし。
 
 統合判断:
+
+- 2026-06-05 に、`RAU-WC-33` を完了した。`smoke:distribution --mode top` の RAU warm cache metrics 集計と throughput 判定を共有 module へ分離し、live smoke と synthetic fixture が同じ request count、HTTP error count、min start interval、max concurrent requests、fallback reason 判定を使うようにした。`npm run check:booking-curve-smoke-fixture` により、cache 済み fallback、safe active、unsafe fast、unsafe concurrent、HTTP error を実 request なしで確認できる。README に fallback reason の読み方と fixture command を追加した。Revenue Assistant live request、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。次は `RAU-UX-129` の `その他` details 再配置要否を観察する。
 
 - 2026-06-05 に、`RAU-UX-128` を完了した。Product Design の audit / plan first として競合価格 preview graph の表示密度を再評価し、`docs/context/PRODUCT_DESIGN_AUDIT.md` に記録した。Build Web Data Visualization の観点では、graph は候補方向や推奨金額を直接決める chart ではなく、snapshot 文脈を確認する補助 chart として扱う。`RAU-CP-23` の部屋タイプ対応 note により caveat-first の読み筋が作れており、graph は押下時 preview 内だけにあるため、現時点では要約中心 / 二段階表示への runtime UI 変更 task は追加しない。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。次は `RAU-WC-33` の controlled smoke / fixture 設計へ進む。
 

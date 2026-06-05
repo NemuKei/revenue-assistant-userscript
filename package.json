@@ -26,7 +26,8 @@
         "chrome:pages": "node ./scripts/attach-chrome.mjs",
         "userscript:version-check": "node ./scripts/check-userscript-version.mjs",
         "smoke:write-posts": "node ./scripts/monitor-write-api-posts.mjs",
-        "smoke:distribution": "node ./scripts/run-distribution-smoke.mjs"
+        "smoke:distribution": "node ./scripts/run-distribution-smoke.mjs",
+        "check:booking-curve-smoke-fixture": "node ./scripts/check-booking-curve-smoke-fixture.mjs"
     },
     "devDependencies": {
         "@eslint/js": "10.0.1",
