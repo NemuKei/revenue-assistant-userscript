@@ -16100,9 +16100,7 @@ function createCompetitorPriceChartSvg(
     const plotHeight = height - paddingTop - paddingBottom;
     const layout = getCompetitorPriceChartLayout(fetchDates.length, paddingLeft, plotWidth);
     const fetchDateIndexByDate = new Map(fetchDates.map((fetchDate, index) => [fetchDate, index] as const));
-    const prices = points.map((point) => point.price);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
+    const { minPrice, maxPrice } = resolvePricePointRange(points);
     const yMin = minPrice === maxPrice ? Math.max(0, minPrice - 1000) : minPrice;
     const yMax = minPrice === maxPrice ? maxPrice + 1000 : maxPrice;
     const yAxisTicks = buildCompetitorPriceYAxisTicks(yMin, yMax);
@@ -16256,9 +16254,7 @@ function createPriceTrendChartSvg(
     const plotHeight = height - paddingTop - paddingBottom;
     const layout = getCompetitorPriceChartLayout(leadTimeDays.length, paddingLeft, plotWidth);
     const leadTimeIndexByDays = new Map(leadTimeDays.map((leadTimeDaysValue, index) => [leadTimeDaysValue, index] as const));
-    const prices = points.map((point) => point.price);
-    const minPrice = Math.min(...prices);
-    const maxPrice = Math.max(...prices);
+    const { minPrice, maxPrice } = resolvePricePointRange(points);
     const yMin = minPrice === maxPrice ? Math.max(0, minPrice - 1000) : minPrice;
     const yMax = minPrice === maxPrice ? maxPrice + 1000 : maxPrice;
     const yAxisTicks = buildCompetitorPriceYAxisTicks(yMin, yMax);
@@ -16394,6 +16390,16 @@ function buildPriceTrendChartPointsByFacility(
 
 function shouldShowPriceTrendLeadTimeTick(leadTimeDays: number): boolean {
     return leadTimeDays === 0 || leadTimeDays === 84 || leadTimeDays % 7 === 0;
+}
+
+function resolvePricePointRange(points: Array<{ price: number }>): { minPrice: number; maxPrice: number } {
+    let minPrice = Number.POSITIVE_INFINITY;
+    let maxPrice = Number.NEGATIVE_INFINITY;
+    for (const point of points) {
+        minPrice = Math.min(minPrice, point.price);
+        maxPrice = Math.max(maxPrice, point.price);
+    }
+    return { minPrice, maxPrice };
 }
 
 function setActiveCompetitorPriceChartHitbox(hitboxElements: SVGRectElement[], activeHitboxElement: SVGRectElement): void {

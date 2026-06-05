@@ -755,6 +755,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-42 価格系 chart y 軸範囲の min/max を 1 pass にする
+
+- 状態:
+  - 完了。
+- 目的:
+  - 競合価格 / 価格推移 chart SVG の y 軸範囲計算で、価格配列を追加生成しない。
+  - `Math.min(...prices)` / `Math.max(...prices)` の前段配列作成をやめ、points を 1 回走査して min / max を求める。
+- スコープ:
+  - 対象は `src/main.ts` の `createCompetitorPriceChartSvg()` と `createPriceTrendChartSvg()` である。
+  - 価格 point range helper を共通化する。
+- 非目標:
+  - 競合価格 / 価格推移 API request 範囲、request 件数、保存順序、保存 schema、background queue 停止条件、Revenue Assistant write API、rank 変更 POST、preview / tab UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - 競合価格 chart と価格推移 chart が、価格配列を作らず 1 pass で min / max を求める。
+  - y 軸 padding と tick 生成の既存契約は維持する。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `resolvePricePointRange()` を追加し、価格 points を 1 回走査して min / max を返すようにした。
+  - `createCompetitorPriceChartSvg()` と `createPriceTrendChartSvg()` がこの helper を使うようにした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:
