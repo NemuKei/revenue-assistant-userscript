@@ -88,6 +88,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた競合価格 snapshot plan flattening の中間配列生成を `RAU-CP-51` として task 化して完了した。`flattenCompetitorPricePlansWithOwn()` は、自社 plans と競合 hotel plans を結合するときに、競合側を `flatMap()` で中間配列化してから spread していた。自社 plans を先に push し、競合 hotel の plans を payload 順に loop で push するようにして、競合価格 preview / tab と own price position evidence が使う plan flattening の不要な中間配列を減らした。重複確認では、`RAU-CP-39` は guest count ごとの最安値 Map 生成、`RAU-CP-43` は競合価格 snapshot records の room type selection、`RAU-CP-50` は rank gap context の room group 正規化であり、競合価格 snapshot plan flattening は未着手だった。自社 plans を先、競合 hotel plans を payload 順に続ける並び、部屋タイプ / 食事 filter、guest count 別最安値計算、競合価格 preview / tab graph、own price position evidence、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた forecast diagnostics warning 集約の中間配列生成を `RAU-CP-52` として task 化して完了した。`buildUnitPriceForecastResult()` は matching observations の diagnostics を `flatMap()` してから `Set` 化し、`summarizeForecastEvaluationResults()` は case warnings と result warnings を spread した中間配列にしてから `Set` 化していた。どちらも loop で warning を `Set` へ直接追加するようにし、forecast / evaluation diagnostics 準備時の不要な中間配列を減らした。重複確認では、`RAU-UX-82` は curveCore の latest / earliest selection、`RAU-CP-45` は reference curve repeated scan、`RAU-CP-47` は monthly point compact、`RAU-CP-51` は competitor plan flattening であり、forecast diagnostics warning 集約は未着手だった。warning の重複排除、初出順、missingReason、sourceCounts、forecast / evaluation metrics、rank recommendation scoring、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は表示速度、安定性、予測 diagnostics と安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -547,6 +549,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 完了結果:
   - `flatMap()` をやめ、自社 plans と競合 hotel plans を loop で `plans` へ push するようにした。
   - 競合価格 preview / tab graph、own price position evidence、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-52 forecast diagnostics warning 集約を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - forecast / evaluation diagnostics の warning 集約で、`flatMap()` や spread によって作る中間配列を減らす。
+- スコープ:
+  - 対象は `src/curveCore.ts` の `buildUnitPriceForecastResult()` と `summarizeForecastEvaluationResults()` である。
+  - observations、case warnings、result warnings を loop し、warning を `Set` へ直接追加する。
+- 非目標:
+  - warning の重複排除と初出順は変更しない。
+  - missingReason、sourceCounts、forecast / evaluation metrics は変更しない。
+  - rank recommendation scoring、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - Unit price forecast の diagnostics warnings は、matching observations の diagnostics を従来どおり初出順で重複排除する。
+  - Forecast evaluation の warnings は、各 input の case warnings、result warnings の順に従来どおり初出順で重複排除する。
+  - metrics、excludedCaseCount、missingReason、sourceCounts の contract は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `flatMap()` / spread 中間配列をやめ、warning を loop で `Set` へ直接追加するようにした。
+  - forecast / evaluation metrics、rank recommendation scoring、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no

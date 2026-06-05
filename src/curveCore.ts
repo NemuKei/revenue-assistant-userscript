@@ -472,7 +472,13 @@ export function buildUnitPriceForecastResult(options: BuildUnitPriceForecastOpti
     const currentObservation = matchingObservations[0];
     const currentAdr = currentObservation?.adr ?? null;
     const missingReason = getUnitPriceForecastMissingReason({ observedLt, currentAdr });
-    const warnings = Array.from(new Set(matchingObservations.flatMap((observation) => observation.diagnostics)));
+    const warningSet = new Set<string>();
+    for (const observation of matchingObservations) {
+        for (const diagnostic of observation.diagnostics) {
+            warningSet.add(diagnostic);
+        }
+    }
+    const warnings = Array.from(warningSet);
 
     return {
         modelId,
@@ -780,10 +786,16 @@ export function summarizeForecastEvaluationResults(options: {
             smape: calculateSmape(predicted, actual)
         };
     });
-    const warnings = Array.from(new Set(options.inputs.flatMap((input) => [
-        ...input.case.diagnostics.warnings,
-        ...input.result.diagnostics.warnings
-    ])));
+    const warningSet = new Set<string>();
+    for (const input of options.inputs) {
+        for (const warning of input.case.diagnostics.warnings) {
+            warningSet.add(warning);
+        }
+        for (const warning of input.result.diagnostics.warnings) {
+            warningSet.add(warning);
+        }
+    }
+    const warnings = Array.from(warningSet);
     const impactProxy = buildForecastEvaluationImpactProxy(usableInputs);
     const metrics = errors.length === 0 ? {} : {
         maeRooms: errors.reduce((sum, error) => sum + error.absoluteError, 0) / errors.length,
