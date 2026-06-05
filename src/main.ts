@@ -15646,7 +15646,7 @@ function selectPriceTrendRecordsForFilters(
     roomTypeFilter: string | null,
     mealTypeFilter: string | null
 ): PriceTrendRecord[] {
-    const hasSpecificRoomTypeRecords = hasCompletePriceTrendSpecificRoomTypeRecords(records);
+    const hasSpecificRoomTypeRecords = roomTypeFilter === null && hasCompletePriceTrendSpecificRoomTypeRecords(records);
     return records.filter((record) => {
         const roomType = getPriceTrendRecordRoomTypeLabel(record);
         const roomTypeMatches = roomTypeFilter === null

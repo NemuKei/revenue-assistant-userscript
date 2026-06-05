@@ -72,6 +72,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、直前の Build Web Apps 静的点検で残した推奨を `RAU-CP-43` として task 化して完了した。`selectCompetitorPriceRecordsForRoomTypeFilter()` は、roomType filter 指定時に request label 一致 record を `filter()` し、見つからない場合に unspecified record をもう一度 `filter()` していた。request label 一致 record と unspecified record を 1 回の loop で同時に集めるようにし、競合価格 preview / tab の部屋タイプ record 選択の不要な repeated scan を減らした。重複確認では、`RAU-CP-36` から `RAU-CP-42` は snapshot series、chart series、tooltip、range 計算の最適化であり、部屋タイプ record selection の 1 pass 化は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。runtime UI、`dist`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた価格推移 record filter の不要判定を `RAU-CP-44` として task 化して完了した。`selectPriceTrendRecordsForFilters()` は roomType filter が指定されている path でも、`hasCompletePriceTrendSpecificRoomTypeRecords(records)` で全 records を追加走査していた。この complete 判定は `roomTypeFilter === null` のときだけ、指定なし表示で specific room type records を優先するために必要なため、roomType filter 指定時は実行しないようにした。重複確認では、`RAU-CP-43` は競合価格 snapshot records の room type selection であり、価格推移 record filter の complete 判定 skip とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。価格推移 API request 範囲、request 件数、保存順序、保存 schema、background queue 停止条件、Revenue Assistant write API、rank change payload、価格推移 tab UI、競合価格 preview / tab UI、candidate scoring、priority、confidence、reasonFingerprint は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -408,6 +410,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `selectCompetitorPriceRecordsForRoomTypeFilter()` で `unspecifiedRecords` と `roomTypeRequestRecords` を 1 回の loop で同時に集めるようにした。
   - `roomTypeFilter === null` では unspecified record があればそれを優先し、なければ全 records を返す既存挙動を維持した。
   - roomType filter 指定時は request label 一致 record があればそれを優先し、なければ unspecified record を返す既存挙動を維持した。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-44 価格推移 room type filter 指定時の complete 判定を省く
+
+- 状態:
+  - 完了。
+- 目的:
+  - 価格推移 tab の record filter で、roomType filter 指定時に使わない complete room type 判定を避ける。
+  - filter 変更時の records 追加走査を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `selectPriceTrendRecordsForFilters()` である。
+  - `roomTypeFilter === null` では従来どおり `hasCompletePriceTrendSpecificRoomTypeRecords(records)` を使い、specific room type records が complete の場合は unspecified records を除外する。
+  - roomType filter 指定時は、従来どおり `roomType === roomTypeFilter` と meal type filter だけで選択する。
+- 非目標:
+  - 価格推移 API request 範囲、request 件数、保存 schema、価格推移 tab UI、競合価格 preview / tab UI、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - `roomTypeFilter !== null` の path では `hasCompletePriceTrendSpecificRoomTypeRecords(records)` を実行しない。
+  - `roomTypeFilter === null` の戻り値優先順位が既存と同じである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `selectPriceTrendRecordsForFilters()` の complete 判定を `roomTypeFilter === null && hasCompletePriceTrendSpecificRoomTypeRecords(records)` にした。
+  - roomType filter 指定時は complete 判定の records 走査を省き、指定 room type と meal type の filter だけを行う。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
