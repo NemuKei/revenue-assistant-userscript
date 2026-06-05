@@ -50,6 +50,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた競合価格 snapshot の取得準備コストを `RAU-CP-25` として task 化して完了した。`persistCompetitorPriceSnapshotsForSource()` は同じ宿泊日の `指定なし` と部屋タイプ別 snapshot を順番に保存するが、従来は各 request 前に `/api/v2/competitors` を読み直していた。`CompetitorPriceRequestContextBase` を 1 回作り、同じ宿泊日内の `persistCompetitorPriceSnapshot()` へ渡すことで、競合施設一覧の準備取得を snapshot 条件ごとに繰り返さないようにした。context 共有は 1 回の `persistCompetitorPriceSnapshotsForSource()` 呼び出し内に限定する。`/api/v5/competitor_prices` の対象条件、保存順序、background queue 停止条件、保存 schema、Revenue Assistant write API、rank change payload、request 間隔、同時実行数は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた料金調整候補 metrics の補助系列待ちを `RAU-CP-26` として task 化して完了した。`loadSalesSettingBookingCurveMetrics()` は booking curve 本体取得後、reference curve と同曜日 curve が両方必要な場合でも reference curve を待ってから同曜日 curve を読み始めていた。両者は同じ `bookingCurveData` を前提にするが互いの結果には依存しないため、`Promise.all` で同時に開始するようにした。補助系列の内部 request は既存の `referenceCurveRequestScheduler` と `getBookingCurve()` cache / raw source store を通るため、request 間隔、同時実行数、dedupe、保存 schema、Revenue Assistant write API、rank change payload は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -423,6 +425,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `persistCompetitorPriceSnapshot()` は `requestContextBase` がない場合だけ従来どおり `/api/v2/competitors` から context base を作るため、既存の単体呼び出し contract は維持する。
   - stale risk は、同じ `persistCompetitorPriceSnapshotsForSource()` 呼び出し中に Revenue Assistant 側の競合施設設定を変更した場合に、その呼び出し内の残り request へ即時反映されない点である。永続 cache や queue session cache ではなく、1 回の保存処理内だけの共有に留める。
   - `/api/v5/competitor_prices` の対象条件、保存順序、background queue 停止条件、保存 schema、Revenue Assistant write API、rank change payload、request 間隔、同時実行数は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-26 料金調整候補 metrics の補助系列待ちを並列化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - 料金調整候補 metrics の生成で、booking curve 本体取得後に reference curve と同曜日 curve を直列に待つ waterfall を減らす。
+  - request 数や安全上限を増やさず、必要な補助系列の待ち順だけを詰める。
+- スコープ:
+  - 対象は `src/main.ts` の `loadSalesSettingBookingCurveMetrics()` である。
+  - `bookingCurveData` が取れた後、`loadReferenceCurve` と `loadSameWeekdayCurve` が両方有効な場合の待ち方だけを変える。
+- 非目標:
+  - `/api/v4/booking_curve` の対象範囲、request 間隔、同時実行数、warm cache queue、reference curve algorithm、保存 schema は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - reference curve と同曜日 curve が互いの結果に依存せず、`Promise.all` で同時に開始される。
+  - 既存の `referenceCurveRequestScheduler`、`getBookingCurve()` cache、raw source store の dedupe を維持している。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `loadSalesSettingBookingCurveMetrics()` は、booking curve 本体取得後に reference curve と同曜日 curve の promise を `Promise.all` で待つようにした。
+  - 補助系列が無効な場合は従来どおり `null` または空配列を返す。
+  - 内部 request は既存の `referenceCurveRequestScheduler` と `getBookingCurve()` cache / raw source store を通るため、request 間隔、同時実行数、dedupe、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no

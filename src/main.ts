@@ -12885,12 +12885,14 @@ async function loadSalesSettingBookingCurveMetrics(
             return null;
         });
 
-    const referenceCurveData = bookingCurveData === null || !loadReferenceCurve
-        ? null
-        : await loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey, rmRoomGroupId);
-    const sameWeekdayCurveData = bookingCurveData === null || !loadSameWeekdayCurve
-        ? []
-        : await loadSalesSettingSameWeekdayCurveData(analysisDate, batchDateKey, rmRoomGroupId);
+    const [referenceCurveData, sameWeekdayCurveData] = await Promise.all([
+        bookingCurveData === null || !loadReferenceCurve
+            ? Promise.resolve(null)
+            : loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey, rmRoomGroupId),
+        bookingCurveData === null || !loadSameWeekdayCurve
+            ? Promise.resolve([])
+            : loadSalesSettingSameWeekdayCurveData(analysisDate, batchDateKey, rmRoomGroupId)
+    ]);
 
     return buildSalesSettingBookingCurveMetrics(bookingCurveData, referenceCurveData, sameWeekdayCurveData, comparisonDateKeys);
 }
