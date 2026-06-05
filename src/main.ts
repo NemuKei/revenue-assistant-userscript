@@ -12907,30 +12907,29 @@ async function prepareSalesSettingSyncData(
         return null;
     }
 
-    await populateCurrentUiSalesSettingCapacities(analysisDate, cards);
-    if (isSyncContextStale(syncContext)) {
-        return null;
-    }
-
     const comparisonDateKeys = getSalesSettingComparisonDateKeys(batchDateKey);
     const totalCapacity = sumSalesSettingRoomCapacities(cards);
+    const capacityUpdate = populateCurrentUiSalesSettingCapacities(analysisDate, cards);
+    const roomGroupsRequest = getRoomGroups()
+        .catch((error: unknown) => {
+            console.error(`[${SCRIPT_NAME}] failed to load room groups`, {
+                error
+            });
+            return [] as RoomGroup[];
+        });
+    const hotelMetricsRequest = loadSalesSettingBookingCurveMetrics(
+        analysisDate,
+        batchDateKey,
+        comparisonDateKeys,
+        undefined,
+        false,
+        isSalesSettingBookingCurveSameWeekdayVisible()
+    );
     const [roomGroups, hotelMetrics] = await Promise.all([
-        getRoomGroups()
-            .catch((error: unknown) => {
-                console.error(`[${SCRIPT_NAME}] failed to load room groups`, {
-                    error
-                });
-                return [] as RoomGroup[];
-            }),
-        loadSalesSettingBookingCurveMetrics(
-            analysisDate,
-            batchDateKey,
-            comparisonDateKeys,
-            undefined,
-            false,
-            isSalesSettingBookingCurveSameWeekdayVisible()
-        )
+        roomGroupsRequest,
+        hotelMetricsRequest
     ]);
+    await capacityUpdate;
     if (isSyncContextStale(syncContext)) {
         return null;
     }

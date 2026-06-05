@@ -52,6 +52,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた料金調整候補 metrics の補助系列待ちを `RAU-CP-26` として task 化して完了した。`loadSalesSettingBookingCurveMetrics()` は booking curve 本体取得後、reference curve と同曜日 curve が両方必要な場合でも reference curve を待ってから同曜日 curve を読み始めていた。両者は同じ `bookingCurveData` を前提にするが互いの結果には依存しないため、`Promise.all` で同時に開始するようにした。補助系列の内部 request は既存の `referenceCurveRequestScheduler` と `getBookingCurve()` cache / raw source store を通るため、request 間隔、同時実行数、dedupe、保存 schema、Revenue Assistant write API、rank change payload は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた料金調整候補 sync 準備の waterfall を `RAU-CP-27` として task 化して完了した。`prepareSalesSettingSyncData()` は、current UI card の販売室数 capacity 表示更新で `current_settings` を待ってから、room groups と booking curve metrics を取得していた。capacity 表示更新は同じ cards にだけ依存し、room group ID 解決や hotel metrics の結果には依存しないため、capacity 更新、room groups 取得、hotel metrics 取得を同時に開始するようにした。`current_settings`、`room_groups`、`booking_curve` の対象 endpoint、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -453,6 +455,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `loadSalesSettingBookingCurveMetrics()` は、booking curve 本体取得後に reference curve と同曜日 curve の promise を `Promise.all` で待つようにした。
   - 補助系列が無効な場合は従来どおり `null` または空配列を返す。
   - 内部 request は既存の `referenceCurveRequestScheduler` と `getBookingCurve()` cache / raw source store を通るため、request 間隔、同時実行数、dedupe、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-27 料金調整候補 sync 準備の capacity 更新待ちを並列化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - top 料金調整候補 sync の準備で、current UI の capacity 表示更新を待ってから room groups と hotel metrics を取り始める waterfall を減らす。
+  - request 数や対象 endpoint を増やさず、独立した read request の開始順だけを詰める。
+- スコープ:
+  - 対象は `src/main.ts` の `prepareSalesSettingSyncData()` である。
+  - `populateCurrentUiSalesSettingCapacities()`、`getRoomGroups()`、`loadSalesSettingBookingCurveMetrics()` の同時開始に限定する。
+- 非目標:
+  - `current_settings`、`room_groups`、`booking_curve` の対象範囲、request 間隔、同時実行数、warm cache queue、保存 schema は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - current UI capacity 更新が room groups / hotel metrics の結果に依存していないことを前提に、3 つの read work が同じ sync 準備内で同時に開始される。
+  - capacity 更新は従来どおり完了を待ってから stale check へ進み、capacity 取得失敗時は既存の warn + 空 Map fallback を維持する。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `prepareSalesSettingSyncData()` は、`populateCurrentUiSalesSettingCapacities()`、`getRoomGroups()`、`loadSalesSettingBookingCurveMetrics()` を先に promise として開始し、room groups / hotel metrics の結果を受け取った後に capacity 更新の完了も待つ形にした。
+  - `populateCurrentUiSalesSettingCapacities()` 内の `current_settings` 取得、capacity DOM 更新、失敗時 fallback は変更していない。
+  - `current_settings`、`room_groups`、`booking_curve` の対象 endpoint、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
