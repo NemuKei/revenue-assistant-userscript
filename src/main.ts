@@ -8282,10 +8282,14 @@ async function readRankRecommendationCurvePreviewReferenceSources(options: {
         return [];
     }
 
-    const uniqueStayDates = Array.from(new Set(options.stayDates.flatMap((stayDate) => {
+    const uniqueStayDateSet = new Set<string>();
+    for (const stayDate of options.stayDates) {
         const compactStayDate = toCompactDateKey(stayDate);
-        return compactStayDate === null ? [] : [compactStayDate];
-    })));
+        if (compactStayDate !== null) {
+            uniqueStayDateSet.add(compactStayDate);
+        }
+    }
+    const uniqueStayDates = Array.from(uniqueStayDateSet);
     const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
         facilityId: options.facilityId,
         asOfDate: asOfDateKey
