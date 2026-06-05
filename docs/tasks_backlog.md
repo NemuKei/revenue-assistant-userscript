@@ -40,6 +40,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-WC-33` を完了した。`smoke:distribution --mode top` の RAU warm cache metrics 判定を `scripts/booking-curve-smoke-metrics.mjs` へ分離し、live smoke と synthetic fixture が同じ request count、HTTP error count、min start interval、max concurrent requests、fallback reason 判定を使うようにした。`npm run check:booking-curve-smoke-fixture` を追加し、`warm-cache`、`safe-active`、`unsafe-fast`、`unsafe-concurrent`、`http-error` の synthetic scenario で、cache 済み fallback、正常 throughput、危険な開始間隔、危険な同時実行、HTTP error を実 request なしで確認できるようにした。Data Analytics の観点では、判定指標を RAU tagged request count、HTTP error count、min start interval、max concurrent requests に限定し、page 全体 request は参考値、RAU warm cache request 5 件未満は cache 済みまたは未発火の fallback reason として扱う。Build Web Apps の観点では、既存 `smoke:distribution` の CDP / selector / write API 判定を維持したまま、検証入口だけを増やした。README に live smoke で request count が少ない場合の読み方と synthetic fixture command を追加した。Revenue Assistant live request、Revenue Assistant write API、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、保存 schema は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-129`、Next / After Next / Later なしである。
 
+2026-06-05 に、`RAU-UX-129` を完了した。Product Design の audit / plan first として、`競合価格` が top row の primary action に増えた後の `その他` details 再配置要否を確認した。Build Web Data Visualization の観点では、競合価格 graph は押下時 preview 内だけに閉じ、top row 本文へ金額、差額、percent を増やさない前提を維持した。Build Web Apps の観点では、current fixture を `npm run build:vite:fixture` で生成し、mobile 390px の `candidates`、`decision-pending`、`preview-open` state で `documentElement.scrollWidth` `390`、横 overflow false、visible action group overlap `0` 件を確認した。`npm run check:fixture-markers` では primary actions wrappers `25` 件、secondary action markers `25` 件、pending notice markers `2` 件、competitor preview buttons / rows `25` 件、decision buttons `50` 件を確認した。`その他` details は、補助操作を常時表示から外して primary action と分離できており、row footer 化や popover 化を正当化する evidence はないため現行維持とした。runtime UI、`src/`、`dist/`、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`docs/context/INTENT.md` は、表示密度、UI / UX、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -270,7 +272,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-UX-129 `競合価格` 追加後の `その他` details 再配置要否を観察する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - top row の主操作に `競合価格` が増えた後でも、補助操作 `その他` details の開閉が候補処理の速度を落としていないか確認する。
   - 実利用証跡がある場合だけ、row footer、popover、または現行維持を再判断する。
@@ -286,10 +288,19 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 現行維持、row footer、popover のどれを次に採るかの判断理由がある。
   - 再配置が必要な場合は、表示対象、操作順、hover / focus / keyboard、mobile 390px、write API 非追加を含む実装 task が作られている。
   - `git diff --check` が通過している。
+- 完了結果:
+  - Product Design の audit / plan first として、`docs/context/PRODUCT_DESIGN_AUDIT.md` の `Secondary Actions Density Audit 2026-06-05` に結果を記録した。
+  - `RAU-CP-22` の配布版 `0.1.0.379` top smoke では、top row `10` 件、primary actions `10` 件、secondary actions `10` 件、competitor preview buttons / rows `10` 件、console / page error `0` 件、監視対象 write API POST `0` 件だった。
+  - current fixture marker check では、primary actions wrappers `25` 件、secondary action markers `25` 件、pending notice markers `2` 件、pending progress markers `2` 件、competitor preview buttons / rows `25` 件、decision buttons `50` 件だった。
+  - current mobile fixture layout check では、390px の `candidates`、`decision-pending`、`preview-open` state で `documentElement.scrollWidth` は `390`、横 overflow は false、visible action group overlap は `0` 件だった。
+  - `その他` details は、補助操作を常時表示から外して primary action と分離できているため現行維持と判断した。row footer / popover への即時移設 task は追加しない。
+  - 再評価条件は、通常利用または配布版 top smoke で `様子見`、`対応不要`、`要点` を探すための開閉が多く候補処理が止まること、pending notice と `その他` details が重なって取消や補助操作が見えにくいこと、または mobile 390px の実データ preview で row 処理が進みにくいことを観測した場合とする。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、request 間隔、同時実行数、保存 schema は変更していない。
 - metadata:
-  - `spec-impact`: unknown
-  - `spec-checkpoint`: before-implementation
-  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: Product Design audit note, `npm run check:fixture-markers`, `npm run build:vite:fixture`, mobile fixture layout check, `git diff --check`
 
 ### RAU-UX-121 `候補データ優先取得` の月別優先取得ボタンと進捗表示の重なりを解消する
 
