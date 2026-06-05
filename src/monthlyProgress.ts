@@ -1494,7 +1494,13 @@ function createMonthlyProgressPanelSvg(
 
     const pointsByMonth = panel.focusMonths.map((month) => resolveMonthlyProgressPanelPoints(month, panel.metric));
     const axisTickIndices = getMonthlyProgressActiveTickIndices(pointsByMonth);
-    const axisTicks = axisTickIndices.map((index) => pointsByMonth[0]?.[index]).filter((point): point is MonthlyProgressPreviewPoint => point !== undefined);
+    const axisTicks: MonthlyProgressPreviewPoint[] = [];
+    for (const index of axisTickIndices) {
+        const point = pointsByMonth[0]?.[index];
+        if (point !== undefined) {
+            axisTicks.push(point);
+        }
+    }
     const tickCount = axisTicks.length;
     const maxValue = Math.max(1, getMonthlyProgressPanelRoundedMaxValue(pointsByMonth));
     const xPositions = axisTicks.map((_, index) => tickCount <= 1

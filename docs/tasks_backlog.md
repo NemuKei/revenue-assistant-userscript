@@ -90,6 +90,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた forecast diagnostics warning 集約の中間配列生成を `RAU-CP-52` として task 化して完了した。`buildUnitPriceForecastResult()` は matching observations の diagnostics を `flatMap()` してから `Set` 化し、`summarizeForecastEvaluationResults()` は case warnings と result warnings を spread した中間配列にしてから `Set` 化していた。どちらも loop で warning を `Set` へ直接追加するようにし、forecast / evaluation diagnostics 準備時の不要な中間配列を減らした。重複確認では、`RAU-UX-82` は curveCore の latest / earliest selection、`RAU-CP-45` は reference curve repeated scan、`RAU-CP-47` は monthly point compact、`RAU-CP-51` は competitor plan flattening であり、forecast diagnostics warning 集約は未着手だった。warning の重複排除、初出順、missingReason、sourceCounts、forecast / evaluation metrics、rank recommendation scoring、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は表示速度、安定性、予測 diagnostics と安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた月次 preview SVG axis tick 抽出の中間配列生成を `RAU-CP-53` として task 化して完了した。`createMonthlyProgressPanelSvg()` は、active tick index から `pointsByMonth[0]` の point を取り出すときに、`map()` で point / undefined の中間配列を作ってから `filter()` で undefined を落としていた。loop で valid tick point だけを `axisTicks` へ push するようにし、月次 preview SVG 描画準備時の不要な中間配列を減らした。重複確認では、`RAU-CP-46` は月次 preview の比較 snapshot read 並列化、`RAU-CP-47` は月次 response compact、`RAU-CP-52` は forecast diagnostics warning 集約であり、月次 preview SVG axis tick 抽出は未着手だった。active tick index の順序、undefined tick 除外、tick count、x position、y axis max、月次 preview model、月次 API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI の表示契約は変更していない。`docs/context/INTENT.md` は表示速度、UI / UX、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -578,6 +580,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 完了結果:
   - `flatMap()` / spread 中間配列をやめ、warning を loop で `Set` へ直接追加するようにした。
   - forecast / evaluation metrics、rank recommendation scoring、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-53 月次 preview SVG axis tick 抽出を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - 月次 preview SVG の axis tick 抽出で、`map().filter()` によって作る point / undefined の中間配列を減らす。
+- スコープ:
+  - 対象は `src/monthlyProgress.ts` の `createMonthlyProgressPanelSvg()` である。
+  - active tick index を loop し、`pointsByMonth[0]` に存在する tick point だけを `axisTicks` へ push する。
+- 非目標:
+  - active tick index の順序、undefined tick 除外、tick count、x position、y axis max は変更しない。
+  - 月次 preview model、月次 API request 範囲、request 件数、保存 schemaは変更しない。
+  - Revenue Assistant write API、rank change payload、runtime UI の表示契約は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - `axisTicks` は従来どおり `pointsByMonth[0]` に存在する active tick point だけを同じ順序で持つ。
+  - tick count と x position の計算入力が維持される。
+  - 月次 preview SVG の role / aria-label / series / tooltip contract は変更されない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `map().filter()` をやめ、valid tick point だけを loop で `axisTicks` へ push するようにした。
+  - 月次 API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI の表示契約は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
