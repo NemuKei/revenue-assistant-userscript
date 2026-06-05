@@ -3587,6 +3587,21 @@ async function readOrLoadBookingCurveRawSource(
     batchDateKey: string,
     rmRoomGroupId?: string
 ): Promise<BookingCurveResponse> {
+    const result = await readOrLoadBookingCurveRawSourceWithStatus(
+        facilityCacheKey,
+        stayDate,
+        batchDateKey,
+        rmRoomGroupId
+    );
+    return result.response;
+}
+
+async function readOrLoadBookingCurveRawSourceWithStatus(
+    facilityCacheKey: string,
+    stayDate: string,
+    batchDateKey: string,
+    rmRoomGroupId?: string
+): Promise<{ response: BookingCurveResponse; source: "stored" | "fetched" }> {
     const scope: CurveScope = rmRoomGroupId === undefined ? "hotel" : "roomGroup";
     const query = buildBookingCurveQuerySignature(stayDate, rmRoomGroupId);
     const rawSourceKey = buildBookingCurveRawSourceCacheKey({
@@ -3610,7 +3625,10 @@ async function readOrLoadBookingCurveRawSource(
             return undefined;
         });
     if (storedRawSource !== undefined) {
-        return storedRawSource.response as BookingCurveResponse;
+        return {
+            response: storedRawSource.response as BookingCurveResponse,
+            source: "stored"
+        };
     }
 
     const response = await loadBookingCurve(stayDate, rmRoomGroupId);
@@ -3631,7 +3649,10 @@ async function readOrLoadBookingCurveRawSource(
         });
     });
 
-    return response;
+    return {
+        response,
+        source: "fetched"
+    };
 }
 
 function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
@@ -4452,44 +4473,13 @@ async function runSalesSettingWarmCacheTask(
         return "fetched";
     }
 
-    const exists = await hasSalesSettingWarmCacheRawSource(task);
-    if (exists) {
-        return "skipped";
-    }
-
-    await readOrLoadBookingCurveRawSource(
+    const result = await readOrLoadBookingCurveRawSourceWithStatus(
         facilityId,
         task.stayDate,
         asOfDate,
         task.roomGroupId
     );
-    return "fetched";
-}
-
-async function hasSalesSettingWarmCacheRawSource(task: SalesSettingWarmCacheTask): Promise<boolean> {
-    if (salesSettingWarmCacheState.facilityId === null || salesSettingWarmCacheState.asOfDate === null) {
-        return true;
-    }
-
-    const rawSourceKey = buildBookingCurveRawSourceCacheKey({
-        facilityId: salesSettingWarmCacheState.facilityId,
-        stayDate: task.stayDate,
-        asOfDate: salesSettingWarmCacheState.asOfDate,
-        scope: task.scope,
-        ...(task.roomGroupId === undefined ? {} : { roomGroupId: task.roomGroupId }),
-        endpoint: BOOKING_CURVE_ENDPOINT,
-        query: buildBookingCurveQuerySignature(task.stayDate, task.roomGroupId)
-    });
-
-    const storedRawSource = await readBookingCurveRawSourceRecord(rawSourceKey)
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to read warm cache raw source`, {
-                task,
-                error
-            });
-            return undefined;
-        });
-    return storedRawSource !== undefined;
+    return result.source === "stored" ? "skipped" : "fetched";
 }
 
 function pauseSalesSettingWarmCache(reason: string, status: SalesSettingWarmCacheStatus = "paused"): void {

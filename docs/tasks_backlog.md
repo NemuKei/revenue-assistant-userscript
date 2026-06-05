@@ -58,6 +58,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた Analyze 料金調整候補 sync 内の Lincoln suggestion status 再利用を `RAU-CP-29` として task 化して完了した。`syncSalesSettingGroupRooms()` は Analyze sync 内で `getLincolnSuggestStatuses(analysisDate)` を読み、`latestSalesSettingRankStatusesSnapshot` へ保存しているが、その直後に走る `syncSalesSettingRankInsights()` は同じ日付の snapshot がある場合でも `getLincolnSuggestStatuses(analysisDate)` を再度呼んでいた。日付単位の Promise cache により追加 network fetch は発生しないが、同じ sync 内で取得済みの status snapshot を直接再利用すれば、不要な cache lookup / promise await / fallback 経路を避けられる。`syncSalesSettingRankInsights()` は同じ `analysisDate` の `latestSalesSettingRankStatusesSnapshot` がある場合はそれを使い、ない場合だけ従来どおり `getLincolnSuggestStatuses()` へ fallback する。`syncSalesSettingRankInsights()` と `applyPendingRankRecommendationFocus()` の順序は、rank insight 描画後に focus scroll する既存挙動を守るため変更しない。Lincoln suggest status の対象 endpoint、request 数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence、reasonFingerprint は変更していない。`docs/context/INTENT.md` は request 数、画面遷移や focus 復帰の安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve warm cache task の raw source 二重 read を `RAU-CP-30` として task 化して完了した。通常 booking curve warm cache task は、`hasSalesSettingWarmCacheRawSource()` で IndexedDB の raw source 有無を確認した後、miss の場合に `readOrLoadBookingCurveRawSource()` が同じ key をもう一度 read してから API fetch へ進んでいた。`readOrLoadBookingCurveRawSource()` の外部契約は維持したまま、内部に `stored` / `fetched` を返す helper を追加し、warm cache task は 1 回の read-or-load 結果から `skipped` / `fetched` を判定する。これにより cache miss path の不要な IndexedDB read を 1 回減らす。`/api/v4/booking_curve` の対象 scope、warm cache queue、request 間隔、同時実行数、retry / pause / cooldown、保存 schema、Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence、reasonFingerprint は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -553,6 +555,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: not-needed
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-30 booking curve warm cache task の raw source 二重 read をなくす
+
+- 状態:
+  - 完了。
+- 目的:
+  - booking curve warm cache の通常 task で、raw source 有無確認後に同じ key を `readOrLoadBookingCurveRawSource()` が再読込する二重 IndexedDB read を減らす。
+  - request 数や queue 安全条件を変えず、cache miss path の読み取り回数だけを詰める。
+- スコープ:
+  - 対象は `src/main.ts` の `runSalesSettingWarmCacheTask()` と `readOrLoadBookingCurveRawSource()` 周辺である。
+  - `readOrLoadBookingCurveRawSource()` の既存戻り値は維持し、warm cache だけが `stored` / `fetched` を判定できる内部 helper を使う。
+- 非目標:
+  - `/api/v4/booking_curve` の対象 scope、warm cache queue、request 間隔、同時実行数、retry / pause / cooldown は変更しない。
+  - 保存 schema、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - warm cache 通常 task は、同じ raw source key を事前確認と read-or-load で二重に読まない。
+  - raw source が既存なら従来どおり task result は `skipped` になり、既存でなければ API fetch 後に `fetched` になる。
+  - `readOrLoadBookingCurveRawSource()` を使う既存 caller は従来どおり `BookingCurveResponse` を受け取る。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `readOrLoadBookingCurveRawSourceWithStatus()` を追加し、raw source read 結果を `stored` / `fetched` として返すようにした。
+  - 既存の `readOrLoadBookingCurveRawSource()` は同 helper を呼び、従来どおり response だけを返す wrapper として維持した。
+  - `runSalesSettingWarmCacheTask()` は事前の `hasSalesSettingWarmCacheRawSource()` をやめ、status 付き read-or-load の結果で `skipped` / `fetched` を判定する。
+  - `/api/v4/booking_curve` の対象 scope、warm cache queue、request 間隔、同時実行数、retry / pause / cooldown、保存 schema、Revenue Assistant write API、rank change payload は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`npm run check:booking-curve-smoke-fixture`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `npm run check:booking-curve-smoke-fixture`, `git diff --check`
 
 ### RAU-UX-121 `候補データ優先取得` の月別優先取得ボタンと進捗表示の重なりを解消する
 
