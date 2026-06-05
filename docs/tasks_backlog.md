@@ -32,6 +32,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、未着手だった `RAU-CP-20`、`RAU-CP-21`、`RAU-CP-22`、`RAU-WC-30`、`RAU-WC-31`、`RAU-WC-32`、`RAU-UX-127` を完了した。競合価格 preview は top row の `競合価格` button から押下時だけ開く row preview とし、保存済み snapshot の cache hit、未取得時の対象日限定取得、同一 `facility x stayDate` の in-flight dedupe、loading / stored / empty / error / retry state を持つ。配布版 `0.1.0.379` では GitHub Pages published version と Tampermonkey installed version が一致し、top smoke は pass した。top smoke では top row 10 件、competitor preview buttons 10 件、competitor preview rows 10 件、primary actions 10 件、secondary actions 10 件、console / page error 0 件、監視対象 write API POST 0 件だった。追加の実クリック確認では、競合価格 preview が 0 件から 1 件へ開き、`Escape` で 0 件へ閉じ、focus return true、console / page error 0 件、監視対象 write API POST 0 件だった。RAU warm cache smoke は `X-RAU-Request: booking-curve` header 付き request を RAU 発行分として分離し、標準画面 request は参考値として扱う。hidden-tab 実測手順は、`document.visibilityState` が信頼できない場合の代替証跡を README に記録した。`その他` details は、常時主操作に `競合価格` が増えた状態で補助操作まで展開すると密度が上がるため現行維持とした。Revenue Assistant write API endpoint、rank change payload、candidate scoring、priority、confidence、reasonFingerprint、保存 schema、request 間隔、同時実行数は変更していない。これにより Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 
+2026-06-05 に、前回完了報告で提案した次視点を `RAU-CP-23`、`RAU-UX-128`、`RAU-WC-33`、`RAU-UX-129` として task 化した。`RAU-CP-23` は、競合価格 preview の部屋タイプ絞り込み精度を上げる前提になるため Now とする。`RAU-UX-128` は、部屋タイプ mapping 後または現行 preview の実利用後に、Product Design 観点で preview graph の密度を削るか判断するため Next とする。`RAU-WC-33` は、live cache が温まっている状態でも RAU warm cache priority の効果を再現確認できる smoke fixture の設計であり、`RAU-CP-23` とは独立するため After Next とする。`RAU-UX-129` は、`競合価格` が主操作に増えた後の `その他` details 再配置観察であり、実利用証跡が必要なため Later とする。重複確認では、`roomGroupName x jalanFacilityRoomType` は `docs/spec_003_rank_recommendation_signal.md` の未確認論点として存在するが未着手 task ではなく、`RAU-UX-127` は `競合価格` 主操作追加前の現行維持判断として完了済みのため、今回の観察 task とは分ける。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Remaining Task Triage は Now `RAU-CP-23`、Next `RAU-UX-128`、After Next `RAU-WC-33`、Later `RAU-UX-129` である。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -159,6 +161,104 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - fixture marker check では secondary action markers 25 件、pending notice markers 2 件を確認し、`その他` details の構造は壊れていない。
   - `その他` details は現行維持とし、row footer / popover への即時移設 task は作らない。再評価条件は、配布版 top smoke または通常利用で `様子見`、`対応不要`、`要点` を探すための開閉が多く、候補処理が止まることを観測した場合とする。
   - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は変更していない。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-CP-23 競合価格 preview の roomGroup と Jalan 部屋タイプ対応を確認する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 競合価格 preview で、Revenue Assistant の `roomGroupName` と競合価格 snapshot の `jalanFacilityRoomType` / `jalan_room_types[]` をどこまで安全に対応づけられるか確認する。
+  - 対応が確認できる範囲だけ preview graph を強く絞り、未確認対応を金額推奨や候補方向の主因として誤用しない。
+- スコープ:
+  - 対象は top 競合価格 preview、保存済み `competitor-price-snapshots`、`docs/spec_003_rank_recommendation_signal.md` の roomGroup / `jalanFacilityRoomType` 未確認論点である。
+  - まず read-only に、候補 row の `roomGroupName` と snapshot 内の `jalanFacilityRoomType` / `jalanRoomTypes` / 表示 label を比較する。
+  - 対応確度を、confirmed / ambiguous / unknown のように UI または diagnostics へ渡せるか判断する。
+- 非目標:
+  - 文字列類似だけで roomGroup と Jalan 部屋タイプ対応を確定しない。
+  - 競合価格の金額、差額、percent を top list 本文や summary へ常時表示しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データは Git 管理へ入れない。
+- 受け入れ条件:
+  - `roomGroupName x jalanFacilityRoomType` の対応を confirmed / ambiguous / unknown に分ける方針が `docs/spec_003_rank_recommendation_signal.md` または backlog に記録されている。
+  - confirmed 以外では、競合価格 preview が部屋タイプ対応未確認を明示し、候補方向や金額推奨の主因として扱わない。
+  - 実装する場合は `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`, `docs/spec_001_analyze_expansion.md`
+
+### RAU-UX-128 Product Design で競合価格 preview graph の表示密度を再評価する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `0.1.0.379` で追加した競合価格 preview graph が、top 画面の最速判断を妨げるほど情報過多になっていないか Product Design 観点で再評価する。
+  - 必要な場合だけ、初期表示を要約中心にし、詳細 graph を二段階表示へ分ける task を切る。
+- スコープ:
+  - 対象は top 料金調整候補 row の `競合価格` preview、desktop、mobile 390px 相当、loading / stored / empty / error state、focus return である。
+  - `RAU-CP-23` の room type mapping 結果がある場合は、その表示方針も audit 入力に含める。
+  - Product Design workflow は audit / plan first とし、この task だけでは runtime UI を変更しない。
+- 非目標:
+  - この task では競合価格 preview の runtime UI を直接変更しない。
+  - 常時 graph 表示、金額 / 差額 / percent の top list 本文表示、自動反映は扱わない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - Product Design audit の対象 surface、確認 viewport、主要 finding、採用しない案、次に実装する場合の task 候補が記録されている。
+  - preview graph を現行維持するか、要約中心 / 二段階表示へ変えるかの判断理由がある。
+  - 変更が必要な場合は、表示対象、keyboard / focus、mobile、fixture / smoke、write API 非追加を含む実装 task が作られている。
+  - `git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+
+### RAU-WC-33 cache 済み状態でも RAU warm cache priority を確認できる smoke fixture を設計する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - live top smoke で RAU warm cache request count が少ない、または 0 件になる cache 済み状態でも、対象月 filter boost と RAU warm cache request 分離の効果を再現確認できるようにする。
+  - live 環境の cache 状態に依存しすぎない検証入口を作る。
+- スコープ:
+  - 対象は `smoke:distribution --mode top`、RAU warm cache request metrics、fixture / synthetic state、または安全な local cache setup 手順である。
+  - raw response body、request body、HAR、Cookie、token、credential、価格や在庫の非公開データを保存しない。
+  - live Revenue Assistant への実 request を増やす場合は、既存の request 間隔 350ms 以上、同時実行 3 件以下、監視対象 write API POST 0 件を維持する。
+- 非目標:
+  - booking curve warm cache queue の速度上限緩和は行わない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - 認証回避、rate limit 回避、bot 検知回避は扱わない。
+- 受け入れ条件:
+  - cache 済み live 状態でも、RAU warm cache priority の確認ができない理由を fallback reason として説明できる。
+  - controlled fixture または安全な setup 手順により、RAU warm cache request count、HTTP error count、min start interval、max concurrent requests を確認できる。
+  - 実装する場合は `node --check scripts/run-distribution-smoke.mjs`、対象 lint、`git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: no
+  - `target-spec`: none
+  - `verify`: `node --check scripts/run-distribution-smoke.mjs`, controlled smoke if implemented, `git diff --check`
+
+### RAU-UX-129 `競合価格` 追加後の `その他` details 再配置要否を観察する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - top row の主操作に `競合価格` が増えた後でも、補助操作 `その他` details の開閉が候補処理の速度を落としていないか確認する。
+  - 実利用証跡がある場合だけ、row footer、popover、または現行維持を再判断する。
+- スコープ:
+  - 対象は top 料金調整候補 row の primary action、`競合価格` preview、`その他` details、secondary action、pending notice、mobile 390px 相当である。
+  - 通常 Chrome の実利用観察、配布版 top smoke、または同等の fixture / DOM 証跡を使う。
+  - この task では runtime UI を変更しない。
+- 非目標:
+  - `その他` details の即時移設、row footer 化、popover 化はこの task では行わない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+- 受け入れ条件:
+  - `競合価格` 追加後の primary action 数、secondary action markers、pending notice、mobile 表示密度が記録されている。
+  - 現行維持、row footer、popover のどれを次に採るかの判断理由がある。
+  - 再配置が必要な場合は、表示対象、操作順、hover / focus / keyboard、mobile 390px、write API 非追加を含む実装 task が作られている。
+  - `git diff --check` が通過している。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
