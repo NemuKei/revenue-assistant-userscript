@@ -44,6 +44,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、直前完了報告で残した確認視点を `RAU-UX-130` と `RAU-UX-131` として task 化した。`RAU-UX-130` は、current fixture ではなく配布版または同等の実データ preview で、mobile 390px の競合価格 graph、部屋タイプ対応 note、preview 縦スクロール量、横 overflow、focus return、監視対象 write API POST 0 件を確認する task である。`RAU-UX-131` は、通常利用で競合価格 preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いか、`confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として誤読されていないか、`その他` details の開閉が候補処理を止めていないかを観察する task である。重複確認では、`RAU-UX-128` は graph 密度の docs audit、`RAU-UX-129` は current fixture の action density audit として完了済みであり、今回の 2 件は実データ / 通常利用の後続観察であるため分ける。`docs/context/INTENT.md` は、表示密度、UI / UX、安全な作業キュー、request 数の判断に関わるため関連ありだが、既存原則で説明できるため更新していない。runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点のデータ取得点検で見つけた価格推移 background queue の取得準備コストを `RAU-CP-24` として task 化した。`src/priceTrendStore.ts` では `fetchAndPersistPriceTrendRecords()` のたびに `/api/v2/yad/info` と `/api/v2/competitors` から request context を作り直しており、初回 16 scope の後に 112 scope を 1 秒間隔で処理する background queue では、価格推移本体とは別の準備 request が繰り返される余地がある。重複確認では、`RAU-CP-14` は価格推移 background queue の実装済み task、`RAU-CP-16` は long-run 確認済み task、`D-20260530-002` は 1 秒間隔と停止条件の契約であり、request context 共有の実装 task は未着手である。`RAU-CP-24` は、価格推移本体の 1 秒間隔、対象 scope、保存 schema、Revenue Assistant write API 非対象を変えず、短命 cache または queue session context 共有で準備 request だけを減らせるかを判断・実装する task とする。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり先に確認したいので、Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next `RAU-CP-24`、Later なしとする。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -357,6 +359,32 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
   - `verify`: Product Design observation note, Chrome / Browser DOM or visual evidence, `git diff --check`
+
+### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 価格推移 tab の background queue で、各 scope 取得前に `/api/v2/yad/info` と `/api/v2/competitors` を繰り返し読む準備コストを減らせるか確認する。
+  - 価格推移本体の `/api/v1/price_trends` scope、1 秒間隔、停止条件、保存 schema を変えずに、体感待ち時間と余分な read request を削る。
+- スコープ:
+  - 対象は `src/priceTrendStore.ts` の `buildPriceTrendRequestContext()`、`fetchAndPersistPriceTrendRecords()`、`src/main.ts` の `runPriceTrendFetch()` / `drainPriceTrendBackgroundQueue()` の受け渡しである。
+  - 候補は、同一価格推移 tab session 内の request context 共有、短命 cache、または初回取得 result からの context 再利用に限定する。
+  - 実装前に、競合施設設定変更が同一 tab session 中に反映されなくなるリスクと cache 破棄条件を確認する。
+- 非目標:
+  - `/api/v1/price_trends` の対象 scope、request 間隔、同時実行数、background queue 停止条件は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映は扱わない。
+  - raw trace、HAR、request body、response body、Cookie、token、credential、価格や在庫の非公開データは Git 管理へ入れない。
+- 受け入れ条件:
+  - request context 共有または見送りの判断理由が、競合施設設定変更時の stale risk と一緒に記録されている。
+  - 実装する場合は、価格推移の初回 16 scope と background 112 scope の契約を維持し、準備 request の重複だけを減らしている。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+  - 可能なら `smoke:distribution --mode price-trends` または同等の安全な fixture / DOM 証跡で、監視対象 write API POST 0 件、console / page error 0 件を確認する。実ログイン済み Revenue Assistant へ触れる smoke は明示承認がある場合だけ行う。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, optional approved `npm run smoke:distribution -- --mode price-trends`, `git diff --check`
 
 ### RAU-UX-121 `候補データ優先取得` の月別優先取得ボタンと進捗表示の重なりを解消する
 
