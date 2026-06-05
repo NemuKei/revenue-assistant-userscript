@@ -9230,25 +9230,32 @@ function buildRankRecommendationRankGapContextByScope(
             continue;
         }
 
-        const roomGroups = (currentSetting.rm_room_groups ?? []).flatMap((roomGroup) => {
+        const roomGroups: Array<{
+            roomGroupId: string;
+            roomGroupName: string;
+            currentRankName: string | null;
+            occupancyCapacity: SalesSettingRoomCapacity | null;
+            rankOrderIndex: number | null;
+        }> = [];
+        for (const roomGroup of currentSetting.rm_room_groups ?? []) {
             const roomGroupId = roomGroup.rm_room_group_id?.trim() ?? "";
             const roomGroupName = roomGroup.rm_room_group_name?.trim() ?? "";
             if (roomGroupId === "" || roomGroupName === "") {
-                return [];
+                continue;
             }
 
             const currentRankCode = normalizeRankRecommendationElementText(roomGroup.latest_current?.price_rank_code ?? null);
             const currentRankName = normalizeRankRecommendationElementText(roomGroup.latest_current?.price_rank_name ?? null);
             const rankOrderIndex = resolveRankRecommendationRankOrderIndex(rankOrder, currentRankCode, currentRankName);
             const occupancyCapacity = resolveRankRecommendationRankGapOccupancyCapacity(roomGroup);
-            return [{
+            roomGroups.push({
                 roomGroupId,
                 roomGroupName,
                 currentRankName,
                 occupancyCapacity,
                 rankOrderIndex
-            }];
-        });
+            });
+        }
 
         for (const targetRoomGroup of roomGroups) {
             const targetRankOrderIndex = targetRoomGroup.rankOrderIndex;

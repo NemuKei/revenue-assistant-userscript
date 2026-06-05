@@ -84,6 +84,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた rank ladder 正規化の中間配列生成を `RAU-CP-49` として task 化して完了した。`resolveRankRecommendationRankOrder()` と `parseRankRecommendationRankOrderInput()` は、rank ladder entry の code / name が有効な場合だけ正規化 rank を使うが、従来は `flatMap()` で skip path に空配列、hit path に 1 要素配列を作っていた。loop で valid rank だけを push するようにし、rank order 解決と手動入力 parse の不要な中間配列を減らした。重複確認では、`RAU-CP-48` は curve evidence request 準備、`RAU-CP-45` は reference curve repeated scan であり、rank ladder 正規化は未着手だった。rank code / name の trim と null / empty 除外、rank 名 number parse、manual override、settings screen order fallback、rank順序入力 validation message、rank order source、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は rank order、表示速度、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた rank gap context 準備の中間配列生成を `RAU-CP-50` として task 化して完了した。`buildRankRecommendationRankGapContextByScope()` は、current settings response から同日他部屋タイプ比較用の room group list を作るときに、`flatMap()` で skip path に空配列、hit path に 1 要素配列を作っていた。loop で valid room group だけを `roomGroups` へ push するようにし、rank gap context 準備時の不要な中間配列を減らした。重複確認では、`RAU-CP-49` は rank ladder 正規化、`RAU-CP-48` は curve evidence request 準備であり、rank gap context の room group 正規化は未着手だった。stay date skip、roomGroupId / roomGroupName の空値除外、current rank code / name 正規化、rank order index、occupancy capacity、rank gap diagnostics、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は rank order、表示速度、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -484,6 +486,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `resolveRankRecommendationRankOrder()` は `flatMap()` ではなく loop で valid rank だけを `normalized` へ push するようにした。
   - `parseRankRecommendationRankOrderInput()` は `flatMap()` ではなく loop で valid rank だけを `normalizedRanks` へ push するようにした。
   - rank order source、manual override、settings screen fallback、validation message、candidate scoring、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-50 rank gap context の room group 正規化を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - 同日他部屋タイプ比較用の room group list を作るときに、skip 用の空配列 / 1 要素配列を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `buildRankRecommendationRankGapContextByScope()` である。
+  - `currentSetting.rm_room_groups` を loop し、roomGroupId と roomGroupName が有効な room group だけを `roomGroups` へ push する。
+- 非目標:
+  - stay date skip、roomGroupId / roomGroupName の空値除外、current rank code / name 正規化、rank order index、occupancy capacity は変更しない。
+  - rank gap diagnostics、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant API request 範囲、request 件数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - `stay_date` が compact date key に変換できない current setting は従来どおり skip される。
+  - roomGroupId または roomGroupName が空の room group は従来どおり skip される。
+  - valid room group の current rank、rank order index、occupancy capacity は従来どおり計算される。
+  - target room group ごとの rank gap context key と entries は従来どおり作られる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `flatMap()` をやめ、valid room group だけを loop で `roomGroups` へ push するようにした。
+  - rank gap diagnostics、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
