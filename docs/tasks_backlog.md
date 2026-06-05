@@ -8970,7 +8970,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-129`: `競合価格` 追加後の `その他` details 再配置要否を観察する。
+- なし。
 
 Next:
 
@@ -8986,7 +8986,9 @@ Later:
 
 統合判断:
 
-- 2026-06-05 に、`RAU-WC-33` を完了した。`smoke:distribution --mode top` の RAU warm cache metrics 集計と throughput 判定を共有 module へ分離し、live smoke と synthetic fixture が同じ request count、HTTP error count、min start interval、max concurrent requests、fallback reason 判定を使うようにした。`npm run check:booking-curve-smoke-fixture` により、cache 済み fallback、safe active、unsafe fast、unsafe concurrent、HTTP error を実 request なしで確認できる。README に fallback reason の読み方と fixture command を追加した。Revenue Assistant live request、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。次は `RAU-UX-129` の `その他` details 再配置要否を観察する。
+- 2026-06-05 に、`RAU-UX-129` を完了した。Product Design の audit / plan first として、`競合価格` が top row の primary action に増えた後の `その他` details 再配置要否を確認した。current fixture marker check と mobile 390px layout check では、primary / secondary action、pending notice、competitor preview button、preview open state の構造が維持され、390px 横 overflow false、visible action group overlap 0 件だった。`その他` details は、補助操作を常時表示から外して primary action と分離できているため現行維持とし、row footer / popover への即時移設 task は追加しない。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。これにより Remaining Task Triage は Now / Next / After Next / Later すべて空である。
+
+- 2026-06-05 に、`RAU-WC-33` を完了した。`smoke:distribution --mode top` の RAU warm cache metrics 集計と throughput 判定を共有 module へ分離し、live smoke と synthetic fixture が同じ request count、HTTP error count、min start interval、max concurrent requests、fallback reason 判定を使うようにした。`npm run check:booking-curve-smoke-fixture` により、cache 済み fallback、safe active、unsafe fast、unsafe concurrent、HTTP error を実 request なしで確認できる。README に fallback reason の読み方と fixture command を追加した。Revenue Assistant live request、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。後続の `RAU-UX-129` も完了済みであり、Remaining Task Triage は空である。
 
 - 2026-06-05 に、`RAU-UX-128` を完了した。Product Design の audit / plan first として競合価格 preview graph の表示密度を再評価し、`docs/context/PRODUCT_DESIGN_AUDIT.md` に記録した。Build Web Data Visualization の観点では、graph は候補方向や推奨金額を直接決める chart ではなく、snapshot 文脈を確認する補助 chart として扱う。`RAU-CP-23` の部屋タイプ対応 note により caveat-first の読み筋が作れており、graph は押下時 preview 内だけにあるため、現時点では要約中心 / 二段階表示への runtime UI 変更 task は追加しない。Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。次は `RAU-WC-33` の controlled smoke / fixture 設計へ進む。
 
