@@ -7888,28 +7888,31 @@ async function buildRankRecommendationCurveEvidenceByKey(
         return request;
     };
 
-    const entries = await Promise.all((response.suggest_output_current_settings ?? []).flatMap((currentSetting) => {
+    const evidenceRequests: Promise<[string, RankRecommendationCurveEvidence] | null>[] = [];
+    for (const currentSetting of response.suggest_output_current_settings ?? []) {
         const stayDate = toCompactDateKey(currentSetting.stay_date ?? "");
         if (stayDate === null || !options.visibleStayDates.has(stayDate)) {
-            return [];
+            continue;
         }
 
-        return (currentSetting.rm_room_groups ?? []).flatMap((roomGroup) => {
+        for (const roomGroup of currentSetting.rm_room_groups ?? []) {
             const roomGroupId = roomGroup.rm_room_group_id?.trim() ?? "";
             if (roomGroupId === "") {
-                return [];
+                continue;
             }
 
-            return [readRankRecommendationCurveEvidence({
+            evidenceRequests.push(readRankRecommendationCurveEvidence({
                 facilityId: options.facilityId,
                 stayDate,
                 asOfDate: options.asOfDate,
                 roomGroupId,
                 ownPricePositionEvidence: getOwnPricePositionEvidence(stayDate),
                 rawSourceReader
-            })];
-        });
-    }));
+            }));
+        }
+    }
+
+    const entries = await Promise.all(evidenceRequests);
 
     return new Map(entries.filter((entry): entry is [string, RankRecommendationCurveEvidence] => entry !== null));
 }
