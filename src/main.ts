@@ -7910,22 +7910,22 @@ async function readRankRecommendationCurvePreviewInfo(options: {
             });
             return undefined;
         });
-    const storedRoomGroupStatus = await readBookingCurveRawSourceStoredRoomGroupStatus(
-        options.facilityId,
-        options.candidate.stayDate,
-        options.asOfDate,
-        options.candidate.roomGroupId
-    ).catch((error: unknown) => {
-        console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation raw source status`, {
-            stayDate: options.candidate.stayDate,
-            asOfDate: options.asOfDate,
-            roomGroupId: options.candidate.roomGroupId,
-            error
-        });
-        return "none" as BookingCurveRawSourceStoredRoomGroupStatus;
-    });
 
     if (record === undefined) {
+        const storedRoomGroupStatus = await readBookingCurveRawSourceStoredRoomGroupStatus(
+            options.facilityId,
+            options.candidate.stayDate,
+            options.asOfDate,
+            options.candidate.roomGroupId
+        ).catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation raw source status`, {
+                stayDate: options.candidate.stayDate,
+                asOfDate: options.asOfDate,
+                roomGroupId: options.candidate.roomGroupId,
+                error
+            });
+            return "none" as BookingCurveRawSourceStoredRoomGroupStatus;
+        });
         return buildMissingRankRecommendationCurvePreviewInfo(
             ["booking_curve_source_missing"],
             convertBookingCurveRawSourceStoredStatus(storedRoomGroupStatus)

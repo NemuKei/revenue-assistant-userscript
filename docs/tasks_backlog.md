@@ -64,6 +64,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-UX-132` で追加した mobile 390px 競合価格 preview metrics の fail 判定を live 非依存で確認するため、`RAU-UX-133` として `check:distribution-smoke-fixture` を追加して完了した。`node ./scripts/run-distribution-smoke.mjs --self-test` は live Chrome、Revenue Assistant、Tampermonkey、GitHub Pages 公開版へ接続せず、synthetic top metrics だけで、preview open、横 overflow なし、graph / empty state、focus return の pass 条件と、横 overflow / focus return failure を検出できることを確認する。これにより、`RAU-UX-130` の live 実行前に helper の判定ロジックだけをローカルで検証できる。runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`node --check scripts/run-distribution-smoke.mjs`、`npm run check:distribution-smoke-fixture`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview info の IndexedDB read を `RAU-CP-31` として task 化して完了した。top 料金調整候補の曲線 preview 情報は、対象 `booking_curve_raw_source` が見つかっている hit path でも、raw source missing diagnostics 用の `readBookingCurveRawSourceStoredRoomGroupStatus()` を追加で待っていた。保存状態確認は raw source missing 時にだけ必要なため、hit path では省略し、missing 時だけ読むようにした。これにより、表示済み raw source から preview を作る通常 path の IndexedDB read を候補ごとに 1 回減らす。重複確認では、`RAU-CP-24` から `RAU-CP-30` は API request 準備、waterfall、status 再利用、warm cache raw source read の最適化であり、preview info hit path の保存状態 read 削減は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -435,6 +437,33 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: not-needed
   - `target-spec`: none
   - `verify`: `node --check scripts/run-distribution-smoke.mjs`, `npm run check:distribution-smoke-fixture`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-31 booking curve preview info hit path の保存状態 read を減らす
+
+- 状態:
+  - 完了。
+- 目的:
+  - top 料金調整候補の曲線 preview 情報を、保存済み `booking_curve_raw_source` から作れる通常 path で少し速くする。
+  - raw source が見つかっている場合に、missing diagnostics 用の保存状態 read を待たない。
+- スコープ:
+  - 対象は `readRankRecommendationCurvePreviewInfo()` の raw source hit / missing 分岐である。
+  - raw source missing 時は従来どおり `readBookingCurveRawSourceStoredRoomGroupStatus()` を読み、`missing` / `pastAsOf` / `currentAsOf` diagnostics を維持する。
+- 非目標:
+  - Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - raw source hit path では `readBookingCurveRawSourceStoredRoomGroupStatus()` を実行しない。
+  - raw source missing path では従来どおり保存状態を読み、missing preview info の raw source status へ反映する。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `readRankRecommendationCurvePreviewInfo()` の保存状態 read を `record === undefined` 分岐内へ移動した。
+  - 表示済み raw source から preview を作る hit path の IndexedDB read を候補ごとに 1 回減らした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
