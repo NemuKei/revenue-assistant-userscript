@@ -96,6 +96,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた warm cache priority candidates 準備の中間配列生成を `RAU-CP-55` として task 化して完了した。`rememberRankRecommendationWarmCachePriorityCandidates()` は、rank recommendation candidates から warm cache priority candidates を作るときに、重複候補の skip path で空配列、採用 path で 1 要素配列を返す `flatMap()` を使っていた。loop で初出の `stayDate x roomGroupId` だけを `priorityCandidates` へ push するようにし、warm cache 優先候補準備時の不要な中間配列を減らした。重複確認では、`RAU-WC-30` は queue 優先化の実装、`RAU-CP-48` は rank evidence request 準備、`RAU-CP-50` は rank gap context 準備であり、warm cache priority candidates の dedupe / list 準備は未着手だった。初出順 dedupe、priority task key、warm cache queue の優先順、request 範囲、request 件数、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた sales setting group room prefetch request 準備の中間配列生成を `RAU-CP-60` として task 化した。`prefetchSalesSettingGroupRooms()` は、room group ごとの `group` / `transient` と比較日 4 種の request を `roomGroups.flatMap()` と spread で `Promise.all()` に渡している。base 8 request と room group ごとの request を同じ順序で 1 つの request 配列へ push する loop に変えることで、prefetch 開始前の中間配列生成を減らせる。重複確認では、`RAU-CP-55` は warm cache priority candidate list、`RAU-CP-56` は warm cache bounds、`RAU-CP-48` は rank evidence request 準備であり、sales setting group room prefetch request 配列の準備は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、rank change payload、booking curve warm cache queue、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Remaining Task Triage は Now `RAU-CP-60`、Next `RAU-UX-130`、After Next `RAU-UX-131`、Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -789,6 +791,30 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `flatMap()` で candidate 全体の caution labels 配列を作る処理をやめ、loop で `counts` Map へ直接加算するようにした。
   - 表示文言、candidate diagnostics、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-60 sales setting group room prefetch request 準備を loop 化する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - sales setting group room prefetch の request 配列を作るときの `flatMap()` と spread による中間配列生成を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `prefetchSalesSettingGroupRooms()` である。
+  - base 8 request を先に配列へ入れ、room group ごとの `group` / `transient` と比較日 4 種の request を loop で同じ順序に push する。
+- 非目標:
+  - `getRoomGroups()`、`fetchScopedBookingCurveCount()`、prefetch key、error handling は変更しない。
+  - Revenue Assistant API request 範囲、request 件数、request 順序、request 間隔、同時実行数、保存 schema は変更しない。
+  - Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - `Promise.all()` に渡す request の並びが、base 8 request の後に room group payload 順で各 room group 8 request を続ける従来順序と同じである。
+  - request 件数、対象 scope、比較日、roomGroupId 付き / なしの組み合わせが従来と同じである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
@@ -10185,21 +10211,23 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-130`: 実データ競合価格 preview を mobile 390px で visual smoke する。
+- `RAU-CP-60`: sales setting group room prefetch request 準備を loop 化する。
 
 Next:
 
-- `RAU-UX-131`: 通常利用で競合価格 preview と `その他` details が判断速度を落としていないか観察する。
+- `RAU-UX-130`: 実データ競合価格 preview を mobile 390px で visual smoke する。
 
 After Next:
 
-- なし。
+- `RAU-UX-131`: 通常利用で競合価格 preview と `その他` details が判断速度を落としていないか観察する。
 
 Later:
 
 - なし。
 
 統合判断:
+
+- 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた sales setting group room prefetch request 準備の中間配列生成を `RAU-CP-60` として task 化した。`RAU-CP-60` は通常 Chrome / Tampermonkey / Revenue Assistant live access なしで実装と fixture verify まで進められる静的な速度改善であり、明示許可が必要な `RAU-UX-130` / `RAU-UX-131` より先に Now とする。`RAU-UX-130` は実データ mobile visual smoke のため Next、`RAU-UX-131` は通常利用観察のため After Next とする。重複確認では、`RAU-CP-55` は warm cache priority candidate list、`RAU-CP-56` は warm cache bounds、`RAU-CP-48` は rank evidence request 準備であり、sales setting group room prefetch request 配列の準備は未着手だった。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。今回の task 化では、runtime UI、`src/`、`dist`、Tampermonkey installed version、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。
 
 - 2026-06-05 に、直前完了報告で残した確認視点を `RAU-UX-130` と `RAU-UX-131` として task 化した。`RAU-UX-130` は、current fixture ではなく配布版または同等の実データ preview で、mobile 390px の競合価格 graph、部屋タイプ対応 note、preview 縦スクロール量、横 overflow、focus return、監視対象 write API POST 0 件を確認する task である。`RAU-UX-131` は、通常利用で競合価格 preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いか、`confirmed` / `ambiguous` / `unknown` note が読まれず graph だけが推奨根拠として誤読されていないか、`その他` details の開閉が候補処理を止めていないかを観察する task である。重複確認では、`RAU-UX-128` は graph 密度の docs audit、`RAU-UX-129` は current fixture の action density audit として完了済みであり、今回の 2 件は実データ / 通常利用の後続観察であるため分ける。`docs/context/INTENT.md` は、表示密度、UI / UX、安全な作業キュー、request 数の判断に関わるため関連ありだが、既存原則で説明できるため更新していない。今回の task 化では、runtime UI、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、candidate scoring、priority、confidence、reasonFingerprint、保存 schema は変更していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
