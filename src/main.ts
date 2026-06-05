@@ -10997,11 +10997,10 @@ async function loadRankRecommendationCompetitorPreviewState(
         };
     }
 
-    const series = await readCompetitorPriceSnapshotSeriesForStayDate(facilityId, stayDate);
     return buildRankRecommendationCompetitorPreviewStoredState(
-        series.records.length > 0 ? series.records : result.records,
-        series.latestRecord ?? result.latestRecord,
-        series.previousRecord ?? result.previousRecord,
+        result.records,
+        result.latestRecord,
+        result.previousRecord,
         false
     );
 }
