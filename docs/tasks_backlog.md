@@ -76,6 +76,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた reference curve の repeated scan を `RAU-CP-45` として task 化して完了した。`getRecentWeighted90CandidateStayDates()` は numeric tick の範囲計算で `filter()` と `map()` の中間配列を作ってから `Math.min` / `Math.max` しており、`buildActComparisonDiagnostics()` は同じ curve points を `lt === 0` と `lt === "ACT"` の 2 回 `find()` していた。どちらも 1 回の loop にまとめ、`0` / `ACT` が両方見つかった時点で探索を止めるようにした。重複確認では、`RAU-CP-42` は chart point の y 軸 range 計算、`RAU-UX-82` は latest / earliest selection の single pass 化であり、reference curve candidate stay date と ACT comparison diagnostics の repeated scan は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。reference curve 計算結果、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた月次 preview 比較 snapshot read の waterfall を `RAU-CP-46` として task 化して完了した。`buildMonthlyProgressPreviewModel()` は月次 preview の各 focus month について、前年 snapshot を IndexedDB から読んだ後に 2 年前 snapshot を読み始めていた。前年と 2 年前の比較 snapshot は互いに依存せず、primary snapshot が存在する focus month の補助系列として使うだけなので、`Promise.all` で同時に読むようにした。重複確認では、`RAU-CP-24` から `RAU-CP-46` までの既存 task は価格推移、競合価格、rank recommendation、reference curve の取得準備や repeated scan の最適化であり、月次 preview の比較 snapshot read 並列化は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。月次 `/api/v1/booking_curve/monthly` の取得対象、primary snapshot の保存順序、background prefetch、表示 month 数、compare mode、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -358,6 +360,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `getRecentWeighted90CandidateStayDates()` は numeric tick を 1 回走査して `minStartOffset` と `maxEndOffset` を更新するようにした。
   - `buildActComparisonDiagnostics()` は curve points を 1 回走査し、zero lead point と ACT point が両方見つかった時点で探索を止めるようにした。
   - reference curve 計算結果、candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-46 月次 preview の比較 snapshot read を並列化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - 月次 preview の各 focus month で、互いに依存しない前年 / 2 年前 snapshot read を直列に待たず、比較系列の準備待ちを短くする。
+- スコープ:
+  - 対象は `src/monthlyProgress.ts` の `buildMonthlyProgressPreviewModel()` である。
+  - primary snapshot が存在する focus month について、前年 snapshot と 2 年前 snapshot の IndexedDB read を `Promise.all` で同時に開始する。
+  - snapshot が存在しない場合、year month bounds が取れない場合、compare mode が対象外の場合の fallback は維持する。
+- 非目標:
+  - 月次 `/api/v1/booking_curve/monthly` の取得対象、primary snapshot の保存順序、background prefetch、表示 month 数、compare mode は変更しない。
+  - 保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - compare mode 2 では前年 snapshot だけ、compare mode 3 では前年 snapshot と 2 年前 snapshot を使う既存契約が維持されている。
+  - primary snapshot がない focus month は従来どおり skip される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `previousYearMonth` と `twoYearsAgoMonth` の read request を `Promise.all` で同時に待つようにした。
+  - 月次 `/api/v1/booking_curve/monthly` の取得対象、primary snapshot の保存順序、background prefetch、表示 month 数、compare mode、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no

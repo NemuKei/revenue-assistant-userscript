@@ -605,46 +605,47 @@ async function buildMonthlyProgressPreviewModel(context: MonthlyProgressResolved
         let twoYearsAgoSalesSeries: MonthlyProgressLeadTimeSeries | null = null;
 
         const previousYearMonth = compareMode >= 2 ? shiftYearMonth(focusYearMonth, -12) : null;
-        if (previousYearMonth !== null) {
-            const previousYearSnapshot = await readLatestMonthlyBookingCurveSnapshot(context.facilityCacheKey, previousYearMonth);
-            if (previousYearSnapshot !== undefined) {
-                const previousYearMonthBounds = getYearMonthBounds(previousYearSnapshot.yearMonth);
-                if (previousYearMonthBounds !== null) {
-                    previousYearRoomSeries = buildMonthlyProgressLeadTimeSeries(
-                        previousYearSnapshot.payload,
-                        "room",
-                        previousYearMonthBounds.lastDateKey,
-                        context.batchDateKey
-                    );
-                    previousYearSalesSeries = buildMonthlyProgressLeadTimeSeries(
-                        previousYearSnapshot.payload,
-                        "sales",
-                        previousYearMonthBounds.lastDateKey,
-                        context.batchDateKey
-                    );
-                }
+        const twoYearsAgoMonth = compareMode >= 3 ? shiftYearMonth(focusYearMonth, -24) : null;
+        const [previousYearSnapshot, twoYearsAgoSnapshot] = await Promise.all([
+            previousYearMonth === null
+                ? Promise.resolve(undefined)
+                : readLatestMonthlyBookingCurveSnapshot(context.facilityCacheKey, previousYearMonth),
+            twoYearsAgoMonth === null
+                ? Promise.resolve(undefined)
+                : readLatestMonthlyBookingCurveSnapshot(context.facilityCacheKey, twoYearsAgoMonth)
+        ]);
+        if (previousYearSnapshot !== undefined) {
+            const previousYearMonthBounds = getYearMonthBounds(previousYearSnapshot.yearMonth);
+            if (previousYearMonthBounds !== null) {
+                previousYearRoomSeries = buildMonthlyProgressLeadTimeSeries(
+                    previousYearSnapshot.payload,
+                    "room",
+                    previousYearMonthBounds.lastDateKey,
+                    context.batchDateKey
+                );
+                previousYearSalesSeries = buildMonthlyProgressLeadTimeSeries(
+                    previousYearSnapshot.payload,
+                    "sales",
+                    previousYearMonthBounds.lastDateKey,
+                    context.batchDateKey
+                );
             }
         }
-
-        const twoYearsAgoMonth = compareMode >= 3 ? shiftYearMonth(focusYearMonth, -24) : null;
-        if (twoYearsAgoMonth !== null) {
-            const twoYearsAgoSnapshot = await readLatestMonthlyBookingCurveSnapshot(context.facilityCacheKey, twoYearsAgoMonth);
-            if (twoYearsAgoSnapshot !== undefined) {
-                const twoYearsAgoMonthBounds = getYearMonthBounds(twoYearsAgoSnapshot.yearMonth);
-                if (twoYearsAgoMonthBounds !== null) {
-                    twoYearsAgoRoomSeries = buildMonthlyProgressLeadTimeSeries(
-                        twoYearsAgoSnapshot.payload,
-                        "room",
-                        twoYearsAgoMonthBounds.lastDateKey,
-                        context.batchDateKey
-                    );
-                    twoYearsAgoSalesSeries = buildMonthlyProgressLeadTimeSeries(
-                        twoYearsAgoSnapshot.payload,
-                        "sales",
-                        twoYearsAgoMonthBounds.lastDateKey,
-                        context.batchDateKey
-                    );
-                }
+        if (twoYearsAgoSnapshot !== undefined) {
+            const twoYearsAgoMonthBounds = getYearMonthBounds(twoYearsAgoSnapshot.yearMonth);
+            if (twoYearsAgoMonthBounds !== null) {
+                twoYearsAgoRoomSeries = buildMonthlyProgressLeadTimeSeries(
+                    twoYearsAgoSnapshot.payload,
+                    "room",
+                    twoYearsAgoMonthBounds.lastDateKey,
+                    context.batchDateKey
+                );
+                twoYearsAgoSalesSeries = buildMonthlyProgressLeadTimeSeries(
+                    twoYearsAgoSnapshot.payload,
+                    "sales",
+                    twoYearsAgoMonthBounds.lastDateKey,
+                    context.batchDateKey
+                );
             }
         }
 
