@@ -766,6 +766,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-59 rank recommendation caution summary 集計を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - top 料金調整候補 summary の注意件数を作る際の、candidate ごとの caution labels をまとめる中間配列を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `formatRankRecommendationCautionSummary()` である。
+  - candidate を loop し、`summarizeRankRecommendationConfidenceCautions()` の戻り値を直接 `counts` Map へ加算する。
+- 非目標:
+  - ordered caution labels、候補ごとの caution count、空 summary の null、表示文言は変更しない。
+  - candidate diagnostics、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - Revenue Assistant API request 範囲、request 件数、request 間隔、同時実行数、保存 schema、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - caution labels の表示順は従来どおり ordered caution labels の順である。
+  - 各 caution count は従来どおり候補ごとの caution labels 出現数である。
+  - caution が 0 件の場合は従来どおり null を返す。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `flatMap()` で candidate 全体の caution labels 配列を作る処理をやめ、loop で `counts` Map へ直接加算するようにした。
+  - 表示文言、candidate diagnostics、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-UX-130 実データ競合価格 preview を mobile 390px で visual smoke する
 
 - 状態:

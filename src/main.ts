@@ -10564,21 +10564,29 @@ function formatRankRecommendationRawSourceStatusTitle(
 }
 
 function formatRankRecommendationCautionSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
-    return formatRankRecommendationCountSummary(
-        "注意",
-        candidates.flatMap((candidate) => summarizeRankRecommendationConfidenceCautions(candidate.diagnostics)),
-        [
-            "booking_curve または reference 不足",
-            "forecast 比較不足",
-            "sales / ADR 比較不足",
-            "同曜日比較不足",
-            "競合価格の部屋タイプ対応未確認",
-            "団体主因のため上げ判断を抑制",
-            "部屋数条件により判定制限",
-            "隣接ランク表示に制約あり"
-        ],
-        (label) => label
-    );
+    const orderedCautions = [
+        "booking_curve または reference 不足",
+        "forecast 比較不足",
+        "sales / ADR 比較不足",
+        "同曜日比較不足",
+        "競合価格の部屋タイプ対応未確認",
+        "団体主因のため上げ判断を抑制",
+        "部屋数条件により判定制限",
+        "隣接ランク表示に制約あり"
+    ];
+    const counts = new Map<string, number>();
+    for (const candidate of candidates) {
+        for (const caution of summarizeRankRecommendationConfidenceCautions(candidate.diagnostics)) {
+            counts.set(caution, (counts.get(caution) ?? 0) + 1);
+        }
+    }
+    const parts = orderedCautions
+        .map((caution) => {
+            const count = counts.get(caution) ?? 0;
+            return count > 0 ? `${caution} ${count}件` : null;
+        })
+        .filter((part): part is string => part !== null);
+    return parts.length === 0 ? null : `注意 ${parts.join("・")}`;
 }
 
 function formatRankRecommendationShortCautionSummary(candidates: readonly RankRecommendationCandidate[]): string | null {
