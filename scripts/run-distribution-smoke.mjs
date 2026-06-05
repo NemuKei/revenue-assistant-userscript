@@ -34,13 +34,25 @@ async function main() {
     const versionPolicy = parseVersionPolicy(args["version-policy"] ?? (args["allow-version-mismatch"] === "true" ? "warn" : "warn"));
     const cdpConnectionMode = parseCdpConnectionMode(args["cdp-connection"] ?? "auto");
     const allowEmptyPriceTrends = args["allow-empty-price-trends"] === "true";
+    const viewportWidth = parsePositiveInteger(args["viewport-width"], 0);
+    const viewportHeight = parsePositiveInteger(args["viewport-height"], 900);
+    const topOpenCompetitorPreview = args["top-open-competitor-preview"] === "true";
 
     const localText = await readFile(resolve(distPath), "utf8");
     const localVersion = extractUserscriptMetadata(localText, "version") ?? "unknown";
     const localUpdateUrl = extractUserscriptMetadata(localText, "updateURL") ?? "none";
     const localDownloadUrl = extractUserscriptMetadata(localText, "downloadURL") ?? "none";
     const publishedVersionResult = await readPublishedVersion(publishedUrl);
-    const smokeResult = await runChromeSmoke({ cdpUrl, targetUrl, seconds, mode, cdpConnectionMode });
+    const smokeResult = await runChromeSmoke({
+        cdpUrl,
+        targetUrl,
+        seconds,
+        mode,
+        cdpConnectionMode,
+        viewportWidth,
+        viewportHeight,
+        topOpenCompetitorPreview
+    });
     const assessment = assessSmokeResult({
         localVersion,
         publishedVersionResult,
@@ -49,7 +61,8 @@ async function main() {
         targetUrl,
         smokeResult,
         versionPolicy,
-        allowEmptyPriceTrends
+        allowEmptyPriceTrends,
+        topOpenCompetitorPreview
     });
 
     console.log(`local version: ${localVersion}`);
@@ -134,6 +147,7 @@ async function runChromeSmoke(options) {
             throw new Error("Chrome context not found. Start Chrome with remote debugging port first.");
         }
         const page = await resolvePage(context, options.targetUrl);
+        await applyViewport(page, options);
         const bookingCurveObserver = createBookingCurveRequestObserver();
         page.on("request", (request) => {
             if (request.method() !== "POST") {
@@ -170,6 +184,7 @@ async function runChromeSmoke(options) {
         const navigationWarning = await navigateOrReloadForSmoke(page, options.targetUrl, navigationTimeoutMs);
         await prepareMode(page, options.mode);
         const waitResult = await waitForModeReady(page, options.mode, options.seconds);
+        const interactionMetrics = await exerciseMode(page, options);
         const observationStartedAt = Date.now() - waitResult.elapsedMs;
         if (options.mode === "top" && waitResult.elapsedMs < options.seconds * 1000) {
             await page.waitForTimeout(options.seconds * 1000 - waitResult.elapsedMs);
@@ -179,6 +194,7 @@ async function runChromeSmoke(options) {
         const modeMetrics = {
             "navigation warning": navigationWarning ?? "none",
             ...waitResult.metrics,
+            ...interactionMetrics,
             ...summarizeBookingCurveRequests(bookingCurveObserver.entries),
             "state wait satisfied": waitResult.ready ? "yes" : "no",
             "state wait elapsed ms": waitResult.elapsedMs
@@ -246,12 +262,14 @@ async function runChromeSmokeWithPageCdp(options, connectionError) {
         await client.send("Page.enable");
         await client.send("Network.enable");
         await client.send("Log.enable").catch(() => undefined);
+        await applyViewportViaCdp(client, options);
 
         const navigationTimeoutMs = Math.max(30_000, options.seconds * 1000 + 15_000);
         const currentUrl = await getPageUrlViaCdp(client);
         const navigationWarning = await navigateOrReloadForSmokeViaCdp(client, currentUrl, options.targetUrl, navigationTimeoutMs);
         await prepareModeViaCdp(client, options.mode);
         const waitResult = await waitForModeReadyViaCdp(client, options.mode, options.seconds);
+        const interactionMetrics = await exerciseModeViaCdp(client, options);
         const observationStartedAt = Date.now() - waitResult.elapsedMs;
         if (options.mode === "top" && waitResult.elapsedMs < options.seconds * 1000) {
             await sleep(options.seconds * 1000 - waitResult.elapsedMs);
@@ -265,6 +283,7 @@ async function runChromeSmokeWithPageCdp(options, connectionError) {
             "page target id": pageTarget.id,
             "navigation warning": navigationWarning ?? "none",
             ...waitResult.metrics,
+            ...interactionMetrics,
             ...summarizeBookingCurveRequests(bookingCurveObserver.entries),
             "state wait satisfied": waitResult.ready ? "yes" : "no",
             "state wait elapsed ms": waitResult.elapsedMs
@@ -487,7 +506,7 @@ function assessModeMetrics(mode, metrics, options) {
         const rowCount = Number(metrics["top row count"]);
         const perRowMinimum = Number.isFinite(rowCount) && rowCount > 0 ? rowCount : 1;
         const bookingCurveThroughputFailures = assessBookingCurveThroughputFailures(metrics);
-        return [
+        const failures = [
             minCountFailure("top row count", metrics["top row count"], 1),
             yesFailure("React marker mounted", metrics["React marker mounted"]),
             yesFailure("target month select", metrics["target month select"]),
@@ -507,6 +526,16 @@ function assessModeMetrics(mode, metrics, options) {
             minCountFailure("UI popover markers", metrics["UI popover markers"], 1),
             ...bookingCurveThroughputFailures
         ].filter((failure) => failure !== null);
+        if (metrics["top competitor preview interaction"] !== undefined) {
+            failures.push(...[
+                yesFailure("top competitor preview interaction", metrics["top competitor preview interaction"]),
+                minCountFailure("top competitor preview open rows", metrics["top competitor preview open rows"], 1),
+                noFailure("top competitor preview horizontal overflow", metrics["top competitor preview horizontal overflow"]),
+                yesFailure("top competitor preview graph or empty state", metrics["top competitor preview graph or empty state"]),
+                yesFailure("top competitor preview focus returned", metrics["top competitor preview focus returned"])
+            ].filter((failure) => failure !== null));
+        }
+        return failures;
     }
     if (mode === "price-trends") {
         const failures = [
@@ -568,6 +597,10 @@ function yesFailure(label, value) {
     return value === "yes" ? null : `${label} must be yes, got ${value}`;
 }
 
+function noFailure(label, value) {
+    return value === "no" ? null : `${label} must be no, got ${value}`;
+}
+
 function isExpectedModeUrl(mode, value) {
     let url;
     try {
@@ -587,6 +620,28 @@ function isExpectedModeUrl(mode, value) {
     return /^\/monthly-progress\/\d{4}-\d{2}$/.test(url.pathname);
 }
 
+async function applyViewport(page, options) {
+    if (options.viewportWidth <= 0) {
+        return;
+    }
+    await page.setViewportSize({
+        width: options.viewportWidth,
+        height: options.viewportHeight
+    });
+}
+
+async function applyViewportViaCdp(client, options) {
+    if (options.viewportWidth <= 0) {
+        return;
+    }
+    await client.send("Emulation.setDeviceMetricsOverride", {
+        width: options.viewportWidth,
+        height: options.viewportHeight,
+        deviceScaleFactor: 1,
+        mobile: false
+    });
+}
+
 async function prepareMode(page, mode) {
     if (mode !== "price-trends") {
         return;
@@ -597,6 +652,31 @@ async function prepareMode(page, mode) {
         await tab.click({ force: true });
     } catch {
         // The selector counts below make the missing tab visible in the smoke output.
+    }
+}
+
+async function exerciseMode(page, options) {
+    if (options.mode !== "top" || !options.topOpenCompetitorPreview) {
+        return {};
+    }
+    try {
+        const button = page.locator("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]").first();
+        await button.waitFor({ state: "attached", timeout: 15000 });
+        await button.click({ force: true });
+        await page.waitForFunction(() => globalThis.document.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]").length > 0, null, { timeout: 15000 });
+        const openMetrics = await page.evaluate(collectTopCompetitorPreviewInteractionMetricsInPage);
+        await page.keyboard.press("Escape");
+        await page.waitForTimeout(250);
+        const closeMetrics = await page.evaluate(collectTopCompetitorPreviewCloseMetricsInPage);
+        return {
+            ...openMetrics,
+            ...closeMetrics
+        };
+    } catch (error) {
+        return {
+            "top competitor preview interaction": "failed",
+            "top competitor preview interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
+        };
     }
 }
 
@@ -618,6 +698,52 @@ async function prepareModeViaCdp(client, mode) {
         `);
     } catch {
         // The selector counts below make the missing tab visible in the smoke output.
+    }
+}
+
+async function exerciseModeViaCdp(client, options) {
+    if (options.mode !== "top" || !options.topOpenCompetitorPreview) {
+        return {};
+    }
+    try {
+        await waitForSelectorViaCdp(client, "[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]", 15000);
+        await evaluateViaCdp(client, `
+            (() => {
+                const button = document.querySelector("[data-ra-rank-recommendation-button-action=\\"competitor-preview-toggle\\"]");
+                if (button instanceof HTMLElement) {
+                    button.click();
+                    return true;
+                }
+                return false;
+            })()
+        `);
+        await waitForSelectorViaCdp(client, "[data-ra-rank-recommendation-competitor-preview-row]", 15000);
+        const openMetrics = await evaluateViaCdp(client, `(${collectTopCompetitorPreviewInteractionMetricsInPage.toString()})()`);
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyDown",
+            key: "Escape",
+            code: "Escape",
+            windowsVirtualKeyCode: 27,
+            nativeVirtualKeyCode: 27
+        });
+        await client.send("Input.dispatchKeyEvent", {
+            type: "keyUp",
+            key: "Escape",
+            code: "Escape",
+            windowsVirtualKeyCode: 27,
+            nativeVirtualKeyCode: 27
+        });
+        await sleep(250);
+        const closeMetrics = await evaluateViaCdp(client, `(${collectTopCompetitorPreviewCloseMetricsInPage.toString()})()`);
+        return {
+            ...openMetrics,
+            ...closeMetrics
+        };
+    } catch (error) {
+        return {
+            "top competitor preview interaction": "failed",
+            "top competitor preview interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
+        };
     }
 }
 
@@ -753,6 +879,54 @@ function collectModeMetricsInPage(selectedMode) {
             "monthly daily diff details initially open": doc.querySelector("[data-ra-monthly-progress-daily-diff] details")?.open === true ? "yes" : "no",
             "monthly status text": textFrom("[data-ra-monthly-progress-preview-status]")
         };
+}
+
+function collectTopCompetitorPreviewInteractionMetricsInPage() {
+    const doc = globalThis.document;
+    const activeButton = doc.activeElement instanceof globalThis.HTMLElement
+        ? doc.activeElement.closest("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]")
+        : null;
+    const openRows = Array.from(doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"));
+    const firstOpenRow = openRows.find((row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null) ?? openRows[0] ?? null;
+    const viewportWidth = doc.documentElement.clientWidth;
+    const scrollWidth = doc.documentElement.scrollWidth;
+    const previewScrollHeight = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.scrollHeight : 0;
+    const previewClientHeight = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.clientHeight : 0;
+    const graphCount = firstOpenRow instanceof globalThis.HTMLElement
+        ? firstOpenRow.querySelectorAll("[data-ra-sales-setting-competitor-price-chart-svg]").length
+        : 0;
+    const emptyCount = firstOpenRow instanceof globalThis.HTMLElement
+        ? firstOpenRow.querySelectorAll("[data-ra-sales-setting-competitor-price-empty]").length
+        : 0;
+    const noteText = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.textContent ?? "" : "";
+    const roomTypeNoteDetected = /confirmed|ambiguous|unknown|部屋タイプ|対応未確認|絞り込み|未確認/.test(noteText);
+
+    return {
+        "top competitor preview interaction": openRows.length > 0 ? "yes" : "no",
+        "top competitor preview active button captured": activeButton instanceof globalThis.HTMLElement ? "yes" : "no",
+        "top competitor preview viewport width": viewportWidth,
+        "top competitor preview document scroll width": scrollWidth,
+        "top competitor preview horizontal overflow": scrollWidth > viewportWidth ? "yes" : "no",
+        "top competitor preview open rows": openRows.length,
+        "top competitor preview graph count": graphCount,
+        "top competitor preview empty count": emptyCount,
+        "top competitor preview graph or empty state": graphCount > 0 || emptyCount > 0 ? "yes" : "no",
+        "top competitor preview room type note detected": roomTypeNoteDetected ? "yes" : "no",
+        "top competitor preview scroll height": previewScrollHeight,
+        "top competitor preview client height": previewClientHeight,
+        "top competitor preview vertical scroll amount": Math.max(0, previewScrollHeight - previewClientHeight)
+    };
+}
+
+function collectTopCompetitorPreviewCloseMetricsInPage() {
+    const doc = globalThis.document;
+    const activeButton = doc.activeElement instanceof globalThis.HTMLElement
+        ? doc.activeElement.closest("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]")
+        : null;
+    return {
+        "top competitor preview rows after escape": doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]").length,
+        "top competitor preview focus returned": activeButton instanceof globalThis.HTMLElement ? "yes" : "no"
+    };
 }
 
 async function resolvePageTarget(cdpUrl, targetUrl) {

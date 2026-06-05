@@ -60,6 +60,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve warm cache task の raw source 二重 read を `RAU-CP-30` として task 化して完了した。通常 booking curve warm cache task は、`hasSalesSettingWarmCacheRawSource()` で IndexedDB の raw source 有無を確認した後、miss の場合に `readOrLoadBookingCurveRawSource()` が同じ key をもう一度 read してから API fetch へ進んでいた。`readOrLoadBookingCurveRawSource()` の外部契約は維持したまま、内部に `stored` / `fetched` を返す helper を追加し、warm cache task は 1 回の read-or-load 結果から `skipped` / `fetched` を判定する。これにより cache miss path の不要な IndexedDB read を 1 回減らす。`/api/v4/booking_curve` の対象 scope、warm cache queue、request 間隔、同時実行数、retry / pause / cooldown、保存 schema、Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence、reasonFingerprint は変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、`RAU-UX-130` の実データ確認を進める前提として、`smoke:distribution --mode top` に mobile 390px の競合価格 preview interaction 証跡を出す `RAU-UX-132` を task 化して完了した。live Revenue Assistant を開く `userscript:version-check --open-url https://ra.jalan.net/` は、この環境の承認審査で通常 Chrome / Tampermonkey session への接触として拒否されたため、迂回せず live 実行は行っていない。代わりに、既存 smoke helper へ `--viewport-width 390 --top-open-competitor-preview` を追加し、top の `競合価格` preview を 1 件開いた状態の viewport width、document scroll width、横 overflow、preview open row、graph / empty state、部屋タイプ note 検出、preview 縦スクロール量、Escape 後の focus return を出力できるようにした。監視対象 write API POST、console / page error、既存 top selector、RAU warm cache throughput 判定は既存 smoke 判定を維持する。この task では live Revenue Assistant、Tampermonkey installed version、runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -373,6 +375,36 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
   - `verify`: Product Design observation note, Chrome / Browser DOM or visual evidence, `git diff --check`
+
+### RAU-UX-132 `smoke:distribution` で mobile 390px の競合価格 preview interaction を記録できるようにする
+
+- 状態:
+  - 完了。
+- 目的:
+  - `RAU-UX-130` の実データ確認で、mobile 390px の競合価格 preview open、横 overflow、graph / note、focus return、監視対象 write API POST 0 件を同じ smoke output で確認しやすくする。
+  - live 実行を行わず、検証 helper の観測項目だけを増やす。
+- スコープ:
+  - 対象は `scripts/run-distribution-smoke.mjs` と README の smoke 手順である。
+  - `--viewport-width 390 --top-open-competitor-preview` を指定した top smoke で、競合価格 preview を 1 件開き、Escape で閉じた後の focus return まで見る。
+- 非目標:
+  - この task では live Revenue Assistant を開かない。
+  - runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、request 間隔、同時実行数、保存 schema は変更しない。
+- 受け入れ条件:
+  - top smoke に `--viewport-width` / `--viewport-height` / `--top-open-competitor-preview` option がある。
+  - option 指定時に、preview open row、graph / empty state、部屋タイプ note 検出、横 overflow、縦スクロール量、Escape 後の focus return が metrics として出る。
+  - 監視対象 write API POST、console / page error、既存 top selector、RAU warm cache throughput 判定は既存どおり fail 条件に残る。
+  - `node --check scripts/run-distribution-smoke.mjs`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `scripts/run-distribution-smoke.mjs` に `--viewport-width`、`--viewport-height`、`--top-open-competitor-preview` を追加した。
+  - browser-level CDP path と page websocket fallback path の両方で viewport 設定と preview open / Escape close の metrics を取る。
+  - `top competitor preview horizontal overflow` は `no`、`top competitor preview graph or empty state` は `yes`、`top competitor preview focus returned` は `yes` を pass 条件として扱う。
+  - README に RAU-UX-130 用の実行例と出力項目を追加した。
+  - `node --check scripts/run-distribution-smoke.mjs`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `node --check scripts/run-distribution-smoke.mjs`, `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
