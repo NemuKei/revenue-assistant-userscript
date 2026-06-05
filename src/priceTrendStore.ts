@@ -214,9 +214,7 @@ async function fetchAndPersistPriceTrendRecordsInternal(
     }
 
     await withPriceTrendStore("readwrite", async (store) => {
-        for (const record of records) {
-            await putPriceTrendRecord(store, record);
-        }
+        await Promise.all(records.map((record) => putPriceTrendRecord(store, record)));
     });
 
     return {

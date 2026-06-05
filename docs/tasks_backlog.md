@@ -612,6 +612,34 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-37 価格推移 records の IndexedDB 保存 phase を軽くする
+
+- 状態:
+  - 完了。
+- 目的:
+  - 価格推移 tab の初回取得で、取得済み records を IndexedDB へ保存する phase を少し軽くする。
+  - 同じ readwrite transaction 内で records を 1 件ずつ await せず、put request を先に enqueue してから待つ。
+- スコープ:
+  - 対象は `src/priceTrendStore.ts` の `fetchAndPersistPriceTrendRecordsInternal()` における保存済み records の write phase である。
+  - API fetch の順序、対象 scope、request context 共有、pending map、戻り値の `records` は維持する。
+- 非目標:
+  - `/api/v1/price_trends` の対象 scope、request 間隔、同時実行数、background queue 停止条件は変更しない。
+  - Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、保存 schema、価格推移 UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - 取得済み records の保存時に、同じ IndexedDB transaction 内で `putPriceTrendRecord()` の request が `Promise.all` で待たれる。
+  - API fetch の直列性、error handling、stored / skipped の判定は従来どおりである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `withPriceTrendStore("readwrite", ...)` 内の保存 loop を `await Promise.all(records.map((record) => putPriceTrendRecord(store, record)))` に変更した。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:
