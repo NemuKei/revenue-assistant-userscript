@@ -563,6 +563,13 @@ type SalesSettingWarmCacheStoredMarkerState = "stored-current" | "stored-past";
 type SalesSettingWarmCacheDateMarkerState = "partial" | "complete" | "error" | SalesSettingWarmCacheStoredMarkerState;
 type RankRecommendationRawSourceStatus = "currentAsOf" | "pastAsOf" | "missing" | "loading" | "error";
 type RankRecommendationCompetitorPreviewStatus = "idle" | "loading" | "stored" | "empty" | "error";
+type RankRecommendationCompetitorRoomTypeMatchStatus = "confirmed" | "ambiguous" | "unknown";
+
+interface RankRecommendationCompetitorRoomTypeMatch {
+    status: RankRecommendationCompetitorRoomTypeMatchStatus;
+    filter: string | null;
+    labels: string[];
+}
 
 interface RankRecommendationCompetitorPreviewState {
     status: RankRecommendationCompetitorPreviewStatus;
@@ -10813,7 +10820,14 @@ function createRankRecommendationCompetitorPreviewCellChildren(candidate: RankRe
     sectionElement.append(titleElement, messageElement);
 
     if (state.status === "stored" && state.records.length > 0) {
-        const chartSeries = buildCompetitorPriceGuestChartSeries(state.records, null, null);
+        const roomTypeMatch = resolveRankRecommendationCompetitorRoomTypeMatch(candidate.roomGroupName, state.records);
+        const roomTypeFilter = roomTypeMatch.status === "confirmed" ? roomTypeMatch.filter : null;
+        const dailyRecords = buildLatestCompetitorPriceRecordsByFetchDate(state.records, roomTypeFilter);
+        const roomTypeNoteElement = document.createElement("p");
+        roomTypeNoteElement.textContent = formatRankRecommendationCompetitorRoomTypeMatchMessage(roomTypeMatch);
+        sectionElement.append(roomTypeNoteElement);
+
+        const chartSeries = buildCompetitorPriceGuestChartSeries(dailyRecords, roomTypeFilter, null);
         const legendElement = createCompetitorPriceLegend(chartSeries.facilities);
         const gridElement = document.createElement("div");
         gridElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE, "");
@@ -10841,6 +10855,74 @@ function createRankRecommendationCompetitorPreviewCellChildren(candidate: RankRe
     }
 
     return [sectionElement];
+}
+
+function resolveRankRecommendationCompetitorRoomTypeMatch(
+    roomGroupName: string,
+    records: CompetitorPriceSnapshotRecord[]
+): RankRecommendationCompetitorRoomTypeMatch {
+    const roomTypeLabels = buildCompetitorPriceFilterOptions(records).roomTypes;
+    if (roomTypeLabels.length === 0) {
+        return {
+            status: "unknown",
+            filter: null,
+            labels: []
+        };
+    }
+
+    const normalizedRoomGroupName = normalizeTextForRoomTypeMatch(roomGroupName);
+    const matchedLabels = roomTypeLabels.filter((label) => {
+        const normalizedLabel = normalizeTextForRoomTypeMatch(label);
+        return normalizedLabel !== "" && normalizedRoomGroupName.includes(normalizedLabel);
+    });
+
+    if (matchedLabels.length === 1) {
+        return {
+            status: "confirmed",
+            filter: matchedLabels[0] ?? null,
+            labels: matchedLabels
+        };
+    }
+
+    if (matchedLabels.length > 1) {
+        return {
+            status: "ambiguous",
+            filter: null,
+            labels: matchedLabels
+        };
+    }
+
+    return {
+        status: "unknown",
+        filter: null,
+        labels: roomTypeLabels
+    };
+}
+
+function formatRankRecommendationCompetitorRoomTypeMatchMessage(
+    match: RankRecommendationCompetitorRoomTypeMatch
+): string {
+    if (match.status === "confirmed" && match.filter !== null) {
+        return `部屋タイプ対応: confirmed / ${match.filter} で preview を絞り込みます。`;
+    }
+
+    if (match.status === "ambiguous") {
+        return `部屋タイプ対応: ambiguous / 候補 ${match.labels.join("、")}。強い絞り込みはせず、金額推奨の主因にしません。`;
+    }
+
+    if (match.labels.length === 0) {
+        return "部屋タイプ対応: unknown / snapshot 内に比較できる部屋タイプ label がありません。";
+    }
+
+    return `部屋タイプ対応: unknown / 比較可能 label ${match.labels.join("、")}。強い絞り込みはせず、金額推奨の主因にしません。`;
+}
+
+function normalizeTextForRoomTypeMatch(value: string): string {
+    return value
+        .trim()
+        .toLowerCase()
+        .replace(/\s+/g, "")
+        .replace(/[、，,・／/()（）[\]【】「」『』ー_-]/g, "");
 }
 
 function requestRankRecommendationCompetitorPreviewFromElement(element: HTMLElement): void {
