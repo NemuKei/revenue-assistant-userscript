@@ -166,19 +166,19 @@ function compactMonthlyBookingCurveResponse(
 }
 
 function compactMonthlyBookingCurvePoints(points: MonthlyBookingCurvePoint[] | undefined): MonthlyBookingCurveSnapshotPoint[] {
-    return (points ?? [])
-        .map((point) => {
-            if (typeof point.date !== "string" || point.date.length === 0) {
-                return null;
-            }
+    const compactPoints: MonthlyBookingCurveSnapshotPoint[] = [];
+    for (const point of points ?? []) {
+        if (typeof point.date !== "string" || point.date.length === 0) {
+            continue;
+        }
 
-            return {
-                date: point.date,
-                thisYearSum: typeof point.this_year_sum === "number" ? point.this_year_sum : null,
-                lastYearSum: typeof point.last_year_sum === "number" ? point.last_year_sum : null
-            };
-        })
-        .filter((point): point is MonthlyBookingCurveSnapshotPoint => point !== null);
+        compactPoints.push({
+            date: point.date,
+            thisYearSum: typeof point.this_year_sum === "number" ? point.this_year_sum : null,
+            lastYearSum: typeof point.last_year_sum === "number" ? point.last_year_sum : null
+        });
+    }
+    return compactPoints;
 }
 
 async function withMonthlyBookingCurveStore<T>(

@@ -78,6 +78,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた月次 preview 比較 snapshot read の waterfall を `RAU-CP-46` として task 化して完了した。`buildMonthlyProgressPreviewModel()` は月次 preview の各 focus month について、前年 snapshot を IndexedDB から読んだ後に 2 年前 snapshot を読み始めていた。前年と 2 年前の比較 snapshot は互いに依存せず、primary snapshot が存在する focus month の補助系列として使うだけなので、`Promise.all` で同時に読むようにした。重複確認では、`RAU-CP-24` から `RAU-CP-46` までの既存 task は価格推移、競合価格、rank recommendation、reference curve の取得準備や repeated scan の最適化であり、月次 preview の比較 snapshot read 並列化は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。月次 `/api/v1/booking_curve/monthly` の取得対象、primary snapshot の保存順序、background prefetch、表示 month 数、compare mode、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-05 に、Build Web Apps 観点の追加点検で見つけた月次 response compact の中間配列生成を `RAU-CP-47` として task 化して完了した。`compactMonthlyBookingCurvePoints()` は、月次 `/api/v1/booking_curve/monthly` response の points を `map()` で null 混じりの中間配列へ変換してから `filter()` で invalid date を落としていた。1 回の loop で valid point だけを push するようにし、月次 response 保存時の不要な中間配列を減らした。重複確認では、`RAU-CP-46` は月次 preview の比較 snapshot read 並列化であり、月次 response compact の `map().filter()` 1 pass 化とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。invalid date 除外、`this_year_sum` / `last_year_sum` の number 判定、null fallback、保存 schema、月次 API request 範囲、background prefetch、Revenue Assistant write API、rank change payload、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
 - 目的:
@@ -388,6 +390,33 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 完了結果:
   - `previousYearMonth` と `twoYearsAgoMonth` の read request を `Promise.all` で同時に待つようにした。
   - 月次 `/api/v1/booking_curve/monthly` の取得対象、primary snapshot の保存順序、background prefetch、表示 month 数、compare mode、保存 schema、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
+### RAU-CP-47 月次 response compact の `map().filter()` を 1 pass にする
+
+- 状態:
+  - 完了。
+- 目的:
+  - 月次 `/api/v1/booking_curve/monthly` response を IndexedDB snapshot payload へ compact するときの不要な中間配列を減らす。
+- スコープ:
+  - 対象は `src/monthlyProgressIndexedDb.ts` の `compactMonthlyBookingCurvePoints()` である。
+  - `map()` で null 混じりの中間配列を作ってから `filter()` する処理を、valid point だけを push する 1 回の loop へ変更する。
+- 非目標:
+  - invalid date 除外、`this_year_sum` / `last_year_sum` の number 判定、null fallback は変更しない。
+  - 保存 schema、月次 API request 範囲、background prefetch、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - `date` が空または string でない point は従来どおり除外される。
+  - `this_year_sum` / `last_year_sum` が number でない場合は従来どおり `null` になる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `compactMonthlyBookingCurvePoints()` は 1 回の loop で valid point だけを `compactPoints` へ push するようにした。
+  - invalid date 除外、`this_year_sum` / `last_year_sum` の number 判定、null fallback、保存 schema、月次 API request 範囲、background prefetch、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
   - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
 - metadata:
   - `spec-impact`: no
