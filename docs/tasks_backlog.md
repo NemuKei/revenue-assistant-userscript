@@ -678,6 +678,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-56 warm cache target bounds 準備を loop 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - warm cache queue の targetFrom / targetTo 表示範囲を作る際の、skip path 空配列 / 採用 path 1 要素配列を減らす。
+- スコープ:
+  - 対象は `src/main.ts` の `getSalesSettingWarmCacheTargetBounds()` である。
+  - task を loop し、valid compact date だけを `targetStayDateSet` へ直接追加する。
+- 非目標:
+  - invalid date skip、dedupe、sort 後の targetFrom / targetTo、fallbackStartDate、default targetToDate は変更しない。
+  - warm cache queue、request 範囲、request 件数、request 間隔、同時実行数、保存 schema は変更しない。
+  - candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant write API、rank change payload、runtime UI は変更しない。
+  - `RAU-UX-130` / `RAU-UX-131` の実データ preview / 通常利用観察はこの task では完了扱いにしない。
+- 受け入れ条件:
+  - valid compact date の dedupe と sort 後の最小 / 最大 target date は従来どおりである。
+  - valid compact date がない場合の fallback targetFrom / targetTo は従来どおりである。
+  - warm cache state の対象範囲表示と queue 処理 contract は維持される。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 完了結果:
+  - `flatMap()` をやめ、valid compact date だけを loop で `targetStayDateSet` へ追加するようにした。
+  - warm cache queue、request 範囲、Revenue Assistant write API、rank change payload、runtime UI は変更していない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-UX-130 実データ競合価格 preview を mobile 390px で visual smoke する
 
 - 状態:

@@ -4132,10 +4132,14 @@ function buildSalesSettingWarmCacheDateProgress(tasks: SalesSettingWarmCacheTask
 }
 
 function getSalesSettingWarmCacheTargetBounds(tasks: SalesSettingWarmCacheTask[], fallbackStartDate: string): Pick<SalesSettingWarmCacheState, "targetFromDate" | "targetToDate"> {
-    const targetStayDates = Array.from(new Set(tasks.flatMap((task) => {
+    const targetStayDateSet = new Set<string>();
+    for (const task of tasks) {
         const compactStayDate = toCompactDateKey(task.targetStayDate);
-        return compactStayDate === null ? [] : [compactStayDate];
-    }))).sort();
+        if (compactStayDate !== null) {
+            targetStayDateSet.add(compactStayDate);
+        }
+    }
+    const targetStayDates = Array.from(targetStayDateSet).sort();
     const fallbackCompactStartDate = toCompactDateKey(fallbackStartDate);
     return {
         targetFromDate: targetStayDates[0] ?? fallbackCompactStartDate,
