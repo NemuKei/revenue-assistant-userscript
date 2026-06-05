@@ -16704,10 +16704,12 @@ function buildMinimumCompetitorPricesByGuestCount(
 }
 
 function flattenCompetitorPricePlansWithOwn(record: CompetitorPriceSnapshotRecord): CompetitorPriceSnapshotPlan[] {
-    return [
-        ...(record.payload.own?.plans ?? []),
-        ...record.payload.competitors.flatMap((hotel) => hotel.plans)
-    ];
+    const plans: CompetitorPriceSnapshotPlan[] = [];
+    plans.push(...(record.payload.own?.plans ?? []));
+    for (const hotel of record.payload.competitors) {
+        plans.push(...hotel.plans);
+    }
+    return plans;
 }
 
 function getCompetitorPriceChartLayout(fetchDateCount: number, plotLeft: number, plotWidth: number): CompetitorPriceChartLayout {
