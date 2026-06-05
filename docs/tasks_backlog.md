@@ -726,6 +726,35 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `target-spec`: none
   - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
 
+### RAU-CP-41 価格系 chart tooltip の point lookup を yadNo Map 化する
+
+- 状態:
+  - 完了。
+- 目的:
+  - 競合価格 / 価格推移 chart tooltip 表示時に、施設系列ごとに `points.find()` を繰り返さない。
+  - hover / focus 時の tooltip rows 生成を軽くする。
+- スコープ:
+  - 対象は `src/main.ts` の `showCompetitorPriceTooltip()` と `showPriceTrendTooltip()` である。
+  - 対象 tick と前回 tick の points を yadNo 別 Map にしてから tooltip rows を作る。
+- 非目標:
+  - 競合価格 / 価格推移 API request 範囲、request 件数、保存順序、保存 schema、background queue 停止条件、Revenue Assistant write API、rank 変更 POST、preview / tab UI は変更しない。
+  - live Revenue Assistant、通常 Chrome、Tampermonkey、GitHub Pages 公開版へ接続しない。
+- 受け入れ条件:
+  - 競合価格 tooltip が対象取得日 / 前回取得日の points を yadNo Map から引く。
+  - 価格推移 tooltip が対象 lead time / 前回 lead time の points を yadNo Map から引く。
+  - 自社差分と前回差分の表示契約は従来どおりである。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過している。
+- 実装結果:
+  - `showCompetitorPriceTooltip()` で対象日 / 前回日の `Map<yadNo, point>` を作り、rows 生成で再利用するようにした。
+  - `showPriceTrendTooltip()` で対象 lead time / 前回 lead time の `Map<yadNo, point>` を作り、rows 生成で再利用するようにした。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。
+  - `npm run build` と `npm run check:fixture-markers` は sandbox 内 `spawn EPERM` になったため、同じ command を昇格して再実行した。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run build`, `npm run check:fixture-markers`, `git diff --check`
+
 ### RAU-CP-24 価格推移 background queue の request context 再取得を減らす
 
 - 状態:

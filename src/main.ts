@@ -16434,24 +16434,34 @@ function showCompetitorPriceTooltip(
     guideLineElement.setAttribute("x1", x.toFixed(2));
     guideLineElement.setAttribute("x2", x.toFixed(2));
 
-    const ownFacility = facilities.find((facility) => facility.name === "自社");
-    const ownPoint = ownFacility === undefined
-        ? undefined
-        : points.find((candidate) => candidate.fetchDate === fetchDate && candidate.yadNo === ownFacility.yadNo);
-    const rows = facilities
-        .map((facility) => {
-            const point = points.find((candidate) => candidate.fetchDate === fetchDate && candidate.yadNo === facility.yadNo);
-            if (point === undefined) {
-                return null;
-            }
-            const previousPoint = previousFetchDate === null
-                ? undefined
-                : points.find((candidate) => candidate.fetchDate === previousFetchDate && candidate.yadNo === facility.yadNo);
-            const previousDelta = previousPoint === undefined ? null : point.price - previousPoint.price;
-            const ownDelta = ownPoint === undefined || facility.name === "自社" ? null : point.price - ownPoint.price;
-            return { facility, point, previousDelta, ownDelta };
-        })
-        .filter((row): row is { facility: CompetitorPriceFacilitySeries; point: CompetitorPriceChartPoint; previousDelta: number | null; ownDelta: number | null } => row !== null);
+    const pointByYadNo = new Map<string, CompetitorPriceChartPoint>();
+    const previousPointByYadNo = new Map<string, CompetitorPriceChartPoint>();
+    for (const point of points) {
+        if (point.fetchDate === fetchDate) {
+            pointByYadNo.set(point.yadNo, point);
+        } else if (previousFetchDate !== null && point.fetchDate === previousFetchDate) {
+            previousPointByYadNo.set(point.yadNo, point);
+        }
+    }
+
+    let ownPoint: CompetitorPriceChartPoint | undefined;
+    for (const facility of facilities) {
+        if (facility.name === "自社") {
+            ownPoint = pointByYadNo.get(facility.yadNo);
+            break;
+        }
+    }
+    const rows: Array<{ facility: CompetitorPriceFacilitySeries; point: CompetitorPriceChartPoint; previousDelta: number | null; ownDelta: number | null }> = [];
+    for (const facility of facilities) {
+        const point = pointByYadNo.get(facility.yadNo);
+        if (point === undefined) {
+            continue;
+        }
+        const previousPoint = previousPointByYadNo.get(facility.yadNo);
+        const previousDelta = previousPoint === undefined ? null : point.price - previousPoint.price;
+        const ownDelta = ownPoint === undefined || facility.name === "自社" ? null : point.price - ownPoint.price;
+        rows.push({ facility, point, previousDelta, ownDelta });
+    }
 
     const titleElement = document.createElement("div");
     titleElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE, "");
@@ -16515,24 +16525,34 @@ function showPriceTrendTooltip(
     guideLineElement.setAttribute("x1", x.toFixed(2));
     guideLineElement.setAttribute("x2", x.toFixed(2));
 
-    const ownFacility = facilities.find((facility) => facility.name === "自社");
-    const ownPoint = ownFacility === undefined
-        ? undefined
-        : points.find((point) => point.leadTimeDays === leadTimeDays && point.yadNo === ownFacility.yadNo);
-    const rows = facilities
-        .map((facility) => {
-            const point = points.find((candidate) => candidate.leadTimeDays === leadTimeDays && candidate.yadNo === facility.yadNo);
-            if (point === undefined) {
-                return null;
-            }
-            const previousPoint = previousLeadTimeDays === null
-                ? undefined
-                : points.find((candidate) => candidate.leadTimeDays === previousLeadTimeDays && candidate.yadNo === facility.yadNo);
-            const previousDelta = previousPoint === undefined ? null : point.price - previousPoint.price;
-            const ownDelta = ownPoint === undefined || facility.name === "自社" ? null : point.price - ownPoint.price;
-            return { facility, point, previousDelta, ownDelta };
-        })
-        .filter((row): row is { facility: CompetitorPriceFacilitySeries; point: PriceTrendChartPoint; previousDelta: number | null; ownDelta: number | null } => row !== null);
+    const pointByYadNo = new Map<string, PriceTrendChartPoint>();
+    const previousPointByYadNo = new Map<string, PriceTrendChartPoint>();
+    for (const point of points) {
+        if (point.leadTimeDays === leadTimeDays) {
+            pointByYadNo.set(point.yadNo, point);
+        } else if (previousLeadTimeDays !== null && point.leadTimeDays === previousLeadTimeDays) {
+            previousPointByYadNo.set(point.yadNo, point);
+        }
+    }
+
+    let ownPoint: PriceTrendChartPoint | undefined;
+    for (const facility of facilities) {
+        if (facility.name === "自社") {
+            ownPoint = pointByYadNo.get(facility.yadNo);
+            break;
+        }
+    }
+    const rows: Array<{ facility: CompetitorPriceFacilitySeries; point: PriceTrendChartPoint; previousDelta: number | null; ownDelta: number | null }> = [];
+    for (const facility of facilities) {
+        const point = pointByYadNo.get(facility.yadNo);
+        if (point === undefined) {
+            continue;
+        }
+        const previousPoint = previousPointByYadNo.get(facility.yadNo);
+        const previousDelta = previousPoint === undefined ? null : point.price - previousPoint.price;
+        const ownDelta = ownPoint === undefined || facility.name === "自社" ? null : point.price - ownPoint.price;
+        rows.push({ facility, point, previousDelta, ownDelta });
+    }
 
     const titleElement = document.createElement("div");
     titleElement.setAttribute(SALES_SETTING_BOOKING_CURVE_TOOLTIP_TITLE_ATTRIBUTE, "");
