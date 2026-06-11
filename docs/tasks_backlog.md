@@ -68,6 +68,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-11 に、`RAU-UX-130` と `RAU-UX-131` を同じ Goal Bundle として完了した。CDP 接続付き `npm run smoke:distribution -- --mode top --url https://ra.jalan.net/ --seconds 30 --viewport-width 390 --top-open-competitor-preview --version-policy warn` は、`127.0.0.1:9222` が未起動で `ECONNREFUSED` になったため、live 390px smoke は実施できなかった。代替として、`npm run check:distribution-smoke-fixture` で mobile 390px の preview open、横 overflow なし、graph / empty state、focus return の pass / fail 判定を確認し、通常 Chrome 拡張 backend で実ログイン済み Revenue Assistant top を read-only 観察した。実画面観察では top row 10 件、競合価格 button 10 件、primary actions 10 件、secondary actions 10 件、pending notice 0 件、横 overflow なし、preview graph 4 件、部屋タイプ対応 note 検出あり、preview 縦 scroll amount 0、primary / secondary / pending overlap 0 件、Analyze button 11 件、曲線 button 10 件、rank 調整 button 11 件、`その他` details 11 件で初期 open 0 件、decision button 20 件、Escape 後 focus return `yes` だった。`src/main.ts` の preview DOM は state message、部屋タイプ対応 note、graph の順に append しており、graph だけを推奨根拠として読む兆候は今回の観察では確認されなかった。Chrome 拡張観察では console / page error と write API POST の network 捕捉は `smoke:distribution` と同等には取れないため、監視対象 write API POST 0 件の live 自動判定は CDP smoke 未実施として残る。ただし今回の操作は競合価格 preview open / Escape close の read-only DOM 操作で、runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`docs/context/INTENT.md` は表示密度、UI / UX、安全な作業キュー、request 数の判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。現時点では preview 要約化、二段階表示、row footer、popover 化の新規実装 task は追加しない。
 
+2026-06-11 に、データ取得速度と UX 改善の次実装候補を docs-only で再整理した。`RAU-PERF-09` は live observation 未完了 / blocked の履歴として残し、完了済みにはしない。過去に top / price-trends marker の一部確認はあったが、competitor 関連 baseline と live が取れない場合の fixture + manual fallback 手順が未整理であるため、`RAU-PERF-14` を `RAU-PERF-09` の後続整理 task として追加する。続けて、`competitor_prices` の visible bounded parallel fetch を `RAU-PERF-15`、`competitor_prices` cache-first 表示を `RAU-PERF-16`、booking_curve priority lane / endpoint-aware scheduling design を `RAU-PERF-17`、endpoint-aware cooldown / backoff design を `RAU-PERF-18` とする。UX / rendering residual audit は当初 `RAU-UX-132` 候補だったが、`RAU-UX-132` と `RAU-UX-133` は既に mobile smoke fixture 系 task として完了済みのため、ID 重複を避けて `RAU-UX-134` として追加する。今回の変更対象は `docs/context/STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md`、`docs/spec_001_analyze_expansion.md` に限定し、後続実装時の対象候補として挙げる `src/main.ts`、`src/competitorPriceSnapshotStore.ts`、`src/requestScheduler.ts`、`src/bookingCurveRawSourceStore.ts`、`src/referenceCurveStore.ts`、`src/rankRecommendationReactIsland.ts` は今回編集しない。`docs/spec_003_rank_recommendation_signal.md` は rank recommendation の契約変更がないため更新しない。runtime code、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、API query contract、request 総数は変更していない。response body、価格詳細、予約情報、顧客情報、施設実データは marker / log / docs に保存しない。Remaining Task Triage は Now `RAU-PERF-14`、Next `RAU-PERF-15`, `RAU-PERF-16`、After Next `RAU-PERF-17`, `RAU-PERF-18`、Later `RAU-UX-134` である。
+
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview info の IndexedDB read を `RAU-CP-31` として task 化して完了した。top 料金調整候補の曲線 preview 情報は、対象 `booking_curve_raw_source` が見つかっている hit path でも、raw source missing diagnostics 用の `readBookingCurveRawSourceStoredRoomGroupStatus()` を追加で待っていた。保存状態確認は raw source missing 時にだけ必要なため、hit path では省略し、missing 時だけ読むようにした。これにより、表示済み raw source から preview を作る通常 path の IndexedDB read を候補ごとに 1 回減らす。重複確認では、`RAU-CP-24` から `RAU-CP-30` は API request 準備、waterfall、status 再利用、warm cache raw source read の最適化であり、preview info hit path の保存状態 read 削減は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview reference data の raw source read 重複を `RAU-CP-32` として task 化して完了した。top 料金調整候補の曲線 preview reference data は、reference curve cache miss 時に、同じ curve kind (`recent_weighted_90` / `seasonal_component`) の raw source 群を segment (`all` / `transient` / `group`) ごとに読み直す余地があった。同一 preview 内では curve kind ごとの `readRankRecommendationCurvePreviewReferenceSources()` promise を共有し、cache miss 時の IndexedDB raw source read を segment 間で再利用する。重複確認では、`RAU-CP-31` は preview info hit path の保存状態 read 削減であり、reference data cache miss 時の source read 共有とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。reference curve cache key、reference curve 計算結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
@@ -10644,23 +10646,181 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
   - `risk`: low
   - `depends-on`: none
 
+### RAU-PERF-14 Live performance baseline 再取得 / RAU-PERF-09 後続整理
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-PERF-09` の live observation 未完了 / blocked 履歴を引き継ぎ、追加高速化の前に price_trends、booking_curve、competitor 関連の baseline を比較できる状態へ戻す。
+  - CDP 9222 または通常 Chrome / Tampermonkey 実行版で live marker を読める場合は live observation を優先し、取れない場合は fixture + manual observation の fallback 手順を docs に残す。
+- スコープ:
+  - 対象は `data-ra-fetch-performance-summary`、top / analyze / price-trends / competitor tab または competitor preview の体感速度、request count、duration、timestamp、error count、marker 有無である。
+  - 後続実装時の対象候補は `src/main.ts`、`scripts/run-distribution-smoke.mjs`、関連 smoke helper、`docs/spec_001_analyze_expansion.md` である。今回の docs-only taskization ではこれらの source / script file は編集しない。
+  - competitor 関連は、競合価格 tab 起点、top row の competitor preview 起点、background queue のどの観測項目を baseline に入れるかを決める。
+- 非目標:
+  - この task だけで runtime code、`dist/`、Revenue Assistant API request 範囲、request 間隔、concurrency、保存 schema、API query contract を変更しない。
+  - Revenue Assistant write API、rank change payload、response body、価格詳細、予約情報、顧客情報、施設実データを扱わない。
+- 受け入れ条件:
+  - `RAU-PERF-09` を完了扱いにせず、blocked / incomplete の理由と `RAU-PERF-14` へ引き継ぐ観測項目が docs に残っている。
+  - live または fixture + manual fallback のどちらで baseline を取るか、取得できる値と取得できない値が分かる。
+  - 次の改善 task の前後比較に使う duration、request count、error count、timestamp、marker 有無が定義されている。
+  - marker / log / docs に response body、価格詳細、予約情報、顧客情報、施設実データ、Cookie、token、credential を保存しないことが明記されている。
+  - docs-only で終える場合は `git diff --check` が通過している。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `risk`: low
+  - `depends-on`: `RAU-PERF-09`
+
+### RAU-PERF-15 competitor_prices visible bounded parallel fetch
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 競合価格 tab または top row competitor preview の user-facing 初期表示待ちを、request 総数や保存 schema を変えずに短縮する。
+- スコープ:
+  - visible / user-facing scope だけを最大 2 並列候補にする。background / cold queue は既存の安全寄り制御を維持する。
+  - route change、document hidden、tab close、facility / stay_date / batch date key 変更では停止する。
+  - 429 / 403 / 5xx / timeout が出た場合は `RAU-PERF-18` の backoff 方針に従い、残り queue 停止または間隔拡大を候補にする。
+  - 後続実装時の対象候補は `src/main.ts`、`src/competitorPriceSnapshotStore.ts`、関連 smoke helper である。今回の docs-only taskization ではこれらの source / script file は編集しない。
+- 非目標:
+  - request 総数、API query contract、保存 schema、競合価格 snapshot の検索条件 signature、Revenue Assistant write API、rank change payload を変更しない。
+  - background / cold queue を一律並列化しない。
+- 受け入れ条件:
+  - competitor visible fetch の duration、request count、error count が marker または smoke / manual observation で比較できる。
+  - fixture / smoke で request 総数が増えていないことを確認できる。
+  - 表示結果、保存 schema、query contract、既存 graph / table 表示が変わっていない。
+  - 429 / 403 / 5xx / timeout 時の停止または backoff 方針が記録されている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `risk`: medium
+  - `depends-on`: `RAU-PERF-14` recommended, `RAU-PERF-18` policy-linked
+
+### RAU-PERF-16 competitor_prices cache-first 表示
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 保存済み competitor price snapshot がある場合、network 完了前に graph または table を先に表示し、ユーザーの待ち時間を短縮する。
+- スコープ:
+  - 保存済み表示時は meta に `保存済み表示・再取得中` 相当の文言を出す。
+  - freshness 未確定のまま network fetch を skip しない。最新取得完了後に通常表示へ更新する。
+  - 表示だけの改善に留め、保存 schema、query contract、検索条件 signature、取得対象範囲は変更しない。
+  - 後続実装時の対象候補は `src/main.ts`、`src/competitorPriceSnapshotStore.ts`、競合価格 graph / preview renderer である。今回の docs-only taskization ではこれらの source file は編集しない。
+- 非目標:
+  - stale cache を最新値として扱わない。
+  - 競合価格 snapshot の保存 schema、API query contract、Revenue Assistant write API、rank change payload を変更しない。
+- 受け入れ条件:
+  - 保存済み snapshot がある場合、network 前に UI が表示される。
+  - revalidate 中であることが UI 上で分かる。
+  - network 完了後に表示が更新される。
+  - stale cache を最新値として誤認させない表示文言がある。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `risk`: low-to-medium
+  - `depends-on`: `RAU-PERF-14` recommended
+
+### RAU-PERF-17 booking_curve priority lane / endpoint-aware scheduling design
+
+- 状態:
+  - 未着手。
+- 目的:
+  - booking_curve queue 全体を単純に速くするのではなく、体感上必要な request を先に返し、cold background に interactive task が埋もれないようにする。
+- スコープ:
+  - まずは docs / design task として扱う。
+  - 優先順候補は current visible stay date、rank recommendation 上位候補、同 stay date roomGroup currentRaw、sameWeekday、reference curve、cold background とする。
+  - 既存 scheduler への統合、queue order のみで扱う案、endpoint-aware lane を追加する案を比較する。
+  - 中程度の負荷許容範囲として、interactive / priority だけ bounded に緩め、background の負荷は現行より大きく上げない。
+  - 後続実装時の対象候補は `src/requestScheduler.ts`、`src/main.ts`、`src/bookingCurveRawSourceStore.ts`、`src/referenceCurveStore.ts` である。今回の docs-only taskization ではこれらの source file は編集しない。
+- 非目標:
+  - この design task だけで scheduler、request 間隔、concurrency、request 総数、保存 schema、API query contract を変更しない。
+  - Revenue Assistant write API、rank change payload、自動反映、一括反映を扱わない。
+- 受け入れ条件:
+  - priority lane の採用案 / 不採用案 / リスク / rollback 方針が docs に残っている。
+  - request 総数を増やさず、background の負荷を大きく上げない前提が明記されている。
+  - 実装 task に分解できる対象ファイル候補と verify 観点が整理されている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: design-before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `risk`: medium
+  - `depends-on`: `RAU-PERF-14`, `RAU-PERF-18`
+
+### RAU-PERF-18 endpoint-aware cooldown / backoff design
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 中程度の負荷チューニングを入れても、プラットフォーム側の負荷兆候が出たときに安全側へ戻れるようにする。
+- スコープ:
+  - endpoint 別に 429 / 403 / 5xx / timeout を count する。
+  - 429 は即 cooldown、403 は停止寄り、5xx / timeout は連続回数で cooldown とする候補を比較する。
+  - cooldown 中は visible 最低限以外の background を止める候補とし、UI には軽い status を出す。
+  - エラー詳細や response body は保存しない。
+  - 後続実装時の対象候補は `src/requestScheduler.ts`、`src/main.ts`、endpoint adapter 群である。今回の docs-only taskization ではこれらの source file は編集しない。
+- 非目標:
+  - この design task だけで runtime code、scheduler、request 間隔、concurrency、保存 schema、API query contract を変更しない。
+  - response body、価格詳細、予約情報、顧客情報、施設実データを marker / log / docs に保存しない。
+- 受け入れ条件:
+  - endpoint 別 backoff policy が docs に残っている。
+  - 実装対象ファイル候補と影響範囲が整理されている。
+  - `RAU-PERF-15` と `RAU-PERF-17` の前提条件として参照できる。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: design-before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `risk`: medium
+  - `depends-on`: `RAU-PERF-14` recommended
+
+### RAU-UX-134 UX / rendering residual audit
+
+- 状態:
+  - 未着手。
+  - `RAU-UX-132` と `RAU-UX-133` は既に mobile smoke fixture 系 task として完了済みのため、この residual audit は ID 重複を避けて `RAU-UX-134` とする。
+- 目的:
+  - request が速くなっても、render や DOM 更新で体感が詰まっていないか確認する。
+- スコープ:
+  - 対象は competitor preview / graph / table の再構築回数、background 進捗だけで graph 全体を再構築していないか、large DOM `replaceChildren()` が user-facing 操作で jank になっていないかである。
+  - React island は `RAU-PERF-13` で audit 済みのため、証拠なしに `flushSync` 削除や `React.memo` 化をしない。
+  - fixture marker や live observation で jank の兆候がある場合だけ実装 task にする。
+  - 後続実装時の対象候補は `src/main.ts`、`src/rankRecommendationReactIsland.ts`、fixture / smoke helper である。今回の docs-only taskization ではこれらの source / script file は編集しない。
+- 非目標:
+  - この audit task だけで runtime UI、React rendering、DOM 更新処理、保存 schema、API request 範囲、rank change payload を変更しない。
+- 受け入れ条件:
+  - UX / rendering の未対応残差があるか整理されている。
+  - no-op 判断の場合も理由を docs に残している。
+  - 実装する場合は小さな task に分解され、対象 UI、観測方法、verify が明記されている。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: none
+  - `risk`: low
+  - `depends-on`: `RAU-PERF-15` or `RAU-PERF-16` recommended
+
 ## Remaining Task Triage
 
 Now:
 
-- なし
+- `RAU-PERF-14` Live performance baseline 再取得 / `RAU-PERF-09` 後続整理
 
 Next:
 
-- なし
+- `RAU-PERF-15` competitor_prices visible bounded parallel fetch
+- `RAU-PERF-16` competitor_prices cache-first 表示
 
 After Next:
 
-- なし
+- `RAU-PERF-17` booking_curve priority lane / endpoint-aware scheduling design
+- `RAU-PERF-18` endpoint-aware cooldown / backoff design
 
 Later:
 
-- なし
+- `RAU-UX-134` UX / rendering residual audit
 
 統合判断:
 
