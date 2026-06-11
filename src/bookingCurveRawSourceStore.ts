@@ -67,6 +67,25 @@ export async function readBookingCurveRawSourceRecord(cacheKey: string): Promise
     return withBookingCurveRawSourceStore("readonly", (store) => getBookingCurveRawSourceRecord(store, cacheKey));
 }
 
+export async function readBookingCurveRawSourceRecords(
+    cacheKeys: string[]
+): Promise<Record<string, BookingCurveRawSourceRecord>> {
+    if (!isIndexedDbAvailable() || cacheKeys.length === 0) {
+        return {};
+    }
+
+    const uniqueCacheKeys = Array.from(new Set(cacheKeys));
+    return withBookingCurveRawSourceStore("readonly", async (store) => {
+        const records = await Promise.all(uniqueCacheKeys.map(async (cacheKey) => ({
+            cacheKey,
+            record: await getBookingCurveRawSourceRecord(store, cacheKey)
+        })));
+        return Object.fromEntries(records
+            .filter((result): result is { cacheKey: string; record: BookingCurveRawSourceRecord } => result.record !== undefined)
+            .map((result) => [result.cacheKey, result.record]));
+    });
+}
+
 export async function readBookingCurveRawSourceStoredStayDateStatuses(
     facilityId: string,
     stayDates: string[],

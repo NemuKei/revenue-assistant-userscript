@@ -104,6 +104,7 @@ export interface FetchAndPersistPriceTrendOptions {
     stayDate: string;
     scopes?: readonly PriceTrendRequestScope[];
     requestContext?: PriceTrendRequestContext;
+    concurrency?: number;
 }
 
 export interface FetchAndPersistPriceTrendResult {
@@ -167,13 +168,15 @@ async function fetchAndPersistPriceTrendRecordsInternal(
         };
     }
 
-    const fetchedAt = new Date().toISOString();
-    const records: PriceTrendRecord[] = [];
     const scopes = options.scopes ?? buildAllPriceTrendRequestScopes();
-    let requestCount = 0;
-    for (const scope of scopes) {
+    const fetchedAt = new Date().toISOString();
+    const recordsByScopeIndex: PriceTrendRecord[] = [];
+    const requestCount = scopes.length;
+    const concurrency = Math.max(1, Math.min(Math.floor(options.concurrency ?? 1), scopes.length));
+    let nextScopeIndex = 0;
+
+    const fetchScope = async (scope: PriceTrendRequestScope): Promise<PriceTrendRecord> => {
         const request = buildPriceTrendRequest(options.stayDate, scope.numGuests, scope.mealType, scope.roomType, yadNos);
-        requestCount += 1;
         const response = await fetch(request.url, {
             credentials: "include",
             headers: {
@@ -184,7 +187,7 @@ async function fetchAndPersistPriceTrendRecordsInternal(
             throw new Error(`price trends request failed: ${response.status}`);
         }
         const apiResponse = await response.json() as PriceTrendApiResponse;
-        records.push(buildPriceTrendRecord({
+        return buildPriceTrendRecord({
             facilityId: options.facilityId,
             stayDate: options.stayDate,
             numGuests: scope.numGuests,
@@ -197,7 +200,26 @@ async function fetchAndPersistPriceTrendRecordsInternal(
             facilities: requestContext.facilities,
             scopeYadNos: yadNos,
             apiResponse
-        }));
+        });
+    };
+
+    const fetchNextScope = async (): Promise<void> => {
+        while (nextScopeIndex < scopes.length) {
+            const scopeIndex = nextScopeIndex;
+            nextScopeIndex += 1;
+            const scope = scopes[scopeIndex];
+            if (scope === undefined) {
+                throw new Error(`price trends scope index out of range: ${scopeIndex}`);
+            }
+            recordsByScopeIndex[scopeIndex] = await fetchScope(scope);
+        }
+    };
+
+    await Promise.all(Array.from({ length: concurrency }, () => fetchNextScope()));
+
+    const records = recordsByScopeIndex.filter((record): record is PriceTrendRecord => record !== undefined);
+    if (records.length !== scopes.length) {
+        throw new Error(`price trends request count mismatch: expected ${scopes.length}, got ${records.length}`);
     }
 
     const hasAnyYads = records.some((record) => record.payload.yads.length > 0);

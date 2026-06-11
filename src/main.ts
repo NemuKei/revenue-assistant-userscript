@@ -55,6 +55,7 @@ import {
     readBookingCurveRawSourceStoredRoomGroupStatus,
     readBookingCurveRawSourceStoredStayDateStatuses,
     readBookingCurveRawSourceRecord,
+    readBookingCurveRawSourceRecords,
     type BookingCurveRawSourceRecord,
     type BookingCurveRawSourceStoredRoomGroupStatus,
     writeBookingCurveRawSourceRecord
@@ -338,6 +339,7 @@ const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
 const PRICE_TREND_BACKGROUND_QUEUE_INTERVAL_MS = 1000;
 const PRICE_TREND_BACKGROUND_QUEUE_MAX_CONSECUTIVE_ERRORS = 3;
+const PRICE_TREND_VISIBLE_FETCH_CONCURRENCY = 2;
 const PRICE_TREND_BACKGROUND_FIXTURE_STORAGE_KEY = "revenue-assistant:price-trends:v1:background-fixture";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
@@ -4211,6 +4213,23 @@ async function preScanSalesSettingWarmCacheCurrentRawTasks(
     let preScanHitCount = 0;
     let rankRecommendationPreScanHitCount = 0;
     const queue: SalesSettingWarmCacheTask[] = [];
+    const currentRawTaskKeyByTask = new Map<SalesSettingWarmCacheTask, string>();
+
+    for (const task of tasks) {
+        if (task.kind !== "currentRaw") {
+            continue;
+        }
+        currentRawTaskKeyByTask.set(task, buildExactCurrentAsOfBookingCurveRawSourceTaskKey(task, facilityCacheKey, batchDateKey));
+    }
+
+    const currentRawRecordsByKey = await readBookingCurveRawSourceRecords(Array.from(currentRawTaskKeyByTask.values()))
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to pre-scan booking curve raw source`, {
+                batchDateKey,
+                error
+            });
+            return {} as Record<string, BookingCurveRawSourceRecord>;
+        });
 
     for (const task of tasks) {
         if (task.kind !== "currentRaw") {
@@ -4218,8 +4237,8 @@ async function preScanSalesSettingWarmCacheCurrentRawTasks(
             continue;
         }
 
-        const hit = await hasExactCurrentAsOfBookingCurveRawSourceTask(task, facilityCacheKey, batchDateKey);
-        if (!hit) {
+        const rawSourceKey = currentRawTaskKeyByTask.get(task);
+        if (rawSourceKey === undefined || currentRawRecordsByKey[rawSourceKey] === undefined) {
             queue.push(task);
             continue;
         }
@@ -4238,12 +4257,12 @@ async function preScanSalesSettingWarmCacheCurrentRawTasks(
     };
 }
 
-async function hasExactCurrentAsOfBookingCurveRawSourceTask(
+function buildExactCurrentAsOfBookingCurveRawSourceTaskKey(
     task: SalesSettingWarmCacheTask,
     facilityCacheKey: string,
     batchDateKey: string
-): Promise<boolean> {
-    const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+): string {
+    return buildBookingCurveRawSourceCacheKey({
         facilityId: facilityCacheKey,
         stayDate: task.stayDate,
         asOfDate: batchDateKey,
@@ -4252,18 +4271,6 @@ async function hasExactCurrentAsOfBookingCurveRawSourceTask(
         endpoint: BOOKING_CURVE_ENDPOINT,
         query: buildBookingCurveQuerySignature(task.stayDate, task.roomGroupId)
     });
-    const record = await readBookingCurveRawSourceRecord(rawSourceKey)
-        .catch((error: unknown) => {
-            console.warn(`[${SCRIPT_NAME}] failed to pre-scan booking curve raw source`, {
-                stayDate: task.stayDate,
-                batchDateKey,
-                scope: task.scope,
-                roomGroupId: task.roomGroupId,
-                error
-            });
-            return undefined;
-        });
-    return record !== undefined;
 }
 
 function buildSalesSettingWarmCacheTargetStayDates(
@@ -6485,7 +6492,8 @@ async function runPriceTrendFetch(
             facilityId: facilityCacheKey,
             stayDate: analysisDate,
             scopes: initialScopes,
-            requestContext
+            requestContext,
+            concurrency: PRICE_TREND_VISIBLE_FETCH_CONCURRENCY
         });
         updateFetchPerformancePriceTrendMetrics({
             visibleFetchCompletedAt: Date.now(),
