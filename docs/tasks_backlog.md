@@ -10612,7 +10612,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-PERF-13 rank recommendation React render responsiveness audit
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - React island の `flushSync`、row render、preview row、pending 表示を audit した。現時点では runtime 実装変更なしの no-op とし、`flushSync` 保留判断を `D-20260611-005` に記録した。
 - 目的:
   - rank recommendation React island の `flushSync`、row render、preview rows、memo 化余地を測り、操作時の引っかかりを改善する実装 task が必要か判断する。
 - スコープ:
@@ -10627,6 +10628,13 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
   - `flushSync` を維持する理由、通常 render 化できる条件、memo 化が有効そうな component、preview 分離が必要かを記録している。
   - 実装が必要な場合は、`React.memo`、通常 render 化、preview 部分分離、または no-op のどれを後続 task にするかを分けている。
   - docs-only で終える場合は `git diff --check` が通過している。実装修正を伴う後続 task では `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers` を実施する。
+- audit 結果:
+  - `syncRankRecommendationReactList()` は `flushSync` で root render するが、その直後に `hydrateRankRecommendationReactPreviewRows()`、warm cache inline status、月別 control 同期が続く。通常 render または `startTransition` へ変える場合は、React mount marker、row actions、preview row hydration、pending 表示、Revenue Assistant 側再描画への追従が崩れないことを fixture と live smoke で確認する必要がある。
+  - preview 開閉は React root 全体を再描画せず、button の `aria-expanded` / text と対象 preview row の `hidden` を直接更新する。競合価格 preview の loading / stored / error 更新も対象 preview cell の `replaceChildren()` に限定される。
+  - pending decision / rank change は行内 DOM 追加と削除で処理され、既存 row 全体の React 再描画には依存しない。
+  - React Doctor は 38 issues で、React island 近傍の直接診断は `react-doctor/no-flush-sync` 1 件だった。`deslop/unused-file` は既存の userscript entry / generated dist 誤検知として扱い、async 系や broader loop 系はこの audit の実装対象にしない。
+  - fixture marker では row layout 25、primary actions 25、secondary action markers 25、curve / competitor / rank change preview buttons 各 25、competitor preview rows 25、pending notice 2 を確認した。
+  - 結論として、`React.memo` 導入、通常 render 化、preview row の React component 分離はいずれも現時点では実装しない。実利用または marker 計測で root render が操作時の引っかかりを作っている証拠が出た場合だけ、通常 render / `startTransition` / snapshot 粒度縮小を別 task 化する。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: none
@@ -10642,7 +10650,7 @@ Now:
 
 Next:
 
-- RAU-PERF-13 rank recommendation React render responsiveness audit
+- なし
 
 After Next:
 
@@ -10654,6 +10662,7 @@ Later:
 
 統合判断:
 
+- 2026-06-11 に、`RAU-PERF-13` を rank recommendation React render responsiveness audit として完了した。React best practices の re-render / rendering 観点、React Doctor、fixture marker、`src/rankRecommendationReactIsland.ts` と `src/main.ts` の bridge を確認した。`flushSync` は Revenue Assistant 側 DOM 再描画への追従と、root render 直後の preview row hydration / warm cache inline status / 月別 control 同期があるため現時点では削除しない。preview 開閉は React root 全体ではなく `hidden` と対象 cell の `replaceChildren()` で軽量更新され、pending decision / rank change も行内 DOM 追加で処理されているため、`React.memo`、通常 render 化、preview component 分離を live jank の証拠なしに実装しない。`D-20260611-005` に保留判断を記録した。`npm run react:doctor -- --verbose --diff false` は sandbox 内で `spawn EPERM` になったため昇格して再実行し、38 issues、`react-doctor/no-flush-sync` 1 件を確認した。`npm run check:fixture-markers` も sandbox 内で `spawn EPERM` になったため昇格して再実行し、row layout 25、preview button 各 25、pending notice 2 を確認して pass した。runtime UI、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、candidate scoring、保存 schema、spec は変更していない。`RAU-PERF-09` は CDP 9222 未起動と Chrome 拡張 UI block により引き続き Now、Remaining Task Triage は Now `RAU-PERF-09`、Next / After Next / Later なしである。`docs/context/INTENT.md` は UI / UX、画面遷移やフォーカス復帰の安定性、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。
 - 2026-06-11 に、`RAU-PERF-11` と `RAU-PERF-12` を同じ price_trends 初期表示 / background 描画軽量化 Goal Bundle として完了した。`RAU-PERF-11` では background queue の `processed / total`、current scope、停止理由だけが変わる場合に graph、legend、filter、tooltip を再構築せず、meta/status text だけを更新する。`RAU-PERF-12` では保存済み record の cache read と `loadPriceTrendRequestContext()` を並行開始し、visible 16 scope fetch 直前で requestContext を await する。visible 16 scope の常時 revalidate、request 総数、query 契約、保存 schema、background 112 scope、1 秒 interval、停止条件、Revenue Assistant write API、rank change payload は変更していない。`docs/spec_001_analyze_expansion.md` には background status 軽量更新と requestContext / cache read 並行開始の契約を反映した。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`npm run check:distribution-smoke-fixture`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、該当 command は昇格して再実行した。`RAU-PERF-09` は CDP 9222 未起動と Chrome 拡張 UI block により引き続き Now、`RAU-PERF-13` は React island audit として Next とする。
 - 2026-06-11 に、`RAU-PERF-09` の live observation を再試行したが、CDP 9222 未起動と Chrome 拡張 UI による automation block のため完了条件には届かなかった。Chrome 拡張 backend と Revenue Assistant Analyze tab の存在は確認できたが、`data-ra-fetch-performance-summary` marker と RAU root は DOM 上 0 件だった。runtime code、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 契約、保存 schema は変更していない。`RAU-PERF-09` は Now に残し、`RAU-PERF-11` と `RAU-PERF-12` は引き続き Next、`RAU-PERF-13` は After Next とする。
 - 2026-06-11 に、`RAU-PERF-05B` と `RAU-PERF-10` を完了した。`RAU-PERF-05B` では booking_curve exact currentAsOf pre-scan を、複数 exact raw source key の bulk read / single readonly transaction へ寄せた。`RAU-PERF-10` では price_trends visible 16 scope を request 総数、query 契約、保存 schema、cache-first 表示、visible revalidate を維持したまま最大 2 件の bounded parallel fetch にした。`RAU-PERF-09` は `npm run chrome:pages` が `connect ECONNREFUSED 127.0.0.1:9222` で失敗したため live observation 未完了として Now に残す。`RAU-PERF-11` と `RAU-PERF-12` は price_trends の描画 / 初期取得 flow の別責務なので Next、`RAU-PERF-13` は React island audit で別責務なので After Next とする。
