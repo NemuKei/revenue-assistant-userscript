@@ -64,6 +64,8 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-UX-132` で追加した mobile 390px 競合価格 preview metrics の fail 判定を live 非依存で確認するため、`RAU-UX-133` として `check:distribution-smoke-fixture` を追加して完了した。`node ./scripts/run-distribution-smoke.mjs --self-test` は live Chrome、Revenue Assistant、Tampermonkey、GitHub Pages 公開版へ接続せず、synthetic top metrics だけで、preview open、横 overflow なし、graph / empty state、focus return の pass 条件と、横 overflow / focus return failure を検出できることを確認する。これにより、`RAU-UX-130` の live 実行前に helper の判定ロジックだけをローカルで検証できる。runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`node --check scripts/run-distribution-smoke.mjs`、`npm run check:distribution-smoke-fixture`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
+2026-06-11 に、`RAU-UX-130` と `RAU-UX-131` を同じ Goal Bundle として完了した。CDP 接続付き `npm run smoke:distribution -- --mode top --url https://ra.jalan.net/ --seconds 30 --viewport-width 390 --top-open-competitor-preview --version-policy warn` は、`127.0.0.1:9222` が未起動で `ECONNREFUSED` になったため、live 390px smoke は実施できなかった。代替として、`npm run check:distribution-smoke-fixture` で mobile 390px の preview open、横 overflow なし、graph / empty state、focus return の pass / fail 判定を確認し、通常 Chrome 拡張 backend で実ログイン済み Revenue Assistant top を read-only 観察した。実画面観察では top row 10 件、競合価格 button 10 件、primary actions 10 件、secondary actions 10 件、pending notice 0 件、横 overflow なし、preview graph 4 件、部屋タイプ対応 note 検出あり、preview 縦 scroll amount 0、primary / secondary / pending overlap 0 件、Analyze button 11 件、曲線 button 10 件、rank 調整 button 11 件、`その他` details 11 件で初期 open 0 件、decision button 20 件、Escape 後 focus return `yes` だった。`src/main.ts` の preview DOM は state message、部屋タイプ対応 note、graph の順に append しており、graph だけを推奨根拠として読む兆候は今回の観察では確認されなかった。Chrome 拡張観察では console / page error と write API POST の network 捕捉は `smoke:distribution` と同等には取れないため、監視対象 write API POST 0 件の live 自動判定は CDP smoke 未実施として残る。ただし今回の操作は競合価格 preview open / Escape close の read-only DOM 操作で、runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`docs/context/INTENT.md` は表示密度、UI / UX、安全な作業キュー、request 数の判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。現時点では preview 要約化、二段階表示、row footer、popover 化の新規実装 task は追加しない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
+
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview info の IndexedDB read を `RAU-CP-31` として task 化して完了した。top 料金調整候補の曲線 preview 情報は、対象 `booking_curve_raw_source` が見つかっている hit path でも、raw source missing diagnostics 用の `readBookingCurveRawSourceStoredRoomGroupStatus()` を追加で待っていた。保存状態確認は raw source missing 時にだけ必要なため、hit path では省略し、missing 時だけ読むようにした。これにより、表示済み raw source から preview を作る通常 path の IndexedDB read を候補ごとに 1 回減らす。重複確認では、`RAU-CP-24` から `RAU-CP-30` は API request 準備、waterfall、status 再利用、warm cache raw source read の最適化であり、preview info hit path の保存状態 read 削減は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview reference data の raw source read 重複を `RAU-CP-32` として task 化して完了した。top 料金調整候補の曲線 preview reference data は、reference curve cache miss 時に、同じ curve kind (`recent_weighted_90` / `seasonal_component`) の raw source 群を segment (`all` / `transient` / `group`) ごとに読み直す余地があった。同一 preview 内では curve kind ごとの `readRankRecommendationCurvePreviewReferenceSources()` promise を共有し、cache miss 時の IndexedDB raw source read を segment 間で再利用する。重複確認では、`RAU-CP-31` は preview info hit path の保存状態 read 削減であり、reference data cache miss 時の source read 共有とは別である。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。reference curve cache key、reference curve 計算結果、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
@@ -1056,7 +1058,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-UX-130 実データ競合価格 preview を mobile 390px で visual smoke する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - current fixture ではなく、配布版または同等の実データ preview で、競合価格 graph を開いた mobile 390px の縦スクロール量と読み順を確認する。
   - `RAU-UX-128` / `RAU-UX-129` で現行維持にした判断が、実データ graph でも成立するか確認する。
@@ -1074,6 +1076,13 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 監視対象 write API POST 0 件、console / page error 0 件、focus return の可否が確認されている。自動確認できない場合は、確認できない理由を記録する。
   - 変更が必要な場合は、表示対象、keyboard / focus、mobile、fixture / smoke、write API 非追加を含む実装 task が作られている。
   - `git diff --check` が通過している。
+- 観察結果:
+  - CDP 接続付き `smoke:distribution --mode top --viewport-width 390 --top-open-competitor-preview` は `127.0.0.1:9222` 未起動で `ECONNREFUSED` になったため、live 390px 自動 smoke は未実施。
+  - `npm run check:distribution-smoke-fixture` により、mobile 390px の競合価格 preview interaction metrics の pass / fail 判定は synthetic fixture で確認した。
+  - 通常 Chrome 拡張 backend で実ログイン済み Revenue Assistant top を read-only 観察した。実画面は viewport 1440px で、top row 10 件、競合価格 button 10 件、primary actions 10 件、secondary actions 10 件、pending notice 0 件、横 overflow なし、preview graph 4 件、部屋タイプ対応 note 検出あり、preview 縦 scroll amount 0、primary / secondary / pending overlap 0 件、Escape 後 focus return `yes` だった。
+  - `src/main.ts` の preview DOM は state message、部屋タイプ対応 note、graph の順に append しており、caveat-first の読み順を維持している。
+  - Chrome 拡張観察では console / page error と write API POST の network 捕捉は `smoke:distribution` と同等には取れないため、監視対象 write API POST 0 件の live 自動判定は CDP smoke 未実施として扱う。
+  - runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -1083,7 +1092,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-UX-131 通常利用で競合価格 preview と `その他` details が判断速度を落としていないか観察する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 通常利用で、競合価格 preview を開いた後に結局 Analyze / 曲線へ戻る操作が多いか、または `その他` details の開閉が候補処理を止めていないか確認する。
   - 実利用証跡がある場合だけ、preview の要約化、二段階表示、`その他` details の row footer / popover 化を別 task として切る。
@@ -1101,6 +1110,12 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 現行維持、preview 要約化 / 二段階表示、row footer、popover のどれを次に採るかの判断理由がある。
   - 変更が必要な場合は、表示対象、操作順、hover / focus / keyboard、mobile 390px、write API 非追加を含む実装 task が作られている。
   - `git diff --check` が通過している。
+- 観察結果:
+  - 実画面 read-only 観察では、競合価格 preview open 後も Analyze button 11 件、曲線 button 10 件、rank 調整 button 11 件が見えており、preview が次操作を隠す evidence はなかった。
+  - `その他` details は 11 件で、初期 open は 0 件。補助操作は primary action と分離され、primary / secondary / pending overlap は 0 件だった。
+  - 部屋タイプ対応 note は検出でき、`confirmed` / `ambiguous` / `unknown` note を graph の推奨根拠として誤読する兆候は今回の観察では確認されなかった。`RAU-UX-128` の caveat-first 判断と `RAU-UX-129` の `その他` details 現行維持判断を維持する。
+  - 現時点では preview 要約化 / 二段階表示、row footer、popover への runtime UI 変更 task は追加しない。
+  - runtime UI、Revenue Assistant write API、rank change payload、自動反映、一括反映は変更していない。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-implementation
@@ -10443,11 +10458,11 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-130`: 実データ競合価格 preview を mobile 390px で visual smoke する。
+- なし。
 
 Next:
 
-- `RAU-UX-131`: 通常利用で競合価格 preview と `その他` details が判断速度を落としていないか観察する。
+- なし。
 
 After Next:
 
@@ -10468,6 +10483,8 @@ Later:
 - 2026-06-11 に、`RAU-PERF-05` を完了した。booking_curve warm cache queue build 後に `currentRaw` task だけ exact raw source cache key で pre-scan し、facility、stayDate、asOfDate / batchDateKey、scope、roomGroupId、endpoint、query、schemaVersion が一致する保存済み currentAsOf record だけを queue から除外する。`pastAsOf`、`none`、hotel scope hit による roomGroup task、別 roomGroup hit による candidate roomGroup task は除外しない。除外数は `bookingCurve.preScanHitCount` marker と warm cache status summary の `pre-scan除外 n` で確認できる。request 間隔 350ms 以上、同時実行 3 件以下、hidden default off、Revenue Assistant write API なしは変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。次の Now は `RAU-PERF-04` である。
 
 - 2026-06-11 に、`RAU-PERF-04`、`RAU-PERF-06`、`RAU-PERF-07`、`RAU-PERF-08` を完了した。`RAU-PERF-04` は追加実装なしで完了し、visible 16 scope fetch 完了後に background 112 scope が schedule される現行順序を維持する。`RAU-PERF-06` は shared scheduler priority なしで、既存 queue order と exact pre-scan によって candidate currentRaw を先に扱う判断を `D-20260611-003` に残した。`RAU-PERF-07` は price_trends freshness policy として B: cache は即表示だけに使い visible scope は常に revalidate を採用し、`D-20260611-002` に残した。`RAU-PERF-08` では、データ取得高速化 task の完了、残る live / visual 観察 task、verify 済み command を整理した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
+
+- 2026-06-11 に、`RAU-UX-130` と `RAU-UX-131` を完了した。CDP 接続付き live 390px `smoke:distribution --mode top --viewport-width 390 --top-open-competitor-preview` は `127.0.0.1:9222` 未起動で `ECONNREFUSED` になったため、live 390px 自動 smoke は未実施とした。代替として `npm run check:distribution-smoke-fixture` で mobile 390px preview metrics の pass / fail 判定を確認し、通常 Chrome 拡張 backend で実ログイン済み Revenue Assistant top を read-only 観察した。実画面では top row 10 件、競合価格 button 10 件、primary actions 10 件、secondary actions 10 件、pending notice 0 件、横 overflow なし、preview graph 4 件、部屋タイプ対応 note 検出あり、preview 縦 scroll amount 0、primary / secondary / pending overlap 0 件、Analyze button 11 件、曲線 button 10 件、rank 調整 button 11 件、`その他` details 11 件で初期 open 0 件、decision button 20 件、Escape 後 focus return `yes` を確認した。`src/main.ts` の preview DOM は state message、部屋タイプ対応 note、graph の順に append しており、`RAU-UX-128` の caveat-first 判断と `RAU-UX-129` の `その他` details 現行維持判断を維持する。Chrome 拡張観察では console / page error と write API POST の network 捕捉は `smoke:distribution` と同等には取れないため、監視対象 write API POST 0 件の live 自動判定は CDP smoke 未実施として扱う。runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 
 - 2026-06-11 に、データ取得高速化タスク計画 v2 を `RAU-PERF-01` から `RAU-PERF-08` として task 化した。`RAU-PERF-01` は計測と debug marker だけを入れ、fetch 順序、scheduler、cache freshness、network skip は変えない最初の実装 task である。`RAU-PERF-02` は shared scheduler 実装ではなく assessment とし、共通 scheduler を変える場合は既存呼び出し互換、equal priority FIFO、requestKey in-flight de-dupe、interval / concurrency、starvation、active task 非中断を後続 task の AC にする。`RAU-PERF-03` は cache hit 即 network skip ではなく、保存済み record の即表示と visible revalidate を分ける。`RAU-PERF-05` は stayDate 粗判定ではなく raw source key と task の exact currentAsOf matching だけで pre-scan 除外する。`RAU-PERF-07` までは freshness 未確定のまま price_trends network skip を仕様化しない。`RAU-CP-60` は同日に verify を閉じて完了済みである。`RAU-UX-130` / `RAU-UX-131` は live / visual 観察 task として残すが、今回のデータ取得高速化 bundle の後ろへ下げる。
 
