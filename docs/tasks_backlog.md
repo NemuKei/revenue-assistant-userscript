@@ -98,7 +98,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた sales setting group room prefetch request 準備の中間配列生成を `RAU-CP-60` として実装した。当時は build / fixture marker verify が未確認だったが、2026-06-11 に `npm run build` と `npm run check:fixture-markers` を通して完了扱いにした。`prefetchSalesSettingGroupRooms()` は、room group ごとの `group` / `transient` と比較日 4 種の request を `roomGroups.flatMap()` と spread で `Promise.all()` に渡していた。base 8 request と room group ごとの request を同じ順序で 1 つの request 配列へ push する loop に変え、prefetch 開始前の中間配列生成を減らした。重複確認では、`RAU-CP-55` は warm cache priority candidate list、`RAU-CP-56` は warm cache bounds、`RAU-CP-48` は rank evidence request 準備であり、sales setting group room prefetch request 配列の準備は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用観察で、通常 Chrome / Tampermonkey / Revenue Assistant live 確認に明示許可が必要なため別 task として残す。Revenue Assistant API request 範囲、request 件数、request 順序、request 間隔、同時実行数、prefetch key、error handling、booking curve warm cache queue、Revenue Assistant write API endpoint、rank change payload、candidate scoring、priority、confidence、reasonFingerprint、保存 schema、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。
 
-2026-06-11 に、データ取得高速化タスク計画 v2 を `RAU-PERF-01` から `RAU-PERF-08` として task 化した。まず `RAU-CP-60` の未確認 verify を閉じ、`RAU-PERF-01` で fetch performance metrics / debug marker を実装した。`data-ra-fetch-performance-summary` marker は count / timestamp だけを出し、`revenue-assistant:debug:fetch-performance` が有効な場合だけ詳細 console を出す。shared scheduler priority は即実装しない。price_trends cache は freshness 未確定のまま network skip しない。booking_curve pre-scan は stayDate 粗判定ではなく raw source key と task の exact currentAsOf matching だけを除外条件にする。Remaining Task Triage は Now `RAU-PERF-02`, `RAU-PERF-03`、After Next `RAU-PERF-05`, `RAU-PERF-04`、Later `RAU-PERF-06`, `RAU-PERF-07`, `RAU-PERF-08`, `RAU-UX-130`, `RAU-UX-131` とする。
+2026-06-11 に、データ取得高速化タスク計画 v2 を `RAU-PERF-01` から `RAU-PERF-08` として task 化した。まず `RAU-CP-60` の未確認 verify を閉じ、`RAU-PERF-01` で fetch performance metrics / debug marker を実装した。`data-ra-fetch-performance-summary` marker は count / timestamp だけを出し、`revenue-assistant:debug:fetch-performance` が有効な場合だけ詳細 console を出す。`RAU-PERF-02` は docs-only assessment として完了し、shared scheduler priority は初期 bundle では実装しない判断を `D-20260611-001` に残した。price_trends cache は freshness 未確定のまま network skip しない。booking_curve pre-scan は stayDate 粗判定ではなく raw source key と task の exact currentAsOf matching だけを除外条件にする。Remaining Task Triage は Now `RAU-PERF-03`、Next `RAU-PERF-05`、After Next `RAU-PERF-04`、Later `RAU-PERF-06`, `RAU-PERF-07`, `RAU-PERF-08`, `RAU-UX-130`, `RAU-UX-131` とする。
 
 ### RAU-UX-118 Tampermonkey `0.1.0.373` 同期と配布版 top smoke を確認する
 
@@ -864,7 +864,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-PERF-02 request scheduling / priority strategy assessment を行う
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - shared scheduler を変更する必要があるか、price_trends 専用 queue と booking_curve 既存 queue 順序の改善で足りるかを判断する。
 - スコープ:
@@ -877,6 +877,12 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - common scheduler 拡張案と専用 queue 調整案の判断材料が docs に残る。
   - common scheduler 変更を後続化する場合の AC に、既存呼び出し完全互換、equal priority FIFO、requestKey in-flight de-dupe 維持、interval / concurrency 維持、starvation なし、active task 非中断を含める。
   - docs-only の場合は `git diff --check` が通過している。
+- assessment 結果:
+  - 2026-06-11 時点では shared `createIntervalRequestScheduler()` に priority を追加しない。
+  - 既存 scheduler は `requestKey` の in-flight de-dupe、FIFO queue、`intervalMs`、`concurrency`、active request 非中断を持つ。
+  - price_trends は shared scheduler ではなく専用 background queue を使うため、`RAU-PERF-03` は shared scheduler priority なしで進められる。
+  - booking_curve の candidate currentRaw は、まず既存 warm cache queue の task order 改善で扱う。
+  - 将来 shared scheduler priority が必要になった場合は、`D-20260611-001` の互換条件を AC にした別 task として切り出す。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: before-impl
@@ -10411,16 +10417,14 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-PERF-02`: request scheduling / priority strategy assessment を行う。
 - `RAU-PERF-03`: price_trends cache read + visible revalidate を実装する。RAU-PERF-02 の完了待ちは必須にしない。
 
 Next:
 
-- なし。
+- `RAU-PERF-05`: booking_curve exact pre-scan を実装する。
 
 After Next:
 
-- `RAU-PERF-05`: booking_curve exact pre-scan を実装する。
 - `RAU-PERF-04`: price_trends visible/background queue separation を確認・改善する。
 
 Later:
@@ -10434,6 +10438,8 @@ Later:
 統合判断:
 
 - 2026-06-11 に、`RAU-CP-60` と `RAU-PERF-01` を完了した。`RAU-CP-60` では sales setting group room prefetch request 配列の中間配列生成を減らし、`RAU-PERF-01` では `data-ra-fetch-performance-summary` marker と `revenue-assistant:debug:fetch-performance` debug flag を追加した。marker は price_trends の visible / background timing、scope count、cache read count、network fetch count、error count と、booking_curve warm cache の queue built timing、candidate currentRaw fetched / skipped / errored、preScanHitCount を count / timestamp だけで出す。response body、価格詳細、施設実データ、予約・在庫・顧客情報は保存しない。fetch 順序、scheduler、cache freshness、network skip、`PriceTrendRecord` 保存 schema、`/api/v1/price_trends` query、booking_curve request scope、Revenue Assistant write API、rank change payload、自動反映は変更していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、該当 command は昇格して再実行した。次の Now は `RAU-PERF-02` と `RAU-PERF-03` である。
+
+- 2026-06-11 に、`RAU-PERF-02` を docs-only assessment として完了した。shared `createIntervalRequestScheduler()` は `requestKey` in-flight de-dupe、FIFO queue、`intervalMs`、`concurrency`、active request 非中断をすでに持つため、初期データ取得高速化 bundle では priority 拡張を入れない。price_trends は専用 background queue、booking_curve は既存 warm cache queue の task order 改善を優先する。shared scheduler を将来変更する場合は、既存呼び出し完全互換、equal priority FIFO、requestKey in-flight de-dupe 維持、interval / concurrency 維持、starvation なし、active task の中断・並べ替えなしを AC にした別 task とする。次の Now は `RAU-PERF-03` で、`RAU-PERF-05` は Next とする。
 
 - 2026-06-11 に、データ取得高速化タスク計画 v2 を `RAU-PERF-01` から `RAU-PERF-08` として task 化した。`RAU-PERF-01` は計測と debug marker だけを入れ、fetch 順序、scheduler、cache freshness、network skip は変えない最初の実装 task である。`RAU-PERF-02` は shared scheduler 実装ではなく assessment とし、共通 scheduler を変える場合は既存呼び出し互換、equal priority FIFO、requestKey in-flight de-dupe、interval / concurrency、starvation、active task 非中断を後続 task の AC にする。`RAU-PERF-03` は cache hit 即 network skip ではなく、保存済み record の即表示と visible revalidate を分ける。`RAU-PERF-05` は stayDate 粗判定ではなく raw source key と task の exact currentAsOf matching だけで pre-scan 除外する。`RAU-PERF-07` までは freshness 未確定のまま price_trends network skip を仕様化しない。`RAU-CP-60` は同日に verify を閉じて完了済みである。`RAU-UX-130` / `RAU-UX-131` は live / visual 観察 task として残すが、今回のデータ取得高速化 bundle の後ろへ下げる。
 
