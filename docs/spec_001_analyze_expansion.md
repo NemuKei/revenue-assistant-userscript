@@ -278,6 +278,7 @@ BCL-tuned first wave の定義:
 - `reference source raw source` を取得するために reference curve request scheduler へ投入した `/api/v4/booking_curve` request も、同じ request scheduler を通す。これにより、warm cache worker が最大 3 件並行で進んでいても、`/api/v4/booking_curve` request の開始間隔 350ms 以上と同時実行 3 件以下を維持する。
 - warm cache queue は最大 3 worker で処理してよい。worker は task queue の処理単位であり、実際の `/api/v4/booking_curve` request 開始間隔と同時実行数は `loadBookingCurve()` 側の request scheduler が制御する。
 - IndexedDB または derived cache の既存 record により skip できる task は、API request を発行しないため、次 task へ即時に進めてよい。
+- warm cache queue build 時の pre-scan は、`currentRaw` task と保存済み raw source の exact currentAsOf key が一致する場合だけ、その task を queue から除外してよい。exact key は facility、stay_date、as_of_date、scope、rm_room_group_id、endpoint、query、schema version を含む。`pastAsOf` と `none` は除外せず、hotel scope の保存済み record で roomGroup task を除外せず、別 roomGroup の保存済み record で candidate roomGroup task を除外しない。除外数は fetch performance marker と warm cache status summary で確認できる。
 - 1 回の自動 warm cache 稼働時間は最大 10 分とする。
 - 1 回の自動 warm cache 稼働時間に達した場合は、3 分以上のクールダウン時間を置いた後に自動再開する。
 - 日次合計稼働時間の上限は設けない。負荷制御は、有限 queue、request 間隔、1 回の稼働時間、クールダウン、document hidden 中の既定一時停止、連続エラー停止で行う。
@@ -327,6 +328,7 @@ BCL-tuned first wave の定義:
 - Analyze 日付ページは、利用者が開いている stay_date を warm cache の最優先対象にする。表示上の基準日は `as_of_date` であり、indicator は `この日 raw`、`参考線`、`同曜日` の内訳を出す。保存済み raw source、derived reference curve、同曜日 raw source のいずれが不足しているかを分けて表示する。
 - 競合価格タブは、競合価格 snapshot の保存状態を booking curve warm cache とは別の状態として表示する。対象 stay_date、検索条件 signature、最終保存時刻、前回 snapshot の有無、競合施設数、skip 理由、保存失敗を区別する。競合価格 snapshot を booking curve warm cache の完了定義へ混ぜない。
 - 価格推移タブは、公式 `/api/v1/price_trends` から保存した `price-trend-records` を使う。初回表示では、表示中 stay_date の `roomType = 指定なし`、`mealType = NONE / BREAKFAST / DINNER / BREAKFAST_DINNER`、`guestCount = 1 / 2 / 3 / 4` の 16 request を優先する。これは既定の `部屋タイプ=指定なし`、`食事=指定なし`、人数別 4 panel を先に描画するための最小単位である。部屋タイプ別 request を含む残りの `mealType x roomType x guestCount` は background queue で取得する。保存済み record は `fetchedAt` を取得時刻として表示できるようにし、89 日より先または `yads` 空配列は対象外理由として扱う。
+- 価格推移タブを開いたとき、同じ facility と stay_date の保存済み `price-trend-records` がある場合は、visible 16 scope の network fetch より先に保存済み graph を表示してよい。ただし `PriceTrendRecord` には batchDateKey がなく freshness policy が未確定であるため、保存済み record があることだけを理由に visible 16 scope の `/api/v1/price_trends` fetch を skip しない。保存済み graph を先に出す間は `保存済み表示・再取得中` と分かる meta を表示し、visible fetch 完了後は取得した record で更新する。
 - 月次実績画面は、現在表示月の snapshot を初回表示の優先対象にし、比較月または future month の prefetch は background 扱いにする。`RAU-MP-03` では、現在表示月の snapshot だけを初回描画の同期対象にし、future month と比較月は background queue で順次取得する。画面上には、現在表示月の保存状態、表示中の月数、background の処理済み件数、対象件数、失敗件数、現在取得中の yearMonth を表示する。これにより、比較月や future month の取得が遅い場合でも、現在表示月の graph を先に確認できる。
 
 ### Sync Timing

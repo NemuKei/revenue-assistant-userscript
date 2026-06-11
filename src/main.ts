@@ -514,6 +514,13 @@ interface SalesSettingWarmCacheState {
     rankRecommendationPriorityFetched: number;
     rankRecommendationPrioritySkipped: number;
     rankRecommendationPriorityErrors: number;
+    preScanHitCount: number;
+}
+
+interface SalesSettingWarmCacheQueueBuildResult {
+    queue: SalesSettingWarmCacheTask[];
+    preScanHitCount: number;
+    rankRecommendationPreScanHitCount: number;
 }
 
 type CompetitorPriceSnapshotStatus = "idle" | "saving" | "stored" | "skipped" | "error";
@@ -3841,7 +3848,8 @@ function createInitialSalesSettingWarmCacheState(): SalesSettingWarmCacheState {
         rankRecommendationPriorityProcessed: 0,
         rankRecommendationPriorityFetched: 0,
         rankRecommendationPrioritySkipped: 0,
-        rankRecommendationPriorityErrors: 0
+        rankRecommendationPriorityErrors: 0,
+        preScanHitCount: 0
     };
 }
 
@@ -3957,8 +3965,8 @@ function scheduleSalesSettingWarmCache(
     resetFetchPerformanceBookingCurveMetrics("bookingCurve.warmCacheQueueRequested");
     renderSalesSettingWarmCacheIndicator();
 
-    void buildSalesSettingWarmCacheQueue(startDate, priorityStayDate, priorityMonth)
-        .then((queue) => {
+    void buildSalesSettingWarmCacheQueue(startDate, priorityStayDate, priorityMonth, facilityCacheKey, batchDateKey)
+        .then((queueResult) => {
             if (
                 salesSettingWarmCacheState.facilityId !== facilityCacheKey
                 || salesSettingWarmCacheState.asOfDate !== batchDateKey
@@ -3966,8 +3974,10 @@ function scheduleSalesSettingWarmCache(
                 return;
             }
 
+            const queue = queueResult.queue;
             updateFetchPerformanceBookingCurveMetrics({
-                warmCacheQueueBuiltAt: Date.now()
+                warmCacheQueueBuiltAt: Date.now(),
+                preScanHitCount: queueResult.preScanHitCount
             }, "bookingCurve.warmCacheQueueBuilt");
             salesSettingWarmCacheState = {
                 ...salesSettingWarmCacheState,
@@ -3976,11 +3986,12 @@ function scheduleSalesSettingWarmCache(
                 dateProgress: buildSalesSettingWarmCacheDateProgress(queue),
                 ...getSalesSettingWarmCacheTargetBounds(queue, startDate),
                 total: queue.length,
-                rankRecommendationPriorityTotal: countRankRecommendationWarmCachePriorityTasks(queue),
-                rankRecommendationPriorityProcessed: 0,
+                rankRecommendationPriorityTotal: countRankRecommendationWarmCachePriorityTasks(queue) + queueResult.rankRecommendationPreScanHitCount,
+                rankRecommendationPriorityProcessed: queueResult.rankRecommendationPreScanHitCount,
                 rankRecommendationPriorityFetched: 0,
-                rankRecommendationPrioritySkipped: 0,
+                rankRecommendationPrioritySkipped: queueResult.rankRecommendationPreScanHitCount,
                 rankRecommendationPriorityErrors: 0,
+                preScanHitCount: queueResult.preScanHitCount,
                 pauseReason: null
             };
             renderSalesSettingWarmCacheIndicator();
@@ -4005,8 +4016,10 @@ function scheduleSalesSettingWarmCache(
 async function buildSalesSettingWarmCacheQueue(
     startDate: string,
     priorityStayDate: string | null,
-    priorityMonth: string | null
-): Promise<SalesSettingWarmCacheTask[]> {
+    priorityMonth: string | null,
+    facilityCacheKey: string,
+    batchDateKey: string
+): Promise<SalesSettingWarmCacheQueueBuildResult> {
     const roomGroups = await getRoomGroups();
     const tasks: SalesSettingWarmCacheTask[] = [];
     const taskKeys = new Set<string>();
@@ -4053,7 +4066,8 @@ async function buildSalesSettingWarmCacheQueue(
         }
     }
 
-    return prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks);
+    const prioritizedTasks = prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks);
+    return preScanSalesSettingWarmCacheCurrentRawTasks(prioritizedTasks, facilityCacheKey, batchDateKey);
 }
 
 const SALES_SETTING_WARM_CACHE_REFERENCE_SEGMENTS = ["all", "transient", "group"] as const satisfies readonly CurveSegment[];
@@ -4187,6 +4201,69 @@ function buildSalesSettingWarmCacheTaskKey(task: SalesSettingWarmCacheTask): str
         `segment:${task.segment ?? "-"}`,
         `curve:${task.curveKind ?? "-"}`
     ].join("|");
+}
+
+async function preScanSalesSettingWarmCacheCurrentRawTasks(
+    tasks: SalesSettingWarmCacheTask[],
+    facilityCacheKey: string,
+    batchDateKey: string
+): Promise<SalesSettingWarmCacheQueueBuildResult> {
+    let preScanHitCount = 0;
+    let rankRecommendationPreScanHitCount = 0;
+    const queue: SalesSettingWarmCacheTask[] = [];
+
+    for (const task of tasks) {
+        if (task.kind !== "currentRaw") {
+            queue.push(task);
+            continue;
+        }
+
+        const hit = await hasExactCurrentAsOfBookingCurveRawSourceTask(task, facilityCacheKey, batchDateKey);
+        if (!hit) {
+            queue.push(task);
+            continue;
+        }
+
+        preScanHitCount += 1;
+        if (isRankRecommendationWarmCachePriorityTask(task)) {
+            rankRecommendationPreScanHitCount += 1;
+            recordFetchPerformanceBookingCurvePriorityResult("skipped");
+        }
+    }
+
+    return {
+        queue,
+        preScanHitCount,
+        rankRecommendationPreScanHitCount
+    };
+}
+
+async function hasExactCurrentAsOfBookingCurveRawSourceTask(
+    task: SalesSettingWarmCacheTask,
+    facilityCacheKey: string,
+    batchDateKey: string
+): Promise<boolean> {
+    const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+        facilityId: facilityCacheKey,
+        stayDate: task.stayDate,
+        asOfDate: batchDateKey,
+        scope: task.scope,
+        ...(task.scope === "roomGroup" && task.roomGroupId !== undefined ? { roomGroupId: task.roomGroupId } : {}),
+        endpoint: BOOKING_CURVE_ENDPOINT,
+        query: buildBookingCurveQuerySignature(task.stayDate, task.roomGroupId)
+    });
+    const record = await readBookingCurveRawSourceRecord(rawSourceKey)
+        .catch((error: unknown) => {
+            console.warn(`[${SCRIPT_NAME}] failed to pre-scan booking curve raw source`, {
+                stayDate: task.stayDate,
+                batchDateKey,
+                scope: task.scope,
+                roomGroupId: task.roomGroupId,
+                error
+            });
+            return undefined;
+        });
+    return record !== undefined;
 }
 
 function buildSalesSettingWarmCacheTargetStayDates(
@@ -4804,7 +4881,14 @@ function getSalesSettingWarmCacheStatusLabel(): string {
     }
 
     const competitorLabel = getCompetitorPriceSnapshotStatusLabel();
-    return competitorLabel === null ? label : `${label} / ${competitorLabel}`;
+    const preScanLabel = salesSettingWarmCacheState.preScanHitCount > 0
+        ? `pre-scan除外 ${salesSettingWarmCacheState.preScanHitCount}`
+        : null;
+    return [
+        label,
+        preScanLabel,
+        competitorLabel
+    ].filter((part): part is string => part !== null).join(" / ");
 }
 
 function getSalesSettingWarmCacheDetailLabel(): string {
@@ -6389,7 +6473,7 @@ async function runPriceTrendFetch(
         updatedAt: new Date().toISOString()
     };
     renderPriceTrendOverviewFromState();
-    void refreshPriceTrendRecords(facilityCacheKey, analysisDate);
+    await refreshPriceTrendRecords(facilityCacheKey, analysisDate);
 
     try {
         updateFetchPerformancePriceTrendMetrics({
@@ -15800,6 +15884,7 @@ function formatPriceTrendOverviewMeta(
     const latestRecord = selectLatestPriceTrendRecord(records);
     const parts = [
         state.stayDate === null ? null : `対象宿泊日 ${formatCompactDateForDisplay(state.stayDate)}`,
+        formatPriceTrendDisplayStateLabel(state, records),
         latestRecord === null ? null : `部屋タイプ ${roomTypeFilter === null ? "全部屋タイプから最安値" : formatPriceTrendRoomTypeForDisplay(roomTypeFilter)}`,
         latestRecord === null ? null : `食事 ${mealTypeFilter === null ? "指定なし" : formatMealTypeForDisplay(mealTypeFilter)}`,
         latestRecord === null ? null : `公式更新 ${formatNullableDateTimeForDisplay(latestRecord.payload.latestSourceUpdatedAt)}`,
@@ -15808,6 +15893,19 @@ function formatPriceTrendOverviewMeta(
         `取得元 /api/v1/price_trends`
     ].filter((part): part is string => part !== null);
     return parts.join(" / ");
+}
+
+function formatPriceTrendDisplayStateLabel(state: PriceTrendUiState, records: PriceTrendRecord[]): string | null {
+    if (records.length === 0) {
+        return state.status === "loading" ? "取得中" : null;
+    }
+    if (state.status === "loading") {
+        return "保存済み表示・再取得中";
+    }
+    if (state.status === "stored") {
+        return "保存済み";
+    }
+    return null;
 }
 
 function formatPriceTrendBackgroundQueueSignature(): string {

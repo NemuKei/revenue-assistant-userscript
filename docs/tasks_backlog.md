@@ -892,7 +892,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-PERF-03 price_trends cache read + visible revalidate を実装する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 保存済み price trend record を先に表示し、visible scope は stale 誤読を避けて再取得する。
 - スコープ:
@@ -909,6 +909,11 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - background 112 scope は維持しつつ、visible request を詰まらせない。
   - `npm run typecheck`、`npm run lint` が通過している。
   - 配布版確認が可能な場合は `npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode price-trends --url https://ra.jalan.net/analyze/YYYY-MM-DD --seconds 60`、不可の場合は README の manual / CDP checklist に切り替える。
+- 実装結果:
+  - 価格推移 tab 表示時に保存済み record を `readLatestPriceTrendRecordsForStayDate()` で先に読み、存在する場合は visible 16 scope の fetch 前に graph を描画する。
+  - 保存済み record 表示中も visible 16 scope の `/api/v1/price_trends` fetch は skip せず、meta に `保存済み表示・再取得中` を出す。
+  - fresh 判定がない record を最新扱いにせず、runtime skip は追加していない。
+  - `PriceTrendRecord` 保存 schema、`/api/v1/price_trends` query、background 112 scope の補完方針は変更していない。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: during-impl
@@ -918,7 +923,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-PERF-04 price_trends visible/background queue separation を確認・改善する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - visible 16 scope の表示完了を background 112 scope から守る。
 - スコープ:
@@ -931,6 +936,10 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - visible request が background scope queue で詰まらないことを metric または smoke marker で確認できる。
   - 既存の pause / resume 条件が維持される。
   - `npm run typecheck`、`npm run lint`、必要に応じて `npm run check:fixture-markers` が通過している。
+- assessment 結果:
+  - 追加の queue separation 実装は行わない。`runPriceTrendFetch()` は visible 16 scope の fetch 完了後に `schedulePriceTrendBackgroundQueue()` を呼ぶため、background 112 scope は visible fetch の後段で始まる。
+  - `RAU-PERF-03` の cache-first 表示は visible fetch 前の IndexedDB read に限定し、background queue へ visible scope を混ぜていない。
+  - background queue の document hidden / route mismatch / facility mismatch / section absence 停止条件は維持している。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: during-impl
@@ -940,7 +949,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-PERF-05 booking_curve exact pre-scan を実装する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 保存済み exact currentAsOf raw source task だけを warm cache queue 投入前に除外する。
 - スコープ:
@@ -957,6 +966,11 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - 除外されなかった stale / none task は従来通り fetch または実行時 skip へ進む。
   - 必要な candidate currentRaw が欠落しない。
   - `npm run typecheck`、`npm run lint`、`npm run check:booking-curve-smoke-fixture` が通過している。
+- 実装結果:
+  - warm cache queue build 後、`currentRaw` task だけを exact raw source cache key で pre-scan し、保存済み currentAsOf record がある task だけ queue から除外する。
+  - exact key は facility、stayDate、asOfDate / batchDateKey、scope、roomGroupId、endpoint、query、schemaVersion を含む `buildBookingCurveRawSourceCacheKey()` に揃えた。
+  - `pastAsOf`、`none`、hotel scope hit による roomGroup task、別 roomGroup hit による candidate roomGroup task は除外しない。
+  - 除外数は `data-ra-fetch-performance-summary` の `bookingCurve.preScanHitCount` と warm cache status summary の `pre-scan除外 n` で確認できる。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: during-impl
@@ -966,7 +980,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-PERF-06 booking_curve candidate currentRaw priority tuning を評価する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - rank recommendation など表示候補に必要な `currentRaw x roomGroup` を先に揃える。
 - スコープ:
@@ -979,6 +993,10 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - candidate currentRaw が non-candidate より先に実行される、または既存順序で十分と判断した理由が docs に残る。
   - write API 0 件を維持する。
   - code 変更ありなら `npm run typecheck`、`npm run lint`、`npm run check:booking-curve-smoke-fixture` が通過している。
+- assessment 結果:
+  - shared scheduler priority は追加しない。既存 `prioritizeSalesSettingWarmCacheQueueForRankRecommendations()` により candidate `currentRaw x roomGroup` task は non-candidate より先に並ぶ。
+  - `RAU-PERF-05` の exact pre-scan により、保存済み currentAsOf hit の candidate currentRaw は request なしで除外され、未保存または stale の candidate currentRaw は従来通り queue 先頭側で fetch される。
+  - request 間隔 350ms 以上、concurrency 3、hidden default off、active task 非中断、write API 0 件を維持する。
 - metadata:
   - `spec-impact`: unknown
   - `spec-checkpoint`: during-impl
@@ -988,7 +1006,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-PERF-07 price_trends cache freshness policy を決める
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - price_trends の network skip を許可できる freshness policy を決める。
 - スコープ:
@@ -1001,6 +1019,10 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 受け入れ条件:
   - 採用 policy、stale 誤読リスク、rollback 条件が spec または DECISIONS に残る。
   - docs-only の場合は `git diff --check` が通過している。
+- 決定:
+  - 採用 policy は B: cache は即表示だけに使い、visible scope は常に revalidate。
+  - 理由は、`PriceTrendRecord` に batchDateKey がなく、`fetchedAt` threshold や session marker だけで古い価格・在庫を最新扱いにすると誤読リスクが残るため。
+  - rollback は visible revalidate always へ戻すこと。将来 network skip を入れる場合は fresh 判定を別 task で確定する。
 - metadata:
   - `spec-impact`: yes
   - `spec-checkpoint`: before-impl
@@ -1010,7 +1032,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 ### RAU-PERF-08 データ取得高速化 closeout / perf summary を整理する
 
 - 状態:
-  - 未着手。
+  - 完了。
 - 目的:
   - 完了済み RAU-PERF task の perf 結果、残 task、docs/status/backlog を整理する。
 - スコープ:
@@ -1021,6 +1043,10 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 - 受け入れ条件:
   - `RAU-PERF-01` から `RAU-PERF-07` の完了 / 未完了 / 未決が追跡できる。
   - docs-only の場合は `git diff --check` が通過している。
+- closeout 結果:
+  - `RAU-PERF-01` から `RAU-PERF-07` は完了。runtime 変更は metrics marker、price_trends cache-first visible revalidate、booking_curve exact currentAsOf pre-scan に限定した。
+  - shared scheduler priority、price_trends freshness skip、request 間隔短縮、concurrency 増加、Revenue Assistant write API 連動は実装していない。
+  - 残 task は live / visual 観察の `RAU-UX-130`、通常利用観察の `RAU-UX-131` とする。
 - metadata:
   - `spec-impact`: no
   - `spec-checkpoint`: not-needed
@@ -10417,29 +10443,31 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-PERF-03`: price_trends cache read + visible revalidate を実装する。RAU-PERF-02 の完了待ちは必須にしない。
+- `RAU-UX-130`: 実データ競合価格 preview を mobile 390px で visual smoke する。
 
 Next:
 
-- `RAU-PERF-05`: booking_curve exact pre-scan を実装する。
+- `RAU-UX-131`: 通常利用で競合価格 preview と `その他` details が判断速度を落としていないか観察する。
 
 After Next:
 
-- `RAU-PERF-04`: price_trends visible/background queue separation を確認・改善する。
+- なし。
 
 Later:
 
-- `RAU-PERF-06`: booking_curve candidate currentRaw priority tuning を評価する。
-- `RAU-PERF-07`: price_trends cache freshness policy を決める。
-- `RAU-PERF-08`: データ取得高速化 closeout / perf summary を整理する。
-- `RAU-UX-130`: 実データ競合価格 preview を mobile 390px で visual smoke する。
-- `RAU-UX-131`: 通常利用で競合価格 preview と `その他` details が判断速度を落としていないか観察する。
+- なし。
 
 統合判断:
 
 - 2026-06-11 に、`RAU-CP-60` と `RAU-PERF-01` を完了した。`RAU-CP-60` では sales setting group room prefetch request 配列の中間配列生成を減らし、`RAU-PERF-01` では `data-ra-fetch-performance-summary` marker と `revenue-assistant:debug:fetch-performance` debug flag を追加した。marker は price_trends の visible / background timing、scope count、cache read count、network fetch count、error count と、booking_curve warm cache の queue built timing、candidate currentRaw fetched / skipped / errored、preScanHitCount を count / timestamp だけで出す。response body、価格詳細、施設実データ、予約・在庫・顧客情報は保存しない。fetch 順序、scheduler、cache freshness、network skip、`PriceTrendRecord` 保存 schema、`/api/v1/price_trends` query、booking_curve request scope、Revenue Assistant write API、rank change payload、自動反映は変更していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、該当 command は昇格して再実行した。次の Now は `RAU-PERF-02` と `RAU-PERF-03` である。
 
 - 2026-06-11 に、`RAU-PERF-02` を docs-only assessment として完了した。shared `createIntervalRequestScheduler()` は `requestKey` in-flight de-dupe、FIFO queue、`intervalMs`、`concurrency`、active request 非中断をすでに持つため、初期データ取得高速化 bundle では priority 拡張を入れない。price_trends は専用 background queue、booking_curve は既存 warm cache queue の task order 改善を優先する。shared scheduler を将来変更する場合は、既存呼び出し完全互換、equal priority FIFO、requestKey in-flight de-dupe 維持、interval / concurrency 維持、starvation なし、active task の中断・並べ替えなしを AC にした別 task とする。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。次の Now は `RAU-PERF-03` で、`RAU-PERF-05` は Next とする。
+
+- 2026-06-11 に、`RAU-PERF-03` を完了した。価格推移 tab 表示時に保存済み `price-trend-records` を先に読み、同じ facility と stay_date の record がある場合は graph を即描画する。保存済み record 表示中は meta に `保存済み表示・再取得中` を出し、freshness 未確定のまま visible 16 scope の network fetch を skip しない。`PriceTrendRecord` 保存 schema、`/api/v1/price_trends` query、background 112 scope、shared scheduler、Revenue Assistant write API は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。次の Now は `RAU-PERF-05` である。
+
+- 2026-06-11 に、`RAU-PERF-05` を完了した。booking_curve warm cache queue build 後に `currentRaw` task だけ exact raw source cache key で pre-scan し、facility、stayDate、asOfDate / batchDateKey、scope、roomGroupId、endpoint、query、schemaVersion が一致する保存済み currentAsOf record だけを queue から除外する。`pastAsOf`、`none`、hotel scope hit による roomGroup task、別 roomGroup hit による candidate roomGroup task は除外しない。除外数は `bookingCurve.preScanHitCount` marker と warm cache status summary の `pre-scan除外 n` で確認できる。request 間隔 350ms 以上、同時実行 3 件以下、hidden default off、Revenue Assistant write API なしは変更していない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。次の Now は `RAU-PERF-04` である。
+
+- 2026-06-11 に、`RAU-PERF-04`、`RAU-PERF-06`、`RAU-PERF-07`、`RAU-PERF-08` を完了した。`RAU-PERF-04` は追加実装なしで完了し、visible 16 scope fetch 完了後に background 112 scope が schedule される現行順序を維持する。`RAU-PERF-06` は shared scheduler priority なしで、既存 queue order と exact pre-scan によって candidate currentRaw を先に扱う判断を `D-20260611-003` に残した。`RAU-PERF-07` は price_trends freshness policy として B: cache は即表示だけに使い visible scope は常に revalidate を採用し、`D-20260611-002` に残した。`RAU-PERF-08` では、データ取得高速化 task の完了、残る live / visual 観察 task、verify 済み command を整理した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
 - 2026-06-11 に、データ取得高速化タスク計画 v2 を `RAU-PERF-01` から `RAU-PERF-08` として task 化した。`RAU-PERF-01` は計測と debug marker だけを入れ、fetch 順序、scheduler、cache freshness、network skip は変えない最初の実装 task である。`RAU-PERF-02` は shared scheduler 実装ではなく assessment とし、共通 scheduler を変える場合は既存呼び出し互換、equal priority FIFO、requestKey in-flight de-dupe、interval / concurrency、starvation、active task 非中断を後続 task の AC にする。`RAU-PERF-03` は cache hit 即 network skip ではなく、保存済み record の即表示と visible revalidate を分ける。`RAU-PERF-05` は stayDate 粗判定ではなく raw source key と task の exact currentAsOf matching だけで pre-scan 除外する。`RAU-PERF-07` までは freshness 未確定のまま price_trends network skip を仕様化しない。`RAU-CP-60` は同日に verify を閉じて完了済みである。`RAU-UX-130` / `RAU-UX-131` は live / visual 観察 task として残すが、今回のデータ取得高速化 bundle の後ろへ下げる。
 
