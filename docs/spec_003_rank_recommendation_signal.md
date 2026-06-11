@@ -386,6 +386,21 @@ first phase の UI は、最低限次の user decision を持つ。
 - reasonFingerprint が変わった。
 - `様子見` または `対応不要` の判断時より、confidence の表示段階が上がった。
 
+### Candidate: Stay Date Weekday Display
+
+- `RAU-UX-135` では、料金調整候補の宿泊日表示へ日本語短縮曜日を追加する候補とする。
+- 表示例は `2026-06-20（土）` とし、top 候補、Analyze 側候補、preview / details の宿泊日表示は可能な範囲で揃える。
+- これは表示契約であり、weekday scoring、candidate scoring、reasonFingerprint、priority、confidence、sort、保存 schema、request 件数、Revenue Assistant write API、rank change payload は変更しない。
+- mobile 390px で横 overflow しないことを後続実装時の verify に含める。
+
+### Candidate: Recent Rank Change Soft Cooldown
+
+- `RAU-RR-62` では、前回調整から間がない候補を hard hide ではなく soft cooldown として扱う設計を確定する。
+- 初期候補は、判定単位 `stay date + roomType + direction`、期間 3 日基本、0〜1 日 strong cooldown、2〜3 日 medium cooldown、4〜7 日 caution label とする。
+- 表示制御は、label、優先度 down、default collapse、`クールダウン中も表示` toggle を比較する。高 confidence、大幅乖離、前回と逆方向、競合価格急変、pickup / 在庫変化などの重要候補は表示維持できる設計にする。
+- `RAU-RR-62` で仕様確定するまでは未実装候補であり、保存 schema 変更は必要性が明示されるまで行わない。
+- `RAU-RR-63` の実装では、request 件数、Revenue Assistant write API、rank change payload を変更せず、candidate scoring / priority / confidence の本体変更も `RAU-RR-62` の判断なしに行わない。
+
 ### Dismiss / 対応不要
 
 対応不要は、一時的な様子見ではなく、同じ根拠での再表示を抑制する user decision として扱う。

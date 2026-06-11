@@ -435,6 +435,7 @@ Candidate Performance Contracts (未実装候補):
 - `RAU-PERF-17` では、booking_curve を一律高速化せず、interactive / priority background / cold background の lane を分ける設計を候補にする。優先順候補は current visible stay date、rank recommendation 上位候補、同 stay date roomGroup currentRaw、sameWeekday、reference curve、cold background である。request 総数を増やさず、background の負荷を現行より大きく上げない。
 - `RAU-PERF-18` では、endpoint-aware cooldown / backoff を候補にする。429 は即 cooldown、403 は停止寄り、5xx / timeout は連続回数で cooldown とし、cooldown 中は visible 最低限以外の background を止める候補とする。UI には軽い status を出すが、エラー詳細や response body は保存しない。
 - `RAU-UX-134` では、request が速くなっても render や DOM 更新で体感が詰まっていないかを確認する。competitor preview / graph / table の再構築回数、background 進捗だけで graph 全体を再構築していないか、large DOM `replaceChildren()` が user-facing 操作で jank になっていないかを audit し、証拠がある場合だけ実装 task に分解する。
+- `RAU-UX-136` では、料金調整候補から開く competitor preview / competitor detail UI の初期 roomType filter を `null` / 未指定にする候補とする。Analyze 側は初期 filter 未指定の参照元として扱い、必要がなければ Analyze 側の既存挙動そのものは変更しない。候補 roomType は badge / note として残し、ユーザーが任意で roomType filter を選択できる状態を維持する。request 件数、保存 schema、query contract、Revenue Assistant write API、rank change payload、candidate scoring / priority / confidence は変更しない。
 - すべての planned performance improvements で、response body、価格詳細、予約情報、顧客情報、施設実データ、Cookie、token、credential は marker / log / storage / docs に保存しない。
 
 月次実績画面 final graph 契約:

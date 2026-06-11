@@ -10802,6 +10802,123 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
   - `risk`: low
   - `depends-on`: `RAU-PERF-15` or `RAU-PERF-16` recommended
 
+### RAU-UX-135 料金調整候補の宿泊日に曜日を追加
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 料金調整候補の宿泊日を見た瞬間に、平日 / 金曜 / 土曜 / 日曜などの判断ができるようにする。
+  - レベニュー判断上、曜日は日付と同じくらい重要なため、候補一覧の認知負荷を下げる。
+- スコープ:
+  - 宿泊日表示を `2026-06-20（土）` のような形式にする。
+  - 日本語短縮曜日は `月` / `火` / `水` / `木` / `金` / `土` / `日` を使う。
+  - top 候補、Analyze 側候補、preview / details など、料金調整候補の宿泊日表示は可能な範囲で揃える。
+  - 曜日表示は表示契約であり、weekday scoring、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
+  - 後続実装時の対象候補は `src/main.ts`、`src/rankRecommendationReactIsland.ts`、fixture / smoke helper である。今回の docs-only taskization ではこれらの source / script file は編集しない。
+- 非目標:
+  - sort、candidate scoring、priority、confidence、reasonFingerprint、保存 schema、request 範囲、request 件数、Revenue Assistant write API、rank change payload を変更しない。
+- 受け入れ条件:
+  - 料金調整候補の宿泊日に曜日が表示される。
+  - 候補順位、スコア、reasonFingerprint、保存 schema が変わらない。
+  - fixture / smoke で表示崩れがない。
+  - mobile 390px で横 overflow がない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: display-contract-before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `risk`: low
+  - `depends-on`: After current PERF queue
+
+### RAU-UX-136 料金調整候補から開く競合価格 preview / detail UI の初期 roomType filter を未指定に揃える
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 料金調整候補から競合価格を開いたとき、初期状態を filter なしにし、競合全体の価格帯を見落としにくくする。
+- スコープ:
+  - 主対象は、料金調整候補から開く competitor preview / competitor detail UI である。
+  - Analyze 側は「初期 filter 未指定」の参照元として扱い、必要がなければ Analyze 側の既存挙動そのものは変更しない。
+  - competitor preview / detail UI の初期 roomType filter は `null` / 未指定にする。
+  - 候補の対象 roomType は badge / note として表示し、文脈は失わない。
+  - ユーザーが任意で roomType filter を選択できる状態を維持し、可能なら「候補部屋タイプで絞る」導線を残す。
+  - 既存の `roomType null / request label hit / fallback` の record selection contract は壊さない。
+  - 後続実装時の対象候補は `src/main.ts`、`src/rankRecommendationReactIsland.ts`、`src/competitorPriceSnapshotStore.ts`、fixture / smoke helper である。今回の docs-only taskization ではこれらの source / script file は編集しない。
+- 非目標:
+  - request 件数、保存 schema、query contract、Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence を変更しない。
+- 受け入れ条件:
+  - 料金調整候補から競合価格を開いた初期状態が filter なしになる。
+  - 候補対象 roomType は badge / note などで確認できる。
+  - ユーザー操作で roomType filter を自由に変更できる。
+  - Analyze 側の初期 filter 未指定挙動を参照しつつ、必要がなければ Analyze 側の既存挙動を変更していない。
+  - request 件数、保存 schema、query contract が変わらない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: display-contract-before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `risk`: medium
+  - `depends-on`: `RAU-UX-135` recommended
+
+### RAU-RR-62 前回調整から間がない候補の soft cooldown design
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 前回調整直後の同一 stay date / roomType 候補が何度も上位に出ることを抑え、過剰な再調整やアラート疲れを防ぐ。
+  - 急な競合変化や在庫変化による重要候補は見落とさない。
+- スコープ:
+  - hard hide ではなく soft cooldown を基本にする。
+  - 初期案は、判定単位 `stay date + roomType + direction`、期間 3 日基本、0〜1 日 strong cooldown、2〜3 日 medium cooldown、4〜7 日 caution label とする。
+  - 表示制御は label、優先度 down、default collapse、`クールダウン中も表示` toggle を比較する。
+  - 例外条件は高 confidence、大幅価格乖離、前回と逆方向、競合価格急変、pickup / 在庫変化を候補にする。
+  - 既存 snooze / dismissed decision / decision history / rank change history / rank change resolved との関係を整理する。
+  - 後続実装時の対象候補は `src/rankRecommendation.ts`、`src/rankRecommendationDecisionStore.ts`、`src/main.ts`、`src/rankRecommendationReactIsland.ts` である。今回の docs-only taskization ではこれらの source file は編集しない。
+- 非目標:
+  - この design task だけで runtime code、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、request 件数、Revenue Assistant write API、rank change payload を変更しない。
+  - cooldown 中の重要候補を完全非表示にする仕様にしない。
+- 受け入れ条件:
+  - soft cooldown の採用案 / 不採用案 / リスク / fallback が docs に残っている。
+  - 判定単位、期間、表示制御、例外条件が整理されている。
+  - 既存 snooze / dismissed / decision history / rank change history との関係が明記されている。
+  - 保存 schema 変更が必要かどうかを、実装前に判断できる状態になっている。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: design-before-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `risk`: medium
+  - `depends-on`: `RAU-UX-135` recommended
+
+### RAU-RR-63 soft cooldown 実装
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-RR-62` で確定した仕様に基づき、前回調整から間がない候補を UI 上で抑制・説明・任意表示できるようにする。
+- スコープ:
+  - `RAU-RR-62` の design 後続として実装する。
+  - 前回調整履歴または decision store の既存データを使えるか確認する。
+  - 初期実装は candidate scoring 本体を大きく変えず、display priority / label / grouping / filter / toggle の範囲を優先する。
+  - UI 上に cooldown 理由を短く表示する。
+  - `クールダウン中も表示` toggle を検討する。
+  - 高 priority / 高 confidence / 大幅乖離 / 前回と逆方向の候補を完全に隠さない。
+  - 後続実装時の対象候補は `src/rankRecommendation.ts`、`src/rankRecommendationDecisionStore.ts`、`src/main.ts`、`src/rankRecommendationReactIsland.ts`、fixture / smoke helper である。今回の docs-only taskization ではこれらの source / script file は編集しない。
+- 非目標:
+  - `RAU-RR-62` で明示されるまで保存 schema を変更しない。
+  - request 件数、Revenue Assistant write API、rank change payload を変更しない。
+  - 重要候補を完全非表示にしない。
+- 受け入れ条件:
+  - cooldown 中候補が分かる。
+  - default 表示で短期間再調整候補が目立ちすぎない。
+  - toggle などで cooldown 候補も確認できる。
+  - 重要候補が完全に消えない。
+  - 既存の candidate scoring / reasonFingerprint / decision history との整合が取れている。
+  - request 件数、Revenue Assistant write API、rank change payload が変わらない。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: after-design
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `risk`: medium
+  - `depends-on`: `RAU-RR-62`
+
 ## Remaining Task Triage
 
 Now:
@@ -10821,10 +10938,15 @@ After Next:
 Later:
 
 - `RAU-UX-134` UX / rendering residual audit
+- After current PERF queue / Next UX candidate: `RAU-UX-135` 料金調整候補の宿泊日に曜日を追加
+- After current PERF queue / Next UX candidate: `RAU-UX-136` 料金調整候補から開く競合価格 preview / detail UI の初期 roomType filter を未指定に揃える
+- After current PERF queue / Next RR design candidate: `RAU-RR-62` 前回調整から間がない候補の soft cooldown design
+- After current PERF queue / Next RR implementation candidate: `RAU-RR-63` soft cooldown 実装
 
 統合判断:
 
-- 2026-06-11 に、利用者が Tampermonkey installed version を最新版へ更新した後、`RAU-PERF-09` を完了した。`npm run userscript:version-check -- --installed-version 0.1.0.424 --open-url https://ra.jalan.net/` で published / installed version が `0.1.0.424` に揃っていることを確認した。top smoke `npm run smoke:distribution -- --installed-version 0.1.0.424 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail --cdp-connection page` は pass し、top row 10、write API POST 0、console / page error 0、RAU warm cache request 0 件の cache 済み fallback を確認した。browser-level reload 後の top marker は `bookingCurve.preScanHitCount` 106、`candidateCurrentRawSkipped` 10、`candidateCurrentRawFetched` 0、`candidateCurrentRawErrored` 0 で、画面上の warm cache status summary も `pre-scan除外 106` を表示した。price-trends smoke `npm run smoke:distribution -- --installed-version 0.1.0.424 --mode price-trends --url https://ra.jalan.net/analyze/2026-06-20 --seconds 60 --version-policy fail` は pass し、price trends overview 1、panel 4、SVG 4、write API POST 0、console / page error 0 を確認した。price-trends marker は `visibleScopeCount` 16、`backgroundScopeCount` 112、`cacheReadCount` 6、`networkFetchCount` 20、`errorCount` 0 で、保存済み record 表示後も visible scope が revalidate されることを確認した。marker は `script[type="application/json"]` の textContent に count / timestamp だけを持ち、response body、価格詳細、施設実データ、予約・在庫・顧客情報、Cookie、token、credential は含まない。runtime code、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、spec は変更していない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
+- 2026-06-11 に、利用者が Tampermonkey installed version を最新版へ更新した後、`RAU-PERF-09` の一部観測を実施した。`npm run userscript:version-check -- --installed-version 0.1.0.424 --open-url https://ra.jalan.net/` で published / installed version が `0.1.0.424` に揃っていることを確認した。top smoke `npm run smoke:distribution -- --installed-version 0.1.0.424 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail --cdp-connection page` は pass し、top row 10、write API POST 0、console / page error 0、RAU warm cache request 0 件の cache 済み fallback を確認した。browser-level reload 後の top marker は `bookingCurve.preScanHitCount` 106、`candidateCurrentRawSkipped` 10、`candidateCurrentRawFetched` 0、`candidateCurrentRawErrored` 0 で、画面上の warm cache status summary も `pre-scan除外 106` を表示した。price-trends smoke `npm run smoke:distribution -- --installed-version 0.1.0.424 --mode price-trends --url https://ra.jalan.net/analyze/2026-06-20 --seconds 60 --version-policy fail` は pass し、price trends overview 1、panel 4、SVG 4、write API POST 0、console / page error 0 を確認した。price-trends marker は `visibleScopeCount` 16、`backgroundScopeCount` 112、`cacheReadCount` 6、`networkFetchCount` 20、`errorCount` 0 で、保存済み record 表示後も visible scope が revalidate されることを確認した。marker は `script[type="application/json"]` の textContent に count / timestamp だけを持ち、response body、価格詳細、施設実データ、予約・在庫・顧客情報、Cookie、token、credential は含まない。ただし competitor 関連 baseline、blocked 時の fixture + manual fallback、改善前後比較項目は未整理だったため、`RAU-PERF-09` は完了扱いにせず、`RAU-PERF-14` の後続整理対象にする。runtime code、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、spec は変更していない。
+- 2026-06-11 に、料金調整候補まわりの UX / soft cooldown 改善候補を docs-only で task 化した。既存 `RAU-UX-132` / `RAU-UX-133` は完了済み、`RAU-UX-134` は performance 後の residual audit として未着手、`RAU-RR-12` / `RAU-RR-13` は実装済みのため、今回の新規 task は `RAU-UX-135`、`RAU-UX-136`、`RAU-RR-62`、`RAU-RR-63` とした。既存 Remaining Task Triage の `RAU-PERF-14` から `RAU-PERF-18` は維持し、今回 task は After current PERF queue / Next UX candidate として `RAU-UX-135`、`RAU-UX-136`、`RAU-RR-62`、`RAU-RR-63` の順に置く。曜日表示は表示契約であり、weekday scoring、reasonFingerprint、priority、confidence は変更しない。soft cooldown は hard hide ではなく、抑制・説明・任意表示を基本にし、重要候補を完全非表示にしない。runtime code、`src/`、`dist/`、Revenue Assistant write API、rank change payload、保存 schema、request 件数、candidate scoring / priority / confidence は変更していない。
 - 2026-06-11 の goal 継続で、`RAU-PERF-09` の marker 未表示原因を read-only で追加確認した。`npm run chrome:pages` は成功し、通常 Chrome には Revenue Assistant top、OneTab、Tampermonkey dashboard が開いていた。CDP read-only 評価では Revenue Assistant top の RAU root count 3、React marker yes、`data-ra-fetch-performance-summary` marker 0、HTML 内 marker 文字列なしだった。Tampermonkey dashboard の表示では `Revenue Assistant Userscript` installed version が `0.1.0.420`、一方で公開版 `0.1.0.424` には marker 文字列が含まれるため、現時点の未完了理由は Tampermonkey installed version が marker 対応版へ同期されていないことと判断する。README の配布検証手順どおり、Tampermonkey dashboard 更新は利用者が明示的に許可した場合だけ行うため、更新操作や CDP 一時注入は実施していない。runtime code、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、spec は変更していない。`RAU-PERF-09` は Now に残し、次は利用者許可後に Tampermonkey installed version を公開版へ揃えてから、top / price-trends の `data-ra-fetch-performance-summary` を再観測する。
 - 2026-06-11 の goal 再開後に、`RAU-PERF-09` の live observation を再試行した。`npm run chrome:debug:default-profile:resume` で Chrome remote debugging port 9222 を起動し、`npm run chrome:pages` は成功した。top mode は page websocket fallback で RAU root count 3、React marker yes、top row 10、write API POST 0、console / page error 0、RAU warm cache request count 6、HTTP error 0、min start interval 756ms、max concurrent 2 を確認したが、average starts per second 0.31 が基準未満で smoke は fail した。price-trends mode は `https://ra.jalan.net/analyze/2026-06-20` で pass し、price trends tab / content / overview 1 / panel 4 / SVG 4、write API POST 0、console / page error 0 を確認した。ただし `data-ra-fetch-performance-summary` marker は top / price-trends とも DOM 上 0 件だった。公開版 `0.1.0.424` には marker 文字列が含まれるが、現在の通常 Chrome 実行ページには marker 文字列が注入されていない。Tampermonkey 実行版更新または CDP 一時注入は利用者判断が必要なため実施せず、`RAU-PERF-09` は Now に残す。runtime code、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、spec は変更していない。Remaining Task Triage は Now `RAU-PERF-09`、Next / After Next / Later なしである。
 - 2026-06-11 に、`RAU-PERF-13` を rank recommendation React render responsiveness audit として完了した。React best practices の re-render / rendering 観点、React Doctor、fixture marker、`src/rankRecommendationReactIsland.ts` と `src/main.ts` の bridge を確認した。`flushSync` は Revenue Assistant 側 DOM 再描画への追従と、root render 直後の preview row hydration / warm cache inline status / 月別 control 同期があるため現時点では削除しない。preview 開閉は React root 全体ではなく `hidden` と対象 cell の `replaceChildren()` で軽量更新され、pending decision / rank change も行内 DOM 追加で処理されているため、`React.memo`、通常 render 化、preview component 分離を live jank の証拠なしに実装しない。`D-20260611-005` に保留判断を記録した。`npm run react:doctor -- --verbose --diff false` は sandbox 内で `spawn EPERM` になったため昇格して再実行し、38 issues、`react-doctor/no-flush-sync` 1 件を確認した。`npm run check:fixture-markers` も sandbox 内で `spawn EPERM` になったため昇格して再実行し、row layout 25、preview button 各 25、pending notice 2 を確認して pass した。runtime UI、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、candidate scoring、保存 schema、spec は変更していない。`RAU-PERF-09` は CDP 9222 未起動と Chrome 拡張 UI block により引き続き Now、Remaining Task Triage は Now `RAU-PERF-09`、Next / After Next / Later なしである。`docs/context/INTENT.md` は UI / UX、画面遷移やフォーカス復帰の安定性、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。
