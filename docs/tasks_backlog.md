@@ -64,7 +64,9 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
 
 2026-06-05 に、`RAU-UX-132` で追加した mobile 390px 競合価格 preview metrics の fail 判定を live 非依存で確認するため、`RAU-UX-133` として `check:distribution-smoke-fixture` を追加して完了した。`node ./scripts/run-distribution-smoke.mjs --self-test` は live Chrome、Revenue Assistant、Tampermonkey、GitHub Pages 公開版へ接続せず、synthetic top metrics だけで、preview open、横 overflow なし、graph / empty state、focus return の pass 条件と、横 overflow / focus return failure を検出できることを確認する。これにより、`RAU-UX-130` の live 実行前に helper の判定ロジックだけをローカルで検証できる。runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`node --check scripts/run-distribution-smoke.mjs`、`npm run check:distribution-smoke-fixture`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
-2026-06-11 に、`RAU-UX-130` と `RAU-UX-131` を同じ Goal Bundle として完了した。CDP 接続付き `npm run smoke:distribution -- --mode top --url https://ra.jalan.net/ --seconds 30 --viewport-width 390 --top-open-competitor-preview --version-policy warn` は、`127.0.0.1:9222` が未起動で `ECONNREFUSED` になったため、live 390px smoke は実施できなかった。代替として、`npm run check:distribution-smoke-fixture` で mobile 390px の preview open、横 overflow なし、graph / empty state、focus return の pass / fail 判定を確認し、通常 Chrome 拡張 backend で実ログイン済み Revenue Assistant top を read-only 観察した。実画面観察では top row 10 件、競合価格 button 10 件、primary actions 10 件、secondary actions 10 件、pending notice 0 件、横 overflow なし、preview graph 4 件、部屋タイプ対応 note 検出あり、preview 縦 scroll amount 0、primary / secondary / pending overlap 0 件、Analyze button 11 件、曲線 button 10 件、rank 調整 button 11 件、`その他` details 11 件で初期 open 0 件、decision button 20 件、Escape 後 focus return `yes` だった。`src/main.ts` の preview DOM は state message、部屋タイプ対応 note、graph の順に append しており、graph だけを推奨根拠として読む兆候は今回の観察では確認されなかった。Chrome 拡張観察では console / page error と write API POST の network 捕捉は `smoke:distribution` と同等には取れないため、監視対象 write API POST 0 件の live 自動判定は CDP smoke 未実施として残る。ただし今回の操作は競合価格 preview open / Escape close の read-only DOM 操作で、runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`docs/context/INTENT.md` は表示密度、UI / UX、安全な作業キュー、request 数の判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。現時点では preview 要約化、二段階表示、row footer、popover 化の新規実装 task は追加しない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
+2026-06-11 に、`RAU-PERF-01` / `RAU-PERF-02` / `RAU-PERF-03` / `RAU-PERF-05` の実装後レビューから、`RAU-PERF-05B` と `RAU-PERF-09` を追加した。`RAU-PERF-05B` は booking_curve exact pre-scan の IndexedDB read を task ごとの open / transaction / close から bulk read / single transaction へ寄せる実装 task である。`RAU-PERF-09` は `data-ra-fetch-performance-summary` を通常 Chrome / CDP で読む live observation task であり、`RAU-PERF-05B` の効果確認にも使う。`RAU-PERF-04` は既に追加実装なしで完了扱いのため、同じ ID を未着手へ戻さない。`docs/context/INTENT.md` は request 数、安定性、安全な作業キュー、UI / UX の判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。Remaining Task Triage は Now `RAU-PERF-05B`、Next `RAU-PERF-09`、After Next / Later なしである。
+
+2026-06-11 に、`RAU-UX-130` と `RAU-UX-131` を同じ Goal Bundle として完了した。CDP 接続付き `npm run smoke:distribution -- --mode top --url https://ra.jalan.net/ --seconds 30 --viewport-width 390 --top-open-competitor-preview --version-policy warn` は、`127.0.0.1:9222` が未起動で `ECONNREFUSED` になったため、live 390px smoke は実施できなかった。代替として、`npm run check:distribution-smoke-fixture` で mobile 390px の preview open、横 overflow なし、graph / empty state、focus return の pass / fail 判定を確認し、通常 Chrome 拡張 backend で実ログイン済み Revenue Assistant top を read-only 観察した。実画面観察では top row 10 件、競合価格 button 10 件、primary actions 10 件、secondary actions 10 件、pending notice 0 件、横 overflow なし、preview graph 4 件、部屋タイプ対応 note 検出あり、preview 縦 scroll amount 0、primary / secondary / pending overlap 0 件、Analyze button 11 件、曲線 button 10 件、rank 調整 button 11 件、`その他` details 11 件で初期 open 0 件、decision button 20 件、Escape 後 focus return `yes` だった。`src/main.ts` の preview DOM は state message、部屋タイプ対応 note、graph の順に append しており、graph だけを推奨根拠として読む兆候は今回の観察では確認されなかった。Chrome 拡張観察では console / page error と write API POST の network 捕捉は `smoke:distribution` と同等には取れないため、監視対象 write API POST 0 件の live 自動判定は CDP smoke 未実施として残る。ただし今回の操作は競合価格 preview open / Escape close の read-only DOM 操作で、runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema は変更していない。`docs/context/INTENT.md` は表示密度、UI / UX、安全な作業キュー、request 数の判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。現時点では preview 要約化、二段階表示、row footer、popover 化の新規実装 task は追加しない。
 
 2026-06-05 に、Build Web Apps 観点の追加点検で見つけた booking curve preview info の IndexedDB read を `RAU-CP-31` として task 化して完了した。top 料金調整候補の曲線 preview 情報は、対象 `booking_curve_raw_source` が見つかっている hit path でも、raw source missing diagnostics 用の `readBookingCurveRawSourceStoredRoomGroupStatus()` を追加で待っていた。保存状態確認は raw source missing 時にだけ必要なため、hit path では省略し、missing 時だけ読むようにした。これにより、表示済み raw source から preview を作る通常 path の IndexedDB read を候補ごとに 1 回減らす。重複確認では、`RAU-CP-24` から `RAU-CP-30` は API request 準備、waterfall、status 再利用、warm cache raw source read の最適化であり、preview info hit path の保存状態 read 削減は未着手だった。`RAU-UX-130` / `RAU-UX-131` は実データ preview と通常利用の観察であり、今回の内部最適化とは別タスクとして残す。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、candidate scoring、priority、confidence、reasonFingerprint、runtime UI は変更していない。`docs/context/INTENT.md` は request 数、表示速度、安定性、安全な作業キューの判断に関わるため関連ありだが、既存原則で説明できるため更新していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` が通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、同じ command を昇格して再実行した。Remaining Task Triage は Now `RAU-UX-130`、Next `RAU-UX-131`、After Next / Later なしである。
 
@@ -1054,6 +1056,68 @@ Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、ra
   - `spec-checkpoint`: not-needed
   - `target-spec`: none
   - `verify`: `git diff --check`
+
+### RAU-PERF-05B booking_curve exact pre-scan を bulk read 化する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - `RAU-PERF-05` の exact currentAsOf pre-scan 判定を維持したまま、currentRaw task ごとの IndexedDB open / transaction / close を減らし、warm cache queue build の待ち時間を抑える。
+- スコープ:
+  - booking_curve raw source store に、複数 exact raw source key を 1 回の readonly transaction で読む helper を追加する。
+  - pre-scan 対象は引き続き `currentRaw` task だけに限定する。
+  - hit 条件は facilityId、stayDate、asOfDate / batchDateKey、scope、roomGroupId、endpoint、query、schemaVersion を含む exact key match のままにする。
+  - `data-ra-fetch-performance-summary` の `bookingCurve.warmCacheQueueBuiltAt` と `bookingCurve.preScanHitCount`、warm cache status summary の `pre-scan除外 n` で効果と除外数を確認できるようにする。
+- 非目標:
+  - stayDate 単位や roomGroup 省略など、判定粒度を粗くしない。
+  - `referenceCurve` / `sameWeekdayRaw` を pre-scan 除外対象にしない。
+  - `pastAsOf` と `none` を除外しない。
+  - hotel scope record で roomGroup task を除外しない。
+  - request 間隔 350ms 以上、concurrency 3、hidden default off、Revenue Assistant write API なしは変更しない。
+- 受け入れ条件:
+  - exact currentAsOf hit の `currentRaw` task だけ queue から除外される。
+  - bulk helper 使用後も `bookingCurve.preScanHitCount` と warm cache status summary の除外数が従来と一致する。
+  - stale / none / `referenceCurve` / `sameWeekdayRaw` task は従来通り queue へ残る。
+  - currentRaw task が多い場合でも queue build が task ごとの DB open / close に比例して重くならない。
+  - response body、raw trace、Cookie、token、credential、価格や在庫の非公開データを log / storage / docs に保存しない。
+  - `npm run typecheck`、`npm run lint`、`npm run check:booking-curve-smoke-fixture`、`git diff --check` が通過している。
+- 依存:
+  - `RAU-PERF-05`。
+- metadata:
+  - `spec-impact`: unknown
+  - `spec-checkpoint`: during-impl
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `verify`: `npm run typecheck`, `npm run lint`, `npm run check:booking-curve-smoke-fixture`, `git diff --check`
+
+### RAU-PERF-09 fetch performance summary を live 観測する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - 通常 Chrome / CDP で `data-ra-fetch-performance-summary` を読み、price_trends と booking_curve の主要 timing / count を実画面で確認する。
+  - `RAU-PERF-05B` 実装後は、bulk pre-scan の効果確認にも使う。
+- スコープ:
+  - `--mode price-trends` で `priceTrend.tabRequestedAt`、`firstStoredRecordRenderedAt`、`visibleFetchStartedAt` / `completedAt`、`backgroundStartedAt` / `completedAt`、`visibleScopeCount`、`backgroundScopeCount`、`cacheReadCount`、`networkFetchCount`、`errorCount` を確認する。
+  - `--mode top` または同等の read-only 観測で `bookingCurve.warmCacheQueueBuiltAt`、`candidateCurrentRawFetched`、`candidateCurrentRawSkipped`、`candidateCurrentRawErrored`、`preScanHitCount` を確認する。
+  - Chrome DevTools Protocol が使えない場合は、未実施理由を STATUS / backlog に残し、fixture check に切り替える。
+- 非目標:
+  - runtime code、scheduler、freshness policy、network skip、request 間隔、concurrency は変更しない。
+  - Revenue Assistant write API、rank change payload、自動反映には触れない。
+  - response body、raw trace、HAR、Cookie、token、credential、価格や在庫の非公開データを保存しない。
+- 受け入れ条件:
+  - `data-ra-fetch-performance-summary` に count / timestamp 以外の実データが含まれていないことを再確認できる。
+  - price_trends は保存済み record 表示後も visible scope が revalidate されることを確認できる。
+  - booking_curve は `preScanHitCount` と warm cache status summary の `pre-scan除外 n` を確認できる。
+  - 実施できた smoke と、CDP 未起動などで実施できなかった smoke の理由が docs に残る。
+  - docs-only の場合は `git diff --check` が通過している。
+- 依存:
+  - `RAU-PERF-01`。
+  - `RAU-PERF-05B` の効果確認として使う場合は `RAU-PERF-05B` 後に実行する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: not-needed
+  - `target-spec`: none
+  - `verify`: `npm run smoke:distribution -- --mode price-trends`, `npm run smoke:distribution -- --mode top`, fallback `npm run check:distribution-smoke-fixture`, `git diff --check`
 
 ### RAU-UX-130 実データ競合価格 preview を mobile 390px で visual smoke する
 
@@ -10458,11 +10522,11 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- なし。
+- RAU-PERF-05B booking_curve exact pre-scan を bulk read 化する
 
 Next:
 
-- なし。
+- RAU-PERF-09 fetch performance summary を live 観測する
 
 After Next:
 
