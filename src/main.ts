@@ -415,6 +415,8 @@ const SALES_SETTING_REFERENCE_ZERO_DAY_EQUALITY_EPSILON = 0.0001;
 const CALENDAR_SYNC_DEBUG_STORAGE_KEY = "revenue-assistant:debug:calendar-sync";
 const CALENDAR_SYNC_DEBUG_LAST_STORAGE_KEY = `${CALENDAR_SYNC_DEBUG_STORAGE_KEY}:last`;
 const CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE = "data-ra-calendar-sync-debug-snapshot";
+const FETCH_PERFORMANCE_DEBUG_STORAGE_KEY = "revenue-assistant:debug:fetch-performance";
+const FETCH_PERFORMANCE_SUMMARY_ATTRIBUTE = "data-ra-fetch-performance-summary";
 const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `#${GROUP_ROOM_STYLE_ID}`,
     `[${GROUP_ROOM_BADGE_ATTRIBUTE}]`,
@@ -432,7 +434,8 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${SALES_SETTING_CURRENT_UI_SUPPLEMENTS_ATTRIBUTE}]`,
     `[${SALES_SETTING_BOOKING_CURVE_TOGGLE_ROW_ATTRIBUTE}]`,
     `[${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}]`,
-    `[${CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE}]`
+    `[${CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE}]`,
+    `[${FETCH_PERFORMANCE_SUMMARY_ATTRIBUTE}]`
 ].join(", ");
 
 type BookingCurveScopeCounts = BookingCurveApiScopeCounts;
@@ -821,6 +824,39 @@ interface CalendarSyncDebugSnapshot {
     mutationObserverSummaries: CalendarSyncDebugMutationSummary[];
 }
 
+interface FetchPerformancePriceTrendMetrics {
+    tabRequestedAt: number | null;
+    firstStoredRecordRenderedAt: number | null;
+    visibleFetchStartedAt: number | null;
+    visibleFetchCompletedAt: number | null;
+    backgroundStartedAt: number | null;
+    backgroundCompletedAt: number | null;
+    visibleScopeCount: number;
+    backgroundScopeCount: number;
+    cacheReadCount: number;
+    networkFetchCount: number;
+    errorCount: number;
+}
+
+interface FetchPerformanceBookingCurveMetrics {
+    warmCacheQueueBuiltAt: number | null;
+    candidateCurrentRawFetched: number;
+    candidateCurrentRawSkipped: number;
+    candidateCurrentRawErrored: number;
+    preScanHitCount: number;
+}
+
+interface FetchPerformanceMetrics {
+    priceTrend: FetchPerformancePriceTrendMetrics;
+    bookingCurve: FetchPerformanceBookingCurveMetrics;
+}
+
+interface FetchPerformanceSummarySnapshot extends FetchPerformanceMetrics {
+    runId: number;
+    capturedAt: string;
+    reason: string;
+}
+
 interface CompetitorPriceSnapshotBackgroundTask {
     stayDate: string;
     priorityStayDate: string;
@@ -1121,6 +1157,8 @@ let calendarSyncDebugDirty = false;
 let calendarSyncDebugRunId = 0;
 let calendarSyncDebugMutationCallbackId = 0;
 const calendarSyncDebugMutationSummaries: CalendarSyncDebugMutationSummary[] = [];
+let fetchPerformanceSummaryRunId = 0;
+let fetchPerformanceMetrics: FetchPerformanceMetrics = createInitialFetchPerformanceMetrics();
 let syncVersion = 0;
 let consistencyCheckTimeoutId: number | null = null;
 let consistencyCheckLastTriggeredAt = 0;
@@ -3365,6 +3403,119 @@ function isCalendarSyncDebugEnabled(): boolean {
     }
 }
 
+function createInitialFetchPerformanceMetrics(): FetchPerformanceMetrics {
+    return {
+        priceTrend: {
+            tabRequestedAt: null,
+            firstStoredRecordRenderedAt: null,
+            visibleFetchStartedAt: null,
+            visibleFetchCompletedAt: null,
+            backgroundStartedAt: null,
+            backgroundCompletedAt: null,
+            visibleScopeCount: 0,
+            backgroundScopeCount: 0,
+            cacheReadCount: 0,
+            networkFetchCount: 0,
+            errorCount: 0
+        },
+        bookingCurve: {
+            warmCacheQueueBuiltAt: null,
+            candidateCurrentRawFetched: 0,
+            candidateCurrentRawSkipped: 0,
+            candidateCurrentRawErrored: 0,
+            preScanHitCount: 0
+        }
+    };
+}
+
+function isFetchPerformanceDebugEnabled(): boolean {
+    try {
+        return window.localStorage.getItem(FETCH_PERFORMANCE_DEBUG_STORAGE_KEY) === "1";
+    } catch {
+        return false;
+    }
+}
+
+function resetFetchPerformancePriceTrendMetrics(updates: Partial<FetchPerformancePriceTrendMetrics>, reason: string): void {
+    fetchPerformanceMetrics = {
+        ...fetchPerformanceMetrics,
+        priceTrend: {
+            ...createInitialFetchPerformanceMetrics().priceTrend,
+            ...updates
+        }
+    };
+    publishFetchPerformanceSummary(reason);
+}
+
+function updateFetchPerformancePriceTrendMetrics(updates: Partial<FetchPerformancePriceTrendMetrics>, reason: string): void {
+    fetchPerformanceMetrics = {
+        ...fetchPerformanceMetrics,
+        priceTrend: {
+            ...fetchPerformanceMetrics.priceTrend,
+            ...updates
+        }
+    };
+    publishFetchPerformanceSummary(reason);
+}
+
+function resetFetchPerformanceBookingCurveMetrics(reason: string): void {
+    fetchPerformanceMetrics = {
+        ...fetchPerformanceMetrics,
+        bookingCurve: createInitialFetchPerformanceMetrics().bookingCurve
+    };
+    publishFetchPerformanceSummary(reason);
+}
+
+function updateFetchPerformanceBookingCurveMetrics(updates: Partial<FetchPerformanceBookingCurveMetrics>, reason: string): void {
+    fetchPerformanceMetrics = {
+        ...fetchPerformanceMetrics,
+        bookingCurve: {
+            ...fetchPerformanceMetrics.bookingCurve,
+            ...updates
+        }
+    };
+    publishFetchPerformanceSummary(reason);
+}
+
+function recordFetchPerformanceBookingCurvePriorityResult(result: "fetched" | "skipped" | "error"): void {
+    const metrics = fetchPerformanceMetrics.bookingCurve;
+    updateFetchPerformanceBookingCurveMetrics({
+        candidateCurrentRawFetched: metrics.candidateCurrentRawFetched + (result === "fetched" ? 1 : 0),
+        candidateCurrentRawSkipped: metrics.candidateCurrentRawSkipped + (result === "skipped" ? 1 : 0),
+        candidateCurrentRawErrored: metrics.candidateCurrentRawErrored + (result === "error" ? 1 : 0)
+    }, "bookingCurve.candidateCurrentRawResult");
+}
+
+function publishFetchPerformanceSummary(reason: string): void {
+    if (!(document.body instanceof HTMLElement)) {
+        return;
+    }
+
+    fetchPerformanceSummaryRunId += 1;
+    const snapshot: FetchPerformanceSummarySnapshot = {
+        runId: fetchPerformanceSummaryRunId,
+        capturedAt: new Date().toISOString(),
+        reason,
+        priceTrend: { ...fetchPerformanceMetrics.priceTrend },
+        bookingCurve: { ...fetchPerformanceMetrics.bookingCurve }
+    };
+    const element = document.querySelector<HTMLElement>(`[${FETCH_PERFORMANCE_SUMMARY_ATTRIBUTE}]`) ?? document.createElement("script");
+    element.setAttribute(FETCH_PERFORMANCE_SUMMARY_ATTRIBUTE, "");
+    element.setAttribute("type", "application/json");
+    const nextText = JSON.stringify(snapshot);
+    if (element.textContent !== nextText) {
+        element.textContent = nextText;
+    }
+
+    if (element.parentElement !== document.body) {
+        document.body.append(element);
+    }
+
+    if (isFetchPerformanceDebugEnabled()) {
+        console.info(`[${SCRIPT_NAME}] fetch performance`, snapshot);
+    }
+}
+
 async function verifyAnalyzePageConsistency(reason: string): Promise<void> {
     const analysisDate = activeAnalyzeDate;
     if (analysisDate === null) {
@@ -3803,6 +3954,7 @@ function scheduleSalesSettingWarmCache(
         targetFromDate: null,
         targetToDate: null
     };
+    resetFetchPerformanceBookingCurveMetrics("bookingCurve.warmCacheQueueRequested");
     renderSalesSettingWarmCacheIndicator();
 
     void buildSalesSettingWarmCacheQueue(startDate, priorityStayDate, priorityMonth)
@@ -3814,6 +3966,9 @@ function scheduleSalesSettingWarmCache(
                 return;
             }
 
+            updateFetchPerformanceBookingCurveMetrics({
+                warmCacheQueueBuiltAt: Date.now()
+            }, "bookingCurve.warmCacheQueueBuilt");
             salesSettingWarmCacheState = {
                 ...salesSettingWarmCacheState,
                 status: queue.length === 0 ? "complete" : "idle",
@@ -4008,6 +4163,7 @@ function markRankRecommendationWarmCachePriorityTask(task: SalesSettingWarmCache
         return;
     }
 
+    recordFetchPerformanceBookingCurvePriorityResult(result);
     salesSettingWarmCacheState = {
         ...salesSettingWarmCacheState,
         rankRecommendationPriorityProcessed: Math.min(
@@ -6219,6 +6375,10 @@ async function runPriceTrendFetch(
 ): Promise<boolean> {
     resetPriceTrendBackgroundQueue("初回取得を開始");
     const initialScopes = buildInitialPriceTrendRequestScopes();
+    resetFetchPerformancePriceTrendMetrics({
+        tabRequestedAt: Date.now(),
+        visibleScopeCount: initialScopes.length
+    }, "priceTrend.tabRequested");
     priceTrendUiState = {
         ...priceTrendUiState,
         status: "loading",
@@ -6232,6 +6392,9 @@ async function runPriceTrendFetch(
     void refreshPriceTrendRecords(facilityCacheKey, analysisDate);
 
     try {
+        updateFetchPerformancePriceTrendMetrics({
+            visibleFetchStartedAt: Date.now()
+        }, "priceTrend.visibleFetchStarted");
         const requestContext = await loadPriceTrendRequestContext();
         priceTrendRequestContext = requestContext;
         const result = await fetchAndPersistPriceTrendRecords({
@@ -6240,6 +6403,10 @@ async function runPriceTrendFetch(
             scopes: initialScopes,
             requestContext
         });
+        updateFetchPerformancePriceTrendMetrics({
+            visibleFetchCompletedAt: Date.now(),
+            networkFetchCount: fetchPerformanceMetrics.priceTrend.networkFetchCount + result.requestCount
+        }, "priceTrend.visibleFetchCompleted");
         if (!result.stored) {
             priceTrendUiState = {
                 ...priceTrendUiState,
@@ -6282,6 +6449,10 @@ async function runPriceTrendFetch(
         schedulePriceTrendBackgroundQueue(analysisDate, facilityCacheKey, initialScopes);
         return true;
     } catch (error: unknown) {
+        updateFetchPerformancePriceTrendMetrics({
+            visibleFetchCompletedAt: Date.now(),
+            errorCount: fetchPerformanceMetrics.priceTrend.errorCount + 1
+        }, "priceTrend.visibleFetchErrored");
         priceTrendUiState = {
             ...priceTrendUiState,
             status: "error",
@@ -6335,6 +6506,11 @@ function schedulePriceTrendBackgroundQueue(
         stayDate: analysisDate,
         total: priceTrendBackgroundQueue.length
     };
+    updateFetchPerformancePriceTrendMetrics({
+        backgroundStartedAt: Date.now(),
+        backgroundCompletedAt: priceTrendBackgroundQueue.length === 0 ? Date.now() : null,
+        backgroundScopeCount: priceTrendBackgroundQueue.length
+    }, "priceTrend.backgroundStarted");
     renderPriceTrendOverviewFromState();
     schedulePriceTrendBackgroundQueueDrain(PRICE_TREND_BACKGROUND_QUEUE_INTERVAL_MS);
 }
@@ -6393,6 +6569,9 @@ async function drainPriceTrendBackgroundQueue(): Promise<void> {
             currentScope: null,
             pauseReason: null
         };
+        updateFetchPerformancePriceTrendMetrics({
+            backgroundCompletedAt: Date.now()
+        }, "priceTrend.backgroundCompleted");
         renderPriceTrendOverviewFromState();
         return;
     }
@@ -6414,6 +6593,9 @@ async function drainPriceTrendBackgroundQueue(): Promise<void> {
             scopes: [scope],
             requestContext
         });
+        updateFetchPerformancePriceTrendMetrics({
+            networkFetchCount: fetchPerformanceMetrics.priceTrend.networkFetchCount + result.requestCount
+        }, "priceTrend.backgroundFetchCompleted");
         priceTrendBackgroundQueueState = {
             ...priceTrendBackgroundQueueState,
             processed: priceTrendBackgroundQueueState.processed + 1,
@@ -6425,6 +6607,9 @@ async function drainPriceTrendBackgroundQueue(): Promise<void> {
         await refreshPriceTrendRecords(facilityId, stayDate);
     } catch (error: unknown) {
         const consecutiveErrors = priceTrendBackgroundQueueState.consecutiveErrors + 1;
+        updateFetchPerformancePriceTrendMetrics({
+            errorCount: fetchPerformanceMetrics.priceTrend.errorCount + 1
+        }, "priceTrend.backgroundFetchErrored");
         priceTrendBackgroundQueueState = {
             ...priceTrendBackgroundQueueState,
             processed: priceTrendBackgroundQueueState.processed + 1,
@@ -6513,6 +6698,13 @@ async function refreshPriceTrendRecords(facilityCacheKey: string, analysisDate: 
             });
             return [];
         });
+    const firstStoredRecordRenderedAt = records.length > 0 && fetchPerformanceMetrics.priceTrend.firstStoredRecordRenderedAt === null
+        ? Date.now()
+        : fetchPerformanceMetrics.priceTrend.firstStoredRecordRenderedAt;
+    updateFetchPerformancePriceTrendMetrics({
+        cacheReadCount: fetchPerformanceMetrics.priceTrend.cacheReadCount + 1,
+        firstStoredRecordRenderedAt
+    }, "priceTrend.cacheRead");
     if (
         activeAnalyzeDate !== analysisDate
         || activeFacilityCacheKey !== facilityCacheKey
@@ -13259,26 +13451,33 @@ function prefetchSalesSettingGroupRooms(analysisDate: string, batchDateKey: stri
 
     const { previousDay, previousWeek, previousMonth } = getRevenueAssistantComparisonDates(batchDateKey);
     void getRoomGroups()
-        .then((roomGroups) => Promise.all([
-            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group"),
-            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group"),
-            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group"),
-            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group"),
-            fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "transient"),
-            fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "transient"),
-            fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "transient"),
-            fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "transient"),
-            ...roomGroups.flatMap((roomGroup) => [
-                fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "transient", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "transient", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "transient", roomGroup.id),
-                fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "transient", roomGroup.id)
-            ])
-        ]))
+        .then((roomGroups) => {
+            const requests = [
+                fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group"),
+                fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group"),
+                fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group"),
+                fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group"),
+                fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "transient"),
+                fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "transient"),
+                fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "transient"),
+                fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "transient")
+            ];
+
+            for (const roomGroup of roomGroups) {
+                requests.push(
+                    fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "group", roomGroup.id),
+                    fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "group", roomGroup.id),
+                    fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "group", roomGroup.id),
+                    fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "group", roomGroup.id),
+                    fetchScopedBookingCurveCount(analysisDate, batchDateKey, batchDateKey, "transient", roomGroup.id),
+                    fetchScopedBookingCurveCount(analysisDate, previousDay, batchDateKey, "transient", roomGroup.id),
+                    fetchScopedBookingCurveCount(analysisDate, previousWeek, batchDateKey, "transient", roomGroup.id),
+                    fetchScopedBookingCurveCount(analysisDate, previousMonth, batchDateKey, "transient", roomGroup.id)
+                );
+            }
+
+            return Promise.all(requests);
+        })
         .catch((error: unknown) => {
             salesSettingPrefetchKeys.delete(prefetchKey);
             console.warn(`[${SCRIPT_NAME}] failed to prefetch sales-setting group rooms`, {

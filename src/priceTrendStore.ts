@@ -109,6 +109,7 @@ export interface FetchAndPersistPriceTrendOptions {
 export interface FetchAndPersistPriceTrendResult {
     stored: boolean;
     records: PriceTrendRecord[];
+    requestCount: number;
     reason?: "indexeddb-unavailable" | "no-yad-nos" | "unsupported-stay-date";
 }
 
@@ -161,6 +162,7 @@ async function fetchAndPersistPriceTrendRecordsInternal(
         return {
             stored: false,
             records: [],
+            requestCount: 0,
             reason: "no-yad-nos"
         };
     }
@@ -168,8 +170,10 @@ async function fetchAndPersistPriceTrendRecordsInternal(
     const fetchedAt = new Date().toISOString();
     const records: PriceTrendRecord[] = [];
     const scopes = options.scopes ?? buildAllPriceTrendRequestScopes();
+    let requestCount = 0;
     for (const scope of scopes) {
         const request = buildPriceTrendRequest(options.stayDate, scope.numGuests, scope.mealType, scope.roomType, yadNos);
+        requestCount += 1;
         const response = await fetch(request.url, {
             credentials: "include",
             headers: {
@@ -201,6 +205,7 @@ async function fetchAndPersistPriceTrendRecordsInternal(
         return {
             stored: false,
             records,
+            requestCount,
             reason: "unsupported-stay-date"
         };
     }
@@ -209,6 +214,7 @@ async function fetchAndPersistPriceTrendRecordsInternal(
         return {
             stored: false,
             records,
+            requestCount,
             reason: "indexeddb-unavailable"
         };
     }
@@ -219,7 +225,8 @@ async function fetchAndPersistPriceTrendRecordsInternal(
 
     return {
         stored: true,
-        records
+        records,
+        requestCount
     };
 }
 
