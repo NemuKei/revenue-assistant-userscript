@@ -10649,7 +10649,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-PERF-14 Live performance baseline 再取得 / RAU-PERF-09 後続整理
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - `data-ra-fetch-performance-summary` に competitor_prices の sanitized count / timestamp metrics を追加し、price_trends / booking_curve と同じ baseline marker で比較できるようにした。live observation が取れない場合の fallback は、fixture / manual observation で duration、request count、error count、timestamp、marker 有無だけを比較する。
 - 目的:
   - `RAU-PERF-09` の live observation 未完了 / blocked 履歴を引き継ぎ、追加高速化の前に price_trends、booking_curve、competitor 関連の baseline を比較できる状態へ戻す。
   - CDP 9222 または通常 Chrome / Tampermonkey 実行版で live marker を読める場合は live observation を優先し、取れない場合は fixture + manual observation の fallback 手順を docs に残す。
@@ -10676,7 +10677,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-PERF-15 competitor_prices visible bounded parallel fetch
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - competitor_prices の visible / user-facing fetch だけ最大 2 件の bounded parallel fetch にした。background / cold queue は従来どおり 1 task ずつ処理し、request 総数、検索条件 signature、保存 schema、API query contract、Revenue Assistant write API、rank change payload は変更していない。
 - 目的:
   - 競合価格 tab または top row competitor preview の user-facing 初期表示待ちを、request 総数や保存 schema を変えずに短縮する。
 - スコープ:
@@ -10702,7 +10704,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-PERF-16 competitor_prices cache-first 表示
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - 保存済み competitor price snapshot がある場合、network 完了前に graph / table を先に表示し、meta に `保存済み表示・再取得中` を出すようにした。freshness 未確定のまま network fetch は skip せず、最新取得完了後に通常表示へ更新する。
 - 目的:
   - 保存済み competitor price snapshot がある場合、network 完了前に graph または table を先に表示し、ユーザーの待ち時間を短縮する。
 - スコープ:
@@ -10728,7 +10731,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-PERF-17 booking_curve priority lane / endpoint-aware scheduling design
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - booking_curve は一律高速化ではなく、interactive / priority background / cold background の lane を分ける設計候補として仕様化した。採用する場合は request 総数を増やさず、background 負荷を大きく上げず、active request 中断や starvation を起こさないことを受け入れ条件にする。
 - 目的:
   - booking_curve queue 全体を単純に速くするのではなく、体感上必要な request を先に返し、cold background に interactive task が埋もれないようにする。
 - スコープ:
@@ -10754,7 +10758,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-PERF-18 endpoint-aware cooldown / backoff design
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - endpoint-aware cooldown / backoff は、429 即 cooldown、403 停止寄り、5xx / timeout 連続回数 cooldown、cooldown 中は visible 最低限以外の background 停止を採用候補として仕様化した。エラー詳細や response body は保存しない。
 - 目的:
   - 中程度の負荷チューニングを入れても、プラットフォーム側の負荷兆候が出たときに安全側へ戻れるようにする。
 - スコープ:
@@ -10780,8 +10785,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-UX-134 UX / rendering residual audit
 
 - 状態:
-  - 未着手。
-  - `RAU-UX-132` と `RAU-UX-133` は既に mobile smoke fixture 系 task として完了済みのため、この residual audit は ID 重複を避けて `RAU-UX-134` とする。
+  - 完了（2026-06-11）。
+  - `RAU-PERF-14` から `RAU-PERF-18` の実装後、Product Design の audit / plan first として確認した。competitor preview は押下時 row preview と対象 cell 更新に閉じており、保存済み snapshot の cache-first 表示も graph / table の既存描画契約を維持する。現時点で追加の React rendering 変更、`flushSync` 削除、`React.memo` 化、preview component 分離を正当化する証拠はないため no-op とした。
 - 目的:
   - request が速くなっても、render や DOM 更新で体感が詰まっていないか確認する。
 - スコープ:
@@ -10805,7 +10810,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-UX-135 料金調整候補の宿泊日に曜日を追加
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - top 候補、rank 変更 preview、競合価格 preview の宿泊日表示を `YYYY-MM-DD（曜）` 形式へ揃えた。曜日は表示補助だけに使い、weekday scoring、candidate scoring、priority、confidence、reasonFingerprint、sort、保存 schema、request 件数は変更していない。
 - 目的:
   - 料金調整候補の宿泊日を見た瞬間に、平日 / 金曜 / 土曜 / 日曜などの判断ができるようにする。
   - レベニュー判断上、曜日は日付と同じくらい重要なため、候補一覧の認知負荷を下げる。
@@ -10832,7 +10838,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-UX-136 料金調整候補から開く競合価格 preview / detail UI の初期 roomType filter を未指定に揃える
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - 料金調整候補から開く競合価格 preview の初期 roomType filter を `null` / 未指定にし、confirmed roomType があっても初期 preview は競合全体を表示するようにした。候補 roomType の対応状況は note として残し、強い絞り込みを初期表示で行わない。Analyze 側の初期 filter 未指定挙動は既存どおり維持した。
 - 目的:
   - 料金調整候補から競合価格を開いたとき、初期状態を filter なしにし、競合全体の価格帯を見落としにくくする。
 - スコープ:
@@ -10861,7 +10868,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-RR-62 前回調整から間がない候補の soft cooldown design
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - hard hide ではなく表示 lifecycle 層の soft cooldown として設計を確定した。判定単位は `stayDate x roomGroup x direction`、期間は 0〜1 日 strong、2〜3 日 medium、4〜7 日 caution とする。rank order が解決できる場合だけ同方向を判定し、方向未確定は注意表示に留める。high priority かつ confidence 0.6 以上は重要候補として初期表示を維持する。保存 schema、candidate scoring、priority、confidence、reasonFingerprint は変更しない。
 - 目的:
   - 前回調整直後の同一 stay date / roomType 候補が何度も上位に出ることを抑え、過剰な再調整やアラート疲れを防ぐ。
   - 急な競合変化や在庫変化による重要候補は見落とさない。
@@ -10890,7 +10898,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-RR-63 soft cooldown 実装
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - `src/main.ts` の候補表示 lifecycle に recent rank change soft cooldown を追加した。strong / medium の同方向候補は初期 `全て` 表示から外し、view mode `直近変更` で確認できる。行内の前回変更補助表示、状態 badge、title diagnostics、list meta の `非表示 直近変更 n件` で理由を説明する。request 件数、Revenue Assistant write API、rank change payload、保存 schema、candidate scoring、priority、confidence、reasonFingerprint は変更していない。
 - 目的:
   - `RAU-RR-62` で確定した仕様に基づき、前回調整から間がない候補を UI 上で抑制・説明・任意表示できるようにする。
 - スコープ:
@@ -10923,30 +10932,26 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-PERF-14` Live performance baseline 再取得 / `RAU-PERF-09` 後続整理
+- なし
 
 Next:
 
-- `RAU-PERF-15` competitor_prices visible bounded parallel fetch
-- `RAU-PERF-16` competitor_prices cache-first 表示
+- なし
 
 After Next:
 
-- `RAU-PERF-17` booking_curve priority lane / endpoint-aware scheduling design
-- `RAU-PERF-18` endpoint-aware cooldown / backoff design
+- なし
 
 Later:
 
-- `RAU-UX-134` UX / rendering residual audit
-- After current PERF queue / Next UX candidate: `RAU-UX-135` 料金調整候補の宿泊日に曜日を追加
-- After current PERF queue / Next UX candidate: `RAU-UX-136` 料金調整候補から開く競合価格 preview / detail UI の初期 roomType filter を未指定に揃える
-- After current PERF queue / Next RR design candidate: `RAU-RR-62` 前回調整から間がない候補の soft cooldown design
-- After current PERF queue / Next RR implementation candidate: `RAU-RR-63` soft cooldown 実装
+- なし
 
 統合判断:
 
+- 2026-06-11 に、`RAU-UX-134`、`RAU-UX-135`、`RAU-UX-136`、`RAU-RR-62`、`RAU-RR-63` を同じ料金調整候補 UX / recent rank change lifecycle Goal Bundle として完了した。`RAU-UX-134` は Product Design audit / plan first の no-op 判断で、competitor preview / graph / table の追加 rendering 変更を正当化する証拠はないため実装 task を追加しない。`RAU-UX-135` では料金調整候補、rank 変更 preview、競合価格 preview の宿泊日を `YYYY-MM-DD（曜）` 表示へ揃えた。`RAU-UX-136` では料金調整候補から開く競合価格 preview の初期 roomType filter を未指定にし、候補 roomType は note として残した。`RAU-RR-62` / `RAU-RR-63` では前回 rank 変更後 0〜3 日の同方向候補を soft cooldown として初期表示から抑え、view mode `直近変更`、前回変更補助表示、状態 badge、title diagnostics、list meta で確認できるようにした。request 件数、Revenue Assistant write API、rank change payload、保存 schema、candidate scoring、priority、confidence、reasonFingerprint は変更していない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 2026-06-11 に、利用者が Tampermonkey installed version を最新版へ更新した後、`RAU-PERF-09` の一部観測を実施した。`npm run userscript:version-check -- --installed-version 0.1.0.424 --open-url https://ra.jalan.net/` で published / installed version が `0.1.0.424` に揃っていることを確認した。top smoke `npm run smoke:distribution -- --installed-version 0.1.0.424 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail --cdp-connection page` は pass し、top row 10、write API POST 0、console / page error 0、RAU warm cache request 0 件の cache 済み fallback を確認した。browser-level reload 後の top marker は `bookingCurve.preScanHitCount` 106、`candidateCurrentRawSkipped` 10、`candidateCurrentRawFetched` 0、`candidateCurrentRawErrored` 0 で、画面上の warm cache status summary も `pre-scan除外 106` を表示した。price-trends smoke `npm run smoke:distribution -- --installed-version 0.1.0.424 --mode price-trends --url https://ra.jalan.net/analyze/2026-06-20 --seconds 60 --version-policy fail` は pass し、price trends overview 1、panel 4、SVG 4、write API POST 0、console / page error 0 を確認した。price-trends marker は `visibleScopeCount` 16、`backgroundScopeCount` 112、`cacheReadCount` 6、`networkFetchCount` 20、`errorCount` 0 で、保存済み record 表示後も visible scope が revalidate されることを確認した。marker は `script[type="application/json"]` の textContent に count / timestamp だけを持ち、response body、価格詳細、施設実データ、予約・在庫・顧客情報、Cookie、token、credential は含まない。ただし competitor 関連 baseline、blocked 時の fixture + manual fallback、改善前後比較項目は未整理だったため、`RAU-PERF-09` は完了扱いにせず、`RAU-PERF-14` の後続整理対象にする。runtime code、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、spec は変更していない。
 - 2026-06-11 に、料金調整候補まわりの UX / soft cooldown 改善候補を docs-only で task 化した。既存 `RAU-UX-132` / `RAU-UX-133` は完了済み、`RAU-UX-134` は performance 後の residual audit として未着手、`RAU-RR-12` / `RAU-RR-13` は実装済みのため、今回の新規 task は `RAU-UX-135`、`RAU-UX-136`、`RAU-RR-62`、`RAU-RR-63` とした。既存 Remaining Task Triage の `RAU-PERF-14` から `RAU-PERF-18` は維持し、今回 task は After current PERF queue / Next UX candidate として `RAU-UX-135`、`RAU-UX-136`、`RAU-RR-62`、`RAU-RR-63` の順に置く。曜日表示は表示契約であり、weekday scoring、reasonFingerprint、priority、confidence は変更しない。soft cooldown は hard hide ではなく、抑制・説明・任意表示を基本にし、重要候補を完全非表示にしない。runtime code、`src/`、`dist/`、Revenue Assistant write API、rank change payload、保存 schema、request 件数、candidate scoring / priority / confidence は変更していない。
+- 2026-06-11 に、`RAU-PERF-14` から `RAU-PERF-18` を同じ performance baseline / competitor visible fetch / safety design Goal Bundle として完了した。`RAU-PERF-14` では `data-ra-fetch-performance-summary` に competitor_prices の visible fetch / cache-first baseline metrics を追加した。`RAU-PERF-15` では competitor_prices の visible / user-facing fetch だけ最大 2 件の bounded parallel fetch にした。`RAU-PERF-16` では保存済み snapshot がある場合に `保存済み表示・再取得中` として graph / table を先に出し、network fetch は skip しない。`RAU-PERF-17` では booking_curve priority lane を interactive / priority background / cold background に分ける設計候補として仕様化した。`RAU-PERF-18` では 429 / 403 / 5xx / timeout の endpoint-aware cooldown / backoff 方針を仕様化した。request 総数、検索条件 signature、保存 schema、API query contract、Revenue Assistant write API、rank change payload は変更していない。response body、価格詳細、施設実データ、予約・在庫・顧客情報、Cookie、token、credential は marker / log / docs に保存しない。Remaining Task Triage は Now `RAU-UX-134`、Next `RAU-UX-135`, `RAU-UX-136`、After Next `RAU-RR-62`, `RAU-RR-63`、Later なしである。
 - 2026-06-11 の goal 継続で、`RAU-PERF-09` の marker 未表示原因を read-only で追加確認した。`npm run chrome:pages` は成功し、通常 Chrome には Revenue Assistant top、OneTab、Tampermonkey dashboard が開いていた。CDP read-only 評価では Revenue Assistant top の RAU root count 3、React marker yes、`data-ra-fetch-performance-summary` marker 0、HTML 内 marker 文字列なしだった。Tampermonkey dashboard の表示では `Revenue Assistant Userscript` installed version が `0.1.0.420`、一方で公開版 `0.1.0.424` には marker 文字列が含まれるため、現時点の未完了理由は Tampermonkey installed version が marker 対応版へ同期されていないことと判断する。README の配布検証手順どおり、Tampermonkey dashboard 更新は利用者が明示的に許可した場合だけ行うため、更新操作や CDP 一時注入は実施していない。runtime code、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、spec は変更していない。`RAU-PERF-09` は Now に残し、次は利用者許可後に Tampermonkey installed version を公開版へ揃えてから、top / price-trends の `data-ra-fetch-performance-summary` を再観測する。
 - 2026-06-11 の goal 再開後に、`RAU-PERF-09` の live observation を再試行した。`npm run chrome:debug:default-profile:resume` で Chrome remote debugging port 9222 を起動し、`npm run chrome:pages` は成功した。top mode は page websocket fallback で RAU root count 3、React marker yes、top row 10、write API POST 0、console / page error 0、RAU warm cache request count 6、HTTP error 0、min start interval 756ms、max concurrent 2 を確認したが、average starts per second 0.31 が基準未満で smoke は fail した。price-trends mode は `https://ra.jalan.net/analyze/2026-06-20` で pass し、price trends tab / content / overview 1 / panel 4 / SVG 4、write API POST 0、console / page error 0 を確認した。ただし `data-ra-fetch-performance-summary` marker は top / price-trends とも DOM 上 0 件だった。公開版 `0.1.0.424` には marker 文字列が含まれるが、現在の通常 Chrome 実行ページには marker 文字列が注入されていない。Tampermonkey 実行版更新または CDP 一時注入は利用者判断が必要なため実施せず、`RAU-PERF-09` は Now に残す。runtime code、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、spec は変更していない。Remaining Task Triage は Now `RAU-PERF-09`、Next / After Next / Later なしである。
 - 2026-06-11 に、`RAU-PERF-13` を rank recommendation React render responsiveness audit として完了した。React best practices の re-render / rendering 観点、React Doctor、fixture marker、`src/rankRecommendationReactIsland.ts` と `src/main.ts` の bridge を確認した。`flushSync` は Revenue Assistant 側 DOM 再描画への追従と、root render 直後の preview row hydration / warm cache inline status / 月別 control 同期があるため現時点では削除しない。preview 開閉は React root 全体ではなく `hidden` と対象 cell の `replaceChildren()` で軽量更新され、pending decision / rank change も行内 DOM 追加で処理されているため、`React.memo`、通常 render 化、preview component 分離を live jank の証拠なしに実装しない。`D-20260611-005` に保留判断を記録した。`npm run react:doctor -- --verbose --diff false` は sandbox 内で `spawn EPERM` になったため昇格して再実行し、38 issues、`react-doctor/no-flush-sync` 1 件を確認した。`npm run check:fixture-markers` も sandbox 内で `spawn EPERM` になったため昇格して再実行し、row layout 25、preview button 各 25、pending notice 2 を確認して pass した。runtime UI、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、candidate scoring、保存 schema、spec は変更していない。`RAU-PERF-09` は CDP 9222 未起動と Chrome 拡張 UI block により引き続き Now、Remaining Task Triage は Now `RAU-PERF-09`、Next / After Next / Later なしである。`docs/context/INTENT.md` は UI / UX、画面遷移やフォーカス復帰の安定性、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。

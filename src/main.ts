@@ -66,7 +66,8 @@ import {
     readCompetitorPriceSnapshotSeriesForStayDate,
     type CompetitorPriceRequestContextBase,
     type CompetitorPriceSnapshotPlan,
-    type CompetitorPriceSnapshotRecord
+    type CompetitorPriceSnapshotRecord,
+    type PersistCompetitorPriceSnapshotResult
 } from "./competitorPriceSnapshotStore";
 import {
     PRICE_TREND_GUEST_COUNTS,
@@ -254,7 +255,7 @@ const RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS = 5000;
 const RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT = 10;
 const RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP = 10;
 const RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT = 50;
-type RankRecommendationViewMode = "all" | "raise" | "lower" | "caution";
+type RankRecommendationViewMode = "all" | "raise" | "lower" | "caution" | "recent_change";
 const RANK_RECOMMENDATION_VIEW_MODE_OPTIONS: readonly {
     mode: RankRecommendationViewMode;
     label: string;
@@ -263,7 +264,8 @@ const RANK_RECOMMENDATION_VIEW_MODE_OPTIONS: readonly {
     { mode: "all", label: "全て", title: "表示条件をかけず、優先度順に表示する" },
     { mode: "raise", label: "上げ検討", title: "上げ検討の候補だけを表示する" },
     { mode: "lower", label: "下げ注意", title: "下げ注意の候補だけを表示する" },
-    { mode: "caution", label: "注意あり", title: "不足または注意が残る候補だけを表示する" }
+    { mode: "caution", label: "注意あり", title: "不足または注意が残る候補だけを表示する" },
+    { mode: "recent_change", label: "直近変更", title: "前回変更から間がない候補を確認する" }
 ];
 const SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE = "data-ra-sales-setting-group-room-row";
 const SALES_SETTING_GROUP_ROOM_ROW_SIGNATURE_ATTRIBUTE = "data-ra-sales-setting-group-room-row-signature";
@@ -419,6 +421,7 @@ const CALENDAR_SYNC_DEBUG_LAST_STORAGE_KEY = `${CALENDAR_SYNC_DEBUG_STORAGE_KEY}
 const CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE = "data-ra-calendar-sync-debug-snapshot";
 const FETCH_PERFORMANCE_DEBUG_STORAGE_KEY = "revenue-assistant:debug:fetch-performance";
 const FETCH_PERFORMANCE_SUMMARY_ATTRIBUTE = "data-ra-fetch-performance-summary";
+const COMPETITOR_PRICE_VISIBLE_FETCH_CONCURRENCY = 2;
 const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `#${GROUP_ROOM_STYLE_ID}`,
     `[${GROUP_ROOM_BADGE_ATTRIBUTE}]`,
@@ -855,9 +858,21 @@ interface FetchPerformanceBookingCurveMetrics {
     preScanHitCount: number;
 }
 
+interface FetchPerformanceCompetitorPriceMetrics {
+    tabRequestedAt: number | null;
+    firstStoredRecordRenderedAt: number | null;
+    visibleFetchStartedAt: number | null;
+    visibleFetchCompletedAt: number | null;
+    visibleScopeCount: number;
+    cacheReadCount: number;
+    networkFetchCount: number;
+    errorCount: number;
+}
+
 interface FetchPerformanceMetrics {
     priceTrend: FetchPerformancePriceTrendMetrics;
     bookingCurve: FetchPerformanceBookingCurveMetrics;
+    competitorPrice: FetchPerformanceCompetitorPriceMetrics;
 }
 
 interface FetchPerformanceSummarySnapshot extends FetchPerformanceMetrics {
@@ -990,8 +1005,19 @@ interface RankRecommendationLatestRankChange {
     signature: string;
 }
 
+type RankRecommendationRecentChangeCooldownStrength = "strong" | "medium" | "caution";
+
+interface RankRecommendationRecentChangeCooldown {
+    strength: RankRecommendationRecentChangeCooldownStrength;
+    daysAgo: number;
+    sameDirection: boolean;
+    suppressByDefault: boolean;
+    signature: string;
+}
+
 interface RankRecommendationDisplayInfo {
     latestRankChange: RankRecommendationLatestRankChange | null;
+    recentChangeCooldown: RankRecommendationRecentChangeCooldown | null;
     visibilityDiagnostics: string[];
     rankGapContext: RankRecommendationRankGapContext | null;
     signature: string;
@@ -3433,6 +3459,16 @@ function createInitialFetchPerformanceMetrics(): FetchPerformanceMetrics {
             candidateCurrentRawSkipped: 0,
             candidateCurrentRawErrored: 0,
             preScanHitCount: 0
+        },
+        competitorPrice: {
+            tabRequestedAt: null,
+            firstStoredRecordRenderedAt: null,
+            visibleFetchStartedAt: null,
+            visibleFetchCompletedAt: null,
+            visibleScopeCount: 0,
+            cacheReadCount: 0,
+            networkFetchCount: 0,
+            errorCount: 0
         }
     };
 }
@@ -3486,6 +3522,28 @@ function updateFetchPerformanceBookingCurveMetrics(updates: Partial<FetchPerform
     publishFetchPerformanceSummary(reason);
 }
 
+function resetFetchPerformanceCompetitorPriceMetrics(updates: Partial<FetchPerformanceCompetitorPriceMetrics>, reason: string): void {
+    fetchPerformanceMetrics = {
+        ...fetchPerformanceMetrics,
+        competitorPrice: {
+            ...createInitialFetchPerformanceMetrics().competitorPrice,
+            ...updates
+        }
+    };
+    publishFetchPerformanceSummary(reason);
+}
+
+function updateFetchPerformanceCompetitorPriceMetrics(updates: Partial<FetchPerformanceCompetitorPriceMetrics>, reason: string): void {
+    fetchPerformanceMetrics = {
+        ...fetchPerformanceMetrics,
+        competitorPrice: {
+            ...fetchPerformanceMetrics.competitorPrice,
+            ...updates
+        }
+    };
+    publishFetchPerformanceSummary(reason);
+}
+
 function recordFetchPerformanceBookingCurvePriorityResult(result: "fetched" | "skipped" | "error"): void {
     const metrics = fetchPerformanceMetrics.bookingCurve;
     updateFetchPerformanceBookingCurveMetrics({
@@ -3506,7 +3564,8 @@ function publishFetchPerformanceSummary(reason: string): void {
         capturedAt: new Date().toISOString(),
         reason,
         priceTrend: { ...fetchPerformanceMetrics.priceTrend },
-        bookingCurve: { ...fetchPerformanceMetrics.bookingCurve }
+        bookingCurve: { ...fetchPerformanceMetrics.bookingCurve },
+        competitorPrice: { ...fetchPerformanceMetrics.competitorPrice }
     };
     const element = document.querySelector<HTMLElement>(`[${FETCH_PERFORMANCE_SUMMARY_ATTRIBUTE}]`) ?? document.createElement("script");
     element.setAttribute(FETCH_PERFORMANCE_SUMMARY_ATTRIBUTE, "");
@@ -5393,6 +5452,18 @@ function formatCompactDateForDisplay(dateKey: string): string {
     return `${compactDateKey.slice(0, 4)}-${compactDateKey.slice(4, 6)}-${compactDateKey.slice(6, 8)}`;
 }
 
+function formatRankRecommendationStayDateForDisplay(dateKey: string): string {
+    const compactDateKey = dateKey.trim().replace(/-/g, "");
+    const normalizedDateKey = normalizeDateKey(compactDateKey);
+    const weekday = normalizedDateKey === null ? null : getUtcWeekday(normalizedDateKey);
+    if (weekday === null) {
+        return formatCompactDateForDisplay(dateKey);
+    }
+
+    const weekdayLabels = ["日", "月", "火", "水", "木", "金", "土"] as const;
+    return `${formatCompactDateForDisplay(compactDateKey)}（${weekdayLabels[weekday]}）`;
+}
+
 function formatDateTimeForDisplay(value: string): string {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) {
@@ -6345,7 +6416,9 @@ function scheduleCompetitorPriceSnapshot(
     }
 
     attemptKeys.add(attemptKey);
-    void runCompetitorPriceSnapshotSave(analysisDate, batchDateKey, facilityCacheKey, source, attemptKeys, attemptKey)
+    void runCompetitorPriceSnapshotSave(analysisDate, batchDateKey, facilityCacheKey, source, attemptKeys, attemptKey, {
+        concurrency: COMPETITOR_PRICE_VISIBLE_FETCH_CONCURRENCY
+    })
         .then((stored) => {
             if (stored && source === "competitor-tab") {
                 scheduleCompetitorPriceSnapshotBackgroundQueue(analysisDate, batchDateKey, facilityCacheKey);
@@ -6360,10 +6433,14 @@ async function runCompetitorPriceSnapshotSave(
     source: "analyze-open" | "competitor-tab",
     attemptKeys: Set<string>,
     attemptKey: string,
-    options: { updateVisibleState?: boolean } = {}
+    options: { updateVisibleState?: boolean; concurrency?: number } = {}
 ): Promise<boolean> {
     const updateVisibleState = options.updateVisibleState !== false;
     if (updateVisibleState) {
+        resetFetchPerformanceCompetitorPriceMetrics({
+            tabRequestedAt: Date.now(),
+            visibleScopeCount: getCompetitorPriceRoomTypeRequestCount()
+        }, "competitorPrice.tabRequested");
         competitorPriceSnapshotUiState = {
             ...competitorPriceSnapshotUiState,
             status: "saving",
@@ -6380,7 +6457,20 @@ async function runCompetitorPriceSnapshotSave(
     }
 
     try {
-        const result = await persistCompetitorPriceSnapshotsForSource(facilityCacheKey, analysisDate, source);
+        if (updateVisibleState) {
+            updateFetchPerformanceCompetitorPriceMetrics({
+                visibleFetchStartedAt: Date.now()
+            }, "competitorPrice.visibleFetchStarted");
+        }
+        const result = await persistCompetitorPriceSnapshotsForSource(facilityCacheKey, analysisDate, source, {
+            concurrency: options.concurrency ?? 1
+        });
+        if (updateVisibleState) {
+            updateFetchPerformanceCompetitorPriceMetrics({
+                visibleFetchCompletedAt: Date.now(),
+                networkFetchCount: fetchPerformanceMetrics.competitorPrice.networkFetchCount + result.records.length
+            }, "competitorPrice.visibleFetchCompleted");
+        }
         if (!result.stored) {
             if (updateVisibleState) {
                 competitorPriceSnapshotUiState = {
@@ -6437,6 +6527,10 @@ async function runCompetitorPriceSnapshotSave(
     } catch (error: unknown) {
         attemptKeys.delete(attemptKey);
         if (updateVisibleState) {
+            updateFetchPerformanceCompetitorPriceMetrics({
+                visibleFetchCompletedAt: Date.now(),
+                errorCount: fetchPerformanceMetrics.competitorPrice.errorCount + 1
+            }, "competitorPrice.visibleFetchErrored");
             competitorPriceSnapshotUiState = {
                 ...competitorPriceSnapshotUiState,
                 status: "error",
@@ -6993,18 +7087,35 @@ interface PersistCompetitorPriceSnapshotsForSourceResult {
     reason?: "indexeddb-unavailable" | "no-competitors";
 }
 
+function getCompetitorPriceRoomTypeRequests(): (string[] | null)[] {
+    return [null, ...COMPETITOR_PRICE_ROOM_TYPE_REQUESTS.map((roomType) => [roomType])];
+}
+
+function getCompetitorPriceRoomTypeRequestCount(): number {
+    return getCompetitorPriceRoomTypeRequests().length;
+}
+
 async function persistCompetitorPriceSnapshotsForSource(
     facilityCacheKey: string,
     analysisDate: string,
-    source: "analyze-open" | "competitor-tab"
+    source: "analyze-open" | "competitor-tab",
+    options: { concurrency?: number } = {}
 ): Promise<PersistCompetitorPriceSnapshotsForSourceResult> {
-    const roomTypeRequests = [null, ...COMPETITOR_PRICE_ROOM_TYPE_REQUESTS.map((roomType) => [roomType])];
+    const roomTypeRequests = getCompetitorPriceRoomTypeRequests();
     const records: CompetitorPriceSnapshotRecord[] = [];
     let previousRecord: CompetitorPriceSnapshotRecord | null = null;
     let skipReason: "indexeddb-unavailable" | "no-competitors" | undefined;
     const requestContextBase: CompetitorPriceRequestContextBase = await loadCompetitorPriceRequestContextBase();
+    const concurrency = Math.max(1, Math.floor(options.concurrency ?? 1));
+    let nextIndex = 0;
 
-    for (const jalanRoomTypes of roomTypeRequests) {
+    const persistNext = async (): Promise<PersistCompetitorPriceSnapshotResult | null> => {
+        const requestIndex = nextIndex;
+        nextIndex += 1;
+        const jalanRoomTypes = roomTypeRequests[requestIndex];
+        if (jalanRoomTypes === undefined) {
+            return null;
+        }
         const result = await persistCompetitorPriceSnapshot({
             facilityId: facilityCacheKey,
             stayDate: analysisDate,
@@ -7012,30 +7123,41 @@ async function persistCompetitorPriceSnapshotsForSource(
             jalanRoomTypes,
             requestContextBase
         });
-        if (!result.stored) {
-            skipReason = result.reason;
-            if (records.length === 0) {
-                const skippedResult: PersistCompetitorPriceSnapshotsForSourceResult = {
-                    stored: false,
-                    records: [],
-                    latestRecord: null,
-                    previousRecord: null
-                };
-                if (skipReason !== undefined) {
-                    skippedResult.reason = skipReason;
-                }
-                return {
-                    ...skippedResult
-                };
-            }
-            continue;
-        }
+        return result;
+    };
 
-        if (result.record !== null) {
-            records.push(result.record);
-        }
-        if (jalanRoomTypes === null) {
-            previousRecord = result.previousRecord;
+    while (nextIndex < roomTypeRequests.length) {
+        const batchSize = Math.min(concurrency, roomTypeRequests.length - nextIndex);
+        const batchResults = await Promise.all(Array.from({ length: batchSize }, persistNext));
+        for (const result of batchResults) {
+            if (result === null) {
+                continue;
+            }
+            if (!result.stored) {
+                skipReason = result.reason;
+                if (records.length === 0) {
+                    const skippedResult: PersistCompetitorPriceSnapshotsForSourceResult = {
+                        stored: false,
+                        records: [],
+                        latestRecord: null,
+                        previousRecord: null
+                    };
+                    if (skipReason !== undefined) {
+                        skippedResult.reason = skipReason;
+                    }
+                    return {
+                        ...skippedResult
+                    };
+                }
+                continue;
+            }
+
+            if (result.record !== null) {
+                records.push(result.record);
+            }
+            if ((result.record?.searchConditionRaw.jalanRoomTypes ?? []).length === 0) {
+                previousRecord = result.previousRecord;
+            }
         }
     }
 
@@ -7063,6 +7185,11 @@ async function refreshCompetitorPriceSnapshotSeries(facilityCacheKey: string, an
     if (snapshotSeries === null || snapshotSeries.latestRecord === null) {
         return;
     }
+    const firstStoredRecordRenderedAt = fetchPerformanceMetrics.competitorPrice.firstStoredRecordRenderedAt ?? Date.now();
+    updateFetchPerformanceCompetitorPriceMetrics({
+        cacheReadCount: fetchPerformanceMetrics.competitorPrice.cacheReadCount + 1,
+        firstStoredRecordRenderedAt
+    }, "competitorPrice.cacheRead");
 
     if (
         competitorPriceSnapshotUiState.facilityId !== facilityCacheKey
@@ -7523,6 +7650,7 @@ function renderRankRecommendationListFixture(
         hiddenSummary: {
             userDecision: 0,
             resolvedRankChange: 0,
+            recentChangeCooldown: 0,
             targetMonth: 0,
             viewMode: 0,
             overflow: 0
@@ -7709,14 +7837,29 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         rankRecommendationTargetMonth = effectiveTargetMonth;
     }
     const targetMonthFilterResult = applyRankRecommendationTargetMonthFilter(resolvedFilterResult.candidates, effectiveTargetMonth);
-    const viewModeFilterResult = applyRankRecommendationViewModeFilter(targetMonthFilterResult.candidates, rankRecommendationViewMode);
+    const recentChangeCooldownByKey = buildRankRecommendationRecentChangeCooldownByKey(
+        targetMonthFilterResult.candidates,
+        statuses,
+        rankOrderResolution
+    );
+    const recentChangeCooldownFilterResult = applyRankRecommendationRecentChangeCooldownFilter(
+        targetMonthFilterResult.candidates,
+        recentChangeCooldownByKey,
+        rankRecommendationViewMode
+    );
+    const viewModeFilterResult = applyRankRecommendationViewModeFilter(
+        recentChangeCooldownFilterResult.candidates,
+        rankRecommendationViewMode,
+        recentChangeCooldownByKey
+    );
     const visibleCandidates = viewModeFilterResult.candidates.slice(0, rankRecommendationDisplayLimit);
     const displayInfoByKey = buildRankRecommendationDisplayInfoByKey(
         visibleCandidates,
         decisionRecords,
         statuses,
         batchDateKey,
-        rankGapContextByScope
+        rankGapContextByScope,
+        rankOrderResolution
     );
     const curvePreviewInfoByKey = await buildRankRecommendationCurvePreviewInfoByKey(visibleCandidates, {
         facilityId: facilityCacheKey,
@@ -7728,6 +7871,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     const hiddenSummary = {
         userDecision: decisionFilterResult.hiddenCount,
         resolvedRankChange: resolvedFilterResult.hiddenCount,
+        recentChangeCooldown: recentChangeCooldownFilterResult.hiddenCount,
         targetMonth: targetMonthFilterResult.hiddenCount,
         viewMode: viewModeFilterResult.hiddenCount,
         overflow: Math.max(0, viewModeFilterResult.candidates.length - visibleCandidates.length)
@@ -7744,6 +7888,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             rankOrderResolution.ranksHighToLow.map((rank) => rank.code).join(">"),
             `hidden-user:${hiddenSummary.userDecision}`,
             `hidden-resolved:${hiddenSummary.resolvedRankChange}`,
+            `hidden-recent-change:${hiddenSummary.recentChangeCooldown}`,
             `hidden-target-month:${hiddenSummary.targetMonth}`,
             `hidden-view-mode:${hiddenSummary.viewMode}`,
             `target-month:${effectiveTargetMonth ?? "all"}`,
@@ -7874,7 +8019,8 @@ async function syncAnalyzeRankRecommendationList(
         decisionRecords,
         statuses,
         batchDateKey,
-        rankGapContextByScope
+        rankGapContextByScope,
+        rankOrderResolution
     );
     renderAnalyzeRankRecommendationList(resolvedFilterResult.candidates, {
         signature: [
@@ -9329,6 +9475,7 @@ interface RankRecommendationTargetMonthOption {
 interface RankRecommendationHiddenSummary {
     userDecision: number;
     resolvedRankChange: number;
+    recentChangeCooldown: number;
     targetMonth: number;
     viewMode: number;
     overflow: number;
@@ -9377,7 +9524,8 @@ function applyRankRecommendationDecisionFilter(
 
 function applyRankRecommendationViewModeFilter(
     candidates: RankRecommendationCandidate[],
-    viewMode: RankRecommendationViewMode
+    viewMode: RankRecommendationViewMode,
+    recentChangeCooldownByKey: ReadonlyMap<string, RankRecommendationRecentChangeCooldown> = new Map()
 ): RankRecommendationCandidateFilterResult {
     if (viewMode === "all") {
         return {
@@ -9386,7 +9534,9 @@ function applyRankRecommendationViewModeFilter(
         };
     }
 
-    const visibleCandidates = candidates.filter((candidate) => isRankRecommendationVisibleInViewMode(candidate, viewMode));
+    const visibleCandidates = candidates.filter((candidate) => (
+        isRankRecommendationVisibleInViewMode(candidate, viewMode, recentChangeCooldownByKey)
+    ));
     return {
         candidates: visibleCandidates,
         hiddenCount: candidates.length - visibleCandidates.length
@@ -9453,7 +9603,8 @@ function getRankRecommendationTargetMonth(candidate: RankRecommendationCandidate
 
 function isRankRecommendationVisibleInViewMode(
     candidate: RankRecommendationCandidate,
-    viewMode: RankRecommendationViewMode
+    viewMode: RankRecommendationViewMode,
+    recentChangeCooldownByKey: ReadonlyMap<string, RankRecommendationRecentChangeCooldown> = new Map()
 ): boolean {
     if (viewMode === "raise") {
         return candidate.action === "raise_watch";
@@ -9462,9 +9613,41 @@ function isRankRecommendationVisibleInViewMode(
         return candidate.action === "lower_watch";
     }
     if (viewMode === "caution") {
-        return summarizeRankRecommendationConfidenceCautions(candidate.diagnostics).length > 0;
+        return summarizeRankRecommendationConfidenceCautions(candidate.diagnostics).length > 0
+            || recentChangeCooldownByKey.has(buildRankRecommendationCandidateDisplayInfoKey(candidate));
+    }
+    if (viewMode === "recent_change") {
+        return recentChangeCooldownByKey.has(buildRankRecommendationCandidateDisplayInfoKey(candidate));
     }
     return true;
+}
+
+function applyRankRecommendationRecentChangeCooldownFilter(
+    candidates: RankRecommendationCandidate[],
+    recentChangeCooldownByKey: ReadonlyMap<string, RankRecommendationRecentChangeCooldown>,
+    viewMode: RankRecommendationViewMode
+): RankRecommendationCandidateFilterResult {
+    if (viewMode === "recent_change") {
+        return {
+            candidates,
+            hiddenCount: 0
+        };
+    }
+
+    let hiddenCount = 0;
+    const visibleCandidates = candidates.filter((candidate) => {
+        const cooldown = recentChangeCooldownByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate)) ?? null;
+        if (cooldown === null || !cooldown.suppressByDefault) {
+            return true;
+        }
+        hiddenCount += 1;
+        return false;
+    });
+
+    return {
+        candidates: visibleCandidates,
+        hiddenCount
+    };
 }
 
 function isRankRecommendationConfidenceEscalated(
@@ -9528,6 +9711,93 @@ function applyResolvedRankRecommendationFilter(
         candidates: visibleCandidates,
         hiddenCount
     };
+}
+
+function buildRankRecommendationRecentChangeCooldownByKey(
+    candidates: readonly RankRecommendationCandidate[],
+    statuses: readonly LincolnSuggestStatus[],
+    rankOrder: RankRecommendationRankOrderResolution
+): Map<string, RankRecommendationRecentChangeCooldown> {
+    const latestRankChangeByScope = buildLatestRankRecommendationRankChangeByScope(statuses);
+    const cooldownByKey = new Map<string, RankRecommendationRecentChangeCooldown>();
+    for (const candidate of candidates) {
+        const latestRankChange = latestRankChangeByScope.get(buildRankRecommendationCandidateHistoryScopeKey(candidate)) ?? null;
+        const cooldown = buildRankRecommendationRecentChangeCooldown(candidate, latestRankChange, rankOrder);
+        if (cooldown !== null) {
+            cooldownByKey.set(buildRankRecommendationCandidateDisplayInfoKey(candidate), cooldown);
+        }
+    }
+    return cooldownByKey;
+}
+
+function buildRankRecommendationRecentChangeCooldown(
+    candidate: RankRecommendationCandidate,
+    latestRankChange: RankRecommendationLatestRankChange | null,
+    rankOrder: RankRecommendationRankOrderResolution
+): RankRecommendationRecentChangeCooldown | null {
+    if (latestRankChange === null || latestRankChange.daysAgo === null || latestRankChange.daysAgo < 0 || latestRankChange.daysAgo > 7) {
+        return null;
+    }
+
+    const actionDirection = getRankRecommendationActionDirection(candidate.action);
+    if (actionDirection === 0) {
+        return null;
+    }
+
+    const changeDirection = resolveRankRecommendationLatestChangeDirection(latestRankChange, rankOrder);
+    const sameDirection = changeDirection !== null && changeDirection === actionDirection;
+    if (!sameDirection && latestRankChange.daysAgo > 3) {
+        return null;
+    }
+
+    const strength: RankRecommendationRecentChangeCooldownStrength = latestRankChange.daysAgo <= 1
+        ? "strong"
+        : latestRankChange.daysAgo <= 3
+            ? "medium"
+            : "caution";
+    const isUrgent = candidate.priority === "high" && candidate.confidence >= 0.6;
+    const suppressByDefault = sameDirection && strength !== "caution" && !isUrgent;
+
+    return {
+        strength,
+        daysAgo: latestRankChange.daysAgo,
+        sameDirection,
+        suppressByDefault,
+        signature: [
+            `strength:${strength}`,
+            `days:${latestRankChange.daysAgo}`,
+            `same-direction:${sameDirection ? "yes" : "no"}`,
+            `suppress:${suppressByDefault ? "yes" : "no"}`,
+            latestRankChange.signature
+        ].join(":")
+    };
+}
+
+function getRankRecommendationActionDirection(action: RankRecommendationAction): -1 | 0 | 1 {
+    if (action === "raise_watch") {
+        return -1;
+    }
+    if (action === "lower_watch") {
+        return 1;
+    }
+    return 0;
+}
+
+function resolveRankRecommendationLatestChangeDirection(
+    latestRankChange: RankRecommendationLatestRankChange,
+    rankOrder: RankRecommendationRankOrderResolution
+): -1 | 0 | 1 | null {
+    if (rankOrder.source === "unresolved") {
+        return null;
+    }
+
+    const beforeIndex = resolveRankRecommendationRankOrderIndex(rankOrder, null, latestRankChange.beforeRankName);
+    const afterIndex = resolveRankRecommendationRankOrderIndex(rankOrder, null, latestRankChange.afterRankName);
+    if (beforeIndex === null || afterIndex === null || beforeIndex === afterIndex) {
+        return null;
+    }
+
+    return afterIndex < beforeIndex ? -1 : 1;
 }
 
 function buildRankRecommendationRankGapContextByScope(
@@ -9675,7 +9945,8 @@ function buildRankRecommendationDisplayInfoByKey(
     decisionRecords: readonly RankRecommendationDecisionRecord[],
     statuses: readonly LincolnSuggestStatus[],
     asOfDate: string,
-    rankGapContextByScope: ReadonlyMap<string, RankRecommendationRankGapContext>
+    rankGapContextByScope: ReadonlyMap<string, RankRecommendationRankGapContext>,
+    rankOrder: RankRecommendationRankOrderResolution
 ): Map<string, RankRecommendationDisplayInfo> {
     const latestRankChangeByScope = buildLatestRankRecommendationRankChangeByScope(statuses);
     const decisionByExactKey = new Map(decisionRecords.map((record) => [record.cacheKey, record]));
@@ -9688,18 +9959,21 @@ function buildRankRecommendationDisplayInfoByKey(
         const exactDecision = decisionByExactKey.get(key) ?? null;
         const relatedDecision = latestDecisionByScope.get(buildRankRecommendationCandidateDecisionScopeKey(candidate)) ?? null;
         const rankGapContext = rankGapContextByScope.get(buildRankRecommendationRankGapContextScopeKey(candidate.stayDate, candidate.roomGroupId)) ?? null;
+        const recentChangeCooldown = buildRankRecommendationRecentChangeCooldown(candidate, latestRankChange, rankOrder);
         const visibilityDiagnostics = buildRankRecommendationVisibilityDiagnostics({
             candidate,
             exactDecision,
             relatedDecision,
             latestRankChange,
+            recentChangeCooldown,
             asOfDate
         });
         displayInfoByKey.set(key, {
             latestRankChange,
+            recentChangeCooldown,
             visibilityDiagnostics,
             rankGapContext,
-            signature: formatRankRecommendationDisplayInfoSignature(latestRankChange, visibilityDiagnostics, rankGapContext)
+            signature: formatRankRecommendationDisplayInfoSignature(latestRankChange, recentChangeCooldown, visibilityDiagnostics, rankGapContext)
         });
     }
 
@@ -9780,6 +10054,7 @@ function buildRankRecommendationVisibilityDiagnostics(options: {
     exactDecision: RankRecommendationDecisionRecord | null;
     relatedDecision: RankRecommendationDecisionRecord | null;
     latestRankChange: RankRecommendationLatestRankChange | null;
+    recentChangeCooldown: RankRecommendationRecentChangeCooldown | null;
     asOfDate: string;
 }): string[] {
     const diagnostics: string[] = [];
@@ -9790,6 +10065,10 @@ function buildRankRecommendationVisibilityDiagnostics(options: {
         diagnostics.push("候補表示: 前回変更は基準日以降です。通常は反映済みとして非表示になります");
     } else {
         diagnostics.push("候補表示: 前回変更は基準日より前です");
+    }
+
+    if (options.recentChangeCooldown !== null) {
+        diagnostics.push(formatRankRecommendationRecentChangeCooldownDiagnostic(options.recentChangeCooldown));
     }
 
     if (options.exactDecision !== null) {
@@ -9882,11 +10161,13 @@ function getRankRecommendationDecisionSortValue(record: RankRecommendationDecisi
 
 function formatRankRecommendationDisplayInfoSignature(
     latestRankChange: RankRecommendationLatestRankChange | null,
+    recentChangeCooldown: RankRecommendationRecentChangeCooldown | null,
     visibilityDiagnostics: readonly string[],
     rankGapContext: RankRecommendationRankGapContext | null
 ): string {
     return [
         latestRankChange?.signature ?? "no-rank-change",
+        recentChangeCooldown?.signature ?? "no-recent-change-cooldown",
         visibilityDiagnostics.join("/"),
         rankGapContext?.signature ?? "no-rank-gap"
     ].join("|");
@@ -10240,7 +10521,7 @@ function buildRankRecommendationReactCells(
         },
         {
             kind: "text",
-            value: formatCompactMonthDayForDisplay(candidate.stayDate) ?? formatCompactDateForDisplay(candidate.stayDate),
+            value: formatRankRecommendationStayDateForDisplay(candidate.stayDate),
             title: `宿泊まで: ${formatRankRecommendationLeadDays(candidate)}`,
             role: "stay-date"
         },
@@ -10283,8 +10564,8 @@ function buildRankRecommendationReactCells(
         },
         {
             kind: "text",
-            value: formatRankRecommendationStatusBadge(candidate, curvePreviewInfo, cautionText, rankChangeProposal),
-            title: formatRankRecommendationStatusBadgeTitle(candidate, curvePreviewInfo, cautionText, rankChangeProposal),
+            value: formatRankRecommendationStatusBadge(candidate, curvePreviewInfo, cautionText, rankChangeProposal, displayInfo),
+            title: formatRankRecommendationStatusBadgeTitle(candidate, curvePreviewInfo, cautionText, rankChangeProposal, displayInfo),
             role: "status"
         }
     ];
@@ -10743,7 +11024,8 @@ function formatRankRecommendationHiddenSummary(hiddenSummary?: RankRecommendatio
 
     const parts = [
         hiddenSummary.userDecision > 0 ? `利用者判断 ${hiddenSummary.userDecision}件` : null,
-        hiddenSummary.resolvedRankChange > 0 ? `反映済み ${hiddenSummary.resolvedRankChange}件` : null
+        hiddenSummary.resolvedRankChange > 0 ? `反映済み ${hiddenSummary.resolvedRankChange}件` : null,
+        hiddenSummary.recentChangeCooldown > 0 ? `直近変更 ${hiddenSummary.recentChangeCooldown}件` : null
     ].filter((part): part is string => part !== null);
     return parts.length === 0 ? null : `非表示 ${parts.join("・")}`;
 }
@@ -11073,7 +11355,7 @@ function createRankRecommendationRankChangePreviewCellChildren(
     titleElement.textContent = "rank変更 preview";
 
     const detailsElement = document.createElement("dl");
-    appendRankRecommendationRankChangePreviewItem(detailsElement, "宿泊日", formatCompactDateForDisplay(proposal.stayDate));
+    appendRankRecommendationRankChangePreviewItem(detailsElement, "宿泊日", formatRankRecommendationStayDateForDisplay(proposal.stayDate));
     appendRankRecommendationRankChangePreviewItem(detailsElement, "部屋タイプ", proposal.roomGroupName);
     appendRankRecommendationRankChangePreviewItem(detailsElement, "現在rank", proposal.currentRankName ?? "-");
     appendRankRecommendationRankChangePreviewItem(detailsElement, "変更後rank", proposal.targetRankName ?? "-");
@@ -11209,14 +11491,14 @@ function createRankRecommendationCompetitorPreviewCellChildren(candidate: RankRe
     sectionElement.setAttribute(RANK_RECOMMENDATION_COMPETITOR_PREVIEW_STATUS_ATTRIBUTE, state.status);
     const titleElement = document.createElement("div");
     titleElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_CHART_TITLE_ATTRIBUTE, "");
-    titleElement.textContent = `競合価格 preview（${formatCompactDateForDisplay(candidate.stayDate)} / ${candidate.roomGroupName}）`;
+    titleElement.textContent = `競合価格 preview（${formatRankRecommendationStayDateForDisplay(candidate.stayDate)} / ${candidate.roomGroupName}）`;
     const messageElement = document.createElement("p");
     messageElement.textContent = state.message;
     sectionElement.append(titleElement, messageElement);
 
     if (state.status === "stored" && state.records.length > 0) {
         const roomTypeMatch = resolveRankRecommendationCompetitorRoomTypeMatch(candidate.roomGroupName, state.records);
-        const roomTypeFilter = roomTypeMatch.status === "confirmed" ? roomTypeMatch.filter : null;
+        const roomTypeFilter = null;
         const dailyRecords = buildLatestCompetitorPriceRecordsByFetchDate(state.records, roomTypeFilter);
         const roomTypeNoteElement = document.createElement("p");
         roomTypeNoteElement.textContent = formatRankRecommendationCompetitorRoomTypeMatchMessage(roomTypeMatch);
@@ -11298,7 +11580,7 @@ function formatRankRecommendationCompetitorRoomTypeMatchMessage(
     match: RankRecommendationCompetitorRoomTypeMatch
 ): string {
     if (match.status === "confirmed" && match.filter !== null) {
-        return `部屋タイプ対応: confirmed / ${match.filter} で preview を絞り込みます。`;
+        return `部屋タイプ対応: confirmed / ${match.filter} 候補。初期 preview は全体を表示し、強い絞り込みはしません。`;
     }
 
     if (match.status === "ambiguous") {
@@ -11812,6 +12094,9 @@ function buildRankRecommendationLatestChangeHistoryItems(
     if (freshness !== null) {
         items.push({ label: "経過", value: freshness });
     }
+    if (displayInfo?.recentChangeCooldown !== null && displayInfo?.recentChangeCooldown !== undefined) {
+        items.push({ label: "注意", value: formatRankRecommendationRecentChangeCooldownShortLabel(displayInfo.recentChangeCooldown) });
+    }
 
     if (items.length === 0) {
         items.push({ label: "", value: "変更あり" });
@@ -11842,6 +12127,45 @@ function formatRankRecommendationLatestChangeFreshness(daysAgo: number | null): 
         return null;
     }
     return `${daysAgo}日前`;
+}
+
+function formatRankRecommendationRecentChangeCooldownShortLabel(
+    cooldown: RankRecommendationRecentChangeCooldown
+): string {
+    if (cooldown.suppressByDefault) {
+        return `${cooldown.daysAgo}日前・初期非表示`;
+    }
+    if (cooldown.sameDirection) {
+        return `${cooldown.daysAgo}日前・再調整注意`;
+    }
+    return `${cooldown.daysAgo}日前・方向未確定`;
+}
+
+function formatRankRecommendationRecentChangeCooldownDiagnostic(
+    cooldown: RankRecommendationRecentChangeCooldown
+): string {
+    const strengthLabel = formatRankRecommendationRecentChangeCooldownStrength(cooldown.strength);
+    if (cooldown.suppressByDefault) {
+        return `候補表示: 直近 ${cooldown.daysAgo}日前に同方向のrank変更があるため、初期表示ではsoft cooldown対象です (${strengthLabel})`;
+    }
+    if (cooldown.sameDirection) {
+        return `候補表示: 直近 ${cooldown.daysAgo}日前に同方向のrank変更がありますが、優先度と確度により表示しています (${strengthLabel})`;
+    }
+    return `候補表示: 直近 ${cooldown.daysAgo}日前にrank変更がありますが、同方向とは確定できないため注意表示に留めます (${strengthLabel})`;
+}
+
+function formatRankRecommendationRecentChangeCooldownStrength(
+    strength: RankRecommendationRecentChangeCooldownStrength
+): string {
+    switch (strength) {
+        case "strong":
+            return "strong";
+        case "medium":
+            return "medium";
+        case "caution":
+        default:
+            return "caution";
+    }
 }
 
 function getRankRecommendationConfidenceLevel(confidence: number): RankRecommendationDecisionConfidenceLevel {
@@ -11978,7 +12302,8 @@ function formatRankRecommendationStatusBadge(
     candidate: RankRecommendationCandidate,
     curvePreviewInfo: RankRecommendationCurvePreviewInfo | null,
     cautionText: string,
-    rankChangeProposal: RankRecommendationRankChangeProposal
+    rankChangeProposal: RankRecommendationRankChangeProposal,
+    displayInfo: RankRecommendationDisplayInfo | null
 ): string {
     if (candidate.status !== "active") {
         return "対象外";
@@ -11992,6 +12317,9 @@ function formatRankRecommendationStatusBadge(
     if (!rankChangeProposal.enabled) {
         return "送信不可";
     }
+    if (displayInfo?.recentChangeCooldown !== null && displayInfo?.recentChangeCooldown !== undefined) {
+        return displayInfo.recentChangeCooldown.suppressByDefault ? "再調整注意" : "注意あり";
+    }
     if (rawStatus === "missing" || rawStatus === "error" || cautionText !== "") {
         return "確認不足";
     }
@@ -12002,7 +12330,8 @@ function formatRankRecommendationStatusBadgeTitle(
     candidate: RankRecommendationCandidate,
     curvePreviewInfo: RankRecommendationCurvePreviewInfo | null,
     cautionText: string,
-    rankChangeProposal: RankRecommendationRankChangeProposal
+    rankChangeProposal: RankRecommendationRankChangeProposal,
+    displayInfo: RankRecommendationDisplayInfo | null
 ): string {
     const rawStatus = getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
         ? undefined
@@ -12011,6 +12340,9 @@ function formatRankRecommendationStatusBadgeTitle(
         `候補状態: ${formatRankRecommendationStatus(candidate.status)}`,
         `raw source: ${formatRankRecommendationRawSourceStatus(rawStatus)}`,
         cautionText === "" ? "注意: なし" : `注意: ${cautionText}`,
+        displayInfo?.recentChangeCooldown === null || displayInfo?.recentChangeCooldown === undefined
+            ? "直近変更: soft cooldown なし"
+            : formatRankRecommendationRecentChangeCooldownDiagnostic(displayInfo.recentChangeCooldown),
         rankChangeProposal.enabled
             ? "rank変更: 送信候補あり"
             : `rank変更: 送信不可 (${formatRankRecommendationRankChangeDisabledReasons(rankChangeProposal.disabledReasons)})`
@@ -15548,7 +15880,8 @@ function renderCompetitorPriceOverviewAtTarget(
         COMPETITOR_PRICE_OVERVIEW_UI_VERSION,
         records.map((record) => record.snapshotKey).join("|"),
         roomTypeFilter ?? "room:any",
-        mealTypeFilter ?? "meal:any"
+        mealTypeFilter ?? "meal:any",
+        competitorPriceSnapshotUiState.status === "saving" ? "revalidating" : "stable"
     ].join("::");
     const existingContainer = findDirectChildByAttribute(sectionContainer, SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE);
     for (const element of Array.from(document.querySelectorAll<HTMLElement>(`[${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_ATTRIBUTE}]`))) {
@@ -15569,12 +15902,13 @@ function renderCompetitorPriceOverviewAtTarget(
         const metaElement = document.createElement("div");
         metaElement.setAttribute(SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE, "");
         metaElement.textContent = [
+            competitorPriceSnapshotUiState.status === "saving" ? "保存済み表示・再取得中" : null,
             `対象宿泊日 ${formatCompactDateForDisplay(latestRecord.stayDate)}`,
             `取得日 ${dailyRecords.length}日`,
             `最終取得 ${formatDateTimeForDisplay(latestRecord.fetchedAt)}`,
             `同日複数取得は最新 snapshot`,
             `条件 ${shortenConditionSignature(latestRecord.conditionSignature)}`
-        ].join(" / ");
+        ].filter((text): text is string => text !== null).join(" / ");
 
         const controlsElement = createCompetitorPriceFilterControls(filters, roomTypeFilter, mealTypeFilter);
         const legendElement = createCompetitorPriceLegend(chartSeries.facilities);

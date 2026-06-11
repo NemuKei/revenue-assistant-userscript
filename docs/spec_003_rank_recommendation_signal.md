@@ -388,18 +388,19 @@ first phase の UI は、最低限次の user decision を持つ。
 
 ### Candidate: Stay Date Weekday Display
 
-- `RAU-UX-135` では、料金調整候補の宿泊日表示へ日本語短縮曜日を追加する候補とする。
-- 表示例は `2026-06-20（土）` とし、top 候補、Analyze 側候補、preview / details の宿泊日表示は可能な範囲で揃える。
+- `RAU-UX-135` では、料金調整候補の宿泊日表示へ日本語短縮曜日を追加した。
+- 表示例は `2026-06-20（土）` とし、top 候補、rank 変更 preview、競合価格 preview の宿泊日表示は可能な範囲で揃える。
 - これは表示契約であり、weekday scoring、candidate scoring、reasonFingerprint、priority、confidence、sort、保存 schema、request 件数、Revenue Assistant write API、rank change payload は変更しない。
 - mobile 390px で横 overflow しないことを後続実装時の verify に含める。
 
 ### Candidate: Recent Rank Change Soft Cooldown
 
-- `RAU-RR-62` では、前回調整から間がない候補を hard hide ではなく soft cooldown として扱う設計を確定する。
-- 初期候補は、判定単位 `stay date + roomType + direction`、期間 3 日基本、0〜1 日 strong cooldown、2〜3 日 medium cooldown、4〜7 日 caution label とする。
-- 表示制御は、label、優先度 down、default collapse、`クールダウン中も表示` toggle を比較する。高 confidence、大幅乖離、前回と逆方向、競合価格急変、pickup / 在庫変化などの重要候補は表示維持できる設計にする。
-- `RAU-RR-62` で仕様確定するまでは未実装候補であり、保存 schema 変更は必要性が明示されるまで行わない。
-- `RAU-RR-63` の実装では、request 件数、Revenue Assistant write API、rank change payload を変更せず、candidate scoring / priority / confidence の本体変更も `RAU-RR-62` の判断なしに行わない。
+- `RAU-RR-62` / `RAU-RR-63` では、前回調整から間がない候補を hard hide ではなく表示 lifecycle 層の soft cooldown として扱う。
+- 判定単位は `stay date + roomGroup + direction` とする。direction は rank order が解決できる場合だけ、前回 rank change の before / after と candidate action から判定する。rank order が unresolved の場合は同方向とは断定せず、注意表示に留める。
+- 期間は 0〜1 日を strong、2〜3 日を medium、4〜7 日を caution とする。strong / medium の同方向候補は初期 `全て` 表示では出しすぎないよう soft cooldown 対象にし、view mode `直近変更` で任意確認できる。
+- 重要候補の例外として、high priority かつ confidence 0.6 以上の候補は soft cooldown 中でも初期表示を維持する。前回と逆方向、方向未確定、4〜7 日の caution は完全非表示にしない。
+- UI では、前回変更補助表示、状態 badge、title diagnostics、list meta の `非表示 直近変更 n件` で理由を説明する。候補の対象日、部屋タイプ、推奨方向、前回変更からの経過日を確認できるようにする。
+- 保存 schema、candidate scoring、priority、confidence、reasonFingerprint、request 件数、Revenue Assistant write API、rank change payload は変更しない。
 
 ### Dismiss / 対応不要
 
