@@ -10518,6 +10518,116 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
   - `spec-checkpoint`: before-implementation
   - `target-spec`: `docs/spec_001_analyze_expansion.md`, `docs/spec_003_rank_recommendation_signal.md`
 
+### RAU-PERF-10 price_trends visible 16 scope を bounded parallel fetch 化する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - price_trends の visible 16 scope の逐次 fetch を、同時実行 2 または 3 の bounded parallel fetch にして、初回 visible fetch 完了までの時間を短縮する。
+  - 中リスク許容時の本命 task とする。ただし、`RAU-PERF-09` の live observation で visible fetch duration、HTTP error、background 進行を確認できる場合は、その結果を concurrency 上限決定の参考にする。
+- スコープ:
+  - 対象は `/api/v1/price_trends` の visible 16 scope fetch と保存処理である。
+  - request 総数、query 契約、`PriceTrendRecord` 保存 schema、cache-first 表示、visible scope 常時 revalidate は維持する。
+  - concurrency 上限は初期値 2 を第一候補にし、`RAU-PERF-09` の実測や手動確認で 403 / 429 / network error がないことを確認できる場合のみ 3 を候補にする。
+  - background 112 scope は従来の 1 秒 interval と停止条件を維持し、この task では background を並列化しない。
+- 非目標:
+  - freshness 未確定のまま network skip を入れない。
+  - shared scheduler の signature / behavior を変更しない。
+  - Revenue Assistant write API、rank change payload、booking_curve request、保存 schema を変更しない。
+  - response body、価格詳細、施設実データ、予約・在庫・顧客情報、Cookie、token を log / docs / storage に残さない。
+- 受け入れ条件:
+  - visible 16 scope の fetch が bounded parallel で進み、同時実行数が選択した上限を超えない。
+  - request 総数が従来の visible 16 scope から増えない。
+  - 403 / 429 / network error は現行 error handling 以上に安全側へ倒し、連続再試行や無制限並列化にならない。
+  - visible fetch 完了後に background 112 scope が従来どおり schedule され、1 秒 interval と route / facility / document hidden / section absence の停止条件を維持する。
+  - `data-ra-fetch-performance-summary` で visible fetch timing、networkFetchCount、errorCount を確認でき、監視対象 write API POST は 0 件である。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers` が通過している。可能なら `npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode price-trends --url https://ra.jalan.net/analyze/YYYY-MM-DD --seconds 60` または README の manual / CDP checklist で確認する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `risk`: medium
+  - `depends-on`: `RAU-PERF-09` recommended, not hard dependency
+
+### RAU-PERF-11 price_trends background render/status split
+
+- 状態:
+  - 未着手。
+- 目的:
+  - price_trends background queue の進捗更新だけで chart 全体を再構築しないようにし、background 112 scope 進行中の描画負荷と UI の引っかかりを減らす。
+- スコープ:
+  - 対象は price_trends overview render、background queue label / status、chart grid の再描画判定である。
+  - records / filter / selected room type / selected meal type が変わる時だけ chart grid を再構築し、background status は別更新または軽量更新に分ける。
+  - 保存済み表示・再取得中、背景取得 progress、停止理由、error 表示は維持する。
+- 非目標:
+  - `/api/v1/price_trends` request 数、request 順序、background 112 scope、1 秒 interval、停止条件を変更しない。
+  - cache freshness policy、network skip、保存 schema、Revenue Assistant write API は変更しない。
+  - chart の系列、tooltip、filter semantics を変更しない。
+- 受け入れ条件:
+  - background queue の `processed / total` や current scope だけが変わる場合、chart grid の再構築を避けられる。
+  - records や filter が変わる場合は、従来どおり chart と tooltip が更新される。
+  - background status は利用者に読める形で更新され、complete / stopped / error の表示が欠落しない。
+  - `data-ra-fetch-performance-summary` または manual observation で background 進行中の status 更新を確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers` が通過している。可能なら price-trends smoke または manual marker check を実施する。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: before-implementation
+  - `target-spec`: `docs/spec_001_analyze_expansion.md`
+  - `risk`: medium
+  - `depends-on`: `RAU-PERF-09` recommended, `RAU-PERF-10` independent
+
+### RAU-PERF-12 price_trends requestContext と cache read を並行開始する
+
+- 状態:
+  - 未着手。
+- 目的:
+  - price_trends tab 表示時に、cache-first 表示の IndexedDB read と `loadPriceTrendRequestContext()` を並行開始し、visible fetch 開始までの待ち時間を短縮する。
+- スコープ:
+  - 対象は price_trends tab の初期取得 flow、保存済み record の先行表示、`loadPriceTrendRequestContext()` の開始タイミングである。
+  - cache read 結果がある場合は従来どおり `保存済み表示・再取得中` として先に描画する。
+  - requestContext 取得は cache read と独立して進め、visible 16 scope fetch の直前で await する。
+- 非目標:
+  - visible 16 scope の network fetch を freshness 未確定のまま skip しない。
+  - request 数、query 契約、保存 schema、background 112 scope、Revenue Assistant write API を変更しない。
+  - requestContext の永続 cache 化や session cache 化はこの task では扱わない。
+- 受け入れ条件:
+  - cache-first 表示は維持され、保存済み record がある場合は visible fetch 前に描画できる。
+  - visible 16 scope は従来どおり常に revalidate される。
+  - requestContext 取得失敗時は現行 error handling と同等以上に安全側へ倒れ、保存済み表示を最新扱いにしない。
+  - `data-ra-fetch-performance-summary` で visible fetch start timing の変化を確認できる。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers` が通過している。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: during-impl
+  - `target-spec`: none
+  - `risk`: low-to-medium
+  - `depends-on`: `RAU-PERF-03`, `RAU-PERF-09` recommended
+
+### RAU-PERF-13 rank recommendation React render responsiveness audit
+
+- 状態:
+  - 未着手。
+- 目的:
+  - rank recommendation React island の `flushSync`、row render、preview rows、memo 化余地を測り、操作時の引っかかりを改善する実装 task が必要か判断する。
+- スコープ:
+  - 初回は audit / measurement task とし、runtime UI 変更は別 task 化する。
+  - 対象は top 料金調整候補 list の React island mount / update、row render、preview row open / close、pending 表示、`React.memo` や通常 render 化の候補である。
+  - Build Web Apps / React best practices の観点で、実際の row 数、preview 開閉、pending 更新時に main thread を塞いでいるか確認する。
+- 非目標:
+  - この task だけで `flushSync` 削除、memo 化、component 分割、UI 表示変更を実装しない。
+  - candidate scoring、priority、confidence、reasonFingerprint、Revenue Assistant API request、write API、rank change payload を変更しない。
+  - React / React DOM の依存追加や更新は行わない。
+- 受け入れ条件:
+  - `flushSync` を維持する理由、通常 render 化できる条件、memo 化が有効そうな component、preview 分離が必要かを記録している。
+  - 実装が必要な場合は、`React.memo`、通常 render 化、preview 部分分離、または no-op のどれを後続 task にするかを分けている。
+  - docs-only で終える場合は `git diff --check` が通過している。実装修正を伴う後続 task では `npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers` を実施する。
+- metadata:
+  - `spec-impact`: no
+  - `spec-checkpoint`: none
+  - `target-spec`: none
+  - `risk`: low
+  - `depends-on`: none
+
 ## Remaining Task Triage
 
 Now:
@@ -10527,16 +10637,20 @@ Now:
 Next:
 
 - RAU-PERF-09 fetch performance summary を live 観測する
+- RAU-PERF-10 price_trends visible 16 scope を bounded parallel fetch 化する
 
 After Next:
 
-- なし。
+- RAU-PERF-11 price_trends background render/status split
+- RAU-PERF-12 price_trends requestContext と cache read を並行開始する
 
 Later:
 
-- なし。
+- RAU-PERF-13 rank recommendation React render responsiveness audit
 
 統合判断:
+
+- 2026-06-11 に、中リスクまで許容するデータ取得・描画高速化候補を `RAU-PERF-10` から `RAU-PERF-13` として task 化した。`RAU-PERF-10` は price_trends visible 16 scope の bounded parallel fetch であり、request 総数、query 契約、保存 schema、cache-first 表示、visible revalidate を維持したまま初回 visible fetch 完了を短縮する中リスクの本命 task とする。`RAU-PERF-11` は background queue の進捗更新だけで chart 全体を再構築しない render/status split、`RAU-PERF-12` は cache read と `loadPriceTrendRequestContext()` の並行開始、`RAU-PERF-13` は React island の `flushSync` と row / preview render の audit task である。`RAU-PERF-05B` は booking_curve exact pre-scan の bulk read 化として Now 維持、`RAU-PERF-09` は live observation として Next 維持、`RAU-PERF-10` は `RAU-PERF-09` の実測結果を concurrency 上限の参考にするが hard dependency にはしない。`RAU-PERF-04` は完了済みのため未着手へ戻さない。今回の task 化では runtime UI、`src/`、`dist/`、shared scheduler、freshness 未確定 network skip、Revenue Assistant write API、rank change payload、request 契約、保存 schema は変更していない。`docs/context/INTENT.md` は request 数、タブ切替時の安定性、シンプルな UI / UX、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。
 
 - 2026-06-11 に、`RAU-CP-60` と `RAU-PERF-01` を完了した。`RAU-CP-60` では sales setting group room prefetch request 配列の中間配列生成を減らし、`RAU-PERF-01` では `data-ra-fetch-performance-summary` marker と `revenue-assistant:debug:fetch-performance` debug flag を追加した。marker は price_trends の visible / background timing、scope count、cache read count、network fetch count、error count と、booking_curve warm cache の queue built timing、candidate currentRaw fetched / skipped / errored、preScanHitCount を count / timestamp だけで出す。response body、価格詳細、施設実データ、予約・在庫・顧客情報は保存しない。fetch 順序、scheduler、cache freshness、network skip、`PriceTrendRecord` 保存 schema、`/api/v1/price_trends` query、booking_curve request scope、Revenue Assistant write API、rank change payload、自動反映は変更していない。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、該当 command は昇格して再実行した。次の Now は `RAU-PERF-02` と `RAU-PERF-03` である。
 
