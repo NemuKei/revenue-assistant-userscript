@@ -333,7 +333,7 @@ const COMPETITOR_PRICE_COMPETITOR_SERIES_COLORS = [
     "#4f7f9f"
 ];
 const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-tooltip-facility-v9";
-const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-next-action-v1";
+const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-status-split-v1";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
 const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
@@ -6466,6 +6466,10 @@ async function runPriceTrendFetch(
 ): Promise<boolean> {
     resetPriceTrendBackgroundQueue("初回取得を開始");
     const initialScopes = buildInitialPriceTrendRequestScopes();
+    const requestContextPromise = loadPriceTrendRequestContext();
+    void requestContextPromise.catch(() => {
+        // The visible fetch awaits the same promise below; this prevents an early unhandled rejection.
+    });
     resetFetchPerformancePriceTrendMetrics({
         tabRequestedAt: Date.now(),
         visibleScopeCount: initialScopes.length
@@ -6486,7 +6490,7 @@ async function runPriceTrendFetch(
         updateFetchPerformancePriceTrendMetrics({
             visibleFetchStartedAt: Date.now()
         }, "priceTrend.visibleFetchStarted");
-        const requestContext = await loadPriceTrendRequestContext();
+        const requestContext = await requestContextPromise;
         priceTrendRequestContext = requestContext;
         const result = await fetchAndPersistPriceTrendRecords({
             facilityId: facilityCacheKey,
@@ -15691,7 +15695,6 @@ function renderPriceTrendOverviewAtTarget(
         state.status,
         state.reason ?? "reason:none",
         state.errorMessage ?? "error:none",
-        formatPriceTrendBackgroundQueueSignature(),
         state.records.map((record) => record.recordKey).join("|"),
         roomTypeFilter ?? "room:any",
         mealTypeFilter ?? "meal:any"
@@ -15746,8 +15749,33 @@ function renderPriceTrendOverviewAtTarget(
         }
     }
 
+    updatePriceTrendOverviewStatus(containerElement, state, filteredRecords, roomTypeFilter, mealTypeFilter);
+
     if (containerElement.parentElement !== sectionContainer || sectionContainer.lastElementChild !== containerElement) {
         sectionContainer.append(containerElement);
+    }
+}
+
+function updatePriceTrendOverviewStatus(
+    containerElement: HTMLElement,
+    state: PriceTrendUiState,
+    records: PriceTrendRecord[],
+    roomTypeFilter: string | null,
+    mealTypeFilter: string | null
+): void {
+    const metaElement = containerElement.querySelector<HTMLElement>(`[${SALES_SETTING_COMPETITOR_PRICE_OVERVIEW_META_ATTRIBUTE}]`);
+    if (metaElement !== null) {
+        metaElement.textContent = formatPriceTrendOverviewMeta(state, records, roomTypeFilter, mealTypeFilter);
+    }
+
+    const nextActionElement = containerElement.querySelector<HTMLElement>(`[${SALES_SETTING_COMPETITOR_PRICE_NEXT_ACTION_ATTRIBUTE}]`);
+    if (nextActionElement !== null) {
+        const nextActionText = formatPriceTrendNextActionText(state);
+        if (nextActionText === null) {
+            nextActionElement.remove();
+        } else {
+            nextActionElement.textContent = nextActionText;
+        }
     }
 }
 
@@ -15914,19 +15942,6 @@ function formatPriceTrendDisplayStateLabel(state: PriceTrendUiState, records: Pr
         return "保存済み";
     }
     return null;
-}
-
-function formatPriceTrendBackgroundQueueSignature(): string {
-    return [
-        priceTrendBackgroundQueueState.status,
-        priceTrendBackgroundQueueState.total,
-        priceTrendBackgroundQueueState.processed,
-        priceTrendBackgroundQueueState.stored,
-        priceTrendBackgroundQueueState.skipped,
-        priceTrendBackgroundQueueState.errors,
-        priceTrendBackgroundQueueState.currentScope === null ? "current:none" : formatPriceTrendRequestScopeLabel(priceTrendBackgroundQueueState.currentScope),
-        priceTrendBackgroundQueueState.pauseReason ?? "reason:none"
-    ].join("|");
 }
 
 function formatPriceTrendBackgroundQueueLabel(): string | null {

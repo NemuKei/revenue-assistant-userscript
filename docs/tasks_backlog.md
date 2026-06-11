@@ -10556,7 +10556,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-PERF-11 price_trends background render/status split
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - price_trends overview の構造 signature から background queue 進捗だけを外し、既存 graph / legend / filter / tooltip を保ったまま meta/status text だけを軽量更新するようにした。records、filter、selected room type、selected meal type、empty/error state が変わる場合は従来どおり graph と tooltip を更新する。
 - 目的:
   - price_trends background queue の進捗更新だけで chart 全体を再構築しないようにし、background 112 scope 進行中の描画負荷と UI の引っかかりを減らす。
 - スコープ:
@@ -10583,7 +10584,8 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 ### RAU-PERF-12 price_trends requestContext と cache read を並行開始する
 
 - 状態:
-  - 未着手。
+  - 完了（2026-06-11）。
+  - price_trends tab 表示時に `loadPriceTrendRequestContext()` を先に promise 化し、保存済み `price-trend-records` の cache read と並行して進めるようにした。visible 16 scope fetch の直前で同じ promise を await し、requestContext 取得失敗は従来の visible fetch error handling へ流す。
 - 目的:
   - price_trends tab 表示時に、cache-first 表示の IndexedDB read と `loadPriceTrendRequestContext()` を並行開始し、visible fetch 開始までの待ち時間を短縮する。
 - スコープ:
@@ -10640,12 +10642,11 @@ Now:
 
 Next:
 
-- RAU-PERF-11 price_trends background render/status split
-- RAU-PERF-12 price_trends requestContext と cache read を並行開始する
+- RAU-PERF-13 rank recommendation React render responsiveness audit
 
 After Next:
 
-- RAU-PERF-13 rank recommendation React render responsiveness audit
+- なし
 
 Later:
 
@@ -10653,6 +10654,7 @@ Later:
 
 統合判断:
 
+- 2026-06-11 に、`RAU-PERF-11` と `RAU-PERF-12` を同じ price_trends 初期表示 / background 描画軽量化 Goal Bundle として完了した。`RAU-PERF-11` では background queue の `processed / total`、current scope、停止理由だけが変わる場合に graph、legend、filter、tooltip を再構築せず、meta/status text だけを更新する。`RAU-PERF-12` では保存済み record の cache read と `loadPriceTrendRequestContext()` を並行開始し、visible 16 scope fetch 直前で requestContext を await する。visible 16 scope の常時 revalidate、request 総数、query 契約、保存 schema、background 112 scope、1 秒 interval、停止条件、Revenue Assistant write API、rank change payload は変更していない。`docs/spec_001_analyze_expansion.md` には background status 軽量更新と requestContext / cache read 並行開始の契約を反映した。`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:fixture-markers`、`npm run check:distribution-smoke-fixture`、`git diff --check` は通過した。Vite / esbuild 起動系は sandbox 内で `spawn EPERM` になったため、該当 command は昇格して再実行した。`RAU-PERF-09` は CDP 9222 未起動と Chrome 拡張 UI block により引き続き Now、`RAU-PERF-13` は React island audit として Next とする。
 - 2026-06-11 に、`RAU-PERF-09` の live observation を再試行したが、CDP 9222 未起動と Chrome 拡張 UI による automation block のため完了条件には届かなかった。Chrome 拡張 backend と Revenue Assistant Analyze tab の存在は確認できたが、`data-ra-fetch-performance-summary` marker と RAU root は DOM 上 0 件だった。runtime code、`src/`、`dist/`、Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 契約、保存 schema は変更していない。`RAU-PERF-09` は Now に残し、`RAU-PERF-11` と `RAU-PERF-12` は引き続き Next、`RAU-PERF-13` は After Next とする。
 - 2026-06-11 に、`RAU-PERF-05B` と `RAU-PERF-10` を完了した。`RAU-PERF-05B` では booking_curve exact currentAsOf pre-scan を、複数 exact raw source key の bulk read / single readonly transaction へ寄せた。`RAU-PERF-10` では price_trends visible 16 scope を request 総数、query 契約、保存 schema、cache-first 表示、visible revalidate を維持したまま最大 2 件の bounded parallel fetch にした。`RAU-PERF-09` は `npm run chrome:pages` が `connect ECONNREFUSED 127.0.0.1:9222` で失敗したため live observation 未完了として Now に残す。`RAU-PERF-11` と `RAU-PERF-12` は price_trends の描画 / 初期取得 flow の別責務なので Next、`RAU-PERF-13` は React island audit で別責務なので After Next とする。
 - 2026-06-11 に、中リスクまで許容するデータ取得・描画高速化候補を `RAU-PERF-10` から `RAU-PERF-13` として task 化した。`RAU-PERF-10` は price_trends visible 16 scope の bounded parallel fetch であり、request 総数、query 契約、保存 schema、cache-first 表示、visible revalidate を維持したまま初回 visible fetch 完了を短縮する中リスクの本命 task とする。`RAU-PERF-11` は background queue の進捗更新だけで chart 全体を再構築しない render/status split、`RAU-PERF-12` は cache read と `loadPriceTrendRequestContext()` の並行開始、`RAU-PERF-13` は React island の `flushSync` と row / preview render の audit task である。`RAU-PERF-05B` は booking_curve exact pre-scan の bulk read 化として Now 維持、`RAU-PERF-09` は live observation として Next 維持、`RAU-PERF-10` は `RAU-PERF-09` の実測結果を concurrency 上限の参考にするが hard dependency にはしない。`RAU-PERF-04` は完了済みのため未着手へ戻さない。今回の task 化では runtime UI、`src/`、`dist/`、shared scheduler、freshness 未確定 network skip、Revenue Assistant write API、rank change payload、request 契約、保存 schema は変更していない。`docs/context/INTENT.md` は request 数、タブ切替時の安定性、シンプルな UI / UX、安全な作業キューの判断に関わるため関連ありとして確認したが、既存原則で説明できるため更新していない。
