@@ -1130,6 +1130,7 @@ const activeRankRecommendationRankChangeByScopeKey = new Map<string, ActiveRankR
 const rankRecommendationRankChangeResultByKey = new Map<string, RankRecommendationRankChangeResult>();
 let salesSettingBookingCurveSameWeekdayVisible = false;
 let salesSettingBookingCurveSecondarySegment: SalesSettingBookingCurveSecondarySegment = "individual";
+let pendingSalesSettingBookingCurveScrollKey: string | null = null;
 let latestSalesSettingPreparedSnapshot: {
     analysisDate: string;
     batchDateKey: string;
@@ -1460,6 +1461,7 @@ function installInteractionHooks(): void {
                 if (toggleKey !== null && toggleKey.length > 0) {
                     const nextOpen = bookingCurveToggleButton.getAttribute(SALES_SETTING_BOOKING_CURVE_TOGGLE_ACTIVE_ATTRIBUTE) !== "true";
                     setSalesSettingBookingCurveOpen(toggleKey, nextOpen);
+                    pendingSalesSettingBookingCurveScrollKey = nextOpen ? toggleKey : null;
                     queueCalendarSync({ reason: "booking-curve-toggle" });
                 }
                 return;
@@ -14395,6 +14397,23 @@ function setSalesSettingBookingCurveOpen(toggleKey: string, open: boolean): void
     salesSettingBookingCurveOpenState.set(toggleKey, open);
 }
 
+function consumePendingSalesSettingBookingCurveScroll(card: SalesSettingCard, sectionElement: HTMLElement): void {
+    const toggleKey = getSalesSettingBookingCurveToggleKey(card.roomGroupName);
+    if (pendingSalesSettingBookingCurveScrollKey !== toggleKey) {
+        return;
+    }
+
+    pendingSalesSettingBookingCurveScrollKey = null;
+    window.requestAnimationFrame(() => {
+        if (sectionElement.isConnected && isSalesSettingBookingCurveOpen(card.roomGroupName)) {
+            sectionElement.scrollIntoView({
+                behavior: "smooth",
+                block: "center"
+            });
+        }
+    });
+}
+
 function parseSalesSettingBookingCurveReferenceKind(value: string | null): SalesSettingBookingCurveReferenceKind | null {
     return value === "recent" || value === "seasonal" ? value : null;
 }
@@ -15573,6 +15592,7 @@ function renderSalesSettingBookingCurveCard(
             card.cardElement.append(sectionElement);
         }
     }
+    consumePendingSalesSettingBookingCurveScroll(card, sectionElement);
 }
 
 function clearSalesSettingGroupRoom(card: SalesSettingCard): void {
