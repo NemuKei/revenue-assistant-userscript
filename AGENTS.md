@@ -54,6 +54,19 @@
 - Codex は Goal Bundle 内の小 task ごとに利用者確認で止まらない。止まるのは、外部契約、公開挙動、削除、migration、依存追加または更新、認証・secret・権限、実データ操作、release / publish、または利用者判断が必要な仕様判断が出た場合だけにする。
 - 影響が局所的で戻せる判断は、前提を明示して進め、最終報告で確認結果を書く。Goal Bundle 外の論点は別管理にし、現在の Goal Bundle 完了に必要なものだけ扱う。
 
+## Codex Orchestration Defaults
+
+- 既定の Codex workflow は linear on `main` とし、並列 worktree orchestration を既定にしない。利用者が `並列で進めて`、`これも並列で進めて`、`別で進めて`、`裏で進めて`、または同等の意図を明示した場合だけ並列 worktree orchestration として扱う。
+- Lite orchestration は、1 repo / 1 parent thread で複数 task または Goal Bundle を順に調整する通常形とし、原則として `main` 上で進める。
+- Parallel worktree orchestration では、parent thread が orchestration owner のまま、child Codex thread が専用 worktree / task branch で bounded scope を担当する。
+- parent thread は、task 分割、依存順、child thread / worktree dispatch、branch 名、owned files、out-of-scope、推奨 `thinking`、done definition、local verify、shared / high-conflict file 調整、integration、最終 verify、docs / status / backlog / DECISIONS / spec sync、repo rules に従った `main` への Git sync を担う。
+- child thread は、専用 worktree / task branch で assigned scope に留まり、local verify evidence と残リスクを parent へ返す。parent または repo policy が明示しない限り、child は `main` へ push / merge しない。
+- task ID がある場合の branch 名は `codex/<task-id>-<short-slug>` を優先し、task ID がない場合は `codex/<short-goal-slug>` とする。
+- `STATUS.md`、`docs/tasks_backlog.md`、`docs/context/DECISIONS.md`、release notes、central specs、lockfiles、migrations、generated manifests などの shared / high-conflict file は原則 parent-owned とする。child が編集するのは、parent が owned scope として明示した場合だけにする。
+- parent が child 差分を統合する前に、child verify が通過済み、または失敗内容が明確に報告済みであることを確認する。secret、credential、PII、raw trace、generated cache、無関係 artifact の混入がないこと、diff / conflict risk / docs consistency / merge order を parent が確認してから統合する。
+- 推奨 `thinking` は、status / verify / commit check は low、通常の docs / task 実行は medium、specification、安全性、source boundary、public claim、legal / policy adjacent、cross-repo responsibility、shared-file ownership、merge / release 判断は high 以上を目安にする。混在する bundle は reasoning requirement ごとに分ける。
+- long-running parent handoff を作る場合は、current goal、repos / branches / thread IDs、completed bundles、next bundle、推奨 `thinking`、pending verification、sync / capture expectations、source-of-truth docs を残す。
+
 ## Source Priority
 
 1. セキュリティ、法令、公開制約
