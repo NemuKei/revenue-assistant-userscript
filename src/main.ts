@@ -48,7 +48,7 @@ import {
     readReferenceCurveRecord,
     scheduleReferenceCurveRequest
 } from "./referenceCurveStore";
-import { createIntervalRequestScheduler } from "./requestScheduler";
+import { createIntervalRequestScheduler, type IntervalRequestPriority } from "./requestScheduler";
 import {
     buildBookingCurveRawSourceCacheKey,
     buildBookingCurveRawSourceRecord,
@@ -769,6 +769,18 @@ interface SalesSettingBookingCurveReferenceData {
     seasonalGroup: ReferenceCurveResult | null;
 }
 
+interface BookingCurveRequestOptions {
+    priority?: IntervalRequestPriority;
+}
+
+interface SalesSettingBookingCurveReferenceLoadOptions extends BookingCurveRequestOptions {
+    onStage?: (referenceData: SalesSettingBookingCurveReferenceData) => void;
+}
+
+function buildIntervalRequestPriorityOptions(options: BookingCurveRequestOptions): { priority: IntervalRequestPriority } | undefined {
+    return options.priority === undefined ? undefined : { priority: options.priority };
+}
+
 interface SalesSettingBookingCurvePanelData {
     current: SalesSettingBookingCurveSeries;
     recent: SalesSettingBookingCurveSeries | null;
@@ -856,6 +868,16 @@ interface FetchPerformanceBookingCurveMetrics {
     candidateCurrentRawSkipped: number;
     candidateCurrentRawErrored: number;
     preScanHitCount: number;
+    referenceInteractiveQueuedAt: number | null;
+    referenceInteractiveRequestStartedAt: number | null;
+    referenceInteractiveRequestFinishedAt: number | null;
+    referenceInteractiveFirstLinePaintedAt: number | null;
+    referenceInteractiveAllLinesPaintedAt: number | null;
+    referenceInteractiveQueuedCount: number;
+    referenceInteractiveFinishedCount: number;
+    referenceInteractiveWaitMs: number | null;
+    referenceInteractiveMaxConcurrentRequests: number;
+    referenceInteractiveMinStartIntervalMs: number | null;
 }
 
 interface FetchPerformanceCompetitorPriceMetrics {
@@ -1195,6 +1217,8 @@ let calendarSyncDebugMutationCallbackId = 0;
 const calendarSyncDebugMutationSummaries: CalendarSyncDebugMutationSummary[] = [];
 let fetchPerformanceSummaryRunId = 0;
 let fetchPerformanceMetrics: FetchPerformanceMetrics = createInitialFetchPerformanceMetrics();
+let fetchPerformanceBookingCurveReferenceActiveRequestCount = 0;
+let fetchPerformanceBookingCurveReferenceLastStartedAt: number | null = null;
 let syncVersion = 0;
 let consistencyCheckTimeoutId: number | null = null;
 let consistencyCheckLastTriggeredAt = 0;
@@ -3460,7 +3484,17 @@ function createInitialFetchPerformanceMetrics(): FetchPerformanceMetrics {
             candidateCurrentRawFetched: 0,
             candidateCurrentRawSkipped: 0,
             candidateCurrentRawErrored: 0,
-            preScanHitCount: 0
+            preScanHitCount: 0,
+            referenceInteractiveQueuedAt: null,
+            referenceInteractiveRequestStartedAt: null,
+            referenceInteractiveRequestFinishedAt: null,
+            referenceInteractiveFirstLinePaintedAt: null,
+            referenceInteractiveAllLinesPaintedAt: null,
+            referenceInteractiveQueuedCount: 0,
+            referenceInteractiveFinishedCount: 0,
+            referenceInteractiveWaitMs: null,
+            referenceInteractiveMaxConcurrentRequests: 0,
+            referenceInteractiveMinStartIntervalMs: null
         },
         competitorPrice: {
             tabRequestedAt: null,
@@ -3506,6 +3540,8 @@ function updateFetchPerformancePriceTrendMetrics(updates: Partial<FetchPerforman
 }
 
 function resetFetchPerformanceBookingCurveMetrics(reason: string): void {
+    fetchPerformanceBookingCurveReferenceActiveRequestCount = 0;
+    fetchPerformanceBookingCurveReferenceLastStartedAt = null;
     fetchPerformanceMetrics = {
         ...fetchPerformanceMetrics,
         bookingCurve: createInitialFetchPerformanceMetrics().bookingCurve
@@ -3553,6 +3589,62 @@ function recordFetchPerformanceBookingCurvePriorityResult(result: "fetched" | "s
         candidateCurrentRawSkipped: metrics.candidateCurrentRawSkipped + (result === "skipped" ? 1 : 0),
         candidateCurrentRawErrored: metrics.candidateCurrentRawErrored + (result === "error" ? 1 : 0)
     }, "bookingCurve.candidateCurrentRawResult");
+}
+
+function recordFetchPerformanceReferenceInteractiveQueued(): void {
+    const metrics = fetchPerformanceMetrics.bookingCurve;
+    updateFetchPerformanceBookingCurveMetrics({
+        referenceInteractiveQueuedAt: metrics.referenceInteractiveQueuedAt ?? Date.now(),
+        referenceInteractiveQueuedCount: metrics.referenceInteractiveQueuedCount + 1
+    }, "bookingCurve.referenceInteractiveQueued");
+}
+
+function recordFetchPerformanceReferenceInteractiveRequestStarted(): void {
+    const now = Date.now();
+    const metrics = fetchPerformanceMetrics.bookingCurve;
+    const minStartIntervalMs = fetchPerformanceBookingCurveReferenceLastStartedAt === null
+        ? metrics.referenceInteractiveMinStartIntervalMs
+        : Math.min(
+            metrics.referenceInteractiveMinStartIntervalMs ?? Number.POSITIVE_INFINITY,
+            now - fetchPerformanceBookingCurveReferenceLastStartedAt
+        );
+    fetchPerformanceBookingCurveReferenceLastStartedAt = now;
+    fetchPerformanceBookingCurveReferenceActiveRequestCount += 1;
+    updateFetchPerformanceBookingCurveMetrics({
+        referenceInteractiveRequestStartedAt: metrics.referenceInteractiveRequestStartedAt ?? now,
+        referenceInteractiveMaxConcurrentRequests: Math.max(
+            metrics.referenceInteractiveMaxConcurrentRequests,
+            fetchPerformanceBookingCurveReferenceActiveRequestCount
+        ),
+        referenceInteractiveMinStartIntervalMs: minStartIntervalMs === Number.POSITIVE_INFINITY ? null : minStartIntervalMs
+    }, "bookingCurve.referenceInteractiveRequestStarted");
+}
+
+function recordFetchPerformanceReferenceInteractiveRequestFinished(): void {
+    const metrics = fetchPerformanceMetrics.bookingCurve;
+    fetchPerformanceBookingCurveReferenceActiveRequestCount = Math.max(0, fetchPerformanceBookingCurveReferenceActiveRequestCount - 1);
+    updateFetchPerformanceBookingCurveMetrics({
+        referenceInteractiveRequestFinishedAt: Date.now(),
+        referenceInteractiveFinishedCount: metrics.referenceInteractiveFinishedCount + 1
+    }, "bookingCurve.referenceInteractiveRequestFinished");
+}
+
+function recordFetchPerformanceReferenceInteractiveFirstLinePainted(): void {
+    const metrics = fetchPerformanceMetrics.bookingCurve;
+    const paintedAt = metrics.referenceInteractiveFirstLinePaintedAt ?? Date.now();
+    updateFetchPerformanceBookingCurveMetrics({
+        referenceInteractiveFirstLinePaintedAt: paintedAt,
+        referenceInteractiveWaitMs: metrics.referenceInteractiveQueuedAt === null
+            ? metrics.referenceInteractiveWaitMs
+            : paintedAt - metrics.referenceInteractiveQueuedAt
+    }, "bookingCurve.referenceInteractiveFirstLinePainted");
+}
+
+function recordFetchPerformanceReferenceInteractiveAllLinesPainted(): void {
+    const metrics = fetchPerformanceMetrics.bookingCurve;
+    updateFetchPerformanceBookingCurveMetrics({
+        referenceInteractiveAllLinesPaintedAt: metrics.referenceInteractiveAllLinesPaintedAt ?? Date.now()
+    }, "bookingCurve.referenceInteractiveAllLinesPainted");
 }
 
 function publishFetchPerformanceSummary(reason: string): void {
@@ -3788,16 +3880,16 @@ function getGroupRoomScopeKey(rmRoomGroupId?: string): string {
     return rmRoomGroupId === undefined ? "hotel" : `room-group:${rmRoomGroupId}`;
 }
 
-function getBookingCurve(stayDate: string, batchDateKey: string, rmRoomGroupId?: string): Promise<BookingCurveResponse> {
+function getBookingCurve(stayDate: string, batchDateKey: string, rmRoomGroupId?: string, options: BookingCurveRequestOptions = {}): Promise<BookingCurveResponse> {
     return resolveCurrentFacilityCacheKey().then((facilityCacheKey) => {
         const scopeKey = getGroupRoomScopeKey(rmRoomGroupId);
         const cacheKey = `${facilityCacheKey}:${batchDateKey}:${scopeKey}:${stayDate}`;
         const cached = bookingCurveCache.get(cacheKey);
-        if (cached !== undefined) {
+        if (cached !== undefined && options.priority !== "interactive") {
             return cached;
         }
 
-        const request = readOrLoadBookingCurveRawSource(facilityCacheKey, stayDate, batchDateKey, rmRoomGroupId)
+        const request = readOrLoadBookingCurveRawSource(facilityCacheKey, stayDate, batchDateKey, rmRoomGroupId, options)
             .catch((error: unknown) => {
                 bookingCurveCache.delete(cacheKey);
                 throw error;
@@ -3812,13 +3904,15 @@ async function readOrLoadBookingCurveRawSource(
     facilityCacheKey: string,
     stayDate: string,
     batchDateKey: string,
-    rmRoomGroupId?: string
+    rmRoomGroupId?: string,
+    options: BookingCurveRequestOptions = {}
 ): Promise<BookingCurveResponse> {
     const result = await readOrLoadBookingCurveRawSourceWithStatus(
         facilityCacheKey,
         stayDate,
         batchDateKey,
-        rmRoomGroupId
+        rmRoomGroupId,
+        options
     );
     return result.response;
 }
@@ -3827,7 +3921,8 @@ async function readOrLoadBookingCurveRawSourceWithStatus(
     facilityCacheKey: string,
     stayDate: string,
     batchDateKey: string,
-    rmRoomGroupId?: string
+    rmRoomGroupId?: string,
+    options: BookingCurveRequestOptions = {}
 ): Promise<{ response: BookingCurveResponse; source: "stored" | "fetched" }> {
     const scope: CurveScope = rmRoomGroupId === undefined ? "hotel" : "roomGroup";
     const query = buildBookingCurveQuerySignature(stayDate, rmRoomGroupId);
@@ -3858,7 +3953,7 @@ async function readOrLoadBookingCurveRawSourceWithStatus(
         };
     }
 
-    const response = await loadBookingCurve(stayDate, rmRoomGroupId);
+    const response = await loadBookingCurve(stayDate, rmRoomGroupId, options);
     await writeBookingCurveRawSourceRecord(buildBookingCurveRawSourceRecord({
         facilityId: facilityCacheKey,
         stayDate,
@@ -5524,7 +5619,7 @@ function buildBookingCurveQuerySignature(stayDate: string, rmRoomGroupId?: strin
     ].join("&");
 }
 
-async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promise<BookingCurveResponse> {
+async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string, options: BookingCurveRequestOptions = {}): Promise<BookingCurveResponse> {
     const url = new URL(BOOKING_CURVE_ENDPOINT, window.location.origin);
     url.searchParams.set("date", stayDate);
 
@@ -5535,20 +5630,30 @@ async function loadBookingCurve(stayDate: string, rmRoomGroupId?: string): Promi
     return bookingCurveRequestScheduler.schedule(
         url.search,
         async () => {
-            const response = await fetch(url.toString(), {
-                credentials: "include",
-                headers: {
-                    "X-RAU-Request": "booking-curve",
-                    "X-Requested-With": "XMLHttpRequest"
-                }
-            });
-
-            if (!response.ok) {
-                throw new RevenueAssistantRequestError(BOOKING_CURVE_ENDPOINT, response.status);
+            if (options.priority === "interactive") {
+                recordFetchPerformanceReferenceInteractiveRequestStarted();
             }
+            try {
+                const response = await fetch(url.toString(), {
+                    credentials: "include",
+                    headers: {
+                        "X-RAU-Request": "booking-curve",
+                        "X-Requested-With": "XMLHttpRequest"
+                    }
+                });
 
-            return compactBookingCurveResponse((await response.json()) as BookingCurveResponse);
-        }
+                if (!response.ok) {
+                    throw new RevenueAssistantRequestError(BOOKING_CURVE_ENDPOINT, response.status);
+                }
+
+                return compactBookingCurveResponse((await response.json()) as BookingCurveResponse);
+            } finally {
+                if (options.priority === "interactive") {
+                    recordFetchPerformanceReferenceInteractiveRequestFinished();
+                }
+            }
+        },
+        buildIntervalRequestPriorityOptions(options)
     );
 }
 
@@ -12621,7 +12726,55 @@ function hydrateOpenSalesSettingRoomReferenceCurves(
             continue;
         }
 
-        void loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey, metric.rmRoomGroupId)
+        const renderReferenceCurveData = (referenceCurveData: SalesSettingBookingCurveReferenceData): void => {
+            if (
+                isSyncContextStale(syncContext)
+                || !isSalesSettingBookingCurveOpen(metric.roomGroupName)
+            ) {
+                return;
+            }
+
+            const currentCardsByRoomGroupName = new Map<string, SalesSettingCard>();
+            for (const card of collectSalesSettingCards()) {
+                if (!currentCardsByRoomGroupName.has(card.roomGroupName)) {
+                    currentCardsByRoomGroupName.set(card.roomGroupName, card);
+                }
+            }
+            const currentCard = currentCardsByRoomGroupName.get(metric.roomGroupName) ?? metric.card;
+            const currentMetrics = metric.metrics;
+            if (
+                !currentCard.cardElement.isConnected
+                || currentMetrics === null
+                || currentMetrics.bookingCurveData === null
+            ) {
+                return;
+            }
+
+            currentMetrics.referenceCurveData = referenceCurveData;
+            renderSalesSettingBookingCurveCard(
+                currentCard,
+                currentMetrics.allMetrics.currentValue,
+                resolveSalesSettingBookingCurveSecondaryCurrentRoomCount(
+                    currentMetrics.privateMetrics.currentValue,
+                    currentMetrics.groupMetrics.currentValue
+                ),
+                buildSalesSettingBookingCurveRenderData(
+                    currentMetrics.bookingCurveData,
+                    referenceCurveData,
+                    currentMetrics.sameWeekdayCurveData,
+                    analysisDate,
+                    batchDateKey,
+                    rankHistoryByRoomGroupName.get(metric.roomGroupName) ?? []
+                )
+            );
+            recordFetchPerformanceReferenceInteractiveFirstLinePainted();
+        };
+
+        recordFetchPerformanceReferenceInteractiveQueued();
+        void loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey, metric.rmRoomGroupId, {
+            priority: "interactive",
+            onStage: renderReferenceCurveData
+        })
             .then((referenceCurveData) => {
                 if (
                     referenceCurveData === null
@@ -12631,39 +12784,8 @@ function hydrateOpenSalesSettingRoomReferenceCurves(
                     return;
                 }
 
-                const currentCardsByRoomGroupName = new Map<string, SalesSettingCard>();
-                for (const card of collectSalesSettingCards()) {
-                    if (!currentCardsByRoomGroupName.has(card.roomGroupName)) {
-                        currentCardsByRoomGroupName.set(card.roomGroupName, card);
-                    }
-                }
-                const currentCard = currentCardsByRoomGroupName.get(metric.roomGroupName) ?? metric.card;
-                const currentMetrics = metric.metrics;
-                if (
-                    !currentCard.cardElement.isConnected
-                    || currentMetrics === null
-                    || currentMetrics.bookingCurveData === null
-                ) {
-                    return;
-                }
-
-                currentMetrics.referenceCurveData = referenceCurveData;
-                renderSalesSettingBookingCurveCard(
-                    currentCard,
-                    currentMetrics.allMetrics.currentValue,
-                    resolveSalesSettingBookingCurveSecondaryCurrentRoomCount(
-                        currentMetrics.privateMetrics.currentValue,
-                        currentMetrics.groupMetrics.currentValue
-                    ),
-                    buildSalesSettingBookingCurveRenderData(
-                        currentMetrics.bookingCurveData,
-                        referenceCurveData,
-                        currentMetrics.sameWeekdayCurveData,
-                        analysisDate,
-                        batchDateKey,
-                        rankHistoryByRoomGroupName.get(metric.roomGroupName) ?? []
-                    )
-                );
+                renderReferenceCurveData(referenceCurveData);
+                recordFetchPerformanceReferenceInteractiveAllLinesPainted();
             })
             .catch((error: unknown) => {
                 console.warn(`[${SCRIPT_NAME}] failed to hydrate room booking curve reference data`, {
@@ -12772,7 +12894,25 @@ function hydrateSalesSettingOverallReferenceCurve(
         return;
     }
 
-    void loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey)
+    const renderReferenceCurveData = (referenceCurveData: SalesSettingBookingCurveReferenceData): void => {
+        if (
+            isSyncContextStale(syncContext)
+            || !firstCard.cardElement.isConnected
+            || preparedData.hotelMetrics.bookingCurveData === null
+        ) {
+            return;
+        }
+
+        preparedData.hotelMetrics.referenceCurveData = referenceCurveData;
+        renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
+        recordFetchPerformanceReferenceInteractiveFirstLinePainted();
+    };
+
+    recordFetchPerformanceReferenceInteractiveQueued();
+    void loadSalesSettingBookingCurveReferenceData(analysisDate, batchDateKey, undefined, {
+        priority: "interactive",
+        onStage: renderReferenceCurveData
+    })
         .then((referenceCurveData) => {
             if (
                 referenceCurveData === null
@@ -12783,8 +12923,8 @@ function hydrateSalesSettingOverallReferenceCurve(
                 return;
             }
 
-            preparedData.hotelMetrics.referenceCurveData = referenceCurveData;
-            renderSalesSettingOverallSummaryFromPreparedData(preparedData, analysisDate, batchDateKey, firstCard);
+            renderReferenceCurveData(referenceCurveData);
+            recordFetchPerformanceReferenceInteractiveAllLinesPainted();
         })
         .catch((error: unknown) => {
             console.warn(`[${SCRIPT_NAME}] failed to hydrate overall booking curve reference data`, {
@@ -13377,10 +13517,54 @@ function buildSalesSettingBookingCurveMetrics(
     };
 }
 
+function createEmptySalesSettingBookingCurveReferenceData(): SalesSettingBookingCurveReferenceData {
+    return {
+        recentOverall: null,
+        seasonalOverall: null,
+        recentIndividual: null,
+        seasonalIndividual: null,
+        recentGroup: null,
+        seasonalGroup: null
+    };
+}
+
+function hasSalesSettingBookingCurveReferenceData(referenceData: SalesSettingBookingCurveReferenceData): boolean {
+    return Object.values(referenceData).some((result) => result !== null);
+}
+
+function mergeSalesSettingBookingCurveReferenceData(
+    currentData: SalesSettingBookingCurveReferenceData,
+    updates: Partial<SalesSettingBookingCurveReferenceData>
+): SalesSettingBookingCurveReferenceData {
+    return {
+        ...currentData,
+        ...updates
+    };
+}
+
+function getSalesSettingBookingCurveReferenceField(
+    segment: CurveSegment,
+    curveKind: "recent_weighted_90" | "seasonal_component"
+): keyof SalesSettingBookingCurveReferenceData {
+    if (segment === "all") {
+        return curveKind === "recent_weighted_90" ? "recentOverall" : "seasonalOverall";
+    }
+    if (segment === "transient") {
+        return curveKind === "recent_weighted_90" ? "recentIndividual" : "seasonalIndividual";
+    }
+    return curveKind === "recent_weighted_90" ? "recentGroup" : "seasonalGroup";
+}
+
+function getSalesSettingBookingCurveInitialReferenceSegments(): CurveSegment[] {
+    const secondarySegment: CurveSegment = getSalesSettingBookingCurveSecondarySegment() === "group" ? "group" : "transient";
+    return Array.from(new Set<CurveSegment>(["all", secondarySegment]));
+}
+
 async function loadSalesSettingBookingCurveReferenceData(
     analysisDate: string,
     batchDateKey: string,
-    rmRoomGroupId?: string
+    rmRoomGroupId?: string,
+    options: SalesSettingBookingCurveReferenceLoadOptions = {}
 ): Promise<SalesSettingBookingCurveReferenceData | null> {
     const referenceSourcesByKind = new Map<ReferenceCurveKind, Promise<BookingCurveResponseSource[]>>();
     const getReferenceSources = (
@@ -13393,45 +13577,45 @@ async function loadSalesSettingBookingCurveReferenceData(
             return cached;
         }
 
-        const request = loadSalesSettingReferenceCurveSources(stayDates, batchDateKey, scope, rmRoomGroupId);
+        const request = loadSalesSettingReferenceCurveSources(stayDates, batchDateKey, scope, rmRoomGroupId, options);
         referenceSourcesByKind.set(curveKind, request);
         return request;
     };
-    const [
-        recentOverall,
-        seasonalOverall,
-        recentIndividual,
-        seasonalIndividual,
-        recentGroup,
-        seasonalGroup
-    ] = await Promise.all([
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "all", "recent_weighted_90", rmRoomGroupId, getReferenceSources),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "all", "seasonal_component", rmRoomGroupId, getReferenceSources),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "transient", "recent_weighted_90", rmRoomGroupId, getReferenceSources),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "transient", "seasonal_component", rmRoomGroupId, getReferenceSources),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "group", "recent_weighted_90", rmRoomGroupId, getReferenceSources),
-        loadSalesSettingReferenceCurveResult(analysisDate, batchDateKey, "group", "seasonal_component", rmRoomGroupId, getReferenceSources)
-    ]);
+    let referenceData = createEmptySalesSettingBookingCurveReferenceData();
+    const loadReference = async (
+        segment: CurveSegment,
+        curveKind: "recent_weighted_90" | "seasonal_component"
+    ): Promise<void> => {
+        const result = await loadSalesSettingReferenceCurveResult(
+            analysisDate,
+            batchDateKey,
+            segment,
+            curveKind,
+            rmRoomGroupId,
+            getReferenceSources,
+            options
+        );
+        referenceData = mergeSalesSettingBookingCurveReferenceData(referenceData, {
+            [getSalesSettingBookingCurveReferenceField(segment, curveKind)]: result
+        });
+    };
 
-    if (
-        recentOverall === null
-        && seasonalOverall === null
-        && recentIndividual === null
-        && seasonalIndividual === null
-        && recentGroup === null
-        && seasonalGroup === null
-    ) {
-        return null;
+    const initialSegments = getSalesSettingBookingCurveInitialReferenceSegments();
+    await Promise.all(initialSegments.map((segment) => loadReference(segment, "recent_weighted_90")));
+    if (hasSalesSettingBookingCurveReferenceData(referenceData)) {
+        options.onStage?.(referenceData);
     }
 
-    return {
-        recentOverall,
-        seasonalOverall,
-        recentIndividual,
-        seasonalIndividual,
-        recentGroup,
-        seasonalGroup
-    };
+    const allTasks = (["all", "transient", "group"] as const).flatMap((segment) => {
+        return (["recent_weighted_90", "seasonal_component"] as const).map((curveKind) => ({ segment, curveKind }));
+    });
+    await Promise.all(allTasks
+        .filter(({ segment, curveKind }) => {
+            return !(curveKind === "recent_weighted_90" && initialSegments.includes(segment));
+        })
+        .map(({ segment, curveKind }) => loadReference(segment, curveKind)));
+
+    return hasSalesSettingBookingCurveReferenceData(referenceData) ? referenceData : null;
 }
 
 function getSalesSettingSameWeekdayStayDates(analysisDate: string): Array<{ offsetDays: number; stayDate: string }> {
@@ -13453,7 +13637,8 @@ async function loadSalesSettingSameWeekdayCurveData(
     const results = await Promise.all(getSalesSettingSameWeekdayStayDates(analysisDate).map(async ({ offsetDays, stayDate }) => {
         return scheduleReferenceCurveRequest(
             `same-weekday:${batchDateKey}:${rmRoomGroupId ?? "-"}:${stayDate}`,
-            () => getBookingCurve(stayDate, batchDateKey, rmRoomGroupId)
+            () => getBookingCurve(stayDate, batchDateKey, rmRoomGroupId, { priority: "background" }),
+            { priority: "background" }
         )
             .then((bookingCurveData) => ({
                 offsetDays,
@@ -13486,7 +13671,8 @@ async function loadSalesSettingReferenceCurveResult(
         curveKind: ReferenceCurveKind,
         stayDates: string[],
         scope: CurveScope
-    ) => Promise<BookingCurveResponseSource[]>
+    ) => Promise<BookingCurveResponseSource[]>,
+    options: BookingCurveRequestOptions = {}
 ): Promise<ReferenceCurveResult | null> {
     const facilityId = await resolveCurrentFacilityCacheKey();
     const scope: CurveScope = rmRoomGroupId === undefined ? "hotel" : "roomGroup";
@@ -13514,49 +13700,52 @@ async function loadSalesSettingReferenceCurveResult(
         algorithmVersion
     });
 
-    return getOrComputeReferenceCurve({
-        cacheKey,
-        compute: async () => {
-            const candidateStayDates = curveKind === "recent_weighted_90"
-                ? getRecentWeighted90CandidateStayDates({
-                    targetStayDate: normalizedAnalysisDate,
+    return getOrComputeReferenceCurve(
+        {
+            cacheKey,
+            compute: async () => {
+                const candidateStayDates = curveKind === "recent_weighted_90"
+                    ? getRecentWeighted90CandidateStayDates({
+                        targetStayDate: normalizedAnalysisDate,
+                        asOfDate: normalizedBatchDate,
+                        ticks: SALES_SETTING_REFERENCE_CURVE_TICKS
+                    })
+                    : getSeasonalComponentCandidateStayDates({
+                        targetMonth,
+                        weekday
+                    });
+                const sources = await (getReferenceSources === undefined
+                    ? loadSalesSettingReferenceCurveSources(candidateStayDates, batchDateKey, scope, rmRoomGroupId, options)
+                    : getReferenceSources(curveKind, candidateStayDates, scope));
+                const input = buildCurveInputFromBookingCurveResponses({
+                    facilityId,
                     asOfDate: normalizedBatchDate,
-                    ticks: SALES_SETTING_REFERENCE_CURVE_TICKS
-                })
-                : getSeasonalComponentCandidateStayDates({
-                    targetMonth,
-                    weekday
+                    sources,
+                    segments: [segment]
                 });
-            const sources = await (getReferenceSources === undefined
-                ? loadSalesSettingReferenceCurveSources(candidateStayDates, batchDateKey, scope, rmRoomGroupId)
-                : getReferenceSources(curveKind, candidateStayDates, scope));
-            const input = buildCurveInputFromBookingCurveResponses({
-                facilityId,
-                asOfDate: normalizedBatchDate,
-                sources,
-                segments: [segment]
-            });
 
-            return curveKind === "recent_weighted_90"
-                ? buildRecentWeighted90ReferenceCurve(input, {
-                    scope,
-                    ...(rmRoomGroupId === undefined ? {} : { roomGroupId: rmRoomGroupId }),
-                    segment,
-                    ticks: SALES_SETTING_REFERENCE_CURVE_TICKS,
-                    targetStayDate: normalizedAnalysisDate,
-                    asOfDate: normalizedBatchDate
-                })
-                : buildSeasonalComponentReferenceCurve(input, {
-                    scope,
-                    ...(rmRoomGroupId === undefined ? {} : { roomGroupId: rmRoomGroupId }),
-                    segment,
-                    ticks: SALES_SETTING_REFERENCE_CURVE_TICKS,
-                    targetMonth,
-                    weekday,
-                    asOfDate: normalizedBatchDate
-                });
-        }
-    }).catch((error: unknown) => {
+                return curveKind === "recent_weighted_90"
+                    ? buildRecentWeighted90ReferenceCurve(input, {
+                        scope,
+                        ...(rmRoomGroupId === undefined ? {} : { roomGroupId: rmRoomGroupId }),
+                        segment,
+                        ticks: SALES_SETTING_REFERENCE_CURVE_TICKS,
+                        targetStayDate: normalizedAnalysisDate,
+                        asOfDate: normalizedBatchDate
+                    })
+                    : buildSeasonalComponentReferenceCurve(input, {
+                        scope,
+                        ...(rmRoomGroupId === undefined ? {} : { roomGroupId: rmRoomGroupId }),
+                        segment,
+                        ticks: SALES_SETTING_REFERENCE_CURVE_TICKS,
+                        targetMonth,
+                        weekday,
+                        asOfDate: normalizedBatchDate
+                    });
+            }
+        },
+        { dedupePending: options.priority !== "interactive" }
+    ).catch((error: unknown) => {
         console.warn(`[${SCRIPT_NAME}] failed to load BCL-tuned reference curve`, {
             analysisDate,
             batchDateKey,
@@ -13573,7 +13762,8 @@ async function loadSalesSettingReferenceCurveSources(
     stayDates: string[],
     batchDateKey: string,
     scope: CurveScope,
-    rmRoomGroupId?: string
+    rmRoomGroupId?: string,
+    options: BookingCurveRequestOptions = {}
 ): Promise<BookingCurveResponseSource[]> {
     const uniqueStayDates = Array.from(new Set(stayDates));
     const responses = await Promise.all(uniqueStayDates.map(async (stayDate) => {
@@ -13584,7 +13774,8 @@ async function loadSalesSettingReferenceCurveSources(
 
         return scheduleReferenceCurveRequest(
             `${batchDateKey}:${scope}:${rmRoomGroupId ?? "-"}:${compactStayDate}`,
-            () => getBookingCurve(compactStayDate, batchDateKey, rmRoomGroupId)
+            () => getBookingCurve(compactStayDate, batchDateKey, rmRoomGroupId, options),
+            buildIntervalRequestPriorityOptions(options)
         ).catch((error: unknown) => {
             console.warn(`[${SCRIPT_NAME}] failed to load reference curve source booking curve`, {
                 stayDate,

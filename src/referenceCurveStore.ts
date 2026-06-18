@@ -1,5 +1,5 @@
 import type { CurveScope, CurveSegment, ReferenceCurveKind, ReferenceCurveResult } from "./curveCore";
-import { createIntervalRequestScheduler } from "./requestScheduler";
+import { createIntervalRequestScheduler, type IntervalRequestScheduleOptions } from "./requestScheduler";
 
 const REFERENCE_CURVE_DB_NAME = "revenue-assistant-reference-curves";
 const REFERENCE_CURVE_DB_VERSION = 1;
@@ -39,6 +39,10 @@ export interface ReferenceCurveRecord {
 export interface GetOrComputeReferenceCurveOptions {
     cacheKey: string;
     compute: () => Promise<ReferenceCurveResult>;
+}
+
+export interface GetOrComputeReferenceCurveExecutionOptions {
+    dedupePending?: boolean;
 }
 
 const pendingReferenceCurveComputations = new Map<string, Promise<ReferenceCurveResult>>();
@@ -97,23 +101,33 @@ export function buildReferenceCurveRecord(result: ReferenceCurveResult): Referen
     };
 }
 
-export async function getOrComputeReferenceCurve(options: GetOrComputeReferenceCurveOptions): Promise<ReferenceCurveResult> {
-    const pending = pendingReferenceCurveComputations.get(options.cacheKey);
-    if (pending !== undefined) {
-        return pending;
+export async function getOrComputeReferenceCurve(
+    options: GetOrComputeReferenceCurveOptions,
+    executionOptions: GetOrComputeReferenceCurveExecutionOptions = {}
+): Promise<ReferenceCurveResult> {
+    const shouldDedupePending = executionOptions.dedupePending !== false;
+    if (shouldDedupePending) {
+        const pending = pendingReferenceCurveComputations.get(options.cacheKey);
+        if (pending !== undefined) {
+            return pending;
+        }
     }
 
     const request = getOrComputeReferenceCurveInternal(options)
         .finally(() => {
-            pendingReferenceCurveComputations.delete(options.cacheKey);
+            if (pendingReferenceCurveComputations.get(options.cacheKey) === request) {
+                pendingReferenceCurveComputations.delete(options.cacheKey);
+            }
         });
 
-    pendingReferenceCurveComputations.set(options.cacheKey, request);
+    if (shouldDedupePending) {
+        pendingReferenceCurveComputations.set(options.cacheKey, request);
+    }
     return request;
 }
 
-export function scheduleReferenceCurveRequest<T>(requestKey: string, run: () => Promise<T>): Promise<T> {
-    return referenceCurveRequestScheduler.schedule(requestKey, run);
+export function scheduleReferenceCurveRequest<T>(requestKey: string, run: () => Promise<T>, options?: IntervalRequestScheduleOptions): Promise<T> {
+    return referenceCurveRequestScheduler.schedule(requestKey, run, options);
 }
 
 export async function readReferenceCurveRecord(cacheKey: string): Promise<ReferenceCurveRecord | undefined> {

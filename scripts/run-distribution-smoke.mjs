@@ -563,7 +563,10 @@ function assessModeMetrics(mode, metrics, options) {
         return [
             yesFailure("Analyze page candidate", metrics["Analyze page candidate"]),
             minCountFailure("Analyze recommendation root count", metrics["Analyze recommendation root count"], 1),
-            yesFailure("Analyze recommendation read-only state", metrics["Analyze recommendation read-only state"])
+            yesFailure("Analyze recommendation read-only state", metrics["Analyze recommendation read-only state"]),
+            yesFailure("Analyze reference performance marker", metrics["Analyze reference performance marker"]),
+            yesFailure("Analyze reference first line painted", metrics["Analyze reference first line painted"]),
+            yesFailure("Analyze reference all lines painted", metrics["Analyze reference all lines painted"])
         ].filter((failure) => failure !== null);
     }
     return [
@@ -617,6 +620,25 @@ function runSelfTest() {
         "top competitor preview focus returned": "no"
     }, { allowEmptyPriceTrends: false });
     assert(focusFailures.some((failure) => failure.includes("focus returned")));
+
+    const passingAnalyzeMetrics = {
+        "Analyze page candidate": "yes",
+        "Analyze recommendation root count": 1,
+        "Analyze recommendation read-only state": "yes",
+        "Analyze reference performance marker": "yes",
+        "Analyze reference first line painted": "yes",
+        "Analyze reference all lines painted": "yes"
+    };
+    assert.deepEqual(
+        assessModeMetrics("analyze-recommendations", passingAnalyzeMetrics, { allowEmptyPriceTrends: false }),
+        []
+    );
+
+    const referencePaintFailures = assessModeMetrics("analyze-recommendations", {
+        ...passingAnalyzeMetrics,
+        "Analyze reference first line painted": "no"
+    }, { allowEmptyPriceTrends: false });
+    assert(referencePaintFailures.some((failure) => failure.includes("first line painted")));
 }
 
 function assessVersionRelationship(options) {
@@ -843,6 +865,17 @@ async function collectModeMetricsViaCdp(client, mode) {
 function collectModeMetricsInPage(selectedMode) {
         const doc = globalThis.document;
         const textFrom = (selector) => doc.querySelector(selector)?.textContent?.trim() ?? "none";
+        const fetchPerformanceSummary = (() => {
+            const text = doc.querySelector("[data-ra-fetch-performance-summary]")?.textContent ?? "";
+            if (text.trim() === "") {
+                return null;
+            }
+            try {
+                return JSON.parse(text);
+            } catch {
+                return null;
+            }
+        })();
         const commonPageDiagnostics = () => ({
             "page title": doc.title || "none",
             "login form candidate": doc.querySelector("input[type=\"password\"], form[action*=\"login\" i], [data-testid*=\"login\" i]") !== null ? "yes" : "no",
@@ -900,6 +933,7 @@ function collectModeMetricsInPage(selectedMode) {
             const rootCount = doc.querySelectorAll("[data-ra-rank-recommendation-analyze-list]").length;
             const rowCount = doc.querySelectorAll("[data-ra-rank-recommendation-analyze-row]").length;
             const emptyCount = doc.querySelectorAll("[data-ra-rank-recommendation-analyze-empty]").length;
+            const bookingCurveMetrics = fetchPerformanceSummary?.bookingCurve ?? {};
             const writeButtonCount = doc.querySelectorAll(
                 "[data-ra-rank-recommendation-analyze-list] [data-ra-rank-recommendation-button-action=\"rank-change-submit\"],"
                 + "[data-ra-rank-recommendation-analyze-list] [data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"],"
@@ -914,7 +948,13 @@ function collectModeMetricsInPage(selectedMode) {
                 "Analyze recommendation empty count": emptyCount,
                 "Analyze recommendation highlight count": doc.querySelectorAll("[data-ra-rank-recommendation-analyze-highlight=\"true\"]").length,
                 "Analyze recommendation write button count": writeButtonCount,
-                "Analyze recommendation read-only state": rootCount > 0 && writeButtonCount === 0 && (rowCount > 0 || emptyCount > 0) ? "yes" : "no"
+                "Analyze recommendation read-only state": rootCount > 0 && writeButtonCount === 0 && (rowCount > 0 || emptyCount > 0) ? "yes" : "no",
+                "Analyze reference performance marker": fetchPerformanceSummary === null ? "no" : "yes",
+                "Analyze reference first line painted": bookingCurveMetrics.referenceInteractiveFirstLinePaintedAt == null ? "no" : "yes",
+                "Analyze reference all lines painted": bookingCurveMetrics.referenceInteractiveAllLinesPaintedAt == null ? "no" : "yes",
+                "Analyze reference interactive wait ms": bookingCurveMetrics.referenceInteractiveWaitMs ?? "n/a",
+                "Analyze reference max concurrent requests": bookingCurveMetrics.referenceInteractiveMaxConcurrentRequests ?? "n/a",
+                "Analyze reference min start interval ms": bookingCurveMetrics.referenceInteractiveMinStartIntervalMs ?? "n/a"
             };
         }
         return {
