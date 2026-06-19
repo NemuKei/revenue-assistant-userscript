@@ -1,5 +1,17 @@
 # tasks_backlog
 
+## 2026-06-19 Analyze Sales Setting Rendering Fix
+
+2026-06-19 に、Analyze `販売設定` タブでグラフを含む RAU 追加表示が欠け、`競合価格` タブなどへ移動して戻ると描画される場合がある不具合を `RAU-AN-01` として修正した。
+
+原因は、販売設定タブの可視 current `/api/v4/booking_curve` が request scheduler の `interactive` priority を使っておらず、high-throughput warm cache や reference source の queue に待たされ得ること、さらに `販売設定` タブへ戻った直後の tab mount 遅延を拾う専用再同期がなかったこととする。
+
+`RAU-AN-01` では、販売設定タブで画面に出すホテル全体と室タイプ別 card の current booking curve を `interactive` priority で要求し、`販売設定` タブ押下時に既存 `queueCalendarSync` へ有限回の強制再同期を入れる。配布版 smoke metrics には Analyze 販売設定の summary / booking curve section / SVG / toggle の観測項目を追加する。reference curve、same-weekday、warm cache の取得対象、API query、保存 schema、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、認証回避、rate limit 回避、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存は変更しない。
+
+`RAU-AN-01` の正本反映は `docs/spec_001_analyze_expansion.md` と `docs/context/STATUS.md` に置く。実装対象は `src/main.ts` と `scripts/run-distribution-smoke.mjs` である。実装 verify は `npm run check:request-scheduler`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:booking-curve-smoke-fixture`、`npm run check:distribution-smoke-fixture`、`git diff --check` を対象にする。可能なら通常 Chrome / Tampermonkey の live smoke で top -> Analyze、Analyze -> 別日 Analyze、Analyze -> 競合価格 -> 販売設定の動線を確認する。
+
+Remaining Task Triage は Now / Next / After Next / Later すべて空である。実画面でなお描画欠けが再現する場合は、`data-ra-calendar-sync-debug-snapshot` と配布版 smoke の Analyze sales setting metrics を使い、tab mount timing、`hasCurrentSalesSettingUi()`、`collectSalesSettingCards()`、current booking curve HTTP status を切り分ける。
+
 ## 2026-06-19 High Throughput Data Fetch
 
 2026-06-19 に、利用者方針「安全寄りの現行制限を一旦緩め、問題が出たら締める」を `RAU-PERF-19` として実装した。対象は自分の契約アカウント、自施設、自分の権限内で使う `booking_curve`、Analyze reference curve、`price_trends`、`competitor_prices` の read-only 取得に限定する。Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、認証回避、rate limit 回避、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存は対象外である。

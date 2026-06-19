@@ -416,6 +416,7 @@ const CONSISTENCY_CHECK_DEBOUNCE_MS = 250;
 const CONSISTENCY_CHECK_MIN_INTERVAL_MS = 15000;
 const SALES_SETTING_SUPPLEMENT_CLEANUP_DELAY_MS = 1500;
 const SALES_SETTING_SUPPLEMENT_RETRY_DELAYS_MS = [150, 600, 1500, 3000, 6000] as const;
+const SALES_SETTING_TAB_SYNC_RETRY_DELAYS_MS = [120, 300, 700, 1500, 3000] as const;
 const SALES_SETTING_REFERENCE_CURVE_TICKS = SALES_SETTING_BOOKING_CURVE_TICKS;
 const SALES_SETTING_REFERENCE_ZERO_DAY_DISPLAY_INTERPOLATION_RATIO = 0.5;
 const SALES_SETTING_REFERENCE_ZERO_DAY_EQUALITY_EPSILON = 0.0001;
@@ -1309,6 +1310,9 @@ function installInteractionHooks(): void {
     document.addEventListener("click", (event) => {
         const target = event.target;
         if (target instanceof Element) {
+            if (isSalesSettingTabTrigger(target)) {
+                scheduleActiveSalesSettingRenderFromTab();
+            }
             if (isCompetitorPriceTabTrigger(target)) {
                 scheduleActiveCompetitorPriceSnapshotFromTab();
             }
@@ -1619,6 +1623,32 @@ function isPriceTrendTabTrigger(target: Element): boolean {
     const text = tabElement?.textContent?.replace(/\s+/g, "") ?? "";
     return testId === "tab-priceTrends"
         || text.includes("価格推移");
+}
+
+function isSalesSettingTabTrigger(target: Element): boolean {
+    const tabElement = target.closest<HTMLElement>("button, a, [role='tab'], [data-testid]");
+    const testId = tabElement?.getAttribute("data-testid") ?? "";
+    const text = tabElement?.textContent?.replace(/\s+/g, "") ?? "";
+    return testId === "tab-salesSettings"
+        || text.includes("販売設定");
+}
+
+function scheduleActiveSalesSettingRenderFromTab(): void {
+    const analysisDate = getAnalyzeDate(window.location.pathname) ?? activeAnalyzeDate;
+    if (analysisDate === null) {
+        return;
+    }
+
+    queueCalendarSync({ force: true, reason: "sales-setting-tab" });
+    for (const delay of SALES_SETTING_TAB_SYNC_RETRY_DELAYS_MS) {
+        window.setTimeout(() => {
+            if ((getAnalyzeDate(window.location.pathname) ?? activeAnalyzeDate) !== analysisDate) {
+                return;
+            }
+
+            queueCalendarSync({ force: true, reason: `sales-setting-tab:${delay}` });
+        }, delay);
+    }
 }
 
 function scheduleActiveCompetitorPriceSnapshotFromTab(): void {
@@ -13951,9 +13981,10 @@ async function loadSalesSettingBookingCurveMetrics(
     comparisonDateKeys: SalesSettingComparisonDateKeys,
     rmRoomGroupId?: string,
     loadReferenceCurve = false,
-    loadSameWeekdayCurve = false
+    loadSameWeekdayCurve = false,
+    currentRequestOptions: BookingCurveRequestOptions = {}
 ): Promise<SalesSettingBookingCurveMetrics> {
-    const bookingCurveData = await getBookingCurve(analysisDate, batchDateKey, rmRoomGroupId)
+    const bookingCurveData = await getBookingCurve(analysisDate, batchDateKey, rmRoomGroupId, currentRequestOptions)
         .catch((error: unknown) => {
             console.error(`[${SCRIPT_NAME}] failed to load booking curve`, {
                 analysisDate,
@@ -14002,7 +14033,8 @@ async function prepareSalesSettingSyncData(
         comparisonDateKeys,
         undefined,
         false,
-        isSalesSettingBookingCurveSameWeekdayVisible()
+        isSalesSettingBookingCurveSameWeekdayVisible(),
+        { priority: "interactive" }
     );
     const [roomGroups, hotelMetrics] = await Promise.all([
         roomGroupsRequest,
@@ -14034,7 +14066,8 @@ async function prepareSalesSettingSyncData(
                 comparisonDateKeys,
                 rmRoomGroupId,
                 false,
-                isSalesSettingBookingCurveSameWeekdayVisible() && isSalesSettingBookingCurveOpen(card.roomGroupName)
+                isSalesSettingBookingCurveSameWeekdayVisible() && isSalesSettingBookingCurveOpen(card.roomGroupName),
+                { priority: "interactive" }
             )
         };
     }));
