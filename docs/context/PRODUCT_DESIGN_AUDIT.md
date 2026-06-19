@@ -1,6 +1,6 @@
 # Product Design Audit
 
-最終更新: 2026-06-05
+最終更新: 2026-06-19
 
 ## Purpose
 
@@ -29,6 +29,54 @@
   - 金額、差額、percent、forecast 数値、sales / ADR 数値は top list の本文へ直接表示しない既存契約を維持する。
 - interactivity level:
   - 実装へ進む場合は full interactivity を前提にする。つまり、hover、focus、keyboard、loading、empty、error、disabled、pending、cancel、mobile 表示を実装と verify の対象に含める。
+
+## Analyze Sales Setting Brushup Audit 2026-06-19
+
+### Brief Playback
+
+- task: `RAU-AN-02`
+- 対象 surface: Analyze `販売設定` タブの RAU 追加表示。
+- 対象導線:
+  - Analyze 日付ページを開く。
+  - `販売設定` タブで全体サマリーを確認する。
+  - 全体 booking curve と参考線 / 同曜日補助線を読む。
+  - 必要な室タイプ card を開き、部屋別 booking curve、参考線、toggle を確認する。
+  - `競合価格` など別タブへ移動して戻ったときに、主要表示が欠けていないか確認する。
+- 成功条件:
+  - 利用者が、現時点の予約実績と reference curve を比較し、全体 / 部屋別に異常や差分を見る表示だと迷わず分かる。
+  - hover なしでも、全体サマリー、booking curve section、SVG、reference / segment toggle の存在が確認できる。
+  - 実装は既存表示を変えず、主要表示欠けを配布版 smoke で検出できるようにする。
+
+### Evidence
+
+- source audit:
+  - `src/main.ts` には `data-ra-sales-setting-overall-summary`、`data-ra-sales-setting-booking-curve-section`、`data-ra-sales-setting-booking-curve-panel-svg`、`data-ra-sales-setting-booking-curve-toggle-button` の marker が存在する。
+  - `scripts/run-distribution-smoke.mjs` はこれらを metrics として収集していたが、`analyze-recommendations` mode の pass / fail 条件には使っていなかった。
+- spec audit:
+  - `docs/spec_001_analyze_expansion.md` は、Analyze `販売設定` タブの current booking curve を `interactive` priority とし、tab mount 遅延に有限再同期で対応する契約を持っている。
+  - same-weekday raw source の pre-scan と月別優先取得時の current / same-weekday raw 優先化は実装済みだが、pre-scan の説明に `currentRaw` 限定の古い記述が残っていた。
+- screenshot:
+  - 今回は runtime UI の形状、文言、配置を変更しないため、新規 screenshot は取得していない。
+  - live Chrome / Tampermonkey 更新、Revenue Assistant 実ログイン画面の再読込、raw trace / HAR / response body 保存は行っていない。
+
+### Product / UX Findings
+
+- `RAU-AN-01` の主な UX risk は、表示が遅いことよりも「販売設定タブに戻った時点で、全体サマリーや booking curve が存在しないように見える」ことである。
+- 現行 UI は、全体サマリー、全体 booking curve、部屋別 card、segment / helper / reference toggle によって、判断導線そのものは成立している。
+- 追加の copy、card、loading 表示を推測で加えるより、主要表示が DOM 上に存在することを smoke の合格条件へ昇格する方が、今回の問題に対して低リスクである。
+
+### Data / Visualization Findings
+
+- この表示の判断対象は、現時点の予約実績と reference curve を比較し、全体 / 部屋別に booking pace の差分を見ることである。
+- chart は hover tooltip で詳細値を読む前に、section、SVG、toggle の存在だけで「比較表示が描画された」ことを確認できる必要がある。
+- `Analyze sales setting ... count` metrics はこの確認に十分近いが、これまで観測値止まりだったため、欠落しても smoke が pass する余地があった。
+
+### Result
+
+`RAU-AN-02` では runtime UI を変更しない。
+代わりに、配布版 `analyze-recommendations` smoke が Analyze 販売設定の overall summary、booking curve section、SVG、toggle を必須表示として検証するようにする。
+
+Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、request 間隔、同時実行数、保存 schema、userscript metadata、`dist/` の手編集は変更しない。
 
 ## Product Design Re-Audit 2026-06-05
 

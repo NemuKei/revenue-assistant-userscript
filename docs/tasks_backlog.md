@@ -1,5 +1,21 @@
 # tasks_backlog
 
+## 2026-06-19 Analyze Sales Setting Brushup
+
+2026-06-19 に、Analyze 最新実装のブラッシュアップを `RAU-AN-02` として実施した。対象は `販売設定` タブの全体サマリー、全体 / 部屋別 booking curve、reference curve、同曜日補助線、月別優先取得と same-weekday warm cache の周辺に限定する。
+
+Product / UX Reviewer としては、利用者が迷う主因を「表示文言や装飾不足」ではなく、`販売設定` タブへ戻った直後に主要表示が DOM 上で欠けると判断対象が存在しないように見えることと整理した。Data / Visualization Reviewer としては、この画面の判断対象を、現時点の予約実績と reference curve を比較し、全体 / 部屋別に booking pace の差分を見る表示と定義した。hover tooltip の詳細値以前に、overall summary、booking curve section、SVG、toggle が欠けていないことを smoke で確認する必要がある。
+
+Frontend Implementer としては、runtime UI、copy、chart 表現、API request 範囲を推測で変更しない判断にした。既存 `scripts/run-distribution-smoke.mjs` は Analyze 販売設定の overall summary / booking curve section / SVG / toggle を metrics として収集していたが、`analyze-recommendations` mode の pass / fail 条件には使っていなかったため、これら 4 指標を 1 件以上必須にした。self-test には booking curve SVG が欠けると fail する確認を追加した。
+
+docs 同期として、`docs/context/PRODUCT_DESIGN_AUDIT.md` に `Analyze Sales Setting Brushup Audit 2026-06-19` を追加した。`docs/spec_001_analyze_expansion.md` には、配布版 `analyze-recommendations` smoke の販売設定主要表示必須条件と、warm cache pre-scan が `currentRaw` だけでなく `sameWeekdayRaw` task も exact currentAsOf key で除外できる現在の実装契約を反映した。`docs/context/STATUS.md` には今回の完了状態を反映する。
+
+Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、認証回避、rate limit 回避、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存、request 間隔、同時実行数、保存 schema、userscript metadata、`dist/` 手編集、runtime UI は変更していない。
+
+Verify は `npm run check:distribution-smoke-fixture`、`npm run check:request-scheduler`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:booking-curve-smoke-fixture`、`git diff --check` が通過した。`npm run build` は sandbox 内で Vite `spawn EPERM` になったため、同じ command を昇格して再実行した。live Chrome / Tampermonkey / Revenue Assistant 実ログイン画面は、実行版更新や画面操作を伴うため今回の必須条件にしない。
+
+Remaining Task Triage は Now / Next / After Next / Later すべて空である。実画面でなお販売設定の主要表示欠けが再現する場合は、配布版 smoke の Analyze sales setting metrics、`data-ra-calendar-sync-debug-snapshot`、tab mount timing、`hasCurrentSalesSettingUi()`、`collectSalesSettingCards()`、current booking curve HTTP status を使って切り分ける。
+
 ## 2026-06-19 Analyze Sales Setting Rendering Fix
 
 2026-06-19 に、Analyze `販売設定` タブでグラフを含む RAU 追加表示が欠け、`競合価格` タブなどへ移動して戻ると描画される場合がある不具合を `RAU-AN-01` として修正した。

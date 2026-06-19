@@ -577,6 +577,10 @@ function assessModeMetrics(mode, metrics, options) {
             yesFailure("Analyze page candidate", metrics["Analyze page candidate"]),
             minCountFailure("Analyze recommendation root count", metrics["Analyze recommendation root count"], 1),
             yesFailure("Analyze recommendation read-only state", metrics["Analyze recommendation read-only state"]),
+            minCountFailure("Analyze sales setting overall summary count", metrics["Analyze sales setting overall summary count"], 1),
+            minCountFailure("Analyze sales setting booking curve section count", metrics["Analyze sales setting booking curve section count"], 1),
+            minCountFailure("Analyze sales setting booking curve svg count", metrics["Analyze sales setting booking curve svg count"], 1),
+            minCountFailure("Analyze sales setting booking curve toggle count", metrics["Analyze sales setting booking curve toggle count"], 1),
             yesFailure("Analyze reference performance marker", metrics["Analyze reference performance marker"]),
             yesFailure("Analyze reference first line painted", metrics["Analyze reference first line painted"]),
             yesFailure("Analyze reference all lines painted", metrics["Analyze reference all lines painted"])
@@ -648,6 +652,10 @@ function runSelfTest() {
         "Analyze page candidate": "yes",
         "Analyze recommendation root count": 1,
         "Analyze recommendation read-only state": "yes",
+        "Analyze sales setting overall summary count": 1,
+        "Analyze sales setting booking curve section count": 1,
+        "Analyze sales setting booking curve svg count": 1,
+        "Analyze sales setting booking curve toggle count": 1,
         "Analyze reference performance marker": "yes",
         "Analyze reference first line painted": "yes",
         "Analyze reference all lines painted": "yes"
@@ -662,6 +670,12 @@ function runSelfTest() {
         "Analyze reference first line painted": "no"
     }, { allowEmptyPriceTrends: false });
     assert(referencePaintFailures.some((failure) => failure.includes("first line painted")));
+
+    const salesSettingFailures = assessModeMetrics("analyze-recommendations", {
+        ...passingAnalyzeMetrics,
+        "Analyze sales setting booking curve svg count": 0
+    }, { allowEmptyPriceTrends: false });
+    assert(salesSettingFailures.some((failure) => failure.includes("booking curve svg count")));
 }
 
 function assessVersionRelationship(options) {
