@@ -44,6 +44,7 @@ async function main() {
     const viewportWidth = parsePositiveInteger(args["viewport-width"], 0);
     const viewportHeight = parsePositiveInteger(args["viewport-height"], 900);
     const topOpenCompetitorPreview = args["top-open-competitor-preview"] === "true";
+    const topClickWarmCacheMonth = parseWarmCacheMonth(args["top-click-warm-cache-month"] ?? null);
 
     const localText = await readFile(resolve(distPath), "utf8");
     const localVersion = extractUserscriptMetadata(localText, "version") ?? "unknown";
@@ -58,7 +59,8 @@ async function main() {
         cdpConnectionMode,
         viewportWidth,
         viewportHeight,
-        topOpenCompetitorPreview
+        topOpenCompetitorPreview,
+        topClickWarmCacheMonth
     });
     const assessment = assessSmokeResult({
         localVersion,
@@ -69,7 +71,8 @@ async function main() {
         smokeResult,
         versionPolicy,
         allowEmptyPriceTrends,
-        topOpenCompetitorPreview
+        topOpenCompetitorPreview,
+        topClickWarmCacheMonth
     });
 
     console.log(`local version: ${localVersion}`);
@@ -542,6 +545,16 @@ function assessModeMetrics(mode, metrics, options) {
                 yesFailure("top competitor preview focus returned", metrics["top competitor preview focus returned"])
             ].filter((failure) => failure !== null));
         }
+        if (metrics["top warm cache month click"] !== undefined) {
+            const statusAfterClick = metrics["top warm cache month status after click"];
+            failures.push(...[
+                yesFailure("top warm cache month click", metrics["top warm cache month click"]),
+                yesFailure("top warm cache month button present", metrics["top warm cache month button present"]),
+                statusAfterClick !== undefined && statusAfterClick !== "missing"
+                    ? null
+                    : `top warm cache month status after click must be present, got ${statusAfterClick ?? "missing"}`
+            ].filter((failure) => failure !== null));
+        }
         return failures;
     }
     if (mode === "price-trends") {
@@ -602,7 +615,10 @@ function runSelfTest() {
         "top competitor preview open rows": 1,
         "top competitor preview horizontal overflow": "no",
         "top competitor preview graph or empty state": "yes",
-        "top competitor preview focus returned": "yes"
+        "top competitor preview focus returned": "yes",
+        "top warm cache month click": "yes",
+        "top warm cache month button present": "yes",
+        "top warm cache month status after click": "queued"
     };
     assert.deepEqual(
         assessModeMetrics("top", passingTopMetrics, { allowEmptyPriceTrends: false }),
@@ -620,6 +636,12 @@ function runSelfTest() {
         "top competitor preview focus returned": "no"
     }, { allowEmptyPriceTrends: false });
     assert(focusFailures.some((failure) => failure.includes("focus returned")));
+
+    const warmCacheMonthFailures = assessModeMetrics("top", {
+        ...passingTopMetrics,
+        "top warm cache month click": "no"
+    }, { allowEmptyPriceTrends: false });
+    assert(warmCacheMonthFailures.some((failure) => failure.includes("top warm cache month click")));
 
     const passingAnalyzeMetrics = {
         "Analyze page candidate": "yes",
@@ -729,8 +751,15 @@ async function prepareMode(page, mode) {
 }
 
 async function exerciseMode(page, options) {
-    if (options.mode !== "top" || !options.topOpenCompetitorPreview) {
+    if (options.mode !== "top") {
         return {};
+    }
+    const metrics = {};
+    if (options.topClickWarmCacheMonth !== null) {
+        Object.assign(metrics, await clickTopWarmCacheMonth(page, options.topClickWarmCacheMonth));
+    }
+    if (!options.topOpenCompetitorPreview) {
+        return metrics;
     }
     try {
         const button = page.locator("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]").first();
@@ -743,11 +772,13 @@ async function exerciseMode(page, options) {
         await page.waitForTimeout(250);
         const closeMetrics = await page.evaluate(collectTopCompetitorPreviewCloseMetricsInPage);
         return {
+            ...metrics,
             ...openMetrics,
             ...closeMetrics
         };
     } catch (error) {
         return {
+            ...metrics,
             "top competitor preview interaction": "failed",
             "top competitor preview interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
         };
@@ -776,8 +807,15 @@ async function prepareModeViaCdp(client, mode) {
 }
 
 async function exerciseModeViaCdp(client, options) {
-    if (options.mode !== "top" || !options.topOpenCompetitorPreview) {
+    if (options.mode !== "top") {
         return {};
+    }
+    const metrics = {};
+    if (options.topClickWarmCacheMonth !== null) {
+        Object.assign(metrics, await clickTopWarmCacheMonthViaCdp(client, options.topClickWarmCacheMonth));
+    }
+    if (!options.topOpenCompetitorPreview) {
+        return metrics;
     }
     try {
         await waitForSelectorViaCdp(client, "[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]", 15000);
@@ -811,13 +849,51 @@ async function exerciseModeViaCdp(client, options) {
         await sleep(250);
         const closeMetrics = await evaluateViaCdp(client, `(${collectTopCompetitorPreviewCloseMetricsInPage.toString()})()`);
         return {
+            ...metrics,
             ...openMetrics,
             ...closeMetrics
         };
     } catch (error) {
         return {
+            ...metrics,
             "top competitor preview interaction": "failed",
             "top competitor preview interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
+        };
+    }
+}
+
+async function clickTopWarmCacheMonth(page, targetMonth) {
+    try {
+        await page.waitForSelector(`[data-ra-sales-setting-warm-cache-month-button][data-ra-sales-setting-warm-cache-month="${targetMonth}"]`, { timeout: 15000 });
+        const clicked = await page.evaluate(clickTopWarmCacheMonthButtonInPage, targetMonth);
+        await page.waitForTimeout(750);
+        return {
+            ...await page.evaluate(collectTopWarmCacheMonthClickMetricsInPage, targetMonth),
+            "top warm cache month click": clicked ? "yes" : "no"
+        };
+    } catch (error) {
+        return {
+            "top warm cache month click target": targetMonth,
+            "top warm cache month click": "failed",
+            "top warm cache month interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
+        };
+    }
+}
+
+async function clickTopWarmCacheMonthViaCdp(client, targetMonth) {
+    try {
+        await waitForSelectorViaCdp(client, `[data-ra-sales-setting-warm-cache-month-button][data-ra-sales-setting-warm-cache-month="${targetMonth}"]`, 15000);
+        const clicked = await evaluateViaCdp(client, `(${clickTopWarmCacheMonthButtonInPage.toString()})(${JSON.stringify(targetMonth)})`);
+        await sleep(750);
+        return {
+            ...await evaluateViaCdp(client, `(${collectTopWarmCacheMonthClickMetricsInPage.toString()})(${JSON.stringify(targetMonth)})`),
+            "top warm cache month click": clicked ? "yes" : "no"
+        };
+    } catch (error) {
+        return {
+            "top warm cache month click target": targetMonth,
+            "top warm cache month click": "failed",
+            "top warm cache month interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
         };
     }
 }
@@ -1028,6 +1104,31 @@ function collectTopCompetitorPreviewCloseMetricsInPage() {
     return {
         "top competitor preview rows after escape": visibleRows.length,
         "top competitor preview focus returned": activeButton instanceof globalThis.HTMLElement ? "yes" : "no"
+    };
+}
+
+function clickTopWarmCacheMonthButtonInPage(targetMonth) {
+    const doc = globalThis.document;
+    const button = doc.querySelector(`[data-ra-sales-setting-warm-cache-month-button][data-ra-sales-setting-warm-cache-month="${targetMonth}"]`);
+    if (!(button instanceof globalThis.HTMLElement)) {
+        return false;
+    }
+    button.click();
+    return true;
+}
+
+function collectTopWarmCacheMonthClickMetricsInPage(targetMonth) {
+    const doc = globalThis.document;
+    const control = doc.querySelector(`[data-ra-sales-setting-warm-cache-month-control][data-ra-sales-setting-warm-cache-month="${targetMonth}"]`);
+    const button = doc.querySelector(`[data-ra-sales-setting-warm-cache-month-button][data-ra-sales-setting-warm-cache-month="${targetMonth}"]`);
+    const statusText = control?.querySelector("[data-ra-sales-setting-warm-cache-month-status-summary]")?.textContent
+        ?? control?.textContent
+        ?? "missing";
+    return {
+        "top warm cache month click target": targetMonth,
+        "top warm cache month button present": button instanceof globalThis.HTMLElement ? "yes" : "no",
+        "top warm cache month status after click": control?.getAttribute("data-ra-sales-setting-warm-cache-month-status") ?? "missing",
+        "top warm cache month status text after click": statusText.replace(/\s+/g, " ").trim().slice(0, 160) || "empty"
     };
 }
 
@@ -1306,6 +1407,16 @@ function parseCdpConnectionMode(value) {
         return value;
     }
     throw new Error(`unsupported CDP connection mode: ${value}. Expected one of: ${[...CDP_CONNECTION_MODES].join(", ")}`);
+}
+
+function parseWarmCacheMonth(value) {
+    if (value === null || value === undefined || value === "" || value === "false") {
+        return null;
+    }
+    if (/^\d{6}$/.test(value)) {
+        return value;
+    }
+    throw new Error(`unsupported top warm cache month: ${value}. Expected YYYYMM, for example 202606.`);
 }
 
 function parseArgs(values) {
