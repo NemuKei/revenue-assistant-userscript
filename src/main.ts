@@ -4150,7 +4150,10 @@ function scheduleSalesSettingWarmCache(
         && salesSettingWarmCacheState.priorityStayDate === priorityStayDate
         && salesSettingWarmCacheState.priorityMonth === priorityMonth;
     if (sameContext && (salesSettingWarmCacheState.total > 0 || salesSettingWarmCacheState.status === "building")) {
-        const prioritizedQueue = prioritizeSalesSettingWarmCacheQueueForRankRecommendations(salesSettingWarmCacheState.queue);
+        const prioritizedQueue = prioritizeSalesSettingWarmCacheQueueForPriorityMonth(
+            prioritizeSalesSettingWarmCacheQueueForRankRecommendations(salesSettingWarmCacheState.queue),
+            priorityMonth
+        );
         salesSettingWarmCacheState = {
             ...salesSettingWarmCacheState,
             queue: prioritizedQueue,
@@ -4281,7 +4284,10 @@ async function buildSalesSettingWarmCacheQueue(
         }
     }
 
-    const prioritizedTasks = prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks);
+    const prioritizedTasks = prioritizeSalesSettingWarmCacheQueueForPriorityMonth(
+        prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks),
+        priorityMonth
+    );
     return preScanSalesSettingWarmCacheCurrentRawTasks(prioritizedTasks, facilityCacheKey, batchDateKey);
 }
 
@@ -4358,6 +4364,37 @@ function prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks: Sales
             return left.index - right.index;
         })
         .map(({ task }) => task);
+}
+
+function prioritizeSalesSettingWarmCacheQueueForPriorityMonth(tasks: SalesSettingWarmCacheTask[], priorityMonth: string | null): SalesSettingWarmCacheTask[] {
+    if (priorityMonth === null || !/^\d{6}$/.test(priorityMonth) || tasks.length <= 1) {
+        return tasks;
+    }
+
+    return tasks
+        .map((task, index) => ({ task, index }))
+        .sort((left, right) => {
+            const leftRank = getSalesSettingWarmCachePriorityMonthTaskRank(left.task, priorityMonth);
+            const rightRank = getSalesSettingWarmCachePriorityMonthTaskRank(right.task, priorityMonth);
+            if (leftRank !== rightRank) {
+                return leftRank - rightRank;
+            }
+            return left.index - right.index;
+        })
+        .map(({ task }) => task);
+}
+
+function getSalesSettingWarmCachePriorityMonthTaskRank(task: SalesSettingWarmCacheTask, priorityMonth: string): number {
+    if (!task.targetStayDate.startsWith(priorityMonth)) {
+        return 3;
+    }
+    if (task.progressKind === "raw") {
+        return 0;
+    }
+    if (task.progressKind === "sameWeekday") {
+        return 1;
+    }
+    return 2;
 }
 
 function buildRankRecommendationWarmCachePriorityTaskKey(stayDate: string, roomGroupId: string): string {
