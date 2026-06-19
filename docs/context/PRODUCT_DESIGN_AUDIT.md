@@ -30,6 +30,42 @@
 - interactivity level:
   - 実装へ進む場合は full interactivity を前提にする。つまり、hover、focus、keyboard、loading、empty、error、disabled、pending、cancel、mobile 表示を実装と verify の対象に含める。
 
+## Top Candidate UI Brushup Audit 2026-06-19
+
+### Brief Playback
+
+- task: `RAU-UX-137`
+- 対象 surface: top 画面の料金調整候補 list。
+- 対象導線:
+  - 対象月を選ぶ。
+  - 候補 row を読む。
+  - `Analyzeで確認`、`曲線`、`競合価格`、`ランク調整` の主要操作を選ぶ。
+  - 必要な場合だけ `その他` から `要点`、`様子見`、`対応不要` を使う。
+- 成功条件:
+  - 主要操作と補助操作の境界を保つ。
+  - 競合価格 preview は推奨金額を決める chart ではなく、競合価格 snapshot の文脈確認として読める。
+  - hover なしでも、state message、部屋タイプ対応 note、graph / empty / error の意味が分かる。
+
+### Product / UX Findings
+
+- `RAU-UX-130` / `RAU-UX-131` は現行正本上で完了済みであるため、今回の実装では同じ task ID を再利用しない。
+- Top 候補 UI は、主要操作 `Analyzeで確認`、`曲線`、`競合価格`、`ランク調整` と、補助操作 `その他` を分ける現行構造を維持する。
+- 補助操作を常時表示へ戻すと row の密度が上がるため、現時点では `その他` details の配置は変えない。
+- 競合価格 preview では、部屋タイプ対応 note が読み筋の中で重要である。英語 token の `confirmed` / `ambiguous` / `unknown` が先に出ると、利用者が状態を読む前に内部分類として受け取りやすいため、日本語優先の文言へ寄せる。
+
+### Data / Visualization Findings
+
+- 競合価格 preview の判断対象は、対象日の競合価格 snapshot の文脈と、部屋タイプ対応の確度である。
+- graph は金額推奨の主因ではなく、preview 内で確認する補助情報として扱う。
+- smoke では、部屋タイプ対応 note の存在を text pattern ではなく専用 marker で確認した方が、文言変更後も検証意図が保たれる。
+
+### Result
+
+`RAU-UX-137` では、競合価格 preview の部屋タイプ対応 note を日本語優先にし、専用 marker `data-ra-rank-recommendation-competitor-preview-room-type-note` を追加した。
+配布版 top smoke は、競合価格 preview open 時にこの marker を必須確認する。
+
+Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、candidate scoring、request 間隔、同時実行数、保存 schema、`dist/` 手編集、top list 本文への金額 / 差額 / percent 追加は変更しない。
+
 ## Analyze Sales Setting Brushup Audit 2026-06-19
 
 ### Brief Playback

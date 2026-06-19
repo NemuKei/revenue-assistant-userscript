@@ -246,6 +246,7 @@ const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recom
 const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-cell";
 const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_KEY_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-key";
 const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_STATUS_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-status";
+const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROOM_TYPE_NOTE_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-room-type-note";
 const RANK_RECOMMENDATION_FOCUS_HIGHLIGHT_ATTRIBUTE = "data-ra-rank-recommendation-focus-highlight";
 const RANK_RECOMMENDATION_FOCUS_SUMMARY_ATTRIBUTE = "data-ra-rank-recommendation-focus-summary";
 const RANK_RECOMMENDATION_PENDING_FOCUS_STORAGE_KEY = "revenue-assistant:rank-recommendation:pending-focus";
@@ -11823,6 +11824,7 @@ function createRankRecommendationCompetitorPreviewCellChildren(candidate: RankRe
         const roomTypeFilter = null;
         const dailyRecords = buildLatestCompetitorPriceRecordsByFetchDate(state.records, roomTypeFilter);
         const roomTypeNoteElement = document.createElement("p");
+        roomTypeNoteElement.setAttribute(RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROOM_TYPE_NOTE_ATTRIBUTE, "");
         roomTypeNoteElement.textContent = formatRankRecommendationCompetitorRoomTypeMatchMessage(roomTypeMatch);
         sectionElement.append(roomTypeNoteElement);
 
@@ -11902,18 +11904,18 @@ function formatRankRecommendationCompetitorRoomTypeMatchMessage(
     match: RankRecommendationCompetitorRoomTypeMatch
 ): string {
     if (match.status === "confirmed" && match.filter !== null) {
-        return `部屋タイプ対応: confirmed / ${match.filter} 候補。初期 preview は全体を表示し、強い絞り込みはしません。`;
+        return `部屋タイプ対応: 確認済み（${match.filter} 候補）。初期 preview は競合全体を表示し、部屋タイプだけに強く絞り込みません。`;
     }
 
     if (match.status === "ambiguous") {
-        return `部屋タイプ対応: ambiguous / 候補 ${match.labels.join("、")}。強い絞り込みはせず、金額推奨の主因にしません。`;
+        return `部屋タイプ対応: 候補が複数あります（${match.labels.join("、")}）。強い絞り込みはせず、金額推奨の主因にしません。`;
     }
 
     if (match.labels.length === 0) {
-        return "部屋タイプ対応: unknown / snapshot 内に比較できる部屋タイプ label がありません。";
+        return "部屋タイプ対応: 未確認。snapshot 内に比較できる部屋タイプ label がありません。";
     }
 
-    return `部屋タイプ対応: unknown / 比較可能 label ${match.labels.join("、")}。強い絞り込みはせず、金額推奨の主因にしません。`;
+    return `部屋タイプ対応: 未確認（比較可能 label: ${match.labels.join("、")}）。強い絞り込みはせず、金額推奨の主因にしません。`;
 }
 
 function normalizeTextForRoomTypeMatch(value: string): string {

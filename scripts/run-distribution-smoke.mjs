@@ -542,6 +542,7 @@ function assessModeMetrics(mode, metrics, options) {
                 minCountFailure("top competitor preview open rows", metrics["top competitor preview open rows"], 1),
                 noFailure("top competitor preview horizontal overflow", metrics["top competitor preview horizontal overflow"]),
                 yesFailure("top competitor preview graph or empty state", metrics["top competitor preview graph or empty state"]),
+                yesFailure("top competitor preview room type note detected", metrics["top competitor preview room type note detected"]),
                 yesFailure("top competitor preview focus returned", metrics["top competitor preview focus returned"])
             ].filter((failure) => failure !== null));
         }
@@ -620,6 +621,7 @@ function runSelfTest() {
         "top competitor preview horizontal overflow": "no",
         "top competitor preview document horizontal overflow": "yes",
         "top competitor preview graph or empty state": "yes",
+        "top competitor preview room type note detected": "yes",
         "top competitor preview focus returned": "yes",
         "top warm cache month click": "yes",
         "top warm cache month button present": "yes",
@@ -641,6 +643,12 @@ function runSelfTest() {
         "top competitor preview focus returned": "no"
     }, { allowEmptyPriceTrends: false });
     assert(focusFailures.some((failure) => failure.includes("focus returned")));
+
+    const roomTypeNoteFailures = assessModeMetrics("top", {
+        ...passingTopMetrics,
+        "top competitor preview room type note detected": "no"
+    }, { allowEmptyPriceTrends: false });
+    assert(roomTypeNoteFailures.some((failure) => failure.includes("room type note detected")));
 
     const warmCacheMonthFailures = assessModeMetrics("top", {
         ...passingTopMetrics,
@@ -1102,8 +1110,8 @@ function collectTopCompetitorPreviewInteractionMetricsInPage() {
     const emptyCount = firstOpenRow instanceof globalThis.HTMLElement
         ? firstOpenRow.querySelectorAll("[data-ra-sales-setting-competitor-price-empty]").length
         : 0;
-    const noteText = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.textContent ?? "" : "";
-    const roomTypeNoteDetected = /confirmed|ambiguous|unknown|部屋タイプ|対応未確認|絞り込み|未確認/.test(noteText);
+    const roomTypeNoteDetected = firstOpenRow instanceof globalThis.HTMLElement
+        && firstOpenRow.querySelector("[data-ra-rank-recommendation-competitor-preview-room-type-note]") !== null;
 
     return {
         "top competitor preview interaction": openRows.length > 0 ? "yes" : "no",

@@ -1,5 +1,19 @@
 # tasks_backlog
 
+## 2026-06-19 Top Candidate UI Brushup
+
+2026-06-19 に、Top 料金調整候補 UI のブラッシュアップを `RAU-UX-137` として実施した。利用者指定の計画では `RAU-UX-130` が Goal Bundle 名だったが、現行正本では `RAU-UX-130` / `RAU-UX-131` は 2026-06-11 に完了済みであるため、ID 再利用を避けて follow-up として扱う。
+
+対象は top 画面の料金調整候補 list、競合価格 preview、rank 調整導線、補助操作 `その他`、loading / empty / error / pending / mobile 表示に限定する。Product / UX Reviewer としては、候補確認の導線を `対象月選択 -> 候補確認 -> Analyze / 曲線 / 競合価格 / ランク調整 -> 補助判断` と整理し、Data / Visualization Reviewer としては、競合価格 preview を推奨金額決定ではなく競合価格 snapshot の文脈確認として扱う。Frontend 実装は、既存 component / marker / data attribute を維持し、競合価格 preview の部屋タイプ対応 note を日本語優先の文言へ整え、専用 marker `data-ra-rank-recommendation-competitor-preview-room-type-note` を追加した。
+
+配布版 top smoke は、`--top-open-competitor-preview` 実行時に、preview open、横 overflow なし、graph または empty state、focus return に加えて、部屋タイプ対応 note の専用 marker を必須確認する。これにより、preview を開いた利用者が hover なしで state message、部屋タイプ対応 note、graph / empty / error の意味を読めるかを、text pattern 依存ではなく marker で検出できるようにした。
+
+Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence、reasonFingerprint、request 間隔、同時実行数、保存 schema、userscript metadata、`dist/` 手編集、自動反映、一括反映、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存は変更していない。
+
+実装対象は `src/main.ts`、`scripts/run-distribution-smoke.mjs`、`docs/context/PRODUCT_DESIGN_AUDIT.md`、`docs/tasks_backlog.md`、`docs/context/STATUS.md`、`docs/spec_003_rank_recommendation_signal.md` である。verify は `npm run check:fixture-markers`、`npm run check:distribution-smoke-fixture`、`npm run typecheck`、`npm run lint`、`npm run build`、`git diff --check` を対象にする。必須 Chrome live verify は、Tampermonkey installed version と published version の一致確認、top mode smoke、競合価格 preview open / Escape close / focus return / 横 overflow なし / graph または empty state / 部屋タイプ対応 note を read-only で確認する。
+
+Remaining Task Triage は Now / Next / After Next / Later すべて空である。Chrome live がログイン状態、Tampermonkey 更新、CDP port、対象 tab の取り違えなどで止まる場合は、未実施理由と次に必要な人間操作を報告する。
+
 ## 2026-06-19 Analyze Sales Setting Brushup
 
 2026-06-19 に、Analyze 最新実装のブラッシュアップを `RAU-AN-02` として実施した。対象は `販売設定` タブの全体サマリー、全体 / 部屋別 booking curve、reference curve、同曜日補助線、月別優先取得と same-weekday warm cache の周辺に限定する。
