@@ -4288,7 +4288,7 @@ async function buildSalesSettingWarmCacheQueue(
         prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks),
         priorityMonth
     );
-    return preScanSalesSettingWarmCacheCurrentRawTasks(prioritizedTasks, facilityCacheKey, batchDateKey);
+    return preScanSalesSettingWarmCacheRawSourceTasks(prioritizedTasks, facilityCacheKey, batchDateKey);
 }
 
 const SALES_SETTING_WARM_CACHE_REFERENCE_SEGMENTS = ["all", "transient", "group"] as const satisfies readonly CurveSegment[];
@@ -4455,7 +4455,7 @@ function buildSalesSettingWarmCacheTaskKey(task: SalesSettingWarmCacheTask): str
     ].join("|");
 }
 
-async function preScanSalesSettingWarmCacheCurrentRawTasks(
+async function preScanSalesSettingWarmCacheRawSourceTasks(
     tasks: SalesSettingWarmCacheTask[],
     facilityCacheKey: string,
     batchDateKey: string
@@ -4463,16 +4463,16 @@ async function preScanSalesSettingWarmCacheCurrentRawTasks(
     let preScanHitCount = 0;
     let rankRecommendationPreScanHitCount = 0;
     const queue: SalesSettingWarmCacheTask[] = [];
-    const currentRawTaskKeyByTask = new Map<SalesSettingWarmCacheTask, string>();
+    const rawSourceTaskKeyByTask = new Map<SalesSettingWarmCacheTask, string>();
 
     for (const task of tasks) {
-        if (task.kind !== "currentRaw") {
+        if (task.kind !== "currentRaw" && task.kind !== "sameWeekdayRaw") {
             continue;
         }
-        currentRawTaskKeyByTask.set(task, buildExactCurrentAsOfBookingCurveRawSourceTaskKey(task, facilityCacheKey, batchDateKey));
+        rawSourceTaskKeyByTask.set(task, buildExactCurrentAsOfBookingCurveRawSourceTaskKey(task, facilityCacheKey, batchDateKey));
     }
 
-    const currentRawRecordsByKey = await readBookingCurveRawSourceRecords(Array.from(currentRawTaskKeyByTask.values()))
+    const rawSourceRecordsByKey = await readBookingCurveRawSourceRecords(Array.from(rawSourceTaskKeyByTask.values()))
         .catch((error: unknown) => {
             console.warn(`[${SCRIPT_NAME}] failed to pre-scan booking curve raw source`, {
                 batchDateKey,
@@ -4482,13 +4482,13 @@ async function preScanSalesSettingWarmCacheCurrentRawTasks(
         });
 
     for (const task of tasks) {
-        if (task.kind !== "currentRaw") {
+        if (task.kind !== "currentRaw" && task.kind !== "sameWeekdayRaw") {
             queue.push(task);
             continue;
         }
 
-        const rawSourceKey = currentRawTaskKeyByTask.get(task);
-        if (rawSourceKey === undefined || currentRawRecordsByKey[rawSourceKey] === undefined) {
+        const rawSourceKey = rawSourceTaskKeyByTask.get(task);
+        if (rawSourceKey === undefined || rawSourceRecordsByKey[rawSourceKey] === undefined) {
             queue.push(task);
             continue;
         }
