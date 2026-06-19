@@ -614,6 +614,7 @@ function runSelfTest() {
         "top competitor preview interaction": "yes",
         "top competitor preview open rows": 1,
         "top competitor preview horizontal overflow": "no",
+        "top competitor preview document horizontal overflow": "yes",
         "top competitor preview graph or empty state": "yes",
         "top competitor preview focus returned": "yes",
         "top warm cache month click": "yes",
@@ -1056,6 +1057,12 @@ function collectModeMetricsInPage(selectedMode) {
 
 function collectTopCompetitorPreviewInteractionMetricsInPage() {
     const doc = globalThis.document;
+    const getHorizontalScrollOverflow = (element) => {
+        if (!(element instanceof globalThis.HTMLElement)) {
+            return 0;
+        }
+        return Math.max(0, element.scrollWidth - element.clientWidth);
+    };
     const activeButton = doc.activeElement instanceof globalThis.HTMLElement
         ? doc.activeElement.closest("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]")
         : null;
@@ -1065,6 +1072,14 @@ function collectTopCompetitorPreviewInteractionMetricsInPage() {
     const firstOpenRow = openRows[0] ?? null;
     const viewportWidth = doc.documentElement.clientWidth;
     const scrollWidth = doc.documentElement.scrollWidth;
+    const previewCell = firstOpenRow?.querySelector("[data-ra-rank-recommendation-competitor-preview-cell]");
+    const previewSection = previewCell?.querySelector("section");
+    const previewGrid = previewCell?.querySelector("[data-ra-sales-setting-competitor-price-chart-grid]");
+    const previewContentOverflow = Math.max(
+        getHorizontalScrollOverflow(previewCell),
+        getHorizontalScrollOverflow(previewSection),
+        getHorizontalScrollOverflow(previewGrid)
+    );
     const previewScrollHeight = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.scrollHeight : 0;
     const previewClientHeight = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.clientHeight : 0;
     const graphCount = firstOpenRow instanceof globalThis.HTMLElement
@@ -1081,7 +1096,9 @@ function collectTopCompetitorPreviewInteractionMetricsInPage() {
         "top competitor preview active button captured": activeButton instanceof globalThis.HTMLElement ? "yes" : "no",
         "top competitor preview viewport width": viewportWidth,
         "top competitor preview document scroll width": scrollWidth,
-        "top competitor preview horizontal overflow": scrollWidth > viewportWidth ? "yes" : "no",
+        "top competitor preview document horizontal overflow": scrollWidth > viewportWidth ? "yes" : "no",
+        "top competitor preview horizontal overflow": previewContentOverflow > 1 ? "yes" : "no",
+        "top competitor preview content overflow px": previewContentOverflow,
         "top competitor preview open rows": openRows.length,
         "top competitor preview total rows": allRows.length,
         "top competitor preview graph count": graphCount,
