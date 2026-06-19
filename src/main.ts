@@ -20160,11 +20160,14 @@ function ensureGroupRoomStyles(): void {
         [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}],
         [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] {
             background: #f3f7fb;
+            min-width: 0;
         }
 
         [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] > section {
             display: grid;
             gap: 8px;
+            min-width: 0;
+            max-width: 100%;
             margin: 0;
             padding: 10px;
             border: 1px solid #d9e1ea;
@@ -20181,7 +20184,19 @@ function ensureGroupRoomStyles(): void {
         }
 
         [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE}] {
+            min-width: 0;
+            max-width: 100%;
             margin: 0;
+        }
+
+        [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_COMPETITOR_PRICE_CHART_PANEL_ATTRIBUTE}] {
+            min-width: 0;
+            max-width: 100%;
+        }
+
+        [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_COMPETITOR_PRICE_CHART_SVG_ATTRIBUTE}] {
+            max-width: 100%;
+            overflow: hidden;
         }
 
         [${RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}] {
@@ -20671,6 +20686,12 @@ function ensureGroupRoomStyles(): void {
                 display: none;
             }
 
+            [${RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE}][hidden],
+            [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE}][hidden],
+            [${RANK_RECOMMENDATION_RANK_CHANGE_PREVIEW_ROW_ATTRIBUTE}][hidden] {
+                display: none !important;
+            }
+
             [${RANK_RECOMMENDATION_ROW_ATTRIBUTE}] {
                 padding: 8px 0;
                 border-top: 1px solid #e1e7ef;
@@ -20739,6 +20760,17 @@ function ensureGroupRoomStyles(): void {
             [data-ra-rank-recommendation-secondary-actions],
             [${RANK_RECOMMENDATION_INLINE_RANK_CHANGE_ATTRIBUTE}] {
                 max-width: 100%;
+            }
+
+            [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE}] td,
+            [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}],
+            [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] > section {
+                min-width: 0;
+                max-width: 100%;
+            }
+
+            [${RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE}] [${SALES_SETTING_COMPETITOR_PRICE_CHART_GRID_ATTRIBUTE}] {
+                grid-template-columns: minmax(0, 1fr);
             }
         }
 
