@@ -22,7 +22,12 @@ const SCENARIOS = {
             rauEntry(35, 200, 10),
             rauEntry(70, 200, 20),
             rauEntry(105, 200, 30),
-            rauEntry(140, 200, 30)
+            rauEntry(140, 200, 30),
+            rauEntry(175, 200, 30),
+            rauEntry(210, 200, 30),
+            rauEntry(245, 200, 30),
+            rauEntry(280, 200, 30),
+            rauEntry(315, 200, 30)
         ]
     },
     "unsafe-fast": {
@@ -34,7 +39,12 @@ const SCENARIOS = {
             rauEntry(10, 200, 10),
             rauEntry(20, 200, 20),
             rauEntry(30, 200, 30),
-            rauEntry(40, 200, 30)
+            rauEntry(40, 200, 30),
+            rauEntry(50, 200, 30),
+            rauEntry(60, 200, 30),
+            rauEntry(70, 200, 30),
+            rauEntry(80, 200, 30),
+            rauEntry(90, 200, 30)
         ]
     },
     "unsafe-concurrent": {
@@ -46,7 +56,12 @@ const SCENARIOS = {
             rauEntry(35, 200, 10),
             rauEntry(70, 200, 20),
             rauEntry(105, 200, 31),
-            rauEntry(140, 200, 31)
+            rauEntry(140, 200, 31),
+            rauEntry(175, 200, 31),
+            rauEntry(210, 200, 31),
+            rauEntry(245, 200, 31),
+            rauEntry(280, 200, 31),
+            rauEntry(315, 200, 31)
         ]
     },
     "http-error": {
@@ -58,7 +73,12 @@ const SCENARIOS = {
             rauEntry(35, 200, 10),
             rauEntry(70, 500, 20),
             rauEntry(105, 200, 30),
-            rauEntry(140, 200, 30)
+            rauEntry(140, 200, 30),
+            rauEntry(175, 200, 30),
+            rauEntry(210, 200, 30),
+            rauEntry(245, 200, 30),
+            rauEntry(280, 200, 30),
+            rauEntry(315, 200, 30)
         ]
     }
 };
@@ -87,6 +107,7 @@ for (const scenarioName of scenarioNames) {
     console.log(`description: ${scenario.description}`);
     console.log(`RAU warm cache request count: ${metrics["RAU warm cache request count"]}`);
     console.log(`RAU warm cache HTTP error count: ${metrics["RAU warm cache HTTP error count"]}`);
+    console.log(`RAU warm cache max burst starts per second: ${metrics["RAU warm cache max burst starts per second"]}`);
     console.log(`RAU warm cache min start interval ms: ${metrics["RAU warm cache min start interval ms"]}`);
     console.log(`RAU warm cache max concurrent requests: ${metrics["RAU warm cache max concurrent requests"]}`);
     console.log(`RAU warm cache throughput fallback reason: ${fallbackReason}`);

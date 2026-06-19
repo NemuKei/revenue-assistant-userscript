@@ -736,7 +736,8 @@ async function exerciseMode(page, options) {
         const button = page.locator("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]").first();
         await button.waitFor({ state: "attached", timeout: 15000 });
         await button.click({ force: true });
-        await page.waitForFunction(() => globalThis.document.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]").length > 0, null, { timeout: 15000 });
+        await page.waitForFunction(hasVisibleTopCompetitorPreviewRowInPage, null, { timeout: 15000 });
+        await page.waitForFunction(hasLoadedVisibleTopCompetitorPreviewRowInPage, null, { timeout: 15000 }).catch(() => {});
         const openMetrics = await page.evaluate(collectTopCompetitorPreviewInteractionMetricsInPage);
         await page.keyboard.press("Escape");
         await page.waitForTimeout(250);
@@ -790,7 +791,8 @@ async function exerciseModeViaCdp(client, options) {
                 return false;
             })()
         `);
-        await waitForSelectorViaCdp(client, "[data-ra-rank-recommendation-competitor-preview-row]", 15000);
+        await waitForFunctionViaCdp(client, hasVisibleTopCompetitorPreviewRowInPage, 15000);
+        await waitForFunctionViaCdp(client, hasLoadedVisibleTopCompetitorPreviewRowInPage, 15000).catch(() => {});
         const openMetrics = await evaluateViaCdp(client, `(${collectTopCompetitorPreviewInteractionMetricsInPage.toString()})()`);
         await client.send("Input.dispatchKeyEvent", {
             type: "keyDown",
@@ -977,8 +979,10 @@ function collectTopCompetitorPreviewInteractionMetricsInPage() {
     const activeButton = doc.activeElement instanceof globalThis.HTMLElement
         ? doc.activeElement.closest("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]")
         : null;
-    const openRows = Array.from(doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"));
-    const firstOpenRow = openRows.find((row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null) ?? openRows[0] ?? null;
+    const isVisibleRow = (row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null;
+    const allRows = Array.from(doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"));
+    const openRows = allRows.filter(isVisibleRow);
+    const firstOpenRow = openRows[0] ?? null;
     const viewportWidth = doc.documentElement.clientWidth;
     const scrollWidth = doc.documentElement.scrollWidth;
     const previewScrollHeight = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.scrollHeight : 0;
@@ -999,6 +1003,7 @@ function collectTopCompetitorPreviewInteractionMetricsInPage() {
         "top competitor preview document scroll width": scrollWidth,
         "top competitor preview horizontal overflow": scrollWidth > viewportWidth ? "yes" : "no",
         "top competitor preview open rows": openRows.length,
+        "top competitor preview total rows": allRows.length,
         "top competitor preview graph count": graphCount,
         "top competitor preview empty count": emptyCount,
         "top competitor preview graph or empty state": graphCount > 0 || emptyCount > 0 ? "yes" : "no",
@@ -1014,10 +1019,26 @@ function collectTopCompetitorPreviewCloseMetricsInPage() {
     const activeButton = doc.activeElement instanceof globalThis.HTMLElement
         ? doc.activeElement.closest("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]")
         : null;
+    const visibleRows = Array.from(doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"))
+        .filter((row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null);
     return {
-        "top competitor preview rows after escape": doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]").length,
+        "top competitor preview rows after escape": visibleRows.length,
         "top competitor preview focus returned": activeButton instanceof globalThis.HTMLElement ? "yes" : "no"
     };
+}
+
+function hasVisibleTopCompetitorPreviewRowInPage() {
+    return Array.from(globalThis.document.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"))
+        .some((row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null);
+}
+
+function hasLoadedVisibleTopCompetitorPreviewRowInPage() {
+    const rows = Array.from(globalThis.document.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"))
+        .filter((row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null);
+    return rows.some((row) => row.querySelector(
+        "[data-ra-sales-setting-competitor-price-chart-svg],"
+        + "[data-ra-sales-setting-competitor-price-empty]"
+    ) !== null);
 }
 
 async function resolvePageTarget(cdpUrl, targetUrl) {
@@ -1180,6 +1201,18 @@ async function waitForSelectorViaCdp(client, selector, timeoutMs) {
         await sleep(500);
     }
     throw new Error(`selector not found: ${selector}`);
+}
+
+async function waitForFunctionViaCdp(client, predicate, timeoutMs) {
+    const startedAt = Date.now();
+    while (Date.now() - startedAt < timeoutMs) {
+        const found = await evaluateViaCdp(client, `(${predicate.toString()})()`);
+        if (found) {
+            return;
+        }
+        await sleep(500);
+    }
+    throw new Error("predicate did not become true");
 }
 
 async function waitForCdpEvent(client, method, timeoutMs) {

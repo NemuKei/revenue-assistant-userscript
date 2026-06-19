@@ -1,9 +1,10 @@
 export const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 
-const BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS = 5;
-const BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND = 10;
+const BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS = 10;
+const BOOKING_CURVE_MIN_BURST_STARTS_PER_SECOND = 10;
 const BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS = 25;
 const BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY = 30;
+const BOOKING_CURVE_HIGH_THROUGHPUT_MIN_CONCURRENCY = 10;
 
 export function getBookingCurveRequestSource(headers) {
     const source = getHeaderValue(headers, "x-rau-request");
@@ -20,7 +21,7 @@ export function summarizeBookingCurveRequests(entries) {
 export function assessBookingCurveThroughputFailures(metrics) {
     const bookingCurveRequestCount = Number(metrics["RAU warm cache request count"]);
     const bookingCurveHttpErrorCount = Number(metrics["RAU warm cache HTTP error count"]);
-    const bookingCurveAverageStartsPerSecond = Number(metrics["RAU warm cache average starts per second"]);
+    const bookingCurveBurstStartsPerSecond = Number(metrics["RAU warm cache max burst starts per second"]);
     const bookingCurveMinStartIntervalMs = Number(metrics["RAU warm cache min start interval ms"]);
     const bookingCurveMaxConcurrentRequests = Number(metrics["RAU warm cache max concurrent requests"]);
     const bookingCurveHasEnoughRequests = Number.isFinite(bookingCurveRequestCount)
@@ -30,15 +31,18 @@ export function assessBookingCurveThroughputFailures(metrics) {
     }
     return [
         bookingCurveHttpErrorCount === 0 ? null : `RAU warm cache HTTP error count must be 0, got ${bookingCurveHttpErrorCount}`,
-        Number.isFinite(bookingCurveAverageStartsPerSecond) && bookingCurveAverageStartsPerSecond >= BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND
+        Number.isFinite(bookingCurveBurstStartsPerSecond) && bookingCurveBurstStartsPerSecond >= BOOKING_CURVE_MIN_BURST_STARTS_PER_SECOND
             ? null
-            : `RAU warm cache average starts per second must be at least ${BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND} when request count is ${bookingCurveRequestCount}, got ${metrics["RAU warm cache average starts per second"]}`,
+            : `RAU warm cache max burst starts per second must be at least ${BOOKING_CURVE_MIN_BURST_STARTS_PER_SECOND} when request count is ${bookingCurveRequestCount}, got ${metrics["RAU warm cache max burst starts per second"]}`,
         Number.isFinite(bookingCurveMinStartIntervalMs) && bookingCurveMinStartIntervalMs >= BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS
             ? null
             : `RAU warm cache min start interval must be at least ${BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS}ms when request count is ${bookingCurveRequestCount}, got ${metrics["RAU warm cache min start interval ms"]}`,
         Number.isFinite(bookingCurveMaxConcurrentRequests) && bookingCurveMaxConcurrentRequests <= BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY
             ? null
-            : `RAU warm cache max concurrent requests must be at most ${BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY}, got ${metrics["RAU warm cache max concurrent requests"]}`
+            : `RAU warm cache max concurrent requests must be at most ${BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY}, got ${metrics["RAU warm cache max concurrent requests"]}`,
+        Number.isFinite(bookingCurveMaxConcurrentRequests) && bookingCurveMaxConcurrentRequests >= BOOKING_CURVE_HIGH_THROUGHPUT_MIN_CONCURRENCY
+            ? null
+            : `RAU warm cache max concurrent requests must reach at least ${BOOKING_CURVE_HIGH_THROUGHPUT_MIN_CONCURRENCY} when request count is ${bookingCurveRequestCount}, got ${metrics["RAU warm cache max concurrent requests"]}`
     ].filter((failure) => failure !== null);
 }
 
@@ -59,6 +63,7 @@ function summarizeBookingCurveRequestGroup(prefix, entries) {
     const averageStartsPerSecond = observedSpanMs > 0
         ? sortedEntries.length / (observedSpanMs / 1000)
         : 0;
+    const maxBurstStartsPerSecond = getMaxBurstStartsPerSecond(sortedEntries);
     const maxConcurrent = sortedEntries.reduce((max, entry) => Math.max(max, entry.maxConcurrentAtStart), 0);
     const hasEnoughRequests = sortedEntries.length >= BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS;
     const httpErrorCount = sortedEntries.filter((entry) => entry.failed || (entry.status !== null && entry.status >= 400)).length;
@@ -71,10 +76,23 @@ function summarizeBookingCurveRequestGroup(prefix, entries) {
         [`${prefix} status counts`]: formatStatusCounts(statuses),
         [`${prefix} HTTP error count`]: httpErrorCount,
         [`${prefix} average starts per second`]: averageStartsPerSecond.toFixed(2),
+        [`${prefix} max burst starts per second`]: maxBurstStartsPerSecond,
         [`${prefix} min start interval ms`]: intervals.length === 0 ? "n/a" : Math.min(...intervals),
         [`${prefix} max concurrent requests`]: maxConcurrent,
         [`${prefix} throughput fallback reason`]: fallbackReason
     };
+}
+
+function getMaxBurstStartsPerSecond(sortedEntries) {
+    let maxBurst = 0;
+    let left = 0;
+    for (let right = 0; right < sortedEntries.length; right += 1) {
+        while (sortedEntries[right].startedAtMs - sortedEntries[left].startedAtMs >= 1000) {
+            left += 1;
+        }
+        maxBurst = Math.max(maxBurst, right - left + 1);
+    }
+    return maxBurst;
 }
 
 function getHeaderValue(headers, name) {
