@@ -1,5 +1,17 @@
 # tasks_backlog
 
+## 2026-06-19 High Throughput Data Fetch
+
+2026-06-19 に、利用者方針「安全寄りの現行制限を一旦緩め、問題が出たら締める」を `RAU-PERF-19` として実装した。対象は自分の契約アカウント、自施設、自分の権限内で使う `booking_curve`、Analyze reference curve、`price_trends`、`competitor_prices` の read-only 取得に限定する。Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、認証回避、rate limit 回避、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存は対象外である。
+
+`RAU-PERF-19` では、`booking_curve` warm cache を 35ms / concurrency 30 相当、Analyze reference curve を 100ms / concurrency 30 相当、`price_trends` visible 16 scope を concurrency 20、background 112 scope を 100ms / 最大 10 scope 相当、`competitor_prices` visible fetch を concurrency 20、background queue を 100ms / 最大 10 stay_date 相当へ緩めた。`X-RAU-Request: booking-curve`、request dedupe、cache hit skip、有限 queue、interactive priority、pending dedupe bypass、raw-source request dedupe、current line 先行描画、freshness policy、競合施設、検索条件 signature、保存 schema、API query contract は維持する。
+
+Safety / observability として、HTTP 401 / 403 / 429 は即停止、HTTP 5xx / timeout / network error は連続発生で縮退または停止する。`data-ra-fetch-performance-summary` には endpoint 別 high-throughput profile、started / completed、HTTP error count、auto-tightened reason の sanitized 値だけを追加し、response body、価格詳細、施設実データ、予約・在庫・顧客情報、Cookie、token、credential は保存しない。`scripts/booking-curve-smoke-metrics.mjs` と `scripts/check-booking-curve-smoke-fixture.mjs` は新 profile の 10 req/s、25ms 以上、concurrency 30 以下を前提に更新した。
+
+`RAU-PERF-19` の正本反映は `D-20260619-001` と `docs/spec_001_analyze_expansion.md` に置く。実装対象は `src/main.ts`、`src/referenceCurveStore.ts`、`scripts/booking-curve-smoke-metrics.mjs`、`scripts/check-booking-curve-smoke-fixture.mjs`、生成物 `dist/` である。実装 verify は `npm run check:request-scheduler`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:booking-curve-smoke-fixture`、`npm run check:distribution-smoke-fixture`、`git diff --check` を対象にする。通常 Chrome / Tampermonkey の live smoke は、利用者環境の実行版更新とログイン状態が必要なため、実施できない場合は未実施として残す。
+
+Remaining Task Triage は Now / Next / After Next / Later すべて空である。高スループット運用後に HTTP 401 / 403 / 429、5xx / timeout / network error の連続発生、console / page error、write API POST 監視異常、または UI 操作の詰まりが観測された場合は、今回追加した `autoTightenedReason` と endpoint 別 marker を根拠に、対象 endpoint の profile を締める follow-up task を追加する。
+
 ## Active / Post-publish Distribution And Live UX Checks
 
 2026-06-04 に、前回完了報告で提案した後続確認を `RAU-UX-118` から `RAU-UX-120` として task 化した。

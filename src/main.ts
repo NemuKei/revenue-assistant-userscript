@@ -125,7 +125,8 @@ const SCRIPT_NAME = typeof GM_info === "undefined"
     : (GM_info.script?.name ?? "Revenue Assistant Userscript");
 const ANALYZE_DATE_PATTERN = /^\/analyze\/(\d{4})-(\d{2})-(\d{2})$/;
 const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
-const BOOKING_CURVE_REQUEST_INTERVAL_MS = 350;
+const HIGH_THROUGHPUT_PROFILE_NAME = "10x-default";
+const BOOKING_CURVE_REQUEST_INTERVAL_MS = 35;
 const ROOM_GROUPS_ENDPOINT = "/api/v1/booking_curve/rm_room_groups";
 const CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const RANK_SEQUENCES_ENDPOINT = "/api/v1/rank_sequences";
@@ -147,8 +148,8 @@ class RevenueAssistantRequestError extends Error {
 const SALES_SETTING_WARM_CACHE_LOOKBACK_DAYS = 1;
 const SALES_SETTING_WARM_CACHE_LOOKAHEAD_MONTHS = 3;
 const SALES_SETTING_WARM_CACHE_PRIORITY_MONTH_BUTTON_COUNT = 6;
-const SALES_SETTING_WARM_CACHE_WORKER_COUNT = 3;
-const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 350;
+const SALES_SETTING_WARM_CACHE_WORKER_COUNT = 30;
+const SALES_SETTING_WARM_CACHE_REQUEST_INTERVAL_MS = 35;
 const SALES_SETTING_WARM_CACHE_RUN_LIMIT_MS = 10 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_COOLDOWN_MS = 3 * 60 * 1000;
 const SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS = 3;
@@ -338,10 +339,12 @@ const COMPETITOR_PRICE_OVERVIEW_UI_VERSION = "trend-tooltip-facility-v9";
 const PRICE_TREND_OVERVIEW_UI_VERSION = "price-trend-status-split-v1";
 const COMPETITOR_PRICE_TOOLTIP_OFFSET_X = 8;
 const COMPETITOR_PRICE_ROOM_TYPE_REQUESTS = ["SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"] as const;
-const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 1000;
-const PRICE_TREND_BACKGROUND_QUEUE_INTERVAL_MS = 1000;
+const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_INTERVAL_MS = 100;
+const COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_CONCURRENCY = 10;
+const PRICE_TREND_BACKGROUND_QUEUE_INTERVAL_MS = 100;
+const PRICE_TREND_BACKGROUND_QUEUE_CONCURRENCY = 10;
 const PRICE_TREND_BACKGROUND_QUEUE_MAX_CONSECUTIVE_ERRORS = 3;
-const PRICE_TREND_VISIBLE_FETCH_CONCURRENCY = 2;
+const PRICE_TREND_VISIBLE_FETCH_CONCURRENCY = 20;
 const PRICE_TREND_BACKGROUND_FIXTURE_STORAGE_KEY = "revenue-assistant:price-trends:v1:background-fixture";
 const SALES_SETTING_CURRENT_UI_ROOT_ATTRIBUTE = "data-ra-sales-setting-current-ui-root";
 const SALES_SETTING_CURRENT_UI_CARDS_ATTRIBUTE = "data-ra-sales-setting-current-ui-cards";
@@ -421,7 +424,7 @@ const CALENDAR_SYNC_DEBUG_LAST_STORAGE_KEY = `${CALENDAR_SYNC_DEBUG_STORAGE_KEY}
 const CALENDAR_SYNC_DEBUG_SNAPSHOT_ATTRIBUTE = "data-ra-calendar-sync-debug-snapshot";
 const FETCH_PERFORMANCE_DEBUG_STORAGE_KEY = "revenue-assistant:debug:fetch-performance";
 const FETCH_PERFORMANCE_SUMMARY_ATTRIBUTE = "data-ra-fetch-performance-summary";
-const COMPETITOR_PRICE_VISIBLE_FETCH_CONCURRENCY = 2;
+const COMPETITOR_PRICE_VISIBLE_FETCH_CONCURRENCY = 20;
 const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `#${GROUP_ROOM_STYLE_ID}`,
     `[${GROUP_ROOM_BADGE_ATTRIBUTE}]`,
@@ -849,6 +852,7 @@ interface CalendarSyncDebugSnapshot {
 }
 
 interface FetchPerformancePriceTrendMetrics {
+    highThroughputProfile: string;
     tabRequestedAt: number | null;
     firstStoredRecordRenderedAt: number | null;
     visibleFetchStartedAt: number | null;
@@ -860,10 +864,14 @@ interface FetchPerformancePriceTrendMetrics {
     cacheReadCount: number;
     networkFetchCount: number;
     errorCount: number;
+    httpErrorCount: number;
+    autoTightenedReason: string | null;
 }
 
 interface FetchPerformanceBookingCurveMetrics {
+    highThroughputProfile: string;
     warmCacheQueueBuiltAt: number | null;
+    warmCacheCompletedAt: number | null;
     candidateCurrentRawFetched: number;
     candidateCurrentRawSkipped: number;
     candidateCurrentRawErrored: number;
@@ -878,17 +886,24 @@ interface FetchPerformanceBookingCurveMetrics {
     referenceInteractiveWaitMs: number | null;
     referenceInteractiveMaxConcurrentRequests: number;
     referenceInteractiveMinStartIntervalMs: number | null;
+    httpErrorCount: number;
+    autoTightenedReason: string | null;
 }
 
 interface FetchPerformanceCompetitorPriceMetrics {
+    highThroughputProfile: string;
     tabRequestedAt: number | null;
     firstStoredRecordRenderedAt: number | null;
     visibleFetchStartedAt: number | null;
     visibleFetchCompletedAt: number | null;
+    backgroundStartedAt: number | null;
+    backgroundCompletedAt: number | null;
     visibleScopeCount: number;
     cacheReadCount: number;
     networkFetchCount: number;
     errorCount: number;
+    httpErrorCount: number;
+    autoTightenedReason: string | null;
 }
 
 interface FetchPerformanceMetrics {
@@ -3467,6 +3482,7 @@ function isCalendarSyncDebugEnabled(): boolean {
 function createInitialFetchPerformanceMetrics(): FetchPerformanceMetrics {
     return {
         priceTrend: {
+            highThroughputProfile: HIGH_THROUGHPUT_PROFILE_NAME,
             tabRequestedAt: null,
             firstStoredRecordRenderedAt: null,
             visibleFetchStartedAt: null,
@@ -3477,10 +3493,14 @@ function createInitialFetchPerformanceMetrics(): FetchPerformanceMetrics {
             backgroundScopeCount: 0,
             cacheReadCount: 0,
             networkFetchCount: 0,
-            errorCount: 0
+            errorCount: 0,
+            httpErrorCount: 0,
+            autoTightenedReason: null
         },
         bookingCurve: {
+            highThroughputProfile: HIGH_THROUGHPUT_PROFILE_NAME,
             warmCacheQueueBuiltAt: null,
+            warmCacheCompletedAt: null,
             candidateCurrentRawFetched: 0,
             candidateCurrentRawSkipped: 0,
             candidateCurrentRawErrored: 0,
@@ -3494,17 +3514,24 @@ function createInitialFetchPerformanceMetrics(): FetchPerformanceMetrics {
             referenceInteractiveFinishedCount: 0,
             referenceInteractiveWaitMs: null,
             referenceInteractiveMaxConcurrentRequests: 0,
-            referenceInteractiveMinStartIntervalMs: null
+            referenceInteractiveMinStartIntervalMs: null,
+            httpErrorCount: 0,
+            autoTightenedReason: null
         },
         competitorPrice: {
+            highThroughputProfile: HIGH_THROUGHPUT_PROFILE_NAME,
             tabRequestedAt: null,
             firstStoredRecordRenderedAt: null,
             visibleFetchStartedAt: null,
             visibleFetchCompletedAt: null,
+            backgroundStartedAt: null,
+            backgroundCompletedAt: null,
             visibleScopeCount: 0,
             cacheReadCount: 0,
             networkFetchCount: 0,
-            errorCount: 0
+            errorCount: 0,
+            httpErrorCount: 0,
+            autoTightenedReason: null
         }
     };
 }
@@ -4727,6 +4754,13 @@ async function runSalesSettingWarmCacheWorker(
             task,
             error
         });
+        const errorStatus = getRevenueAssistantErrorStatus(error);
+        updateFetchPerformanceBookingCurveMetrics({
+            httpErrorCount: fetchPerformanceMetrics.bookingCurve.httpErrorCount + (errorStatus === null ? 0 : 1),
+            autoTightenedReason: isHighThroughputImmediateStopStatus(errorStatus)
+                ? formatHighThroughputAutoTightenReason("booking_curve", errorStatus, "immediate stop")
+                : fetchPerformanceMetrics.bookingCurve.autoTightenedReason
+        }, "bookingCurve.warmCacheErrored");
         const failureAction = getSalesSettingWarmCacheFailureAction(error);
         if (failureAction.kind === "pause") {
             markSalesSettingWarmCacheDateProgress(task, true);
@@ -4780,6 +4814,10 @@ async function runSalesSettingWarmCacheWorker(
         };
 
         if (salesSettingWarmCacheState.consecutiveErrors >= SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS) {
+            updateFetchPerformanceBookingCurveMetrics({
+                autoTightenedReason: fetchPerformanceMetrics.bookingCurve.autoTightenedReason
+                    ?? formatHighThroughputAutoTightenReason("booking_curve", errorStatus, "consecutive errors")
+            }, "bookingCurve.autoTightened");
             pauseSalesSettingWarmCache("連続エラー", "error");
             return;
         }
@@ -4798,7 +4836,7 @@ function getSalesSettingWarmCacheFailureAction(error: unknown): { kind: "retry";
             return { kind: "pause", reason: "HTTP 403 権限確認" };
         }
         if (error.status === 429) {
-            return { kind: "cooldown", reason: "HTTP 429 待機" };
+            return { kind: "pause", reason: "HTTP 429 取得停止" };
         }
         if (error.status >= 500) {
             return { kind: "retry", reason: `HTTP ${error.status}` };
@@ -4918,6 +4956,11 @@ function resetSalesSettingWarmCache(reason: string): void {
 
 function finalizeSalesSettingWarmCacheRun(status: SalesSettingWarmCacheStatus, pauseReason: string | null): void {
     const elapsedMs = getActiveSalesSettingWarmCacheRunElapsedMs();
+    if (status !== "idle" && status !== "building" && fetchPerformanceMetrics.bookingCurve.warmCacheQueueBuiltAt !== null) {
+        updateFetchPerformanceBookingCurveMetrics({
+            warmCacheCompletedAt: Date.now()
+        }, "bookingCurve.warmCacheCompleted");
+    }
     salesSettingWarmCacheState = {
         ...salesSettingWarmCacheState,
         runId: ++salesSettingWarmCacheRunSeq,
@@ -5601,6 +5644,40 @@ function getErrorMessage(error: unknown): string {
     }
 
     return String(error);
+}
+
+function getRevenueAssistantErrorStatus(error: unknown): number | null {
+    if (error instanceof RevenueAssistantRequestError) {
+        return error.status;
+    }
+
+    const match = getErrorMessage(error).match(/request failed:\s*(\d{3})/i);
+    if (match === null) {
+        return null;
+    }
+
+    const status = Number(match[1]);
+    return Number.isFinite(status) ? status : null;
+}
+
+function isHighThroughputImmediateStopStatus(status: number | null): boolean {
+    return status === 401 || status === 403 || status === 429;
+}
+
+function formatHighThroughputAutoTightenReason(label: string, status: number | null, fallback: string): string {
+    if (status === 401) {
+        return `${label}: HTTP 401 immediate stop`;
+    }
+    if (status === 403) {
+        return `${label}: HTTP 403 immediate stop`;
+    }
+    if (status === 429) {
+        return `${label}: HTTP 429 immediate stop`;
+    }
+    if (status !== null) {
+        return `${label}: HTTP ${status} ${fallback}`;
+    }
+    return `${label}: ${fallback}`;
 }
 
 function formatCompactMonthDayForDisplay(dateKey: string): string | null {
@@ -6540,7 +6617,7 @@ async function runCompetitorPriceSnapshotSave(
     source: "analyze-open" | "competitor-tab",
     attemptKeys: Set<string>,
     attemptKey: string,
-    options: { updateVisibleState?: boolean; concurrency?: number } = {}
+    options: { updateVisibleState?: boolean; concurrency?: number; throwOnError?: boolean } = {}
 ): Promise<boolean> {
     const updateVisibleState = options.updateVisibleState !== false;
     if (updateVisibleState) {
@@ -6633,10 +6710,15 @@ async function runCompetitorPriceSnapshotSave(
         return true;
     } catch (error: unknown) {
         attemptKeys.delete(attemptKey);
+        const errorStatus = getRevenueAssistantErrorStatus(error);
         if (updateVisibleState) {
             updateFetchPerformanceCompetitorPriceMetrics({
                 visibleFetchCompletedAt: Date.now(),
-                errorCount: fetchPerformanceMetrics.competitorPrice.errorCount + 1
+                errorCount: fetchPerformanceMetrics.competitorPrice.errorCount + 1,
+                httpErrorCount: fetchPerformanceMetrics.competitorPrice.httpErrorCount + (errorStatus === null ? 0 : 1),
+                autoTightenedReason: isHighThroughputImmediateStopStatus(errorStatus)
+                    ? formatHighThroughputAutoTightenReason("competitor_prices", errorStatus, "visible fetch stopped")
+                    : fetchPerformanceMetrics.competitorPrice.autoTightenedReason
             }, "competitorPrice.visibleFetchErrored");
             competitorPriceSnapshotUiState = {
                 ...competitorPriceSnapshotUiState,
@@ -6657,6 +6739,9 @@ async function runCompetitorPriceSnapshotSave(
             facilityCacheKey,
             error
         });
+        if (options.throwOnError === true) {
+            throw error;
+        }
         return false;
     }
 }
@@ -6746,9 +6831,14 @@ async function runPriceTrendFetch(
         schedulePriceTrendBackgroundQueue(analysisDate, facilityCacheKey, initialScopes);
         return true;
     } catch (error: unknown) {
+        const errorStatus = getRevenueAssistantErrorStatus(error);
         updateFetchPerformancePriceTrendMetrics({
             visibleFetchCompletedAt: Date.now(),
-            errorCount: fetchPerformanceMetrics.priceTrend.errorCount + 1
+            errorCount: fetchPerformanceMetrics.priceTrend.errorCount + 1,
+            httpErrorCount: fetchPerformanceMetrics.priceTrend.httpErrorCount + (errorStatus === null ? 0 : 1),
+            autoTightenedReason: isHighThroughputImmediateStopStatus(errorStatus)
+                ? formatHighThroughputAutoTightenReason("price_trends", errorStatus, "visible fetch stopped")
+                : fetchPerformanceMetrics.priceTrend.autoTightenedReason
         }, "priceTrend.visibleFetchErrored");
         priceTrendUiState = {
             ...priceTrendUiState,
@@ -6858,8 +6948,8 @@ async function drainPriceTrendBackgroundQueue(): Promise<void> {
     const facilityId = priceTrendBackgroundQueueState.facilityId;
     const stayDate = priceTrendBackgroundQueueState.stayDate;
 
-    const scope = priceTrendBackgroundQueue.shift() ?? null;
-    if (scope === null) {
+    const scopes = priceTrendBackgroundQueue.splice(0, PRICE_TREND_BACKGROUND_QUEUE_CONCURRENCY);
+    if (scopes.length === 0) {
         priceTrendBackgroundQueueState = {
             ...priceTrendBackgroundQueueState,
             status: "complete",
@@ -6876,7 +6966,7 @@ async function drainPriceTrendBackgroundQueue(): Promise<void> {
     priceTrendBackgroundQueueRunning = true;
     priceTrendBackgroundQueueState = {
         ...priceTrendBackgroundQueueState,
-        currentScope: scope,
+        currentScope: scopes[0] ?? null,
         pauseReason: null
     };
     renderPriceTrendOverviewFromState();
@@ -6887,30 +6977,37 @@ async function drainPriceTrendBackgroundQueue(): Promise<void> {
         const result = await fetchAndPersistPriceTrendRecords({
             facilityId,
             stayDate,
-            scopes: [scope],
-            requestContext
+            scopes,
+            requestContext,
+            concurrency: PRICE_TREND_BACKGROUND_QUEUE_CONCURRENCY
         });
         updateFetchPerformancePriceTrendMetrics({
             networkFetchCount: fetchPerformanceMetrics.priceTrend.networkFetchCount + result.requestCount
         }, "priceTrend.backgroundFetchCompleted");
         priceTrendBackgroundQueueState = {
             ...priceTrendBackgroundQueueState,
-            processed: priceTrendBackgroundQueueState.processed + 1,
-            stored: priceTrendBackgroundQueueState.stored + (result.stored ? 1 : 0),
-            skipped: priceTrendBackgroundQueueState.skipped + (result.stored ? 0 : 1),
+            processed: priceTrendBackgroundQueueState.processed + result.requestCount,
+            stored: priceTrendBackgroundQueueState.stored + (result.stored ? result.requestCount : 0),
+            skipped: priceTrendBackgroundQueueState.skipped + (result.stored ? 0 : result.requestCount),
             consecutiveErrors: 0,
             currentScope: null
         };
         await refreshPriceTrendRecords(facilityId, stayDate);
     } catch (error: unknown) {
+        const errorStatus = getRevenueAssistantErrorStatus(error);
         const consecutiveErrors = priceTrendBackgroundQueueState.consecutiveErrors + 1;
+        const autoTightenedReason = isHighThroughputImmediateStopStatus(errorStatus)
+            ? formatHighThroughputAutoTightenReason("price_trends", errorStatus, "background queue stopped")
+            : fetchPerformanceMetrics.priceTrend.autoTightenedReason;
         updateFetchPerformancePriceTrendMetrics({
-            errorCount: fetchPerformanceMetrics.priceTrend.errorCount + 1
+            errorCount: fetchPerformanceMetrics.priceTrend.errorCount + scopes.length,
+            httpErrorCount: fetchPerformanceMetrics.priceTrend.httpErrorCount + (errorStatus === null ? 0 : 1),
+            autoTightenedReason
         }, "priceTrend.backgroundFetchErrored");
         priceTrendBackgroundQueueState = {
             ...priceTrendBackgroundQueueState,
-            processed: priceTrendBackgroundQueueState.processed + 1,
-            errors: priceTrendBackgroundQueueState.errors + 1,
+            processed: priceTrendBackgroundQueueState.processed + scopes.length,
+            errors: priceTrendBackgroundQueueState.errors + scopes.length,
             consecutiveErrors,
             currentScope: null,
             pauseReason: getErrorMessage(error)
@@ -6918,10 +7015,16 @@ async function drainPriceTrendBackgroundQueue(): Promise<void> {
         console.warn(`[${SCRIPT_NAME}] failed to fetch price trend background record`, {
             analysisDate: priceTrendBackgroundQueueState.stayDate,
             facilityCacheKey: priceTrendBackgroundQueueState.facilityId,
-            scope,
+            scopes,
             error
         });
-        if (consecutiveErrors >= PRICE_TREND_BACKGROUND_QUEUE_MAX_CONSECUTIVE_ERRORS) {
+        if (isHighThroughputImmediateStopStatus(errorStatus)) {
+            stopPriceTrendBackgroundQueue(formatHighThroughputAutoTightenReason("price_trends", errorStatus, "background queue stopped"));
+        } else if (consecutiveErrors >= PRICE_TREND_BACKGROUND_QUEUE_MAX_CONSECUTIVE_ERRORS) {
+            updateFetchPerformancePriceTrendMetrics({
+                autoTightenedReason: fetchPerformanceMetrics.priceTrend.autoTightenedReason
+                    ?? formatHighThroughputAutoTightenReason("price_trends", errorStatus, "consecutive background errors")
+            }, "priceTrend.autoTightened");
             stopPriceTrendBackgroundQueue("連続エラー");
         }
     } finally {
@@ -7046,6 +7149,10 @@ function scheduleCompetitorPriceSnapshotBackgroundQueue(
     }
 
     competitorPriceSnapshotBackgroundProgress = buildCompetitorPriceSnapshotBackgroundProgress();
+    updateFetchPerformanceCompetitorPriceMetrics({
+        backgroundStartedAt: Date.now(),
+        backgroundCompletedAt: competitorPriceSnapshotBackgroundQueue.length === 0 ? Date.now() : null
+    }, "competitorPrice.backgroundStarted");
     renderSalesSettingWarmCacheIndicator();
     scheduleCompetitorPriceSnapshotBackgroundDrain();
 }
@@ -7108,18 +7215,19 @@ async function drainCompetitorPriceSnapshotBackgroundQueue(): Promise<void> {
     competitorPriceSnapshotBackgroundRunning = true;
 
     try {
-        const task = competitorPriceSnapshotBackgroundQueue.shift();
-        if (task === undefined) {
+        const tasks = competitorPriceSnapshotBackgroundQueue.splice(0, COMPETITOR_PRICE_SNAPSHOT_BACKGROUND_CONCURRENCY);
+        if (tasks.length === 0) {
             return;
         }
 
-        if (
+        const hasInvalidContext = tasks.some((task) => (
             document.visibilityState === "hidden"
             || activeAnalyzeDate === null
             || activeAnalyzeDate !== task.priorityStayDate
             || activeBatchDateKey !== task.batchDateKey
             || activeFacilityCacheKey !== task.facilityCacheKey
-        ) {
+        ));
+        if (hasInvalidContext) {
             competitorPriceSnapshotBackgroundQueue.length = 0;
             competitorPriceSnapshotBackgroundTaskKeys.clear();
             competitorPriceSnapshotBackgroundProgress = {
@@ -7135,13 +7243,17 @@ async function drainCompetitorPriceSnapshotBackgroundQueue(): Promise<void> {
         competitorPriceSnapshotBackgroundProgress = {
             ...competitorPriceSnapshotBackgroundProgress,
             status: "running",
-            currentTask: task,
+            currentTask: tasks[0] ?? null,
             pauseReason: null
         };
         renderSalesSettingWarmCacheIndicator();
 
-        const attemptKey = buildCompetitorPriceSnapshotAttemptKey(task.facilityCacheKey, task.stayDate, task.batchDateKey, "competitor-tab");
-        if (!competitorPriceSnapshotPriorityAttemptKeys.has(attemptKey)) {
+        const results = await Promise.allSettled(tasks.map(async (task) => {
+            const attemptKey = buildCompetitorPriceSnapshotAttemptKey(task.facilityCacheKey, task.stayDate, task.batchDateKey, "competitor-tab");
+            if (competitorPriceSnapshotPriorityAttemptKeys.has(attemptKey)) {
+                return;
+            }
+
             competitorPriceSnapshotPriorityAttemptKeys.add(attemptKey);
             await runCompetitorPriceSnapshotSave(
                 task.stayDate,
@@ -7150,13 +7262,46 @@ async function drainCompetitorPriceSnapshotBackgroundQueue(): Promise<void> {
                 "competitor-tab",
                 competitorPriceSnapshotPriorityAttemptKeys,
                 attemptKey,
-                { updateVisibleState: false }
+                {
+                    updateVisibleState: false,
+                    throwOnError: true
+                }
             );
+        }));
+        const firstRejectedResult = results.find((result): result is PromiseRejectedResult => result.status === "rejected");
+        if (firstRejectedResult !== undefined) {
+            const errorStatus = getRevenueAssistantErrorStatus(firstRejectedResult.reason);
+            updateFetchPerformanceCompetitorPriceMetrics({
+                backgroundCompletedAt: Date.now(),
+                errorCount: fetchPerformanceMetrics.competitorPrice.errorCount + 1,
+                httpErrorCount: fetchPerformanceMetrics.competitorPrice.httpErrorCount + (errorStatus === null ? 0 : 1),
+                autoTightenedReason: isHighThroughputImmediateStopStatus(errorStatus)
+                    ? formatHighThroughputAutoTightenReason("competitor_prices", errorStatus, "background queue stopped")
+                    : formatHighThroughputAutoTightenReason("competitor_prices", errorStatus, "background queue stopped")
+            }, "competitorPrice.backgroundFetchErrored");
+            competitorPriceSnapshotBackgroundQueue.length = 0;
+            competitorPriceSnapshotBackgroundTaskKeys.clear();
+            competitorPriceSnapshotBackgroundProgress = {
+                ...competitorPriceSnapshotBackgroundProgress,
+                status: "stopped",
+                processed: Math.min(
+                    competitorPriceSnapshotBackgroundProgress.total,
+                    competitorPriceSnapshotBackgroundProgress.processed + tasks.length
+                ),
+                currentTask: null,
+                pauseReason: getErrorMessage(firstRejectedResult.reason)
+            };
+            console.warn(`[${SCRIPT_NAME}] failed to persist competitor price background snapshots`, {
+                tasks,
+                error: firstRejectedResult.reason
+            });
+            renderSalesSettingWarmCacheIndicator();
+            return;
         }
 
         competitorPriceSnapshotBackgroundProgress = {
             ...competitorPriceSnapshotBackgroundProgress,
-            processed: Math.min(competitorPriceSnapshotBackgroundProgress.total, competitorPriceSnapshotBackgroundProgress.processed + 1),
+            processed: Math.min(competitorPriceSnapshotBackgroundProgress.total, competitorPriceSnapshotBackgroundProgress.processed + tasks.length),
             currentTask: null,
             pauseReason: null
         };
@@ -7172,6 +7317,9 @@ async function drainCompetitorPriceSnapshotBackgroundQueue(): Promise<void> {
                 currentTask: null,
                 pauseReason: "完了"
             };
+            updateFetchPerformanceCompetitorPriceMetrics({
+                backgroundCompletedAt: Date.now()
+            }, "competitorPrice.backgroundCompleted");
             renderSalesSettingWarmCacheIndicator();
         }
     }

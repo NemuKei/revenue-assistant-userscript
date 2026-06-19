@@ -4,8 +4,8 @@ import { createIntervalRequestScheduler, type IntervalRequestScheduleOptions } f
 const REFERENCE_CURVE_DB_NAME = "revenue-assistant-reference-curves";
 const REFERENCE_CURVE_DB_VERSION = 1;
 const REFERENCE_CURVE_STORE_NAME = "reference-curve-results";
-const DEFAULT_REFERENCE_CURVE_REQUEST_CONCURRENCY = 3;
-const DEFAULT_REFERENCE_CURVE_REQUEST_INTERVAL_MS = 1000;
+const DEFAULT_REFERENCE_CURVE_REQUEST_CONCURRENCY = 30;
+const DEFAULT_REFERENCE_CURVE_REQUEST_INTERVAL_MS = 100;
 
 export interface ReferenceCurveCacheKeyParts {
     facilityId: string;

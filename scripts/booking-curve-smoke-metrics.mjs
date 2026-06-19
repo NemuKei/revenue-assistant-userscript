@@ -1,9 +1,9 @@
 export const BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 
 const BOOKING_CURVE_THROUGHPUT_MIN_REQUESTS = 5;
-const BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND = 1;
-const BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS = 300;
-const BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY = 3;
+const BOOKING_CURVE_MIN_AVERAGE_STARTS_PER_SECOND = 10;
+const BOOKING_CURVE_UNSAFE_MIN_START_INTERVAL_MS = 25;
+const BOOKING_CURVE_MAX_EXPECTED_CONCURRENCY = 30;
 
 export function getBookingCurveRequestSource(headers) {
     const source = getHeaderValue(headers, "x-rau-request");

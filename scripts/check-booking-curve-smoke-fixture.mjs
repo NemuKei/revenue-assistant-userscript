@@ -14,15 +14,15 @@ const SCENARIOS = {
         ]
     },
     "safe-active": {
-        description: "Enough RAU-tagged requests with HTTP 200, safe start spacing, and concurrency <= 3.",
+        description: "Enough RAU-tagged requests with HTTP 200, high-throughput start spacing, and concurrency <= 30.",
         expectFailure: false,
         expectFallback: false,
         entries: [
             rauEntry(0, 200, 1),
-            rauEntry(350, 200, 2),
-            rauEntry(700, 200, 3),
-            rauEntry(1050, 200, 3),
-            rauEntry(1400, 200, 3)
+            rauEntry(35, 200, 10),
+            rauEntry(70, 200, 20),
+            rauEntry(105, 200, 30),
+            rauEntry(140, 200, 30)
         ]
     },
     "unsafe-fast": {
@@ -31,10 +31,10 @@ const SCENARIOS = {
         expectFallback: false,
         entries: [
             rauEntry(0, 200, 1),
-            rauEntry(100, 200, 2),
-            rauEntry(200, 200, 3),
-            rauEntry(300, 200, 3),
-            rauEntry(400, 200, 3)
+            rauEntry(10, 200, 10),
+            rauEntry(20, 200, 20),
+            rauEntry(30, 200, 30),
+            rauEntry(40, 200, 30)
         ]
     },
     "unsafe-concurrent": {
@@ -43,10 +43,10 @@ const SCENARIOS = {
         expectFallback: false,
         entries: [
             rauEntry(0, 200, 1),
-            rauEntry(350, 200, 2),
-            rauEntry(700, 200, 3),
-            rauEntry(1050, 200, 4),
-            rauEntry(1400, 200, 4)
+            rauEntry(35, 200, 10),
+            rauEntry(70, 200, 20),
+            rauEntry(105, 200, 31),
+            rauEntry(140, 200, 31)
         ]
     },
     "http-error": {
@@ -55,10 +55,10 @@ const SCENARIOS = {
         expectFallback: false,
         entries: [
             rauEntry(0, 200, 1),
-            rauEntry(350, 200, 2),
-            rauEntry(700, 500, 3),
-            rauEntry(1050, 200, 3),
-            rauEntry(1400, 200, 3)
+            rauEntry(35, 200, 10),
+            rauEntry(70, 500, 20),
+            rauEntry(105, 200, 30),
+            rauEntry(140, 200, 30)
         ]
     }
 };
