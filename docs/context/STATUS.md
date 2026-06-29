@@ -1,9 +1,10 @@
 # STATUS
 
-最終更新: 2026-06-19
+最終更新: 2026-06-29
 
 ## Current Task Bundle
 
+- 主対象: 2026-06-29 に、RAU docs governance を AGENTS-first + optional PROJECT_CONTEXT profile へ整理した。RAU は Profile B+ / C-light として扱い、`docs/context/PROJECT_CONTEXT.md` を purpose / background intent / non-goals / safety boundary / source-of-truth role の upper premise layer として追加した。`AGENTS.md` は作業入口、source map、dist / API / write 境界、最小 verify、Git default へ圧縮した。`STATUS.md`、`DECISIONS.md`、`tasks_backlog.md` は targeted optional layer とし、`INTENT.md` は判断原則として残す。docs-only 変更で、runtime、`dist/**`、Tampermonkey、browser state、write API 仕様には触れない。既存の未追跡 `docs/ai/` は user-owned / unrelated として今回対象外。
 - 主対象: 2026-06-19 に、`RAU-UX-137` として Top 料金調整候補 UI のブラッシュアップを実施した。利用者指定計画の `RAU-UX-130` は現行正本では 2026-06-11 に完了済みだったため、ID 再利用を避けて follow-up として扱う。Product / UX Reviewer 観点では、候補確認導線を `対象月選択 -> 候補確認 -> Analyze / 曲線 / 競合価格 / ランク調整 -> 補助判断` と整理し、主要操作と `その他` details の分離は維持した。Data / Visualization Reviewer 観点では、競合価格 preview を推奨金額決定ではなく競合価格 snapshot の文脈確認として扱い、hover なしで state message、部屋タイプ対応 note、graph / empty / error の意味が読めることを成功条件にした。Frontend 実装では、競合価格 preview の部屋タイプ対応 note を日本語優先の文言へ寄せ、専用 marker `data-ra-rank-recommendation-competitor-preview-room-type-note` を追加した。`scripts/run-distribution-smoke.mjs` は `--top-open-competitor-preview` 実行時にこの marker を必須確認する。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence、reasonFingerprint、request 間隔、同時実行数、保存 schema、userscript metadata、`dist/` 手編集、自動反映、一括反映、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存は変更していない。
 - 主対象: 2026-06-19 に、`RAU-AN-02` として Analyze 最新実装のブラッシュアップを実施した。Product / UX Reviewer 観点では、`販売設定` タブで利用者が迷う主因を、追加 copy や装飾不足ではなく、tab 復帰直後に overall summary、booking curve section、SVG、toggle が欠けると判断対象が存在しないように見えることと整理した。Data / Visualization Reviewer 観点では、この表示の判断対象を、現時点の予約実績と reference curve を比較し、全体 / 部屋別に booking pace の差分を見ることと定義した。Frontend 実装は推測 UI 変更を避け、既存 `scripts/run-distribution-smoke.mjs` が収集済みだった Analyze 販売設定の overall summary / booking curve section / SVG / toggle metrics を `analyze-recommendations` mode の合格条件へ昇格した。これにより、`RAU-AN-01` の描画欠けが再発した場合に配布版 smoke が fail する。docs 同期として `docs/context/PRODUCT_DESIGN_AUDIT.md` に `Analyze Sales Setting Brushup Audit 2026-06-19` を追加し、`docs/tasks_backlog.md` に `RAU-AN-02` を追加し、`docs/spec_001_analyze_expansion.md` に販売設定主要表示の smoke 合格条件と `sameWeekdayRaw` pre-scan 契約を反映した。直近 main の follow-up として、月別優先取得時の current / same-weekday raw task 優先、same-weekday raw source の pre-scan cache hit 除外、competitor preview overflow smoke の scope 調整も現行状態に含める。verify は `npm run check:distribution-smoke-fixture`、`npm run check:request-scheduler`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:booking-curve-smoke-fixture`、`git diff --check` が通過した。`npm run build` は sandbox 内で Vite `spawn EPERM` になったため、同じ command を昇格して再実行した。Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、認証回避、rate limit 回避、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存、request 間隔、同時実行数、保存 schema、userscript metadata、runtime UI、`dist/` 手編集は変更していない。
 - 主対象: 2026-06-19 に、Analyze `販売設定` タブでグラフを含む RAU 追加表示が欠け、`競合価格` タブなどへ移動して戻ると描画される場合がある不具合を修正した。販売設定タブで可視表示に使う current `/api/v4/booking_curve` は、ホテル全体と室タイプ別 card のどちらも request scheduler の `interactive` priority で要求する。`販売設定` タブ押下時には `0 / 120 / 300 / 700 / 1500 / 3000ms` 相当の有限再同期を行い、React 側の tab mount が遅れた場合でも既存 `queueCalendarSync` で拾い直す。reference curve、same-weekday、warm cache の取得対象、API query、保存 schema、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、認証回避、rate limit 回避、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存は変更していない。配布版 smoke の Analyze metrics には、販売設定 summary / booking curve section / SVG / toggle の観測項目を追加した。
@@ -548,38 +549,29 @@
 最初に読む正本:
 
 1. `AGENTS.md`
-2. `docs/context/STATUS.md`
-3. `docs/tasks_backlog.md`
-4. `docs/context/INTENT.md`
-5. `docs/context/DECISIONS.md`
-6. `docs/spec_000_overview.md`
-7. `docs/spec_001_analyze_expansion.md`
-8. `docs/spec_002_curve_core.md`
-9. `docs/spec_003_rank_recommendation_signal.md`
+2. `git status --short --branch`
+3. premise、strategy、非目的、安全境界、API / write / distribution boundary、docs governance に触れる場合だけ `docs/context/PROJECT_CONTEXT.md`
+4. 現在地が必要なら `docs/context/STATUS.md` の current / re-entry 周辺
+5. 実行順が必要なら `docs/tasks_backlog.md` の triage 周辺
+6. 判断理由が必要なら `docs/context/DECISIONS.md`、判断原則が必要なら `docs/context/INTENT.md`、外部挙動が必要なら対象 `docs/spec_*.md`
 
 最初にやること:
 
-1. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-04 時点では Now `RAU-UX-106`、Next `RAU-UX-107`、After Next `RAU-UX-108`、`RAU-UX-109`、Later `RAU-UX-110`、`RAU-UX-111` である。
-2. 次に進める場合は、まず `RAU-UX-106` で Product Design `get-context` brief、対象 surface、capture 手段、desktop / mobile viewport、評価軸、audit 出力先を固定する。その後、`RAU-UX-107` から `RAU-UX-110` で画面別 audit を行い、各画面のスクリーンショット証跡、UX findings、アクセシビリティ risk、次に実装する task ID または実装しない理由を記録する。共通 UI primitive / fixture / smoke 改善は、画面別 audit の結果がそろった後に `RAU-UX-111` で切り出す。未タスク化のまま runtime UI、Revenue Assistant API request 範囲、Revenue Assistant write API endpoint、配布設定を変更しない。
-3. top list UI をさらに変更する場合は、実装前に `docs/spec_003_rank_recommendation_signal.md` の top list UI 契約を確認する。常時表示、details 内表示、preview open 時だけ表示する要素を変える場合は、spec 更新要否を判定する。
-4. 配布版 smoke で RAU userscript root count が `0` の場合、または Chrome DevTools Protocol 接続が websocket 接続後に timeout する場合は、ログイン状態、Tampermonkey installed version、GitHub Pages published version、Tampermonkey dashboard 更新要否、Chrome remote debugging port の応答、`smoke:distribution` helper 側の navigation / connection timeout を分けて確認する。
-5. React component、React mount、React state 管理を追加または変更する場合は、`npm run check` に加え、固定済み repo-local command の `npm run react:doctor -- --diff false` を実行する。UI ライブラリまたは UI primitive を追加導入する場合は、依存追加の承認、version pin、bundle size 差分、Tampermonkey 配布版 smoke、監視対象 write API POST 0 件確認を行う。
+1. `git status --short --branch` で branch、remote 同期、未追跡 / unrelated 差分を確認する。
+2. 既存の未追跡 `docs/ai/` は、明示 task がない限り user-owned / unrelated として触らない。
+3. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-29 docs governance 更新時点では Now / Next / After Next / Later は空の扱いを維持する。
+4. 新しい未着手 work がなければ、ユーザーの新規要求または実 Revenue Assistant 画面で見つかった具体不具合から task を追加する。
+5. runtime 実装に入る場合は対象 spec の `spec-impact` を確認し、必要なら `DECISIONS.md` へ理由を残す。
 
 変更しない契約:
 
-- 人数 forecast は扱わない。
-- PMS データ、BCL Python 実装、RAR 同期、外部 DB を first wave の前提にしない。
-- 推奨レート金額を first phase で出さない。
-- Revenue Assistant への自動反映や選択範囲一括反映は first phase で扱わない。
-- 未確認 API を確認済み仕様として扱わない。
-- forecast 数値を top list または Analyze detail へ直接表示しない。forecast signal は priority / confidence 補助としてのみ扱う。
-- sales / ADR 数値、比率、金額を top list へ直接表示しない。sales / ADR health signal は priority / confidence 補助としてのみ扱う。
-- 既存の `全体 / 個人` 系列、rank marker、tooltip、`ACT` 空表示、current-ui supplement portal を壊さない。
-- `dist/*.user.js` は手編集しない。
-- 室タイプ別 reference curve の追加取得は、初期画面表示時に全室タイプ分を一括で先読みしない。
-- warm cache は、表示同期の待ち時間に入れず、低優先度 queue として時間制限つきで進める。
-- 旧 `直近 7 泊日中央値` と `last_year_room_sum` 優先ロジックへ、データ不足時に暗黙 fallback しない。
-- raw source 保存開始前の過去 stay_date について、本当の `0日前` を推測で復元しない。
+- 推奨レート金額を出さない。
+- 自動反映しない。
+- 一括反映しない。
+- credential、raw trace、HAR、request / response body、非公開データを保存しない。
+- rooms-only を初期 scope として扱う。
+- rank recommendation UI は work queue / attention signal として扱い、pricing engine にしない。
+- `PROJECT_CONTEXT.md` は progress、task queue、verification log、単発 decision の置き場にしない。
 
 ## Verify / Confirmation State
 

@@ -1,5 +1,13 @@
 # tasks_backlog
 
+## 2026-06-29 Docs Governance Profile
+
+RAU docs governance を AGENTS-first + optional PROJECT_CONTEXT profile として整理した。対象は docs governance のみで、runtime、`dist/**`、Tampermonkey、browser state、live hook/config、automation、write API behavior は範囲外である。
+
+RAU は Profile B+ / C-light として扱う。`docs/context/PROJECT_CONTEXT.md` は purpose、background intent、non-goals、safety boundary、source-of-truth role の optional upper premise layer であり、progress、task queue、verification log、単発 decision の置き場にはしない。
+
+Remaining Task Triage は空のまま維持する。既存の未追跡 `docs/ai/` は、明示 task がない限り user-owned / unrelated として触らない。
+
 ## 2026-06-19 Top Candidate UI Brushup
 
 2026-06-19 に、Top 料金調整候補 UI のブラッシュアップを `RAU-UX-137` として実施した。利用者指定の計画では `RAU-UX-130` が Goal Bundle 名だったが、現行正本では `RAU-UX-130` / `RAU-UX-131` は 2026-06-11 に完了済みであるため、ID 再利用を避けて follow-up として扱う。

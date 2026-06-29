@@ -1,11 +1,13 @@
 # INTENT
 
-最終更新: 2026-06-01
+最終更新: 2026-06-29
 
 ## Purpose
 
 この文書は、RAU で複数の仕様判断に繰り返し使う比較軸と優先順位を定義する。
 単発の決定は `docs/context/DECISIONS.md`、仕様本文は `docs/spec_*.md`、現在地は `docs/context/STATUS.md` に置く。
+
+RAU の上位前提、Profile、非目的、安全境界、source-of-truth role は `docs/context/PROJECT_CONTEXT.md` に置く。この `INTENT.md` は、それらを重複記載せず、日々の設計・実装・優先度判断で使う比較軸に限定する。
 
 ## Judgment Principles
 
