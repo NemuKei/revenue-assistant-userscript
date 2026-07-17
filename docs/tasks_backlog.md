@@ -1,5 +1,55 @@
 # tasks_backlog
 
+## 2026-07-17 Top Decision Workspace Redesign
+
+既存の料金調整候補を守ること自体ではなく、RM が今日の判断対象を短時間で見つけ、個人需要と団体需要を混同せず、安全に次操作へ進めることを目的に再設計する。比較した方向のうち、既存カレンダーに近く認知コストが低い「カレンダー左 + `今日の判断` rail 右 + 選択詳細下」を採用する。
+
+### RAU-UX-138 トップ料金調整候補を calendar decision workspace へ再設計する
+
+- 状態:
+  - local 実装・検証完了。source、fixture、marker / smoke、desktop / wide / mobile visual QA、keyboard / focus QA、docs 同期を同一 closeout に含めた。live Revenue Assistant / Tampermonkey 配布版と実 write は未確認で、publish は明示承認 gate のまま残す。
+- 目的:
+  - カレンダーで日付と曜日の位置を把握する既存の mental model を残しつつ、`stayDate x roomGroup` の作業順を `今日の判断` rail で明示する。
+  - 選択した 1 候補の現在 / 候補 rank、OH / キャパ、個人、団体、booking curve、主要根拠、注意、更新状況、次操作を 1 つの詳細領域で読めるようにする。
+  - rank 変更を countdown による自動送信ではなく、変更内容を読んだ後の明示的な最終確認にする。
+- 採用する layout / interaction:
+  - desktop は既存カレンダーを左、`今日の判断` rail を右、選択詳細を下へ置く。narrow 幅では横 overflow と操作不能を避ける順序で積む。
+  - rail の状態は `判断可能`、`要確認`、`保留・直近` の 3 つとし、件数、対象月、宿泊日 grouping、task selection を持つ。
+  - カレンダーの標準画面由来の黒い数値と青い `団n` は維持する。黒い数値は OH と同じ source / semantic ではないため、OH へ relabel しない。
+  - 選択詳細では `OH n / キャパ m`、`個人 n`、`団体 n` を別項目で表示する。各値は直接取得 source を使い、欠損は差し引きで推測せず `未取得`、0 は `0` とする。
+  - task card、カレンダー、初期詳細に最終 write CTA を置かない。`変更内容を確認` で最終確認 region を開き、`この内容で変更する` の明示押下だけが送信前 guard を開始する。確認を開いたまま待っても送信しない。
+- supersede:
+  - カレンダー下の 9 列 list、`全て / 上げ検討 / 下げ注意 / 注意あり / 直近変更` の旧 view mode、row 内 quick submit、`反映する -> 5 秒 pending -> 自動送信` を現行 UI 契約から外す。
+  - 過去 task / decision の観測結果、candidate scoring、reasonFingerprint、lifecycle、current rank / rank status の fresh 再取得、同時更新停止、観測済み Lincoln custom rank path 限定、反映確認、自動 retry なしは維持する。
+  - `様子見` / `対応不要` の browser-local decision に対する 5 秒 pending / 取消は維持する。
+- 非目標:
+  - 推奨レート金額、人数別 / 食事条件別 / プラン別価格の変更、販売停止、在庫変更、自動反映、一括反映を追加しない。
+  - 未観測 provider、`price_ranks` 系 endpoint、live fixture write、認証回避、rate limit 回避を追加しない。
+  - カレンダーの黒い標準数値を OH とみなす、または個人 / 団体の一方を差し引きで補完しない。
+- 受け入れ条件:
+  - desktop の同一 viewport で選定 reference と実装 screenshot を並べ、calendar / rail / detail の hierarchy、padding、文字密度、border、選択状態、CTA hierarchy を比較して visible mismatch を解消している。
+  - mobile 390px 相当で、calendar、rail、detail、review、長い roomGroup 名、empty / loading / HTTP 401 / 403、missing / zero / large count に横 overflow、切れ、操作不能がない。
+  - カレンダーの黒い標準数値と青い `団n` が維持され、選択詳細で `OH / キャパ`、`個人`、`団体` が区別される。missing 値を推測しない。
+  - candidate selection、3 state control、対象月、Analyze、様子見、対応不要、review open / cancel が keyboard / focus を含めて機能する。
+  - safe fixture で review open 後 5 秒以上待っても mock submit 0 件、cancel 後も 0 件、最終 `この内容で変更する` の明示押下で 1 件だけになる。live endpoint へ final submit しない。
+  - `npm run typecheck`、`npm run lint`、`npm run build`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:candidate`、`npm run build:compare:vite`、`npm run react:doctor -- --diff false`、`git diff --check` を実行し、未通過があれば理由と残リスクを残す。
+- 配布 gate:
+  - local verify と commit は publish と分ける。`main` push は GitHub Pages / Tampermonkey 配布へつながるため、利用者の明示承認後だけ行う。
+- metadata:
+  - `spec-impact`: yes
+  - `spec-checkpoint`: during-implementation
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `decision`: `D-20260717-001`
+  - `verify`: Product Design reference comparison, Browser fixture interaction, build / type / lint / marker / smoke checks, `git diff --check`
+
+- local verification:
+  - `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:candidate`、`npm run build:compare:vite` は pass。
+  - `npm run react:doctor -- --diff false --verbose` は exit 0、error 0、warning 44。warning は repo entry detection の false positive、既存の意図的な sequential fetch / `flushSync`、今回変更していない unused dependency を含む。
+  - Browser fixture は 1440 x 1024、1920 x 911、390 x 844 で確認し、document overflow 0、console error / warning 0、Vite overlay 0、review open / cancel の focus return と mock submit 0 を確認した。final 明示押下は safe fixture で 1 件のみを確認した。
+  - `design-qa.md` に reference / implementation screenshot、comparison、interaction / accessibility QA、live gate を記録した。
+
+Remaining Task Triage は空とする。publish は同じ自動 closeout とみなさず明示承認 gate とする。
+
 ## 2026-06-29 Docs Governance Profile
 
 RAU docs governance を AGENTS-first + optional PROJECT_CONTEXT profile として整理した。対象は docs governance のみで、runtime、`dist/**`、Tampermonkey、browser state、live hook/config、automation、write API behavior は範囲外である。

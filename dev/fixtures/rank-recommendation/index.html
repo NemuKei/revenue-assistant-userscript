@@ -3,25 +3,86 @@
     <head>
         <meta charset="UTF-8">
         <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>RAU Rank Recommendation Fixture</title>
+        <title>RAU 判断ワークスペース fixture</title>
     </head>
     <body>
+        <header data-ra-fixture-app-header>
+            <div data-ra-fixture-brand>Revenue Assistant</div>
+            <nav data-ra-fixture-nav aria-label="主な画面">
+                <span>ダッシュボード</span>
+                <span>カレンダー</span>
+                <span>Analyze</span>
+                <span>設定</span>
+            </nav>
+        </header>
         <main data-ra-fixture-shell>
-            <header data-ra-fixture-header>
+            <section data-ra-fixture-toolbar>
                 <div>
-                    <h1>料金調整候補 fixture</h1>
-                    <p>Revenue Assistant へ接続しない合成データ確認画面</p>
+                    <h1>料金調整の判断ワークスペース</h1>
+                    <p>Revenue Assistant へ接続しない合成データ。黒い標準数値と青い「団n」は既存表記のままです。</p>
                 </div>
                 <label>
-                    <span>表示 state</span>
+                    <span>確認 state</span>
                     <select id="rank-fixture-state"></select>
                 </label>
-            </header>
-            <section id="rank-fixture-root" data-ra-rank-recommendation-list></section>
-            <section id="rank-fixture-secondary-root" data-ra-fixture-secondary></section>
-            <section aria-label="UI regression gallery" data-ra-fixture-gallery>
-                <h2>UI regression gallery</h2>
-                <div id="rank-fixture-gallery-root" data-ra-fixture-gallery-grid></div>
+            </section>
+
+            <section data-ra-rank-recommendation-workspace-layout>
+                <section data-ra-fixture-calendar data-ra-rank-recommendation-calendar aria-label="2026年7月カレンダー">
+                    <header data-ra-fixture-calendar-header>2026年7月</header>
+                    <div data-ra-fixture-calendar-grid>
+                        <div data-ra-fixture-weekday>日</div>
+                        <div data-ra-fixture-weekday>月</div>
+                        <div data-ra-fixture-weekday>火</div>
+                        <div data-ra-fixture-weekday>水</div>
+                        <div data-ra-fixture-weekday>木</div>
+                        <div data-ra-fixture-weekday>金</div>
+                        <div data-ra-fixture-weekday>土</div>
+
+                        <a href="#" data-ra-fixture-calendar-cell data-muted="true"><span data-ra-fixture-date>28</span><span data-ra-fixture-room-line>4 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell data-muted="true"><span data-ra-fixture-date>29</span><span data-ra-fixture-room-line>5 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell data-muted="true"><span data-ra-fixture-date>30</span><span data-ra-fixture-room-line>7 <span data-ra-fixture-group>団2</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>1</span><span data-ra-fixture-room-line>6 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>2</span><span data-ra-fixture-room-line>8 <span data-ra-fixture-group>団3</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>3</span><span data-ra-fixture-room-line>3 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>4</span><span data-ra-fixture-room-line>9 <span data-ra-fixture-group>団1</span></span></a>
+
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>5</span><span data-ra-fixture-room-line>5 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>6</span><span data-ra-fixture-room-line>6 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>7</span><span data-ra-fixture-room-line>8 <span data-ra-fixture-group>団2</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>8</span><span data-ra-fixture-room-line>4 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>9</span><span data-ra-fixture-room-line>7 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>10</span><span data-ra-fixture-room-line>3 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>11</span><span data-ra-fixture-room-line>10 <span data-ra-fixture-group>団3</span></span></a>
+
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>12</span><span data-ra-fixture-room-line>6 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>13</span><span data-ra-fixture-room-line>5 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>14</span><span data-ra-fixture-room-line>9 <span data-ra-fixture-group>団2</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>15</span><span data-ra-fixture-room-line>7 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>16</span><span data-ra-fixture-room-line>11 <span data-ra-fixture-group>団4</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>17</span><span data-ra-fixture-room-line>4 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>18</span><span data-ra-fixture-room-line>8 <span data-ra-fixture-group>団2</span></span></a>
+
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>19</span><span data-ra-fixture-room-line>5 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>20</span><span data-ra-fixture-room-line>7 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>21</span><span data-ra-fixture-room-line>4 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>22</span><span data-ra-fixture-room-line>6 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell data-ra-fixture-candidate-date data-ra-rank-recommendation-calendar-state="ready"><span data-ra-fixture-date>23</span><span data-ra-fixture-room-line>7 <span data-ra-fixture-group>団2</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell data-ra-fixture-candidate-date data-ra-rank-recommendation-calendar-state="ready"><span data-ra-fixture-date>24</span><span data-ra-fixture-room-line>3 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>25</span><span data-ra-fixture-room-line>11 <span data-ra-fixture-group>団4</span></span></a>
+
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>26</span><span data-ra-fixture-room-line>8 <span data-ra-fixture-group>団2</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell data-ra-fixture-candidate-date><span data-ra-fixture-date>27</span><span data-ra-fixture-room-line>2 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>28</span><span data-ra-fixture-room-line>9 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>29</span><span data-ra-fixture-room-line>12 <span data-ra-fixture-group>団5</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>30</span><span data-ra-fixture-room-line>6 <span data-ra-fixture-group>団0</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell><span data-ra-fixture-date>31</span><span data-ra-fixture-room-line>4 <span data-ra-fixture-group>団1</span></span></a>
+                        <a href="#" data-ra-fixture-calendar-cell data-muted="true"><span data-ra-fixture-date>1</span><span data-ra-fixture-room-line>5 <span data-ra-fixture-group>団0</span></span></a>
+                    </div>
+                </section>
+
+                <section id="rank-fixture-root" data-ra-rank-recommendation-list></section>
+                <section id="rank-fixture-detail" data-ra-rank-recommendation-detail></section>
             </section>
         </main>
         <script type="module" src="/src/dev/rankRecommendationFixture.ts"></script>

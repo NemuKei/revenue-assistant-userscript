@@ -33,7 +33,7 @@ npm run check
 - `npm run build:vite:fixture`: Vite fixture preview を build
 - `npm run build:vite:candidate`: 正規 `dist` を上書きしない Vite candidate userscript build を `.tmp/vite-candidate/` に生成
 - `npm run build:compare:vite`: 正規 `dist` と Vite candidate の userscript metadata、size、entry line を比較
-- `npm run check:fixture-markers`: Revenue Assistant 認証、Tampermonkey、通常 Chrome profile を使わず、fixture の合成 data だけで top 料金調整候補 list の主要 UI marker を確認
+- `npm run check:fixture-markers`: Revenue Assistant 認証、Tampermonkey、通常 Chrome profile を使わず、fixture の合成 data だけで top のカレンダー連携型判断 workspace の主要 UI marker を確認
 - `npm run typecheck`: TypeScript の型検査
 - `npm run lint`: ESLint 実行
 - `npm run check`: 型検査、lint、build をまとめて実行
@@ -104,9 +104,9 @@ node .\node_modules\vite\bin\vite.js build --config .\vite.userscript.config.mjs
 
 | 画面 | 操作 | 期待結果 | 証跡として残す値 |
 | --- | --- | --- | --- |
-| Top 料金調整候補 | Revenue Assistant top を reload | `料金調整候補` section、候補 row、meta、表示条件、対象月 filter が表示される | URL、row count、`data-ra-rank-recommendation-react-island="mounted"`、`data-mode`、console error 件数 |
-| Top 料金調整候補 | `曲線` を開閉 | preview row が開閉し、既存 booking curve selector が維持される | preview row 件数、SVG 件数、console error 件数 |
-| Top 料金調整候補 | `rank調整` を開閉し、送信前に `取消` する | 5 秒 pending 中に取消でき、実 POST は発生しない | pending 表示、取消後の pending 件数、監視対象 write API POST 件数 |
+| Top 今日の判断 | Revenue Assistant top を reload | 既存カレンダー左、`今日の判断` rail 右、選択詳細が下に表示される | URL、task / detail count、calendar workspace、`data-ra-rank-recommendation-react-island="mounted"`、console error 件数 |
+| Top 今日の判断 | rail の候補を切り替える | 選択した宿泊日・部屋タイプの詳細だけが表示され、`OH / キャパ`、`個人`、`団体`、判断根拠が分離して読める | selected task、detail heading、OH / 個人 / 団体 marker、evidence host 件数 |
+| Top 今日の判断 | `変更内容を確認` を開き、`確認をやめる` で戻る | 最終送信 button は確認画面でのみ表示され、取消後は消え、実 POST は発生しない | review region、final write button、focus return、取消後の final button 件数、監視対象 write API POST 件数 |
 | Top 料金調整候補 | `様子見` と `対応不要` を押し、保存前に `取消` する | browser-local decision record が保存されず、row 表示が戻る | pending 表示、取消後の pending 件数、監視対象 write API POST 件数 |
 | Analyze 価格推移 tab | `価格推移` tab を開く | `競合価格 最安値推移（90日版）`、初回表示優先、background queue 状態が表示される | URL、panel / SVG 件数、background status text、console error 件数 |
 | Analyze 価格推移 tab fixture | `localStorage["revenue-assistant:price-trends:v1:background-fixture"]` に `failure` または `skip` を入れて `価格推移` tab を開く | response body を保存せず、failure / skip 表示だけを確認できる | background status text、empty text、console error 件数、監視対象 write API POST 件数 |
@@ -117,21 +117,24 @@ UI primitive、React component、React mount、React state 管理を変更した
 
 top smoke で確認する項目:
 
-- 料金調整候補 row が 1 件以上表示されること。
+- 判断 task が 1 件以上表示されること。
 - `data-ra-rank-recommendation-react-island="mounted"` があること。
-- 対象月 select、表示 mode、表示上限、rank order control があること。
-- `曲線` button、`rank調整` button、`様子見` / `対応不要` button があること。
-- `data-ra-rank-recommendation-ui-component` の marker で、control group、row layout、popover が確認できること。
+- 既存カレンダーと workspace が連結され、対象月 select、3つの作業状態、rank order control があること。
+- 選択詳細に `OH / キャパ`、`個人`、`団体`、判断根拠 host、`変更内容を確認`、`様子見` / `対応不要` があること。
+- 初期表示では `この内容で変更する` が DOM に存在しないこと。
+- `data-ra-rank-recommendation-ui-component` の marker で、workspace rail、task list、detail が確認できること。
 - console / page error が 0 件であること。
 - 監視対象 write API POST が 0 件であること。
 
 手動または Chrome DevTools Protocol で確認する項目:
 
 - UI primitive を適用した button が hover、focus-visible、disabled、selected または `aria-pressed` の各状態で読めること。
-- keyboard の Tab 移動で、対象 button、select、details summary、pending cancel button に到達できること。
-- `曲線` と `rank調整` の preview button が、同じ button で開閉でき、button focus が予期せず失われないこと。
-- decision pending と rank change pending の cancel button が表示され、cancel で pending 表示が消えること。
-- preview、popover、table、tooltip が重ならず、横幅が狭い場合も文字が隣の UI と重ならないこと。
+- keyboard の Tab 移動で、作業状態、task、rank order、`変更内容を確認`、rank select、pending cancel button に到達できること。
+- booking curve は各 panel 1 回の Tab で入り、矢印、Home、End で点を移動できること。個人 / 団体と reference の切替は `aria-pressed` を持ち、再描画後も focus が同じ操作または graph point に戻ること。
+- 確認を開くと focus が最終確認 region へ移り、`確認をやめる` で元の `変更内容を確認` button へ戻ること。
+- 現在 rank と同じ値を選んだ場合は最終送信 button が disabled になること。
+- decision pending の cancel button が表示され、cancel で pending 表示が消えること。
+- 390px では rail と detail がカレンダー下へ積まれ、document 全体に意図しない横 overflow がないこと。カレンダー内部の横 scroll は許容する。
 
 標準 smoke では実送信を行いません。監視対象 write API は次の POST です。
 
@@ -152,14 +155,14 @@ npm run smoke:write-posts -- --seconds 30 --operation top-react-smoke
 
 ```powershell
 npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode top --url https://ra.jalan.net/ --seconds 30
-npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode top --url https://ra.jalan.net/ --seconds 30 --viewport-width 390 --top-open-competitor-preview
+npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode top --url https://ra.jalan.net/ --seconds 30 --viewport-width 390 --top-open-rank-review
 npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode top --url https://ra.jalan.net/ --seconds 60 --top-click-warm-cache-month YYYYMM
 npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode price-trends --url https://ra.jalan.net/analyze/YYYY-MM-DD --seconds 60
 npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode analyze-recommendations --url https://ra.jalan.net/analyze/YYYY-MM-DD --seconds 45
 npm run smoke:distribution -- --installed-version <Tampermonkey上のversion> --mode monthly-progress --url https://ra.jalan.net/monthly-progress/YYYY-MM --seconds 30
 ```
 
-この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、`--mode` ごとの主要 selector、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。全 mode 共通で、page title、ログイン画面らしい selector の有無、カレンダーらしい selector の有無、RAU userscript root の件数、React marker の有無、preflight message を出力します。`--mode top` は、top 料金調整候補 row 件数、対象月 select、表示 mode、表示上限、rank order control、primary actions wrappers、secondary action markers、status badge cells、`曲線` button、`競合価格` button / preview row、`rank調整` button、decision button、UI component marker、月別優先取得 control、warm cache worker count / capacity、GET `/api/v4/booking_curve` の page 全体 request count、RAU warm cache request count、HTTP status count、HTTP error count、最大 1 秒 burst request 開始件数、最小 request 開始間隔、最大同時 request 数、throughput fallback reason を出力します。`--top-click-warm-cache-month YYYYMM` を付けた場合は、指定月の月別優先取得 button をクリックし、クリック可否、対象月 status、status text と、その後の RAU warm cache request metrics を同じ実行で出力します。`--viewport-width 390 --top-open-competitor-preview` を付けた場合は、top の `競合価格` preview を 1 件開き、viewport width、document scroll width、preview content 横 overflow、preview open row、graph / empty state、部屋タイプ note 検出、preview 縦スクロール量、Escape 後の focus return も出力します。Revenue Assistant 標準画面外枠の固定幅は document scroll width の参考値として出すが、preview content 横 overflow の fail 理由にはしません。RAU warm cache の throughput 判定は、RAU が付ける `X-RAU-Request: booking-curve` header 付き request だけを対象にします。Revenue Assistant 標準画面由来の `/api/v4/booking_curve` request は page 全体の参考値として出力しますが、RAU warm cache の安全条件の fail 理由にはしません。未取得 task が十分にあり、RAU warm cache request が 10 件以上観測された場合は、HTTP error 0 件、最大 1 秒 burst request 開始件数 10 req/s 以上、最小 request 開始間隔 25ms 以上、最大同時 request 数 30 件以下、最大同時 request 数 10 件以上到達を自動判定します。RAU warm cache request が 10 件未満の場合は、cache 済みまたは月別優先取得が走っていない可能性があるため、throughput 低下を失敗扱いにせず fallback reason を出力します。`--mode price-trends` は価格推移 tab / content、RAU overview、panel、SVG、background status を出力します。`--mode analyze-recommendations` は Analyze 日付ページの RAU 候補一覧 root、row count、empty count、highlight count、Analyze section 内 write button count、read-only state を出力します。`--mode monthly-progress` は月次 preview root、panel、SVG、日次差分 section、日次差分 total row、主 table row、details table row、details summary、details 初期 open / closed、status text を出力します。いずれの mode でも、監視対象 write API POST が 1 件以上、console / page error が 1 件以上、対象画面の主要 selector が 0 件、または `--mode` と最終 URL が対応しない場合は、command は non-zero exit で失敗します。Tampermonkey dashboard の更新操作は、利用者が明示的に許可した検証で、通常 Chrome profile と Tampermonkey の実 installed version を揃える必要がある場合だけ行います。
+この helper は local `dist` version、GitHub Pages 公開版 version、手入力した installed version、Revenue Assistant URL、`--mode` ごとの主要 selector、console / page error 件数、監視対象 write API POST 件数、確認時刻を出力します。全 mode 共通で、page title、ログイン画面らしい selector の有無、カレンダーらしい selector の有無、RAU userscript root の件数、React marker の有無、preflight message を出力します。`--mode top` は、判断 task、calendar workspace、対象月 select、3つの作業状態、rank order control、detail、OH / 個人 / 団体、判断根拠 host、review open button、初期 final write button 0 件、decision button、UI component marker、月別優先取得 control、warm cache worker count / capacity と booking curve throughput を出力します。`--top-click-warm-cache-month YYYYMM` を付けた場合は、指定月の月別優先取得 button をクリックし、クリック可否、対象月 status、status text と、その後の RAU warm cache request metrics を同じ実行で出力します。`--viewport-width 390 --top-open-rank-review` を付けた場合は、送信せずに `変更内容を確認` を開き、最終確認 region、final button、横 overflow、focus 移動を確認してから `確認をやめる` を押し、final button が消えることと focus return を出力します。Revenue Assistant 標準画面外枠の固定幅は document scroll width の参考値として出します。RAU warm cache の throughput 判定は、RAU が付ける `X-RAU-Request: booking-curve` header 付き request だけを対象にします。Revenue Assistant 標準画面由来の `/api/v4/booking_curve` request は page 全体の参考値として出しますが、RAU warm cache の安全条件の fail 理由にはしません。未取得 task が十分にあり、RAU warm cache request が 10 件以上観測された場合は、HTTP error 0 件、最大 1 秒 burst request 開始件数 10 req/s 以上、最小 request 開始間隔 25ms 以上、最大同時 request 数 30 件以下、最大同時 request 数 10 件以上到達を自動判定します。RAU warm cache request が 10 件未満の場合は、cache 済みまたは月別優先取得が走っていない可能性があるため、throughput 低下を失敗扱いにせず fallback reason を出力します。`--mode price-trends`、`--mode analyze-recommendations`、`--mode monthly-progress` の確認項目は各画面の既存 smoke contract を維持します。いずれの mode でも、監視対象 write API POST が 1 件以上、console / page error が 1 件以上、対象画面の主要 selector が 0 件、または `--mode` と最終 URL が対応しない場合は、command は non-zero exit で失敗します。Tampermonkey dashboard の更新操作は、利用者が明示的に許可した検証で、通常 Chrome profile と Tampermonkey の実 installed version を揃える必要がある場合だけ行います。
 
 live top smoke で RAU warm cache request count が 10 件未満になる場合は、cache 済みまたは月別優先取得未発火として fallback reason を読みます。判定ロジック自体を実 request なしで確認する場合は、synthetic fixture を使います。
 
@@ -170,11 +173,11 @@ npm run check:booking-curve-smoke-fixture -- --scenario safe-active
 npm run check:booking-curve-smoke-fixture -- --scenario warm-cache
 ```
 
-fixture は raw response body、request body、HAR、Cookie、token、credential、価格や在庫の非公開データを使いません。`safe-active` は RAU tagged request 10 件以上、HTTP error 0 件、最大 1 秒 burst request 開始件数 10 req/s 以上、最小開始間隔 25ms 以上、最大同時 30 件以下、最大同時 10 件以上到達を pass として確認します。`warm-cache` は RAU tagged request 0 件でも fallback reason が出て throughput fail にならないことを確認します。`unsafe-fast`、`unsafe-concurrent`、`http-error` は、同じ判定が危険な synthetic metrics を fail として検出できることを確認します。`check:distribution-smoke-fixture` は live Chrome / Revenue Assistant へ接続せず、mobile 390px の競合価格 preview interaction metrics と月別優先取得 click metrics の pass / fail 判定だけを synthetic metrics で確認します。
+fixture は raw response body、request body、HAR、Cookie、token、credential、価格や在庫の非公開データを使いません。`safe-active` は RAU tagged request 10 件以上、HTTP error 0 件、最大 1 秒 burst request 開始件数 10 req/s 以上、最小開始間隔 25ms 以上、最大同時 30 件以下、最大同時 10 件以上到達を pass として確認します。`warm-cache` は RAU tagged request 0 件でも fallback reason が出て throughput fail にならないことを確認します。`unsafe-fast`、`unsafe-concurrent`、`http-error` は、同じ判定が危険な synthetic metrics を fail として検出できることを確認します。`check:distribution-smoke-fixture` は live Chrome / Revenue Assistant へ接続せず、カレンダー連携型 workspace、OH / 個人 / 団体、二段階確認、focus return、横 overflow と月別優先取得 click metrics の pass / fail 判定を synthetic metrics で確認します。
 
 Chrome DevTools Protocol の `/json/version` と `/json/list` は応答するが、Playwright の `connectOverCDP` が websocket connected 後に timeout する場合があります。この場合、helper は対象 page の `webSocketDebuggerUrl` へ直接接続する fallback を使い、同じ selector 件数、console / page error 件数、監視対象 write API POST 件数を出力します。fallback でも各 CDP command は timeout するため、長時間止まらずに接続段階、navigation、selector 待ちのどこで失敗したかを確認できます。fallback を明示的に確認する場合は `--cdp-connection page` を付けます。既定の `--cdp-connection auto` は、まず Playwright の browser-level 接続を使い、失敗した場合だけ page websocket fallback へ切り替えます。page websocket fallback は、対象 URL が既に開いている場合は reload せず、現在の DOM を読みます。これは browser-level attach が失敗したときの代替証跡取得を目的にし、通常の reload smoke は browser-level path で確認するためです。
 
-UI component marker の構造だけを CI で確認する場合は、Revenue Assistant 認証、Tampermonkey、通常 Chrome profile、GitHub Pages 公開版 version を使いません。`npm run build:vite:fixture` で fixture bundle を生成し、`npm run check:fixture-markers` で React server render された fixture snapshot から RAU root、React marker、summary、control group、table、row layout、primary actions、secondary actions、popover、tooltip、pending notice、pending progress、現ランクの `販売室数：current/max` 補助表示、status message、rank select、主要 button marker を数えます。この確認は実ログイン画面の smoke を置き換えません。実アカウントの表示、Tampermonkey installed version、監視対象 write API POST 0 件、console / page error 0 件は、必要に応じて CDP 接続付き通常 Chrome の `smoke:distribution` または一時注入確認で別に扱います。
+UI component marker の構造だけを CI で確認する場合は、Revenue Assistant 認証、Tampermonkey、通常 Chrome profile、GitHub Pages 公開版 version を使いません。`npm run build:vite:fixture` で fixture bundle を生成し、`npm run check:fixture-markers` で React server render された fixture snapshot から RAU root、React marker、workspace rail、3つの作業状態、task list、選択 detail、OH / 個人 / 団体、判断根拠 host、review open CTA、pending decision、write result state を数えます。また初期 DOM に final write CTA がなく、自動送信 countdown と旧9列表 marker が残っていないことも確認します。この確認は実ログイン画面の smoke を置き換えません。実アカウントの表示、Tampermonkey installed version、監視対象 write API POST 0 件、console / page error 0 件は、必要に応じて CDP 接続付き通常 Chrome の `smoke:distribution` または一時注入確認で別に扱います。
 
 RAU userscript root count が `0` の場合は、次の順に確認します。まず Revenue Assistant がログイン済み画面かを `login form candidate` と `calendar candidate` で確認します。ログイン画面らしい selector がある場合は再ログインしてから smoke を再実行します。ログイン済み画面らしいのに RAU userscript root count が `0` の場合は、Tampermonkey dashboard で `Revenue Assistant Userscript` の installed version が GitHub Pages 公開版 version と一致しているか、対象 script が有効か、`https://ra.jalan.net/*` で発火する設定かを確認します。公開版 version の反映待ちが疑われる場合は少し待ってから再実行します。Tampermonkey 手動更新が必要な場合は、dashboard で対象 script を更新し、期待 version と一致した状態で `--version-policy fail` を付けて再確認します。
 

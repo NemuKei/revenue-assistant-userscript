@@ -43,7 +43,7 @@ async function main() {
     const allowEmptyPriceTrends = args["allow-empty-price-trends"] === "true";
     const viewportWidth = parsePositiveInteger(args["viewport-width"], 0);
     const viewportHeight = parsePositiveInteger(args["viewport-height"], 900);
-    const topOpenCompetitorPreview = args["top-open-competitor-preview"] === "true";
+    const topOpenRankReview = args["top-open-rank-review"] === "true";
     const topClickWarmCacheMonth = parseWarmCacheMonth(args["top-click-warm-cache-month"] ?? null);
 
     const localText = await readFile(resolve(distPath), "utf8");
@@ -59,7 +59,7 @@ async function main() {
         cdpConnectionMode,
         viewportWidth,
         viewportHeight,
-        topOpenCompetitorPreview,
+        topOpenRankReview,
         topClickWarmCacheMonth
     });
     const assessment = assessSmokeResult({
@@ -71,7 +71,7 @@ async function main() {
         smokeResult,
         versionPolicy,
         allowEmptyPriceTrends,
-        topOpenCompetitorPreview,
+        topOpenRankReview,
         topClickWarmCacheMonth
     });
 
@@ -513,37 +513,36 @@ function buildPreflightMessages(options) {
 
 function assessModeMetrics(mode, metrics, options) {
     if (mode === "top") {
-        const rowCount = Number(metrics["top row count"]);
-        const perRowMinimum = Number.isFinite(rowCount) && rowCount > 0 ? rowCount : 1;
         const bookingCurveThroughputFailures = assessBookingCurveThroughputFailures(metrics);
         const failures = [
-            minCountFailure("top row count", metrics["top row count"], 1),
+            minCountFailure("top task count", metrics["top task count"], 1),
             yesFailure("React marker mounted", metrics["React marker mounted"]),
+            yesFailure("calendar workspace", metrics["calendar workspace"]),
             yesFailure("target month select", metrics["target month select"]),
-            minCountFailure("view mode buttons", metrics["view mode buttons"], 1),
-            minCountFailure("display limit buttons", metrics["display limit buttons"], 1),
+            minCountFailure("view mode buttons", metrics["view mode buttons"], 3),
             yesFailure("rank order control", metrics["rank order control"]),
-            minCountFailure("primary actions wrappers", metrics["primary actions wrappers"], perRowMinimum),
-            minCountFailure("secondary action markers", metrics["secondary action markers"], perRowMinimum),
-            minCountFailure("status badge cells", metrics["status badge cells"], perRowMinimum),
-            minCountFailure("curve preview buttons", metrics["curve preview buttons"], 1),
-            minCountFailure("competitor preview buttons", metrics["competitor preview buttons"], 1),
-            minCountFailure("rank change buttons", metrics["rank change buttons"], 1),
+            minCountFailure("detail count", metrics["detail count"], 1),
+            minCountFailure("OH metrics", metrics["OH metrics"], 1),
+            minCountFailure("individual metrics", metrics["individual metrics"], 1),
+            minCountFailure("group metrics", metrics["group metrics"], 1),
+            minCountFailure("evidence hosts", metrics["evidence hosts"], 1),
+            maxCountFailure("evidence keyboard tab stops", metrics["evidence keyboard tab stops"], 2),
+            zeroCountFailure("booking curve toggles missing aria-pressed", metrics["booking curve toggles missing aria-pressed"]),
+            minCountFailure("review open buttons", metrics["review open buttons"], 1),
+            zeroCountFailure("final write buttons before review", metrics["final write buttons before review"]),
             minCountFailure("decision buttons", metrics["decision buttons"], 1),
-            minCountFailure("UI component markers", metrics["UI component markers"], 1),
-            minCountFailure("UI control markers", metrics["UI control markers"], 1),
-            minCountFailure("UI row layout markers", metrics["UI row layout markers"], 1),
-            minCountFailure("UI popover markers", metrics["UI popover markers"], 1),
+            minCountFailure("UI component markers", metrics["UI component markers"], 3),
             ...bookingCurveThroughputFailures
         ].filter((failure) => failure !== null);
-        if (metrics["top competitor preview interaction"] !== undefined) {
+        if (metrics["top rank review interaction"] !== undefined) {
             failures.push(...[
-                yesFailure("top competitor preview interaction", metrics["top competitor preview interaction"]),
-                minCountFailure("top competitor preview open rows", metrics["top competitor preview open rows"], 1),
-                noFailure("top competitor preview horizontal overflow", metrics["top competitor preview horizontal overflow"]),
-                yesFailure("top competitor preview graph or empty state", metrics["top competitor preview graph or empty state"]),
-                yesFailure("top competitor preview room type note detected", metrics["top competitor preview room type note detected"]),
-                yesFailure("top competitor preview focus returned", metrics["top competitor preview focus returned"])
+                yesFailure("top rank review interaction", metrics["top rank review interaction"]),
+                minCountFailure("top rank review regions", metrics["top rank review regions"], 1),
+                minCountFailure("top rank review final buttons", metrics["top rank review final buttons"], 1),
+                noFailure("top rank review horizontal overflow", metrics["top rank review horizontal overflow"]),
+                yesFailure("top rank review focus entered", metrics["top rank review focus entered"]),
+                yesFailure("top rank review focus returned", metrics["top rank review focus returned"]),
+                zeroCountFailure("top rank review final buttons after cancel", metrics["top rank review final buttons after cancel"])
             ].filter((failure) => failure !== null));
         }
         if (metrics["top warm cache month click"] !== undefined) {
@@ -598,31 +597,32 @@ function assessModeMetrics(mode, metrics, options) {
 
 function runSelfTest() {
     const passingTopMetrics = {
-        "top row count": 1,
+        "top task count": 1,
         "React marker mounted": "yes",
+        "calendar workspace": "yes",
         "target month select": "yes",
-        "view mode buttons": 1,
+        "view mode buttons": 3,
         "display limit buttons": 1,
         "rank order control": "yes",
-        "primary actions wrappers": 1,
-        "secondary action markers": 1,
-        "status badge cells": 1,
-        "curve preview buttons": 1,
-        "competitor preview buttons": 1,
-        "rank change buttons": 1,
-        "decision buttons": 1,
-        "UI component markers": 1,
-        "UI control markers": 1,
-        "UI row layout markers": 1,
-        "UI popover markers": 1,
+        "detail count": 1,
+        "OH metrics": 1,
+        "individual metrics": 1,
+        "group metrics": 1,
+        "evidence hosts": 1,
+        "evidence keyboard tab stops": 2,
+        "booking curve toggles missing aria-pressed": 0,
+        "review open buttons": 1,
+        "final write buttons before review": 0,
+        "decision buttons": 2,
+        "UI component markers": 6,
         "RAU warm cache request count": 0,
-        "top competitor preview interaction": "yes",
-        "top competitor preview open rows": 1,
-        "top competitor preview horizontal overflow": "no",
-        "top competitor preview document horizontal overflow": "yes",
-        "top competitor preview graph or empty state": "yes",
-        "top competitor preview room type note detected": "yes",
-        "top competitor preview focus returned": "yes",
+        "top rank review interaction": "yes",
+        "top rank review regions": 1,
+        "top rank review final buttons": 1,
+        "top rank review horizontal overflow": "no",
+        "top rank review focus entered": "yes",
+        "top rank review focus returned": "yes",
+        "top rank review final buttons after cancel": 0,
         "top warm cache month click": "yes",
         "top warm cache month button present": "yes",
         "top warm cache month status after click": "queued"
@@ -634,21 +634,27 @@ function runSelfTest() {
 
     const overflowFailures = assessModeMetrics("top", {
         ...passingTopMetrics,
-        "top competitor preview horizontal overflow": "yes"
+        "top rank review horizontal overflow": "yes"
     }, { allowEmptyPriceTrends: false });
     assert(overflowFailures.some((failure) => failure.includes("horizontal overflow")));
 
     const focusFailures = assessModeMetrics("top", {
         ...passingTopMetrics,
-        "top competitor preview focus returned": "no"
+        "top rank review focus returned": "no"
     }, { allowEmptyPriceTrends: false });
     assert(focusFailures.some((failure) => failure.includes("focus returned")));
 
-    const roomTypeNoteFailures = assessModeMetrics("top", {
+    const cancelFailures = assessModeMetrics("top", {
         ...passingTopMetrics,
-        "top competitor preview room type note detected": "no"
+        "top rank review final buttons after cancel": 1
     }, { allowEmptyPriceTrends: false });
-    assert(roomTypeNoteFailures.some((failure) => failure.includes("room type note detected")));
+    assert(cancelFailures.some((failure) => failure.includes("after cancel")));
+
+    const keyboardStopFailures = assessModeMetrics("top", {
+        ...passingTopMetrics,
+        "evidence keyboard tab stops": 90
+    }, { allowEmptyPriceTrends: false });
+    assert(keyboardStopFailures.some((failure) => failure.includes("keyboard tab stops")));
 
     const warmCacheMonthFailures = assessModeMetrics("top", {
         ...passingTopMetrics,
@@ -709,6 +715,21 @@ function minCountFailure(label, value, minimum) {
         return null;
     }
     return `${label} must be at least ${minimum}, got ${value}`;
+}
+
+function maxCountFailure(label, value, maximum) {
+    const count = Number(value);
+    if (Number.isFinite(count) && count <= maximum) {
+        return null;
+    }
+    return `${label} must be at most ${maximum}, got ${value}`;
+}
+
+function zeroCountFailure(label, value) {
+    const count = Number(value);
+    return Number.isFinite(count) && count === 0
+        ? null
+        : `${label} must be 0, got ${value}`;
 }
 
 function yesFailure(label, value) {
@@ -781,19 +802,19 @@ async function exerciseMode(page, options) {
     if (options.topClickWarmCacheMonth !== null) {
         Object.assign(metrics, await clickTopWarmCacheMonth(page, options.topClickWarmCacheMonth));
     }
-    if (!options.topOpenCompetitorPreview) {
+    if (!options.topOpenRankReview) {
         return metrics;
     }
     try {
-        const button = page.locator("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]").first();
+        const button = page.locator("[data-ra-rank-recommendation-button-action=\"review-open\"]:not([disabled])").first();
         await button.waitFor({ state: "attached", timeout: 15000 });
-        await button.click({ force: true });
-        await page.waitForFunction(hasVisibleTopCompetitorPreviewRowInPage, null, { timeout: 15000 });
-        await page.waitForFunction(hasLoadedVisibleTopCompetitorPreviewRowInPage, null, { timeout: 15000 }).catch(() => {});
-        const openMetrics = await page.evaluate(collectTopCompetitorPreviewInteractionMetricsInPage);
-        await page.keyboard.press("Escape");
+        await button.click();
+        await page.waitForSelector("[data-ra-rank-recommendation-review]", { state: "visible", timeout: 15000 });
+        await page.waitForFunction(hasTopRankReviewFocusInPage, null, { timeout: 5000 }).catch(() => {});
+        const openMetrics = await page.evaluate(collectTopRankReviewInteractionMetricsInPage);
+        await page.locator("[data-ra-rank-recommendation-button-action=\"review-cancel\"]").click();
         await page.waitForTimeout(250);
-        const closeMetrics = await page.evaluate(collectTopCompetitorPreviewCloseMetricsInPage);
+        const closeMetrics = await page.evaluate(collectTopRankReviewCloseMetricsInPage);
         return {
             ...metrics,
             ...openMetrics,
@@ -802,8 +823,8 @@ async function exerciseMode(page, options) {
     } catch (error) {
         return {
             ...metrics,
-            "top competitor preview interaction": "failed",
-            "top competitor preview interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
+            "top rank review interaction": "failed",
+            "top rank review interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
         };
     }
 }
@@ -837,14 +858,14 @@ async function exerciseModeViaCdp(client, options) {
     if (options.topClickWarmCacheMonth !== null) {
         Object.assign(metrics, await clickTopWarmCacheMonthViaCdp(client, options.topClickWarmCacheMonth));
     }
-    if (!options.topOpenCompetitorPreview) {
+    if (!options.topOpenRankReview) {
         return metrics;
     }
     try {
-        await waitForSelectorViaCdp(client, "[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]", 15000);
+        await waitForSelectorViaCdp(client, "[data-ra-rank-recommendation-button-action=\"review-open\"]:not([disabled])", 15000);
         await evaluateViaCdp(client, `
             (() => {
-                const button = document.querySelector("[data-ra-rank-recommendation-button-action=\\"competitor-preview-toggle\\"]");
+                const button = document.querySelector("[data-ra-rank-recommendation-button-action=\\"review-open\\"]:not([disabled])");
                 if (button instanceof HTMLElement) {
                     button.click();
                     return true;
@@ -852,25 +873,21 @@ async function exerciseModeViaCdp(client, options) {
                 return false;
             })()
         `);
-        await waitForFunctionViaCdp(client, hasVisibleTopCompetitorPreviewRowInPage, 15000);
-        await waitForFunctionViaCdp(client, hasLoadedVisibleTopCompetitorPreviewRowInPage, 15000).catch(() => {});
-        const openMetrics = await evaluateViaCdp(client, `(${collectTopCompetitorPreviewInteractionMetricsInPage.toString()})()`);
-        await client.send("Input.dispatchKeyEvent", {
-            type: "keyDown",
-            key: "Escape",
-            code: "Escape",
-            windowsVirtualKeyCode: 27,
-            nativeVirtualKeyCode: 27
-        });
-        await client.send("Input.dispatchKeyEvent", {
-            type: "keyUp",
-            key: "Escape",
-            code: "Escape",
-            windowsVirtualKeyCode: 27,
-            nativeVirtualKeyCode: 27
-        });
+        await waitForSelectorViaCdp(client, "[data-ra-rank-recommendation-review]", 15000);
+        await waitForFunctionViaCdp(client, hasTopRankReviewFocusInPage, 5000).catch(() => {});
+        const openMetrics = await evaluateViaCdp(client, `(${collectTopRankReviewInteractionMetricsInPage.toString()})()`);
+        await evaluateViaCdp(client, `
+            (() => {
+                const button = document.querySelector("[data-ra-rank-recommendation-button-action=\\"review-cancel\\"]");
+                if (button instanceof HTMLElement) {
+                    button.click();
+                    return true;
+                }
+                return false;
+            })()
+        `);
         await sleep(250);
-        const closeMetrics = await evaluateViaCdp(client, `(${collectTopCompetitorPreviewCloseMetricsInPage.toString()})()`);
+        const closeMetrics = await evaluateViaCdp(client, `(${collectTopRankReviewCloseMetricsInPage.toString()})()`);
         return {
             ...metrics,
             ...openMetrics,
@@ -879,8 +896,8 @@ async function exerciseModeViaCdp(client, options) {
     } catch (error) {
         return {
             ...metrics,
-            "top competitor preview interaction": "failed",
-            "top competitor preview interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
+            "top rank review interaction": "failed",
+            "top rank review interaction error": formatErrorMessage(error).replace(/\s+/g, " ").slice(0, 240)
         };
     }
 }
@@ -990,24 +1007,31 @@ function collectModeMetricsInPage(selectedMode) {
             const warmCacheWorkerMatch = warmCacheIndicatorText.match(/worker\s+(\d+)\/(\d+)/);
             return {
                 ...commonPageDiagnostics(),
-                "top row count": doc.querySelectorAll("[data-ra-rank-recommendation-row]").length,
+                "top task count": doc.querySelectorAll("[data-ra-rank-recommendation-task]").length,
                 "React marker mounted": doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null ? "yes" : "no",
+                "calendar workspace": doc.querySelector("[data-ra-rank-recommendation-calendar]") !== null ? "yes" : "no",
                 "target month select": doc.querySelector("[data-ra-rank-recommendation-target-month]") !== null ? "yes" : "no",
                 "view mode buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"view-mode\"]").length,
                 "display limit buttons": doc.querySelectorAll("[data-ra-rank-recommendation-display-limit-control] button").length,
                 "rank order control": doc.querySelector("[data-ra-rank-recommendation-order-control]") !== null ? "yes" : "no",
-                "primary actions wrappers": doc.querySelectorAll("[data-ra-rank-recommendation-primary-actions]").length,
-                "secondary action markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"secondary-actions\"]").length,
-                "status badge cells": doc.querySelectorAll("[data-ra-rank-recommendation-cell-role=\"status\"]").length,
-                "curve preview buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"curve-preview-toggle\"]").length,
-                "competitor preview buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]").length,
-                "competitor preview rows": doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]").length,
-                "rank change buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"]").length,
+                "detail count": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"detail\"]").length,
+                "OH metrics": doc.querySelectorAll("[data-ra-rank-recommendation-metric-kind=\"occupancy\"]").length,
+                "individual metrics": doc.querySelectorAll("[data-ra-rank-recommendation-metric-kind=\"individual\"]").length,
+                "group metrics": doc.querySelectorAll("[data-ra-rank-recommendation-metric-kind=\"group\"]").length,
+                "evidence hosts": doc.querySelectorAll("[data-ra-rank-recommendation-evidence-host]").length,
+                "evidence keyboard tab stops": doc.querySelectorAll(
+                    "[data-ra-rank-recommendation-evidence-host] [data-ra-sales-setting-booking-curve-hitbox][tabindex=\"0\"],"
+                    + "[data-ra-rank-recommendation-evidence-host] [data-ra-sales-setting-booking-curve-marker-hitbox][tabindex=\"0\"]"
+                ).length,
+                "booking curve toggles missing aria-pressed": doc.querySelectorAll(
+                    "[data-ra-rank-recommendation-evidence-host] [data-ra-sales-setting-booking-curve-segment-toggle]:not([aria-pressed]),"
+                    + "[data-ra-rank-recommendation-evidence-host] [data-ra-sales-setting-booking-curve-helper-toggle]:not([aria-pressed]),"
+                    + "[data-ra-rank-recommendation-evidence-host] [data-ra-sales-setting-booking-curve-reference-toggle]:not([aria-pressed])"
+                ).length,
+                "review open buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"review-open\"]").length,
+                "final write buttons before review": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-submit\"]").length,
                 "decision buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"snooze\"], [data-ra-rank-recommendation-button-action=\"dismiss\"]").length,
                 "UI component markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component]").length,
-                "UI control markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"control-group\"]").length,
-                "UI row layout markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"row-layout\"]").length,
-                "UI popover markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"popover\"]").length,
                 "UI pending markers": doc.querySelectorAll("[data-ra-rank-recommendation-ui-component=\"pending-notice\"]").length,
                 "warm cache month controls": doc.querySelectorAll("[data-ra-sales-setting-warm-cache-month-control]").length,
                 "warm cache month buttons": doc.querySelectorAll("[data-ra-sales-setting-warm-cache-month-button]").length,
@@ -1077,72 +1101,46 @@ function collectModeMetricsInPage(selectedMode) {
         };
 }
 
-function collectTopCompetitorPreviewInteractionMetricsInPage() {
+function collectTopRankReviewInteractionMetricsInPage() {
     const doc = globalThis.document;
-    const getHorizontalScrollOverflow = (element) => {
-        if (!(element instanceof globalThis.HTMLElement)) {
-            return 0;
-        }
-        return Math.max(0, element.scrollWidth - element.clientWidth);
-    };
-    const activeButton = doc.activeElement instanceof globalThis.HTMLElement
-        ? doc.activeElement.closest("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]")
-        : null;
-    const isVisibleRow = (row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null;
-    const allRows = Array.from(doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"));
-    const openRows = allRows.filter(isVisibleRow);
-    const firstOpenRow = openRows[0] ?? null;
+    const reviewRegions = Array.from(doc.querySelectorAll("[data-ra-rank-recommendation-review]"))
+        .filter((region) => region instanceof globalThis.HTMLElement && region.offsetParent !== null);
+    const firstReviewRegion = reviewRegions[0] ?? null;
     const viewportWidth = doc.documentElement.clientWidth;
     const scrollWidth = doc.documentElement.scrollWidth;
-    const previewCell = firstOpenRow?.querySelector("[data-ra-rank-recommendation-competitor-preview-cell]");
-    const previewSection = previewCell?.querySelector("section");
-    const previewGrid = previewCell?.querySelector("[data-ra-sales-setting-competitor-price-chart-grid]");
-    const previewContentOverflow = Math.max(
-        getHorizontalScrollOverflow(previewCell),
-        getHorizontalScrollOverflow(previewSection),
-        getHorizontalScrollOverflow(previewGrid)
-    );
-    const previewScrollHeight = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.scrollHeight : 0;
-    const previewClientHeight = firstOpenRow instanceof globalThis.HTMLElement ? firstOpenRow.clientHeight : 0;
-    const graphCount = firstOpenRow instanceof globalThis.HTMLElement
-        ? firstOpenRow.querySelectorAll("[data-ra-sales-setting-competitor-price-chart-svg]").length
+    const reviewOverflow = firstReviewRegion instanceof globalThis.HTMLElement
+        ? Math.max(0, firstReviewRegion.scrollWidth - firstReviewRegion.clientWidth)
         : 0;
-    const emptyCount = firstOpenRow instanceof globalThis.HTMLElement
-        ? firstOpenRow.querySelectorAll("[data-ra-sales-setting-competitor-price-empty]").length
-        : 0;
-    const roomTypeNoteDetected = firstOpenRow instanceof globalThis.HTMLElement
-        && firstOpenRow.querySelector("[data-ra-rank-recommendation-competitor-preview-room-type-note]") !== null;
+    const focusEntered = firstReviewRegion instanceof globalThis.HTMLElement
+        && doc.activeElement === firstReviewRegion;
 
     return {
-        "top competitor preview interaction": openRows.length > 0 ? "yes" : "no",
-        "top competitor preview active button captured": activeButton instanceof globalThis.HTMLElement ? "yes" : "no",
-        "top competitor preview viewport width": viewportWidth,
-        "top competitor preview document scroll width": scrollWidth,
-        "top competitor preview document horizontal overflow": scrollWidth > viewportWidth ? "yes" : "no",
-        "top competitor preview horizontal overflow": previewContentOverflow > 1 ? "yes" : "no",
-        "top competitor preview content overflow px": previewContentOverflow,
-        "top competitor preview open rows": openRows.length,
-        "top competitor preview total rows": allRows.length,
-        "top competitor preview graph count": graphCount,
-        "top competitor preview empty count": emptyCount,
-        "top competitor preview graph or empty state": graphCount > 0 || emptyCount > 0 ? "yes" : "no",
-        "top competitor preview room type note detected": roomTypeNoteDetected ? "yes" : "no",
-        "top competitor preview scroll height": previewScrollHeight,
-        "top competitor preview client height": previewClientHeight,
-        "top competitor preview vertical scroll amount": Math.max(0, previewScrollHeight - previewClientHeight)
+        "top rank review interaction": reviewRegions.length > 0 ? "yes" : "no",
+        "top rank review regions": reviewRegions.length,
+        "top rank review final buttons": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-submit\"]").length,
+        "top rank review focus entered": focusEntered ? "yes" : "no",
+        "top rank review viewport width": viewportWidth,
+        "top rank review document scroll width": scrollWidth,
+        "top rank review document horizontal overflow": scrollWidth > viewportWidth ? "yes" : "no",
+        "top rank review horizontal overflow": reviewOverflow > 1 ? "yes" : "no",
+        "top rank review content overflow px": reviewOverflow
     };
 }
 
-function collectTopCompetitorPreviewCloseMetricsInPage() {
+function hasTopRankReviewFocusInPage() {
+    const reviewRegion = globalThis.document.querySelector("[data-ra-rank-recommendation-review]");
+    return reviewRegion instanceof globalThis.HTMLElement
+        && globalThis.document.activeElement === reviewRegion;
+}
+
+function collectTopRankReviewCloseMetricsInPage() {
     const doc = globalThis.document;
     const activeButton = doc.activeElement instanceof globalThis.HTMLElement
-        ? doc.activeElement.closest("[data-ra-rank-recommendation-button-action=\"competitor-preview-toggle\"]")
+        ? doc.activeElement.closest("[data-ra-rank-recommendation-button-action=\"review-open\"]")
         : null;
-    const visibleRows = Array.from(doc.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"))
-        .filter((row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null);
     return {
-        "top competitor preview rows after escape": visibleRows.length,
-        "top competitor preview focus returned": activeButton instanceof globalThis.HTMLElement ? "yes" : "no"
+        "top rank review final buttons after cancel": doc.querySelectorAll("[data-ra-rank-recommendation-button-action=\"rank-change-submit\"]").length,
+        "top rank review focus returned": activeButton instanceof globalThis.HTMLElement ? "yes" : "no"
     };
 }
 
@@ -1169,20 +1167,6 @@ function collectTopWarmCacheMonthClickMetricsInPage(targetMonth) {
         "top warm cache month status after click": control?.getAttribute("data-ra-sales-setting-warm-cache-month-status") ?? "missing",
         "top warm cache month status text after click": statusText.replace(/\s+/g, " ").trim().slice(0, 160) || "empty"
     };
-}
-
-function hasVisibleTopCompetitorPreviewRowInPage() {
-    return Array.from(globalThis.document.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"))
-        .some((row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null);
-}
-
-function hasLoadedVisibleTopCompetitorPreviewRowInPage() {
-    const rows = Array.from(globalThis.document.querySelectorAll("[data-ra-rank-recommendation-competitor-preview-row]"))
-        .filter((row) => row instanceof globalThis.HTMLElement && row.offsetParent !== null);
-    return rows.some((row) => row.querySelector(
-        "[data-ra-sales-setting-competitor-price-chart-svg],"
-        + "[data-ra-sales-setting-competitor-price-empty]"
-    ) !== null);
 }
 
 async function resolvePageTarget(cdpUrl, targetUrl) {

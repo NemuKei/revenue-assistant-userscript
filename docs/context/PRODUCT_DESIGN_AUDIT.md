@@ -1,6 +1,6 @@
 # Product Design Audit
 
-最終更新: 2026-06-19
+最終更新: 2026-07-17
 
 ## Purpose
 
@@ -29,6 +29,45 @@
   - 金額、差額、percent、forecast 数値、sales / ADR 数値は top list の本文へ直接表示しない既存契約を維持する。
 - interactivity level:
   - 実装へ進む場合は full interactivity を前提にする。つまり、hover、focus、keyboard、loading、empty、error、disabled、pending、cancel、mobile 表示を実装と verify の対象に含める。
+
+## Top Decision Workspace Redesign 2026-07-17
+
+### Brief Playback
+
+- task: `RAU-UX-138`
+- 対象 surface: top 画面の既存カレンダーと料金調整候補。
+- 目的:
+  - 旧 UI を温存することではなく、RM が今日見るべき宿泊日 / roomGroup を見つけ、個人需要と団体需要を混同せず、確認または変更へ進むまでの認知負荷を下げる。
+  - 既存カレンダーに近い位置認知を残し、優先 task と選択詳細を同じ workspace へ統合する。
+- 比較した方向:
+  - option 1: 判断 task を主面にする list-first layout。作業順は強く出せるが、既存カレンダーとの認知差が大きい。
+  - option 2: 既存カレンダーを左、`今日の判断` rail を右、選択詳細を下へ置く calendar workspace。現行操作との距離が小さく、日付と曜日の位置を保ったまま優先 task を追加できる。
+- 選定:
+  - option 2 を採用する。option 1 の task-first hierarchy は rail と詳細へ取り込み、カレンダーを残すこと自体を目的にはしない。
+
+### Product / UX Findings
+
+- 旧 9 列 table は、候補間比較には向くが、列を横断して 1 候補の意味を復元し、preview / details / row action を開く認知コストが高い。今回は task selection と 1 候補の詳細に責務を分ける。
+- rail は `判断可能`、`要確認`、`保留・直近` の 3 state にし、推奨方向別 filter よりも「次に何ができるか」で作業を分ける。
+- カレンダーの標準画面由来の黒い数値と青い `団n` は、利用者が既に見慣れているため維持する。ただし黒い数値を OH と解釈する evidence はないため、OH へ relabel しない。
+- OH / キャパ、個人、団体は、選択詳細で別 metric として常時読めるようにする。個人と団体の切り分けは装飾ではなく判断前提であり、片方の欠損を差し引きで埋めない。
+- missing と 0 は別状態である。missing は `未取得`、0 は `0` とし、利用者が「需要がない」と「データがない」を区別できるようにする。
+- 選択詳細には booking curve evidence、主要根拠、注意、前回変更、更新状態をまとめ、Analyze はさらに深く確認する入口として残す。
+- rank 変更の最終 CTA は初期状態へ出さない。`変更内容を確認` で対象と変更後 rank を再読し、最終確認 region の `この内容で変更する` だけを write trigger にする。確認を開いたまま待っても送信しない。
+
+### Superseded Findings
+
+- `Top Candidate UI Brushup Audit 2026-06-19`、`Product Design Re-Audit 2026-06-05`、`Secondary Actions Density Audit 2026-06-05` の evidence と当時の判断は履歴として残す。
+- ただし、9 列 row、カレンダー下配置、`Analyzeで確認 / 曲線 / 競合価格 / ランク調整` の row action 群、`その他` details、row 内 quick submit、rank write の 5 秒 pending を現行 layout / interaction として維持する結論は、この redesign で supersede する。
+- candidate scoring、reasonFingerprint、data adapter、write guard、single-row Lincoln custom rank path 限定、Analyze の read-only 契約、`様子見` / `対応不要` の lifecycle は、今回の layout 判断だけでは置き換えない。
+
+### Design QA Contract
+
+- desktop は選定 reference と実装を同じ viewport / state で並べ、calendar / rail / detail の hierarchy、padding、文字サイズ、border、selected state、CTA hierarchy を比較する。screenshot 単体を合格根拠にしない。
+- mobile 390px 相当では、calendar、rail、detail、review、long room name、missing / zero / large count、empty、HTTP 401 / 403 の順序、横 overflow、折り返し、操作距離を確認する。
+- interaction は candidate selection、3 state、target month、Analyze、様子見、対応不要、review open / cancel を確認する。
+- safe fixture では review open 後 5 秒以上待っても mock submit 0、cancel 後 0、最終明示押下後 1 を確認する。live Revenue Assistant endpoint へ final submit しない。
+- final visual evidence、reference comparison、interaction / accessibility QA、iteration 履歴は root `design-qa.md` に記録した。local synthetic fixture は pass、live Revenue Assistant / Tampermonkey 配布版と実 write は未確認として分ける。
 
 ## Top Candidate UI Brushup Audit 2026-06-19
 

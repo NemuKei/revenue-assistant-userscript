@@ -1,9 +1,10 @@
 # STATUS
 
-最終更新: 2026-06-29
+最終更新: 2026-07-17
 
 ## Current Task Bundle
 
+- 主対象: 2026-07-17 に、`RAU-UX-138` としてトップ料金調整候補を decision workspace へ再設計した。既存カレンダーを左、`今日の判断` rail を右、選択中候補の詳細を下へ置き、カレンダーの黒い標準値と青い `団n` を維持する。詳細では `OH n / キャパ m`、`個人 n`、`団体 n` を直接取得値で分け、欠損は推測せず `未取得` とする。rank 変更は `変更内容を確認` と最終確認 region の `この内容で変更する` の二段階にし、経過時間では送信しない。desktop / wide / mobile fixture の visual / interaction QA、keyboard / focus QA、type / lint / build / marker / smoke は pass し、React Doctor は error 0、warning 44 だった。visual evidence と未確認範囲は root `design-qa.md` に記録した。live Revenue Assistant / Tampermonkey 配布版と実 write は未確認である。`main` push は GitHub Pages / Tampermonkey 配布へつながるため、明示的な公開承認なしに進めない。
 - 主対象: 2026-06-29 に、RAU docs governance を AGENTS-first + optional PROJECT_CONTEXT profile へ整理した。RAU は Profile B+ / C-light として扱い、`docs/context/PROJECT_CONTEXT.md` を purpose / background intent / non-goals / safety boundary / source-of-truth role の upper premise layer として追加した。`AGENTS.md` は作業入口、source map、dist / API / write 境界、最小 verify、Git default へ圧縮した。`STATUS.md`、`DECISIONS.md`、`tasks_backlog.md` は targeted optional layer とし、`INTENT.md` は判断原則として残す。docs-only 変更で、runtime、`dist/**`、Tampermonkey、browser state、write API 仕様には触れない。既存の未追跡 `docs/ai/` は user-owned / unrelated として今回対象外。
 - 主対象: 2026-06-19 に、`RAU-UX-137` として Top 料金調整候補 UI のブラッシュアップを実施した。利用者指定計画の `RAU-UX-130` は現行正本では 2026-06-11 に完了済みだったため、ID 再利用を避けて follow-up として扱う。Product / UX Reviewer 観点では、候補確認導線を `対象月選択 -> 候補確認 -> Analyze / 曲線 / 競合価格 / ランク調整 -> 補助判断` と整理し、主要操作と `その他` details の分離は維持した。Data / Visualization Reviewer 観点では、競合価格 preview を推奨金額決定ではなく競合価格 snapshot の文脈確認として扱い、hover なしで state message、部屋タイプ対応 note、graph / empty / error の意味が読めることを成功条件にした。Frontend 実装では、競合価格 preview の部屋タイプ対応 note を日本語優先の文言へ寄せ、専用 marker `data-ra-rank-recommendation-competitor-preview-room-type-note` を追加した。`scripts/run-distribution-smoke.mjs` は `--top-open-competitor-preview` 実行時にこの marker を必須確認する。Revenue Assistant API request 範囲、Revenue Assistant write API、rank change payload、candidate scoring、priority、confidence、reasonFingerprint、request 間隔、同時実行数、保存 schema、userscript metadata、`dist/` 手編集、自動反映、一括反映、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存は変更していない。
 - 主対象: 2026-06-19 に、`RAU-AN-02` として Analyze 最新実装のブラッシュアップを実施した。Product / UX Reviewer 観点では、`販売設定` タブで利用者が迷う主因を、追加 copy や装飾不足ではなく、tab 復帰直後に overall summary、booking curve section、SVG、toggle が欠けると判断対象が存在しないように見えることと整理した。Data / Visualization Reviewer 観点では、この表示の判断対象を、現時点の予約実績と reference curve を比較し、全体 / 部屋別に booking pace の差分を見ることと定義した。Frontend 実装は推測 UI 変更を避け、既存 `scripts/run-distribution-smoke.mjs` が収集済みだった Analyze 販売設定の overall summary / booking curve section / SVG / toggle metrics を `analyze-recommendations` mode の合格条件へ昇格した。これにより、`RAU-AN-01` の描画欠けが再発した場合に配布版 smoke が fail する。docs 同期として `docs/context/PRODUCT_DESIGN_AUDIT.md` に `Analyze Sales Setting Brushup Audit 2026-06-19` を追加し、`docs/tasks_backlog.md` に `RAU-AN-02` を追加し、`docs/spec_001_analyze_expansion.md` に販売設定主要表示の smoke 合格条件と `sameWeekdayRaw` pre-scan 契約を反映した。直近 main の follow-up として、月別優先取得時の current / same-weekday raw task 優先、same-weekday raw source の pre-scan cache hit 除外、competitor preview overflow smoke の scope 調整も現行状態に含める。verify は `npm run check:distribution-smoke-fixture`、`npm run check:request-scheduler`、`npm run typecheck`、`npm run lint`、`npm run build`、`npm run check:booking-curve-smoke-fixture`、`git diff --check` が通過した。`npm run build` は sandbox 内で Vite `spawn EPERM` になったため、同じ command を昇格して再実行した。Revenue Assistant API request 範囲、Revenue Assistant write API、rank 変更 POST、自動反映、一括反映、認証回避、rate limit 回避、raw trace、HAR、request / response body、Cookie、token、credential、価格や在庫の非公開データ保存、request 間隔、同時実行数、保存 schema、userscript metadata、runtime UI、`dist/` 手編集は変更していない。
@@ -462,11 +463,11 @@
 
 - RAU の当面の主線は、`レート調整特化 + 人数なしの簡易フォーキャスト` とする。
 - rank recommendation の正本は `docs/spec_003_rank_recommendation_signal.md` とする。first wave は、推奨レート金額ではなく推奨ランク方向を中心にした RM 作業キューである。
-- トップ画面には、カレンダー badge だけではなく、`stayDate x roomGroup` 単位の料金調整候補リストを追加する方針とした。Analyze 画面は、候補の詳細根拠を確認する場所として扱う。
+- トップ画面は、既存カレンダー左、`今日の判断` rail 右、選択詳細下の decision workspace を現行方針とする。候補単位は `stayDate x roomGroup` を維持し、Analyze 画面はさらに深い根拠を確認する場所として扱う。旧カレンダー下 9 列 list は現行 layout ではない。
 - user decision は `Analyzeで確認`、`様子見`、`対応不要` を最低限持つ。`様子見` は一時抑制、`対応不要` は同じ reasonFingerprint の再表示抑制と false positive 候補として分ける。
 - bulk apply は将来候補だが first phase では非目標である。current rank、rank ladder、rank 反映 endpoint、user decision、cooldown、resolved、dismissed、guardrail が揃うまで実装対象にしない。
 - rooms-only forecast は first wave の必須入力にしない。`RAU-FC-01` では、今すぐ forecast model を実装せず、`RAU-FC-02` で evaluation dataset / metrics と `ForecastResult v1 candidate` を先に設計すると判断した。`RAU-FC-02` から `RAU-FC-05` は完了済みである。
-- forecast は評価済みで diagnostics が許容できる場合だけ、rank recommendation の priority / confidence 補助として扱う。top list へ forecast 数値を直接表示せず、実装前は Analyze detail にも表示しない。
+- forecast は評価済みで diagnostics が許容できる場合だけ、rank recommendation の priority / confidence 補助として扱う。decision workspace の task card / 判断 summary へ forecast 数値を直接表示せず、実装前は Analyze detail にも表示しない。
 - core / storage 上の segment 名は `all` / `transient` / `group` を正とする。UI 表示では `transient` を「個人」と呼ぶ場合があるが、spec と保存契約では `transient` を使う。
 - Browser API Discovery ルールは `AGENTS.md` と `D-20260514-001` に反映済み。新しい画面、新しいタブ、未調査 API、response shape が不明な API を扱う場合は、実装前に `browser-trace` / `browser-to-api` の利用可否、生成物の保存範囲、Green / Yellow / Red 分類、commit 禁止データを確認する。
 - RAR の本格 RMS 実装は一旦保留し、人数データまたは DWH 連携の見通しが立った時点で再開判断する。
@@ -559,9 +560,10 @@
 
 1. `git status --short --branch` で branch、remote 同期、未追跡 / unrelated 差分を確認する。
 2. 既存の未追跡 `docs/ai/` は、明示 task がない限り user-owned / unrelated として触らない。
-3. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。2026-06-29 docs governance 更新時点では Now / Next / After Next / Later は空の扱いを維持する。
-4. 新しい未着手 work がなければ、ユーザーの新規要求または実 Revenue Assistant 画面で見つかった具体不具合から task を追加する。
-5. runtime 実装に入る場合は対象 spec の `spec-impact` を確認し、必要なら `DECISIONS.md` へ理由を残す。
+3. `RAU-UX-138` の local 実装・fixture QA・full verify は完了済みである。未配布差分が残る場合は `design-qa.md` と対象 commit を確認し、live smoke / publish を local verify と混ぜない。
+4. `docs/tasks_backlog.md` の Remaining Task Triage を確認する。`RAU-UX-138` の publish / live smoke は local verify と分け、明示承認がない限り `main` push を行わない。
+5. 新しい未着手 work がなければ、ユーザーの新規要求または実 Revenue Assistant 画面で見つかった具体不具合から task を追加する。
+6. runtime 実装に入る場合は対象 spec の `spec-impact` を確認し、必要なら `DECISIONS.md` へ理由を残す。
 
 変更しない契約:
 
@@ -575,6 +577,7 @@
 
 ## Verify / Confirmation State
 
+- `RAU-UX-138` は `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:candidate`、`npm run build:compare:vite`、`git diff --check` が passed。`npm run react:doctor -- --diff false --verbose` は exit 0、error 0、warning 44。reference comparison、desktop / wide / mobile、OH / 個人 / 団体の missing / zero、review open 後 5 秒以上の mock submit 0、cancel 後 0、最終明示押下後 1 は `design-qa.md` に記録した。live endpoint へ final submit していない。
 - docs-only の再開準備では、`git diff --check` と正本参照の整合確認を最小 verify とする。
 - 実装に入る場合の最小 verify は `npm run typecheck`、`npm run lint`、`npm run build` とする。
 - 2026-05-31 の `RAU-UX-48` から `RAU-UX-58` 完了時の verify:
@@ -784,7 +787,7 @@
 - rank 別価格表と現在販売中価格は、`RAU-RR-36` の追加確認後も、推奨レート金額を導出できる入力としては未確認である。`/api/v1/plan_master/plan_rank_price` は rank metadata を返すが、実価格、金額、人数、食事条件、roomGroup、plan 別価格 field は観測できていない。
 - rank 反映 API の request shape、安全制約、権限差、error response、partial failure、同時更新時の挙動は未確認である。
 - rank recommendation first phase では推奨レート金額を出さない。金額推奨を行うには、プラン別、人数別、食事条件別、販売中価格、rank ladder、競合価格、施設方針の確認が必要であり、現時点では未確認項目が多い。
-- top 料金調整候補リストは実装済みで、warm cache marker、保存済み raw source signal、団体室数表示、最終変更表示とは別の list layer として表示する。今後追加 UI を行う場合も、これらの意味を混同しない。
+- top 料金調整 decision workspace は、warm cache marker、保存済み raw source signal、カレンダーの黒い標準数値、青い `団n`、最終変更表示と意味を混同しない。黒い標準数値は OH へ relabel せず、OH / キャパ、個人、団体は選択詳細で source を分けて表示する。
 - user snooze / 対応不要の browser-local 保存は実装済みである。priority または reasonFingerprint が変わった候補は従来から別候補として再表示され、`RAU-RR-27` で confidence 表示段階が保存時より上がった場合も再表示されるようにした。今後さらに調整する場合は、実データで false positive と見直し候補を分けながら、再表示条件を広げすぎないか確認する必要がある。
 - `booking_curve_raw_source:v2` は、次回 API 取得時に作成される。既存 `booking_curve_raw_source:v1` record は同じ IndexedDB に残るが、v2 の cache key と保存済み raw source signal では有効扱いにしないため、過去に保存済みだった日付でも v2 record が作られるまでは保存済み signal が出ない場合がある。
 - BCL-tuned `直近型カーブ` は、同じ曜日の履歴 stay_date を LT ごとに集計するため、仮実装より request 数が増える。

@@ -2,67 +2,151 @@ import {
     renderRankRecommendationReactListElement,
     syncRankRecommendationReactList,
     type RankRecommendationReactButtonSnapshot,
-    type RankRecommendationReactListSnapshot,
-    type RankRecommendationReactRowSnapshot
+    type RankRecommendationReactCandidateSnapshot,
+    type RankRecommendationReactListSnapshot
 } from "../rankRecommendationReactIsland";
+import { RANK_RECOMMENDATION_WORKSPACE_STYLES } from "../rankRecommendationWorkspaceStyles";
+import type { RankRecommendationWorkState } from "../rankRecommendationWorkspaceModel";
 
 type FixtureState =
-    | "candidates"
+    | "ready"
+    | "needs-evidence"
+    | "recent"
     | "empty"
-    | "current-settings-401"
-    | "current-settings-403"
-    | "decision-hidden"
-    | "decision-pending"
-    | "rank-change-pending"
-    | "rank-change-error"
+    | "missing-counts"
+    | "zero-counts"
+    | "large-counts"
     | "long-room-name"
-    | "preview-open"
-    | "monthly-compact"
-    | "monthly-empty"
-    | "monthly-partial"
-    | "price-trends-loading"
-    | "price-trends-empty"
-    | "price-trends-failure";
+    | "decision-pending"
+    | "write-confirming"
+    | "write-success"
+    | "write-failure"
+    | "current-settings-401"
+    | "current-settings-403";
 
 const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
-    { value: "candidates", label: "候補あり" },
-    { value: "empty", label: "候補なし" },
+    { value: "ready", label: "判断可能" },
+    { value: "needs-evidence", label: "要確認" },
+    { value: "recent", label: "保留・直近" },
+    { value: "missing-counts", label: "個人・団体 未取得" },
+    { value: "zero-counts", label: "OH・個人・団体 0" },
+    { value: "large-counts", label: "大きい室数" },
+    { value: "long-room-name", label: "長い部屋タイプ名" },
+    { value: "decision-pending", label: "様子見 取消待ち" },
+    { value: "write-confirming", label: "反映確認中" },
+    { value: "write-success", label: "反映成功" },
+    { value: "write-failure", label: "反映失敗" },
     { value: "current-settings-401", label: "current settings 401" },
     { value: "current-settings-403", label: "current settings 403" },
-    { value: "decision-hidden", label: "利用者判断で非表示" },
-    { value: "decision-pending", label: "判断 pending" },
-    { value: "rank-change-pending", label: "rank change pending" },
-    { value: "rank-change-error", label: "rank change error" },
-    { value: "long-room-name", label: "長い部屋タイプ名" },
-    { value: "preview-open", label: "preview open" },
-    { value: "monthly-compact", label: "月次 compact view" },
-    { value: "monthly-empty", label: "月次 empty" },
-    { value: "monthly-partial", label: "月次 partial" },
-    { value: "price-trends-loading", label: "価格推移 loading" },
-    { value: "price-trends-empty", label: "価格推移 empty" },
-    { value: "price-trends-failure", label: "価格推移 failure" }
+    { value: "empty", label: "候補なし" }
 ];
+
+let currentFixtureState: FixtureState = "ready";
+let fixtureWritePostCount = 0;
+let fixtureSuccessTimeoutId: number | null = null;
 
 if (typeof document !== "undefined") {
     const rootElement = document.getElementById("rank-fixture-root");
-    const secondaryRootElement = document.getElementById("rank-fixture-secondary-root");
-    const galleryRootElement = document.getElementById("rank-fixture-gallery-root");
+    const detailElement = document.getElementById("rank-fixture-detail");
     const stateSelectElement = document.getElementById("rank-fixture-state");
 
     if (!(rootElement instanceof HTMLElement)
-        || !(secondaryRootElement instanceof HTMLElement)
-        || !(galleryRootElement instanceof HTMLElement)
+        || !(detailElement instanceof HTMLElement)
         || !(stateSelectElement instanceof HTMLSelectElement)) {
         throw new Error("Rank recommendation fixture root is missing.");
     }
 
     installFixtureStyles();
     installStateOptions(stateSelectElement);
-    renderFixture(rootElement, secondaryRootElement, "candidates");
-    renderGallery(galleryRootElement);
+    renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
 
     stateSelectElement.addEventListener("change", () => {
-        renderFixture(rootElement, secondaryRootElement, stateSelectElement.value as FixtureState);
+        if (fixtureSuccessTimeoutId !== null) {
+            window.clearTimeout(fixtureSuccessTimeoutId);
+            fixtureSuccessTimeoutId = null;
+        }
+        currentFixtureState = stateSelectElement.value as FixtureState;
+        renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+    });
+
+    document.addEventListener("click", (event) => {
+        const target = event.target;
+        if (!(target instanceof Element)) {
+            return;
+        }
+
+        const workStateButton = target.closest<HTMLElement>(
+            '[data-ra-rank-recommendation-button-action="view-mode"]'
+        );
+        if (workStateButton !== null) {
+            event.preventDefault();
+            const mode = workStateButton.getAttribute("data-ra-rank-recommendation-view-mode");
+            currentFixtureState = mode === "needs_evidence"
+                ? "needs-evidence"
+                : mode === "recent_or_held"
+                    ? "recent"
+                    : "ready";
+            stateSelectElement.value = currentFixtureState;
+            renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            return;
+        }
+
+        const analyzeLink = target.closest<HTMLElement>(
+            '[data-ra-rank-recommendation-button-action="analyze"]'
+        );
+        if (analyzeLink !== null) {
+            event.preventDefault();
+            rootElement.setAttribute("data-ra-fixture-analyze-opened", "true");
+            return;
+        }
+
+        const decisionButton = target.closest<HTMLElement>(
+            '[data-ra-rank-recommendation-button-action="snooze"],'
+            + '[data-ra-rank-recommendation-button-action="dismiss"]'
+        );
+        if (decisionButton !== null) {
+            event.preventDefault();
+            currentFixtureState = decisionButton.getAttribute("data-ra-rank-recommendation-button-action") === "snooze"
+                ? "decision-pending"
+                : "empty";
+            stateSelectElement.value = currentFixtureState;
+            renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            return;
+        }
+
+        const decisionCancelButton = target.closest<HTMLElement>(
+            '[data-ra-rank-recommendation-button-action="decision-cancel"]'
+        );
+        if (decisionCancelButton !== null) {
+            event.preventDefault();
+            currentFixtureState = "ready";
+            stateSelectElement.value = currentFixtureState;
+            renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            return;
+        }
+
+        const finalConfirmButton = target.closest<HTMLButtonElement>(
+            '[data-ra-rank-recommendation-button-action="rank-change-submit"]'
+        );
+        if (finalConfirmButton !== null) {
+            event.preventDefault();
+            fixtureWritePostCount += 1;
+            currentFixtureState = "write-confirming";
+            stateSelectElement.value = currentFixtureState;
+            renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            if (fixtureSuccessTimeoutId !== null) {
+                window.clearTimeout(fixtureSuccessTimeoutId);
+            }
+            fixtureSuccessTimeoutId = window.setTimeout(() => {
+                fixtureSuccessTimeoutId = null;
+                if (currentFixtureState !== "write-confirming") {
+                    return;
+                }
+                currentFixtureState = "write-success";
+                stateSelectElement.value = currentFixtureState;
+                renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            }, 900);
+        }
     });
 }
 
@@ -73,76 +157,96 @@ function installStateOptions(selectElement: HTMLSelectElement): void {
         option.textContent = state.label;
         return option;
     }));
+    selectElement.value = currentFixtureState;
 }
 
-function renderFixture(rootElement: HTMLElement, secondaryRootElement: HTMLElement, state: FixtureState): void {
-    syncRankRecommendationReactList(rootElement, buildFixtureSnapshot(state));
-    renderSecondaryFixtureState(secondaryRootElement, state);
-}
-
-function renderGallery(galleryRootElement: HTMLElement): void {
-    const galleryCards = FIXTURE_STATES.map((state) => {
-        const card = document.createElement("article");
-        card.setAttribute("data-ra-fixture-gallery-card", "");
-        const heading = document.createElement("h3");
-        heading.textContent = state.label;
-        const mount = document.createElement("section");
-        mount.setAttribute("data-ra-rank-recommendation-list", "");
-        card.append(heading, mount);
-        syncRankRecommendationReactList(mount, buildFixtureSnapshot(state.value));
-        return card;
+function renderFixture(
+    rootElement: HTMLElement,
+    detailElement: HTMLElement,
+    stateSelectElement: HTMLSelectElement,
+    state: FixtureState
+): void {
+    stateSelectElement.value = state;
+    rootElement.setAttribute("data-ra-fixture-write-post-count", String(fixtureWritePostCount));
+    syncRankRecommendationReactList(rootElement, buildFixtureSnapshot(state), {
+        detailContainer: detailElement,
+        actions: {
+            hydrateEvidence: (_candidateKey, container) => renderFixtureEvidence(container, state)
+        }
     });
-    galleryRootElement.replaceChildren(...galleryCards);
+    syncFixtureCalendarMarkers(state);
 }
 
 export function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListSnapshot {
-    const rows = buildRowsForState(state);
+    const candidates = buildCandidatesForState(state);
+    const activeWorkState = resolveFixtureWorkState(state);
     const emptyText = getEmptyTextForState(state);
+    const workStateCounts = candidates.length === 0
+        ? { ready: 0, needs_evidence: 0, recent_or_held: 0 }
+        : { ready: 3, needs_evidence: 2, recent_or_held: 1 };
     return {
-        signature: `fixture:${state}:${rows.length}`,
+        signature: `fixture:${state}:${candidates.map((candidate) => candidate.key).join("|")}`,
         mode: "fixture",
-        title: "料金調整候補",
-        metaText: buildMetaText(state, rows.length),
-        metaTitle: buildMetaTitle(state, rows.length),
-        columns: ["優先度", "判断", "宿泊日", "部屋タイプ", "現ランク", "推奨", "根拠", "状態", "操作"],
+        title: "今日の判断",
+        metaText: buildMetaText(state, candidates.length),
+        metaTitle: "カレンダーで日付感を保ち、右の判断レールと下の詳細で一件ずつ判断する fixture",
         emptyText,
         controls: {
             targetMonth: {
                 currentValue: "202607",
                 options: [
-                    { value: "all", label: "全ての月 (12件)" },
                     { value: "202607", label: "2026年7月 (6件)" },
-                    { value: "202608", label: "2026年8月 (6件)" },
-                    { value: "202609", label: "2026年9月 (0件)" },
-                    { value: "202610", label: "2026年10月 (0件)" },
-                    { value: "202611", label: "2026年11月 (0件)" },
-                    { value: "202612", label: "2026年12月 (0件)" }
+                    { value: "202608", label: "2026年8月 (2件)" }
                 ]
             },
-            viewMode: {
+            workState: {
                 options: [
-                    { mode: "all", label: "全て", title: "全ての候補を表示", pressed: true },
-                    { mode: "raise", label: "上げ注意", title: "上げ推奨だけを表示", pressed: false },
-                    { mode: "lower", label: "下げ注意", title: "下げ推奨だけを表示", pressed: false }
+                    {
+                        mode: "ready",
+                        label: "判断可能",
+                        title: "根拠と変更候補が揃った候補",
+                        count: workStateCounts.ready,
+                        pressed: activeWorkState === "ready"
+                    },
+                    {
+                        mode: "needs_evidence",
+                        label: "要確認",
+                        title: "不足または注意が残る候補",
+                        count: workStateCounts.needs_evidence,
+                        pressed: activeWorkState === "needs_evidence"
+                    },
+                    {
+                        mode: "recent_or_held",
+                        label: "保留・直近",
+                        title: "保留操作中、処理中、または直近変更がある候補",
+                        count: workStateCounts.recent_or_held,
+                        pressed: activeWorkState === "recent_or_held"
+                    }
                 ]
             },
-            displayLimit: {
-                showMoreButton: buildButton("さらに表示", "display-more"),
-                resetButton: buildButton("10件に戻す", "display-reset")
-            },
+            displayLimit: state === "ready"
+                ? {
+                    showMoreButton: buildButton("さらに表示 (3件)", "display-more"),
+                    resetButton: null
+                }
+                : null,
             rankOrder: {
-                source: "manual-override",
-                ladderJson: JSON.stringify(["10", "11", "12"]),
+                source: "manual_override",
+                ladderJson: JSON.stringify([
+                    { code: "10", name: "10" },
+                    { code: "11", name: "11" },
+                    { code: "12", name: "12" }
+                ]),
                 summary: "ランク順序: 手動",
-                summaryTitle: "rank順序: 手動調整 10 > 11 > 12",
-                inputValue: "10\n11\n12",
+                summaryTitle: "高い順 10、11、12",
+                inputValue: "10, 11, 12",
                 status: "保存済み",
                 saveButton: buildButton("保存", "rank-order-save"),
-                reverseButton: buildButton("上下反転", "rank-order-reverse"),
-                resetButton: buildButton("初期化", "rank-order-reset")
+                reverseButton: buildButton("上下を反転", "rank-order-reverse"),
+                resetButton: buildButton("リセット", "rank-order-reset")
             }
         },
-        rows
+        candidates
     };
 }
 
@@ -152,629 +256,600 @@ export function buildAllFixtureSnapshots(): readonly RankRecommendationReactList
 
 export { renderRankRecommendationReactListElement };
 
-function buildRowsForState(state: FixtureState): RankRecommendationReactRowSnapshot[] {
+function buildCandidatesForState(state: FixtureState): RankRecommendationReactCandidateSnapshot[] {
     if (state === "empty" || state === "current-settings-401" || state === "current-settings-403") {
         return [];
     }
 
-    const firstRow = buildRow({
-        key: "20260723-camp-twin-s",
-        stayDate: "2026-07-23",
-        roomGroup: "キャンプ、ツインS",
-        priority: "high",
-        action: "raise_watch",
-        currentRank: "11",
-        recommendedRank: "10",
-        reason: "直近販売が基準より鈍い",
-        curveOpen: state === "preview-open",
-        rankOpen: state === "preview-open",
-        pendingDecision: state === "decision-pending",
-        pendingRankChange: state === "rank-change-pending",
-        rankChangeError: state === "rank-change-error"
-    });
-    const secondRow = buildRow({
-        key: "20260803-standard-single",
-        stayDate: "2026-08-03",
-        roomGroup: "シングル",
-        priority: "medium",
-        action: "lower_watch",
-        currentRank: "8",
-        recommendedRank: "9",
-        reason: "相場より高めの注意",
-        curveOpen: false,
-        rankOpen: false,
-        pendingDecision: false,
-        pendingRankChange: false,
-        rankChangeError: false
-    });
-    const longNameRow = buildRow({
-        key: "20260811-family-suite-long-name",
-        stayDate: "2026-08-11",
-        roomGroup: "露天風呂付き和洋室スイート 角部屋 海側 禁煙 夕朝食付きプラン連動",
-        priority: "low",
-        action: "watch",
-        currentRank: "15",
-        recommendedRank: "14",
-        reason: "長い部屋タイプ名と複数根拠が同じ行で折り返される状態",
-        curveOpen: false,
-        rankOpen: false,
-        pendingDecision: false,
-        pendingRankChange: false,
-        rankChangeError: false
-    });
-
-    if (state === "decision-hidden") {
-        return [firstRow];
+    const baseOverrides: Partial<RankRecommendationReactCandidateSnapshot> = {};
+    if (state === "missing-counts") {
+        Object.assign(baseOverrides, {
+            workState: "needs_evidence" as const,
+            occupancyText: "OH 未取得 / キャパ 未取得",
+            individualText: "未取得",
+            groupText: "未取得",
+            reasonText: "個人・団体の内訳を取得できず、現時点では判断を確定できません",
+            cautionText: "個人・団体の内訳を取得できていません",
+            evidenceStatusText: "個人・団体は未取得 / 未保存"
+        });
     }
-    return state === "long-room-name" ? [longNameRow, firstRow] : [firstRow, secondRow];
+    if (state === "zero-counts") {
+        Object.assign(baseOverrides, {
+            occupancyText: "OH 0 / キャパ 18",
+            individualText: "0",
+            groupText: "0"
+        });
+    }
+    if (state === "large-counts") {
+        Object.assign(baseOverrides, {
+            occupancyText: "OH 118 / キャパ 240",
+            individualText: "104",
+            groupText: "14"
+        });
+    }
+    if (state === "long-room-name") {
+        Object.assign(baseOverrides, {
+            roomGroupName: "本館高層階プレミアムコーナーツイン・エキストラベッド対応・禁煙"
+        });
+    }
+    if (state === "decision-pending") {
+        Object.assign(baseOverrides, {
+            workState: "ready" as const,
+            snoozeButton: buildButton("様子見", "snooze", true),
+            dismissButton: buildButton("対応不要", "dismiss", true),
+            pendingDecision: {
+                key: "fixture-pending-decision",
+                label: "様子見: 4秒後に確定",
+                cancelButton: buildButton("取消", "decision-cancel")
+            }
+        });
+    }
+    if (state === "write-confirming") {
+        Object.assign(baseOverrides, {
+            workState: "recent_or_held" as const,
+            snoozeButton: buildButton("様子見", "snooze", true),
+            dismissButton: buildButton("対応不要", "dismiss", true),
+            rankChangeResult: {
+                status: "confirming",
+                message: "送信は完了しました。Revenue Assistant の反映結果を確認中です。",
+                title: "合成 fixture の確認中 state"
+            }
+        });
+    }
+    if (state === "write-success") {
+        Object.assign(baseOverrides, {
+            workState: "recent_or_held" as const,
+            snoozeButton: buildButton("様子見", "snooze", true),
+            dismissButton: buildButton("対応不要", "dismiss", true),
+            rankChangeResult: {
+                status: "success",
+                message: "ランク 11 から 10 への反映を確認しました。",
+                title: "合成 fixture の成功 state"
+            }
+        });
+    }
+    if (state === "write-failure") {
+        Object.assign(baseOverrides, {
+            workState: "needs_evidence" as const,
+            rankChangeResult: {
+                status: "failed",
+                message: "反映結果を確認できませんでした。Revenue Assistant の現在値を確認してください。",
+                title: "合成 fixture の失敗 state"
+            }
+        });
+    }
+
+    const primary: RankRecommendationReactCandidateSnapshot = {
+        ...buildCandidate({
+        key: "fixture:20260723:camp-twin-s",
+        stayDateKey: "20260723",
+        stayDateLabel: "2026-07-23（木）",
+        dateGroupLabel: "2026-07-23（木）",
+        roomGroupName: "キャンプ、ツインS",
+        action: "raise_watch",
+        actionLabel: "上げ検討",
+        currentRankText: "11",
+        recommendedRankText: "10",
+        occupancyText: "OH 7 / キャパ 18",
+        individualText: "5",
+        groupText: "2",
+        reasonText: "個人の予約ペースが基準を上回り、団体を除いても需要の強さを確認",
+        evidenceStatusText: "個人・団体を直接取得 / 最新基準日あり"
+        }),
+        ...baseOverrides
+    };
+
+    if (state === "needs-evidence" || state === "missing-counts" || state === "write-failure") {
+        return [
+            {
+                ...primary,
+                workState: "needs_evidence",
+                action: "watch",
+                actionLabel: "要確認",
+                recommendedRankText: "未確定",
+                cautionText: primary.cautionText ?? "基準線が不足しているためランク変更はまだ確定できません",
+                evidenceStatusText: state === "missing-counts" ? primary.evidenceStatusText : "季節基準線は未取得 / 現在値のみ取得",
+                confirmButton: { ...primary.confirmButton, disabled: true }
+            },
+            buildCandidate({
+                key: "fixture:20260727:single",
+                stayDateKey: "20260727",
+                stayDateLabel: "2026-07-27（月）",
+                dateGroupLabel: "2026-07-27（月）",
+                roomGroupName: "シングル",
+                workState: "needs_evidence",
+                action: "lower_watch",
+                actionLabel: "下げ注意",
+                currentRankText: "9",
+                recommendedRankText: "10",
+                occupancyText: "OH 2 / キャパ 24",
+                individualText: "2",
+                groupText: "0",
+                reasonText: "個人の予約ペースが基準を下回るが、競合価格の部屋タイプ対応は未確認",
+                cautionText: "競合価格の部屋タイプ対応未確認",
+                evidenceStatusText: "個人・団体を直接取得 / 競合対応は要確認"
+            })
+        ];
+    }
+
+    if (state === "recent" || state === "decision-pending" || state === "write-confirming" || state === "write-success") {
+        return [{
+            ...primary,
+            workState: state === "decision-pending" ? "ready" : "recent_or_held",
+            latestChangeText: state === "decision-pending" ? "前回変更 なし" : "前回変更 2日前・11から10",
+            confirmButton: {
+                ...primary.confirmButton,
+                disabled: true
+            }
+        }];
+    }
+
+    return [
+        primary,
+        buildCandidate({
+            key: "fixture:20260724:standard-twin",
+            stayDateKey: "20260724",
+            stayDateLabel: "2026-07-24（金）",
+            dateGroupLabel: "2026-07-24（金）",
+            roomGroupName: "スタンダードツイン",
+            action: "lower_watch",
+            actionLabel: "下げ注意",
+            currentRankText: "8",
+            recommendedRankText: "9",
+            occupancyText: "OH 3 / キャパ 20",
+            individualText: "3",
+            groupText: "0",
+            reasonText: "個人の予約ペースが基準を下回り、団体要因はありません",
+            evidenceStatusText: "個人・団体を直接取得 / 最新基準日あり"
+        }),
+        buildCandidate({
+            key: "fixture:20260724:family",
+            stayDateKey: "20260724",
+            stayDateLabel: "2026-07-24（金）",
+            dateGroupLabel: "2026-07-24（金）",
+            roomGroupName: "ファミリールーム",
+            action: "raise_watch",
+            actionLabel: "上げ検討",
+            currentRankText: "12",
+            recommendedRankText: "11",
+            occupancyText: "OH 12 / キャパ 16",
+            individualText: "7",
+            groupText: "5",
+            reasonText: "個人需要を直接確認し、団体比率も許容範囲内",
+            evidenceStatusText: "個人・団体を直接取得 / 最新基準日あり"
+        })
+    ];
 }
 
-function buildRow(options: {
-    key: string;
-    stayDate: string;
-    roomGroup: string;
-    priority: string;
-    action: string;
-    currentRank: string;
-    recommendedRank: string;
-    reason: string;
-    curveOpen: boolean;
-    rankOpen: boolean;
-    pendingDecision: boolean;
-    pendingRankChange: boolean;
-    rankChangeError: boolean;
-}): RankRecommendationReactRowSnapshot {
+function buildCandidate(
+    overrides: Partial<RankRecommendationReactCandidateSnapshot> & Pick<
+        RankRecommendationReactCandidateSnapshot,
+        | "key"
+        | "stayDateKey"
+        | "stayDateLabel"
+        | "dateGroupLabel"
+        | "roomGroupName"
+        | "action"
+        | "actionLabel"
+        | "currentRankText"
+        | "recommendedRankText"
+        | "occupancyText"
+        | "individualText"
+        | "groupText"
+        | "reasonText"
+        | "evidenceStatusText"
+    >
+): RankRecommendationReactCandidateSnapshot {
+    const confirmButton = buildRankChangeButton({
+        candidateKey: overrides.key,
+        stayDateKey: overrides.stayDateKey,
+        roomGroupName: overrides.roomGroupName,
+        currentRank: overrides.currentRankText,
+        targetRank: overrides.recommendedRankText
+    });
     return {
-        key: options.key,
-        priority: options.priority,
-        action: options.action,
-        status: "eligible",
-        cells: [
-            { kind: "text", value: options.priority === "high" ? "高" : options.priority === "medium" ? "中" : "低", role: "priority" },
-            { kind: "text", value: "高・注意あり", role: "decision-summary", title: "宿泊まで: 53日\nデータ: 保存済み\n前回変更: 2日前" },
-            { kind: "text", value: options.stayDate, role: "stay-date", title: "宿泊まで: 53日" },
-            { kind: "text", value: options.roomGroup, role: "room-group", title: `${options.roomGroup}\nデータ: 保存済み\n前回変更: 2日前` },
-            {
-                kind: "rankGap",
-                currentRankText: options.currentRank,
-                occupancyCapacityText: "販売室数：8/12",
-                title: "同じ宿泊日の全部屋タイプ rank を確認",
-                role: "current-rank",
-                entries: [
-                    { values: [options.roomGroup, options.currentRank, "8/12", "対象", "fixture"], isTarget: true },
-                    { values: ["ダブル", "12", "5/10", "1段低い", "fixture"], isTarget: false }
-                ]
-            },
-            {
-                kind: "recommendedAction",
-                value: options.action === "raise_watch" ? "上げ候補" : options.action === "lower_watch" ? "下げ候補" : "様子見",
-                role: "recommended-action",
-                title: "推奨と前回変更履歴の fixture",
-                historyItems: [
-                    { label: "ランク", value: "11→10" },
-                    { label: "経過", value: "2日前" }
-                ],
-                quickSubmitButton: options.action === "watch"
-                    ? null
-                    : buildButton("推奨反映", "rank-change-submit")
-            },
-            { kind: "text", value: options.reason, role: "reason", title: options.reason },
-            { kind: "text", value: "有効", role: "status" }
-        ],
+        chartKey: `${overrides.key}:chart`,
+        workState: "ready",
+        priorityLabel: "優先度 高",
+        confidenceLabel: "高",
+        currentRankCode: overrides.currentRankText === "未取得" ? null : overrides.currentRankText,
+        sourceText: "最新基準日あり・基準日 2026-07-17",
+        latestChangeText: "前回変更 なし",
+        cautionText: null,
+        rankOptions: buildFixtureRankOptions(overrides.currentRankText, overrides.recommendedRankText),
+        selectedRankCode: overrides.recommendedRankText === "未確定" ? null : overrides.recommendedRankText,
         analyzeLink: {
-            text: "Analyzeで確認",
-            title: "Analyze で確認",
-            href: `https://ra.jalan.net/analyze/${options.stayDate}`,
+            href: `/analyze/${formatFixtureStayDatePath(overrides.stayDateKey)}`,
+            text: "Analyzeで詳しく見る",
             attrs: {
                 "data-ra-rank-recommendation-button": "",
                 "data-ra-rank-recommendation-button-action": "analyze"
             }
         },
-        curvePreviewButton: {
-            ...buildButton("曲線", "curve-preview-toggle"),
-            expanded: options.curveOpen
-        },
-        competitorPreviewButton: {
-            ...buildButton(options.curveOpen ? "競合価格を閉じる" : "競合価格", "competitor-preview-toggle"),
-            expanded: options.curveOpen
-        },
-        curvePopoverItems: [
-            { label: "全体", value: "基準より遅い" },
-            { label: "個人", value: "やや弱い" },
-            { label: "団体", value: "変化なし" }
-        ],
-        inlineRankChange: {
-            options: [
-                { code: options.recommendedRank, name: options.recommendedRank },
-                { code: options.currentRank, name: options.currentRank }
-            ],
-            selectedCode: options.recommendedRank,
-            disabled: false,
-            submitButton: buildButton("反映する", "rank-change-inline-submit")
-        },
-        rankChangeButton: {
-            ...buildButton("ランク調整", "rank-change-preview-toggle"),
-            expanded: options.rankOpen
-        },
+        confirmButton,
         snoozeButton: buildButton("様子見", "snooze"),
         dismissButton: buildButton("対応不要", "dismiss"),
-        pendingDecision: options.pendingDecision
-            ? {
-                key: options.key,
-                label: "様子見: 3秒後に確定",
-                progressPercent: 60,
-                cancelButton: buildButton("取消", "decision-cancel")
-            }
-            : null,
-        pendingRankChange: options.pendingRankChange
-            ? {
-                key: options.key,
-                label: "3秒後に送信",
-                progressPercent: 60,
-                cancelButton: buildButton("取消", "rank-change-cancel")
-            }
-            : null,
-        rankChangeResult: options.rankChangeError
-            ? {
-                status: "failed",
-                message: "HTTP 403: 権限またはログイン状態を確認",
-                title: "fixture error"
-            }
-            : null,
-        curvePreview: {
-            key: options.key,
-            open: options.curveOpen
-        },
-        competitorPreview: {
-            key: options.key,
-            open: options.curveOpen
-        },
-        rankChangePreview: {
-            key: options.key,
-            open: options.rankOpen
+        pendingDecision: null,
+        rankChangeResult: null,
+        ...overrides
+    };
+}
+
+function buildButton(
+    text: string,
+    action: string,
+    disabled = false
+): RankRecommendationReactButtonSnapshot {
+    return {
+        text,
+        disabled,
+        attrs: {
+            "data-ra-rank-recommendation-button": "",
+            "data-ra-rank-recommendation-button-action": action
         }
     };
 }
 
-function buildButton(text: string, action: string): RankRecommendationReactButtonSnapshot {
+function buildRankChangeButton(options: {
+    candidateKey: string;
+    stayDateKey: string;
+    roomGroupName: string;
+    currentRank: string;
+    targetRank: string;
+}): RankRecommendationReactButtonSnapshot {
     return {
-        text,
-        title: text,
+        text: "この内容で変更する",
+        title: "合成 fixture の明示確定。外部 API へは接続しません。",
+        disabled: options.targetRank === "未確定",
         attrs: {
             "data-ra-rank-recommendation-button": "",
-            "data-ra-rank-recommendation-button-action": action,
-            "data-ra-rank-recommendation-stay-date": "20260723",
-            "data-ra-rank-recommendation-room-group-id": "fixture-room-group"
+            "data-ra-rank-recommendation-button-action": "rank-change-submit",
+            "data-ra-rank-recommendation-facility-id": "fixture-hotel",
+            "data-ra-rank-recommendation-stay-date": options.stayDateKey,
+            "data-ra-rank-recommendation-as-of-date": "20260717",
+            "data-ra-rank-recommendation-room-group-id": options.candidateKey,
+            "data-ra-rank-recommendation-room-group-name": options.roomGroupName,
+            "data-ra-rank-recommendation-reason-fingerprint": `fixture-reason:${options.candidateKey}`,
+            "data-ra-rank-recommendation-confidence-level": "high",
+            "data-ra-rank-recommendation-rank-change-generated-at": "2026-07-17T09:00:00.000Z",
+            "data-ra-rank-recommendation-rank-change-disabled-reasons": "",
+            "data-ra-rank-recommendation-rank-change-current-code": options.currentRank,
+            "data-ra-rank-recommendation-rank-change-current-name": options.currentRank,
+            "data-ra-rank-recommendation-rank-change-target-code": options.targetRank,
+            "data-ra-rank-recommendation-rank-change-target-name": options.targetRank
         }
     };
+}
+
+function buildFixtureRankOptions(
+    currentRank: string,
+    targetRank: string
+): readonly { code: string; name: string }[] {
+    const currentValue = Number(currentRank);
+    const targetValue = Number(targetRank);
+    if (Number.isFinite(currentValue) && Number.isFinite(targetValue)) {
+        const start = Math.max(1, Math.min(currentValue, targetValue) - 1);
+        const end = Math.max(currentValue, targetValue) + 1;
+        return Array.from({ length: end - start + 1 }, (_, index) => String(start + index))
+            .map((value) => ({ code: value, name: value }));
+    }
+    return Array.from(new Set([targetRank, currentRank].filter((value) => value !== "未確定")))
+        .map((value) => ({ code: value, name: value }));
+}
+
+function formatFixtureStayDatePath(stayDateKey: string): string {
+    return /^\d{8}$/.test(stayDateKey)
+        ? `${stayDateKey.slice(0, 4)}-${stayDateKey.slice(4, 6)}-${stayDateKey.slice(6, 8)}`
+        : stayDateKey;
+}
+
+function resolveFixtureWorkState(state: FixtureState): RankRecommendationWorkState {
+    if (state === "needs-evidence" || state === "missing-counts" || state === "write-failure") {
+        return "needs_evidence";
+    }
+    if (state === "recent" || state === "write-confirming" || state === "write-success") {
+        return "recent_or_held";
+    }
+    return "ready";
 }
 
 function getEmptyTextForState(state: FixtureState): string | null {
-    if (state === "empty") {
-        return "表示できる料金調整候補はありません。";
-    }
     if (state === "current-settings-401") {
-        return "Revenue Assistant のログイン状態を確認してください。current settings が HTTP 401 を返しました。";
+        return "候補の現在設定を取得できませんでした（HTTP 401）。ログイン状態を確認してください。";
     }
     if (state === "current-settings-403") {
-        return "この施設または画面で current settings を確認する権限がありません。HTTP 403 を返しました。";
+        return "候補の現在設定を取得できませんでした（HTTP 403）。施設権限を確認してください。";
+    }
+    if (state === "empty") {
+        return "現在の判断状態に該当する料金調整候補はありません";
     }
     return null;
 }
 
-function buildMetaText(state: FixtureState, rowCount: number): string {
-    if (state === "decision-hidden") {
-        return `候補 ${rowCount}件 / 非表示 利用者判断 1件 / fixture`;
+function buildMetaText(state: FixtureState, count: number): string {
+    if (state === "current-settings-401" || state === "current-settings-403") {
+        return "候補データの取得に失敗";
     }
-    return `候補 ${rowCount}件 / 注意あり / fixture`;
+    return `${count}件 / 基準日 7月17日 / 個人・団体を分離表示`;
 }
 
-function buildMetaTitle(state: FixtureState, rowCount: number): string {
-    if (state === "decision-hidden") {
-        return `表示 ${rowCount} 件 / 利用者判断で非表示 1 件 / fixture`;
-    }
-    return `表示 ${rowCount} 件 / 上げ候補 1 件 / 下げ候補 1 件 / fixture`;
+function syncFixtureCalendarMarkers(state: FixtureState): void {
+    const activeState = resolveFixtureWorkState(state);
+    document.querySelectorAll<HTMLElement>("[data-ra-fixture-candidate-date]").forEach((element, index) => {
+        if (state === "empty" || state === "current-settings-401" || state === "current-settings-403" || index > 1) {
+            element.removeAttribute("data-ra-rank-recommendation-calendar-state");
+            return;
+        }
+        element.setAttribute("data-ra-rank-recommendation-calendar-state", activeState);
+    });
 }
 
-function renderSecondaryFixtureState(container: HTMLElement, state: FixtureState): void {
-    if (state === "monthly-compact" || state === "monthly-empty" || state === "monthly-partial") {
-        const body = state === "monthly-empty"
-            ? `
-                <p data-ra-monthly-progress-empty>保存済み月次 snapshot がないため、LTブッキングカーブを表示できません。</p>
-                <details data-ra-monthly-progress-daily-diff-details>
-                    <summary>日次差分は未表示</summary>
-                    <p>現在月の保存後に増加、減少、変化なし、未観測を確認します。</p>
-                </details>
-            `
-            : state === "monthly-partial"
-                ? `
-                    <p data-ra-monthly-progress-partial>保存済み・比較不足あり / background 取得中 5 / 12・失敗 1</p>
-                    <table data-ra-monthly-progress-daily-diff-main-table>
-                        <tbody>
-                            <tr><td>7日前</td><td>増加</td><td>+4室</td></tr>
-                            <tr><td>14日前</td><td>未観測</td><td>-</td></tr>
-                        </tbody>
-                    </table>
-                    <details data-ra-monthly-progress-daily-diff-details open>
-                        <summary>変化なし / 未観測 4件</summary>
-                        <table><tbody><tr><td>21日前</td><td>変化なし</td></tr><tr><td>30日前</td><td>未観測</td></tr></tbody></table>
-                    </details>
-                `
-                : `
-                    <table data-ra-monthly-progress-daily-diff-main-table>
-                        <tbody>
-                            <tr><td>7日前</td><td>増加</td><td>+4室</td></tr>
-                            <tr><td>14日前</td><td>減少</td><td>-1室</td></tr>
-                        </tbody>
-                    </table>
-                    <details data-ra-monthly-progress-daily-diff-details>
-                        <summary>変化なし / 未観測 2件</summary>
-                        <table><tbody><tr><td>21日前</td><td>変化なし</td></tr><tr><td>30日前</td><td>未観測</td></tr></tbody></table>
-                    </details>
-                `;
-        container.innerHTML = `
-            <h2>月次実績 日次差分 compact view</h2>
-            ${body}
-        `;
+function renderFixtureEvidence(container: HTMLElement, state: FixtureState): void {
+    const figure = document.createElement("figure");
+    figure.setAttribute("data-ra-fixture-booking-curve", "");
+
+    const canvas = document.createElement("canvas");
+    canvas.width = 760;
+    canvas.height = 220;
+    canvas.setAttribute("role", "img");
+    canvas.setAttribute("aria-label", "個人と団体を分けたブッキングカーブの合成データ");
+
+    const caption = document.createElement("figcaption");
+    caption.textContent = state === "missing-counts"
+        ? "内訳データを取得できないため、推測線は表示しません。"
+        : "青: 個人、橙: 団体、灰: 基準。室数は合成データです。";
+
+    figure.append(canvas, caption);
+    container.replaceChildren(figure);
+    if (state === "missing-counts") {
         return;
     }
+    drawFixtureBookingCurve(canvas, state);
+}
 
-    if (state.startsWith("price-trends")) {
-        const message = state === "price-trends-loading"
-            ? "背景取得 16 / 128・保存 16・現在取得中 ツイン 朝食 2名"
-            : state === "price-trends-empty"
-                ? "対象データがないため graph を表示できません。"
-                : "背景取得 19 / 128・失敗 3・停止 fixture failure";
-        const nextAction = state === "price-trends-loading"
-            ? "次操作: 取得完了までこのタブを開いたまま待つ。"
-            : state === "price-trends-empty"
-                ? "次操作: 89日以内の宿泊日で確認する。"
-                : "次操作: ログイン状態、権限、通信状態を確認し、タブを再表示して再取得する。";
-        container.innerHTML = `
-            <h2>価格推移 supplement</h2>
-            <p data-ra-price-trends-background-status>${message}</p>
-            <p data-ra-sales-setting-competitor-price-next-action>${nextAction}</p>
-        `;
+function drawFixtureBookingCurve(canvas: HTMLCanvasElement, state: FixtureState): void {
+    const context = canvas.getContext("2d");
+    if (context === null) {
         return;
     }
+    const width = canvas.width;
+    const height = canvas.height;
+    const padding = { left: 42, right: 20, top: 18, bottom: 34 };
+    context.clearRect(0, 0, width, height);
+    context.fillStyle = "#ffffff";
+    context.fillRect(0, 0, width, height);
+    context.strokeStyle = "#d9e1ea";
+    context.lineWidth = 1;
+    for (let index = 0; index <= 4; index += 1) {
+        const y = padding.top + ((height - padding.top - padding.bottom) * index) / 4;
+        context.beginPath();
+        context.moveTo(padding.left, y);
+        context.lineTo(width - padding.right, y);
+        context.stroke();
+    }
 
-    container.innerHTML = "";
+    const scale = state === "large-counts" ? 12 : 1;
+    const individual = [1, 1, 2, 2, 3, 4, 5].map((value) => value * scale);
+    const group = [0, 0, 0, 1, 1, 2, 2].map((value) => value * scale);
+    const reference = [1, 1.5, 2, 2.8, 3.8, 4.8, 6].map((value) => value * scale);
+    const maxValue = Math.max(...individual, ...group, ...reference, 1);
+    drawFixtureSeries(context, reference, "#98a4b1", width, height, padding, maxValue, [5, 4]);
+    drawFixtureSeries(context, individual, "#2d6da8", width, height, padding, maxValue);
+    drawFixtureSeries(context, group, "#c28333", width, height, padding, maxValue);
+
+    context.fillStyle = "#6c7b8c";
+    context.font = "700 20px sans-serif";
+    context.fillText("90日前", padding.left, height - 8);
+    context.fillText("当日", width - padding.right - 42, height - 8);
+}
+
+function drawFixtureSeries(
+    context: CanvasRenderingContext2D,
+    values: readonly number[],
+    color: string,
+    width: number,
+    height: number,
+    padding: { left: number; right: number; top: number; bottom: number },
+    maxValue: number,
+    dash: readonly number[] = []
+): void {
+    const plotWidth = width - padding.left - padding.right;
+    const plotHeight = height - padding.top - padding.bottom;
+    context.save();
+    context.strokeStyle = color;
+    context.lineWidth = 4;
+    context.setLineDash([...dash]);
+    context.beginPath();
+    values.forEach((value, index) => {
+        const x = padding.left + (plotWidth * index) / Math.max(1, values.length - 1);
+        const y = padding.top + plotHeight - (plotHeight * value) / maxValue;
+        if (index === 0) {
+            context.moveTo(x, y);
+        } else {
+            context.lineTo(x, y);
+        }
+    });
+    context.stroke();
+    context.restore();
 }
 
 function installFixtureStyles(): void {
-    const styleElement = document.createElement("style");
-    styleElement.textContent = `
-        body {
-            margin: 0;
-            background: #eef2f6;
-            color: #243245;
-            font-family: Arial, "Yu Gothic", "Meiryo", sans-serif;
-        }
+    const style = document.createElement("style");
+    style.textContent = `${RANK_RECOMMENDATION_WORKSPACE_STYLES}\n${getFixtureShellStyles()}`;
+    document.head.append(style);
+}
 
-        [data-ra-fixture-shell] {
-            max-width: 1180px;
-            margin: 0 auto;
-            padding: 24px;
-        }
+function getFixtureShellStyles(): string {
+    return `
+    :root {
+        color-scheme: light;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Yu Gothic UI", sans-serif;
+        background: #eef2f6;
+        color: #263444;
+    }
 
-        [data-ra-fixture-header] {
-            display: flex;
-            align-items: end;
-            justify-content: space-between;
-            gap: 16px;
-            margin-bottom: 16px;
-        }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: #eef2f6; }
 
-        [data-ra-fixture-header] h1 {
-            margin: 0 0 4px;
-            font-size: 24px;
-        }
+    [data-ra-fixture-app-header] {
+        display: flex;
+        align-items: center;
+        min-height: 58px;
+        padding: 0 24px;
+        background: #1767a5;
+        color: #ffffff;
+        box-shadow: 0 2px 8px rgba(23, 55, 84, 0.18);
+    }
 
-        [data-ra-fixture-header] p {
-            margin: 0;
-            color: #5b6b7d;
-            font-size: 13px;
-            font-weight: 700;
-        }
+    [data-ra-fixture-brand] {
+        font-size: 18px;
+        font-weight: 850;
+        letter-spacing: 0.01em;
+    }
 
-        [data-ra-fixture-header] label {
-            display: grid;
-            gap: 6px;
-            min-width: 260px;
-            color: #50627a;
-            font-size: 12px;
-            font-weight: 800;
-        }
+    [data-ra-fixture-nav] {
+        display: flex;
+        gap: 22px;
+        margin-left: 44px;
+        font-size: 12px;
+        font-weight: 750;
+    }
 
-        [data-ra-fixture-header] select {
-            min-height: 34px;
-            border: 1px solid #b7c4d3;
-            border-radius: 5px;
-            background: #ffffff;
-            color: #243245;
-            font: inherit;
-        }
+    [data-ra-fixture-shell] {
+        width: min(1500px, calc(100% - 32px));
+        margin: 18px auto 50px;
+    }
 
-        [data-ra-rank-recommendation-list] {
-            margin: 0 0 16px;
-            padding: 12px;
-            border: 1px solid #cfd8e3;
-            border-radius: 6px;
-            background: #f8fafc;
-            box-shadow: 0 1px 3px rgba(24, 39, 75, 0.08);
-            overflow-x: auto;
-        }
+    [data-ra-fixture-toolbar] {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 18px;
+        margin-bottom: 12px;
+        padding: 11px 14px;
+        border: 1px solid #d5dee8;
+        border-radius: 9px;
+        background: #ffffff;
+    }
 
-        [data-ra-rank-recommendation-list] table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: auto;
-            font-size: 12px;
-            line-height: 1.45;
-        }
+    [data-ra-fixture-toolbar] h1 {
+        margin: 0;
+        font-size: 16px;
+        font-weight: 850;
+    }
 
-        [data-ra-rank-recommendation-list] th,
-        [data-ra-rank-recommendation-list] td {
-            padding: 7px 8px;
-            border-top: 1px solid #e1e7ef;
-            text-align: left;
-            vertical-align: middle;
-            white-space: nowrap;
-        }
+    [data-ra-fixture-toolbar] p {
+        margin: 2px 0 0;
+        color: #687789;
+        font-size: 11px;
+        font-weight: 700;
+    }
 
-        [data-ra-rank-recommendation-row] {
-            border-left: 4px solid transparent;
-        }
+    [data-ra-fixture-toolbar] label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #596b7e;
+        font-size: 11px;
+        font-weight: 800;
+    }
 
-        [data-ra-rank-recommendation-row][data-ra-rank-recommendation-priority="high"] {
-            border-left-color: #b54646;
-            background: #fff8f7;
-        }
+    [data-ra-fixture-toolbar] select {
+        min-height: 34px;
+        padding: 5px 9px;
+        border: 1px solid #aebdce;
+        border-radius: 7px;
+        background: #ffffff;
+        color: #263444;
+        font: inherit;
+        font-weight: 750;
+    }
 
-        [data-ra-rank-recommendation-row][data-ra-rank-recommendation-priority="medium"] {
-            border-left-color: #b98616;
-            background: #fffaf0;
-        }
+    [data-ra-fixture-calendar] {
+        overflow: hidden;
+        border: 1px solid #d4dde7;
+        border-radius: 10px;
+        background: #ffffff;
+        box-shadow: 0 8px 22px rgba(34, 54, 78, 0.07);
+    }
 
-        [data-ra-rank-recommendation-row][data-ra-rank-recommendation-priority="low"] {
-            border-left-color: #7f93aa;
-        }
+    [data-ra-fixture-calendar-header] {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 52px;
+        border-bottom: 1px solid #dfe5ec;
+        color: #2c3f54;
+        font-size: 16px;
+        font-weight: 850;
+    }
 
-        [data-ra-rank-recommendation-cell-role="priority"],
-        [data-ra-rank-recommendation-cell-role="decision-summary"],
-        [data-ra-rank-recommendation-cell-role="status"] {
-            font-weight: 800;
-        }
+    [data-ra-fixture-calendar-grid] {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(72px, 1fr));
+    }
 
-        [data-ra-rank-recommendation-cell-role="priority"] {
-            text-align: center;
-        }
+    [data-ra-fixture-weekday] {
+        padding: 7px 5px;
+        border-right: 1px solid #e3e8ee;
+        border-bottom: 1px solid #e3e8ee;
+        background: #f6f8fb;
+        color: #6a7888;
+        font-size: 10px;
+        font-weight: 850;
+        text-align: center;
+    }
 
-        [data-ra-rank-recommendation-cell-role="priority"]::after {
-            content: "";
-            display: block;
-            width: 28px;
-            height: 3px;
-            margin-top: 3px;
-            border-radius: 999px;
-            background: currentColor;
-            opacity: 0.55;
-        }
+    [data-ra-fixture-calendar-cell] {
+        position: relative;
+        display: grid;
+        min-height: 88px;
+        align-content: space-between;
+        padding: 8px;
+        border: 0;
+        border-right: 1px solid #e4e9ef;
+        border-bottom: 1px solid #e4e9ef;
+        background: #ffffff;
+        color: #28394c;
+        text-decoration: none;
+    }
 
-        [data-ra-rank-recommendation-recommended-action-label] {
-            display: inline-flex;
-            align-items: center;
-            width: fit-content;
-            min-height: 22px;
-            padding: 2px 7px;
-            border: 1px solid currentColor;
-            border-radius: 999px;
-            font-weight: 800;
-            white-space: nowrap;
-        }
+    [data-ra-fixture-calendar-cell][data-muted="true"] { color: #a1acb8; background: #fafbfd; }
+    [data-ra-fixture-date] { font-size: 11px; font-weight: 800; }
+    [data-ra-fixture-room-line] { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 850; }
+    [data-ra-fixture-group] { color: #2367a7; font-size: 10px; font-weight: 850; }
 
-        [data-ra-rank-recommendation-button],
-        [data-ra-rank-recommendation-curve-popover] button {
-            min-height: 26px;
-            padding: 4px 8px;
-            border: 1px solid #b7c4d3;
-            border-radius: 5px;
-            background: #ffffff;
-            color: #243245;
-            font-size: 12px;
-            font-weight: 800;
-            cursor: pointer;
-        }
+    [data-ra-fixture-booking-curve] { display: grid; gap: 5px; margin: 0; }
+    [data-ra-fixture-booking-curve] canvas { display: block; width: 100%; height: auto; border: 1px solid #e0e6ed; border-radius: 7px; }
+    [data-ra-fixture-booking-curve] figcaption { color: #647386; font-size: 10px; font-weight: 700; line-height: 1.45; }
 
-        [data-ra-rank-recommendation-button-action="analyze"] {
-            border-color: #315b8d;
-            background: #315b8d;
-            color: #ffffff;
-        }
-
-        [data-ra-rank-recommendation-button-action="rank-change-submit"],
-        [data-ra-rank-recommendation-button-action="rank-change-inline-submit"] {
-            border-color: #0c7a43;
-            background: #ecf8ef;
-            color: #0c5f35;
-        }
-
-        [data-ra-rank-recommendation-primary-actions],
-        [data-ra-rank-recommendation-secondary-actions] {
-            display: flex;
-            align-items: center;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin: 0 0 6px;
-        }
-
-        [data-ra-rank-recommendation-secondary-actions] {
-            width: fit-content;
-        }
-
-        [data-ra-rank-recommendation-secondary-actions] summary {
-            min-height: 24px;
-            padding: 3px 7px;
-            border: 1px solid #c9d4e2;
-            border-radius: 5px;
-            background: #f8fbff;
-            color: #315b8d;
-            cursor: pointer;
-            font-size: 12px;
-            font-weight: 800;
-            line-height: 1.25;
-        }
-
-        [data-ra-rank-recommendation-secondary-actions] > *:not(summary) {
-            margin-top: 6px;
-        }
-
-        [data-ra-rank-recommendation-curve-popover-content] {
-            z-index: 20;
-            min-width: 260px;
-            padding: 8px 10px;
-            border: 1px solid #c9d4e2;
-            border-radius: 6px;
-            background: #ffffff;
-            box-shadow: 0 8px 20px rgba(31, 44, 61, 0.16);
-            color: #33445a;
-            font-size: 12px;
-            line-height: 1.45;
-        }
-
-        [data-ra-rank-recommendation-rank-gap-tooltip] {
-            display: none;
-        }
-
-        [data-ra-rank-recommendation-rank-gap]:hover [data-ra-rank-recommendation-rank-gap-tooltip],
-        [data-ra-rank-recommendation-rank-gap]:focus-within [data-ra-rank-recommendation-rank-gap-tooltip] {
-            display: block;
-        }
-
-        [data-ra-fixture-secondary] {
-            padding: 12px;
-            border: 1px solid #d9e1ea;
-            border-radius: 6px;
-            background: #ffffff;
-        }
-
-        [data-ra-fixture-secondary]:empty {
-            display: none;
-        }
-
-        [data-ra-fixture-gallery] {
-            margin-top: 18px;
-        }
-
-        [data-ra-fixture-gallery] h2 {
-            margin: 0 0 10px;
-            font-size: 18px;
-        }
-
-        [data-ra-fixture-gallery-grid] {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-            gap: 14px;
-        }
-
-        [data-ra-fixture-gallery-card] {
-            min-width: 0;
-            padding: 10px;
-            border: 1px solid #d9e1ea;
-            border-radius: 6px;
-            background: #ffffff;
-        }
-
-        [data-ra-fixture-gallery-card] h3 {
-            margin: 0 0 8px;
-            color: #33445a;
-            font-size: 13px;
-        }
-
-        @media (max-width: 760px) {
-            [data-ra-fixture-header] {
-                align-items: stretch;
-                flex-direction: column;
-            }
-
-            [data-ra-fixture-shell] {
-                padding: 14px;
-            }
-
-            [data-ra-fixture-gallery-grid] {
-                grid-template-columns: 1fr;
-            }
-
-            [data-ra-rank-recommendation-list] table,
-            [data-ra-rank-recommendation-list] thead,
-            [data-ra-rank-recommendation-list] tbody,
-            [data-ra-rank-recommendation-list] tr,
-            [data-ra-rank-recommendation-list] th,
-            [data-ra-rank-recommendation-list] td {
-                display: block;
-            }
-
-            [data-ra-rank-recommendation-list] thead {
-                display: none;
-            }
-
-            [data-ra-rank-recommendation-row] {
-                padding: 8px 0;
-                border-top: 1px solid #e1e7ef;
-                border-left-width: 4px;
-            }
-
-            [data-ra-rank-recommendation-list] td {
-                display: grid;
-                grid-template-columns: 82px minmax(0, 1fr);
-                gap: 6px;
-                padding: 4px 0;
-                border-top: 0;
-                white-space: normal;
-            }
-
-            [data-ra-rank-recommendation-list] td::before {
-                color: #5b6b7d;
-                font-weight: 800;
-                content: attr(data-ra-rank-recommendation-cell-role);
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="priority"]::before {
-                content: "優先度";
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="decision-summary"]::before {
-                content: "判断";
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="stay-date"]::before {
-                content: "宿泊日";
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="room-group"]::before {
-                content: "部屋タイプ";
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="current-rank"]::before {
-                content: "現ランク";
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="recommended-action"]::before {
-                content: "推奨";
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="reason"]::before {
-                content: "根拠";
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="status"]::before {
-                content: "状態";
-            }
-
-            [data-ra-rank-recommendation-list] [data-ra-rank-recommendation-cell-role="actions"]::before {
-                content: "操作";
-            }
-        }
+    @media (max-width: 760px) {
+        [data-ra-fixture-app-header] { padding: 0 14px; }
+        [data-ra-fixture-nav] { display: none; }
+        [data-ra-fixture-shell] { width: min(100% - 16px, 720px); margin-top: 8px; }
+        [data-ra-fixture-toolbar] { align-items: stretch; flex-direction: column; }
+        [data-ra-fixture-calendar] { overflow-x: auto; }
+        [data-ra-fixture-calendar-grid] { min-width: 700px; }
+    }
     `;
-    document.head.append(styleElement);
 }
