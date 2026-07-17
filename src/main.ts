@@ -20,6 +20,9 @@ import {
 } from "./rankRecommendationWorkspaceModel";
 import { RANK_RECOMMENDATION_WORKSPACE_STYLES } from "./rankRecommendationWorkspaceStyles";
 import {
+    resolveRankRecommendationWorkspaceLayoutMode
+} from "./rankRecommendationWorkspaceLayout";
+import {
     LEAD_TIME_BUCKET_TICKS as SALES_SETTING_BOOKING_CURVE_TICKS,
     LEAD_TIME_BUCKET_VISIBLE_TICKS as SALES_SETTING_BOOKING_CURVE_VISIBLE_AXIS_TICKS,
     type LeadTimeBucketTick as SalesSettingBookingCurveTick
@@ -199,6 +202,9 @@ const RANK_RECOMMENDATION_CALENDAR_ATTRIBUTE = "data-ra-rank-recommendation-cale
 const RANK_RECOMMENDATION_DETAIL_ATTRIBUTE = "data-ra-rank-recommendation-detail";
 const RANK_RECOMMENDATION_CALENDAR_STATE_ATTRIBUTE = "data-ra-rank-recommendation-calendar-state";
 const RANK_RECOMMENDATION_CALENDAR_CUE_ATTRIBUTE = "data-ra-rank-recommendation-calendar-cue";
+const RANK_RECOMMENDATION_CALENDAR_DESCRIPTION_ATTRIBUTE = "data-ra-rank-recommendation-calendar-description";
+const RANK_RECOMMENDATION_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE = "data-ra-rank-recommendation-calendar-describedby-token";
+const RANK_RECOMMENDATION_MONTHLY_CALENDAR_TEST_ID = "monthly-calendar";
 const RANK_RECOMMENDATION_ANALYZE_LIST_ATTRIBUTE = "data-ra-rank-recommendation-analyze-list";
 const RANK_RECOMMENDATION_ANALYZE_ROW_ATTRIBUTE = "data-ra-rank-recommendation-analyze-row";
 const RANK_RECOMMENDATION_ANALYZE_EMPTY_ATTRIBUTE = "data-ra-rank-recommendation-analyze-empty";
@@ -449,6 +455,10 @@ const REVENUE_ASSISTANT_MANAGED_SELECTOR = [
     `[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`,
     `[${RANK_RECOMMENDATION_DETAIL_ATTRIBUTE}]`,
     `[${RANK_RECOMMENDATION_CALENDAR_CUE_ATTRIBUTE}]`,
+    `[${RANK_RECOMMENDATION_CALENDAR_DESCRIPTION_ATTRIBUTE}]`,
+    `[${SALES_SETTING_WARM_CACHE_CALENDAR_MARKER_BAR_ATTRIBUTE}]`,
+    `[${SALES_SETTING_WARM_CACHE_MONTH_CONTROLS_ATTRIBUTE}]`,
+    `[${SALES_SETTING_WARM_CACHE_INLINE_STATUS_ATTRIBUTE}]`,
     `[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`,
     `[${SALES_SETTING_GROUP_ROOM_ROW_ATTRIBUTE}]`,
     `[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`,
@@ -596,6 +606,16 @@ interface MonthlyCalendarCell {
     containerElement: HTMLElement;
     roomElement: HTMLElement;
     indicatorElement: HTMLElement | null;
+}
+
+interface RankRecommendationCalendarSyncContext {
+    generation: number;
+    interactionGeneration: number;
+    calendarElement: HTMLElement;
+    parentElement: HTMLElement;
+    fromDateKey: string;
+    toDateKey: string;
+    cells: readonly MonthlyCalendarCell[];
 }
 
 type SalesSettingWarmCacheStoredMarkerState = "stored-current" | "stored-past";
@@ -1220,6 +1240,7 @@ let rankRecommendationWarmCachePriorityCandidates: RankRecommendationWarmCachePr
 let rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
 let rankRecommendationViewMode: RankRecommendationViewMode = "ready";
 let rankRecommendationTargetMonth: string | null = null;
+let rankRecommendationInteractionGeneration = 0;
 let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
 let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
 let salesSettingWarmCacheStoredCalendarMarkerStates = new Map<string, SalesSettingWarmCacheStoredMarkerState>();
@@ -1234,6 +1255,10 @@ let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
 let activeFacilityCacheKey: string | null = null;
 let calendarObserver: MutationObserver | null = null;
+let monthlyCalendarDomGeneration = 0;
+let rankRecommendationWorkspaceResizeObserver: ResizeObserver | null = null;
+let rankRecommendationWorkspaceResizeParentElement: HTMLElement | null = null;
+let rankRecommendationWorkspaceResizeCalendarElement: HTMLElement | null = null;
 let mutationObserverSyncQueued = false;
 let calendarSyncQueued = false;
 let calendarSyncRunning = false;
@@ -3000,6 +3025,7 @@ function increaseRankRecommendationDisplayLimit(): void {
     }
 
     rankRecommendationDisplayLimit = nextLimit;
+    rankRecommendationInteractionGeneration += 1;
     queueCalendarSync({ force: true, reason: "rank-recommendation-display-more" });
 }
 
@@ -3009,6 +3035,7 @@ function resetRankRecommendationDisplayLimit(): void {
     }
 
     rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+    rankRecommendationInteractionGeneration += 1;
     queueCalendarSync({ force: true, reason: "rank-recommendation-display-reset" });
 }
 
@@ -3020,6 +3047,7 @@ function setRankRecommendationViewModeFromElement(element: HTMLElement): void {
 
     rankRecommendationViewMode = viewMode;
     rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+    rankRecommendationInteractionGeneration += 1;
     rankRecommendationCurvePreviewOpenState.clear();
     rankRecommendationCompetitorPreviewOpenState.clear();
     rankRecommendationRankChangePreviewOpenState.clear();
@@ -3027,13 +3055,18 @@ function setRankRecommendationViewModeFromElement(element: HTMLElement): void {
 }
 
 function setRankRecommendationTargetMonthFromElement(element: HTMLSelectElement): void {
-    const targetMonth = parseRankRecommendationTargetMonth(element.value);
+    setRankRecommendationTargetMonth(element.value);
+}
+
+function setRankRecommendationTargetMonth(value: string): void {
+    const targetMonth = parseRankRecommendationTargetMonth(value);
     if (targetMonth === rankRecommendationTargetMonth) {
         return;
     }
 
     rankRecommendationTargetMonth = targetMonth;
     rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+    rankRecommendationInteractionGeneration += 1;
     rankRecommendationCurvePreviewOpenState.clear();
     rankRecommendationCompetitorPreviewOpenState.clear();
     rankRecommendationRankChangePreviewOpenState.clear();
@@ -3572,6 +3605,7 @@ function suspendCalendarFeatures(): void {
     cleanupSalesSettingRoomDeltas();
     cleanupSalesSettingWarmCacheMonthControls();
     cleanupCurrentUiSalesSettingRoot();
+    cleanupRankRecommendationList();
     ensureGroupRoomToggle(false);
 }
 
@@ -6265,6 +6299,10 @@ function ensureCalendarObserver(): void {
             return;
         }
 
+        if (mutations.some((mutation) => isMonthlyCalendarGenerationMutation(mutation))) {
+            monthlyCalendarDomGeneration += 1;
+        }
+
         recordCalendarSyncMutationDebug(mutations);
         scheduleMutationObserverCalendarSync();
     });
@@ -6294,8 +6332,33 @@ function isRevenueAssistantManagedMutation(mutation: MutationRecord): boolean {
         return true;
     }
 
-    const changedNodes = [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)];
-    return changedNodes.length > 0 && changedNodes.every((node) => isRevenueAssistantManagedNode(node));
+    if (mutation.removedNodes.length > 0) {
+        return false;
+    }
+
+    const addedNodes = Array.from(mutation.addedNodes);
+    return addedNodes.length > 0 && addedNodes.every((node) => isRevenueAssistantManagedNode(node));
+}
+
+function isMonthlyCalendarGenerationMutation(mutation: MutationRecord): boolean {
+    const monthlyCalendarSelector = `[data-testid="${RANK_RECOMMENDATION_MONTHLY_CALENDAR_TEST_ID}"]`;
+    const calendarDateSelector = `[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`;
+    const isCalendarElement = (node: Node): boolean => (
+        node instanceof Element
+        && (
+            node.matches(monthlyCalendarSelector)
+            || node.matches(calendarDateSelector)
+            || node.closest(monthlyCalendarSelector) !== null
+            || node.querySelector(monthlyCalendarSelector) !== null
+            || node.querySelector(calendarDateSelector) !== null
+        )
+    );
+
+    if (isCalendarElement(mutation.target)) {
+        return true;
+    }
+    return [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
+        .some((node) => isCalendarElement(node));
 }
 
 function isRevenueAssistantManagedNode(node: Node | null): boolean {
@@ -6421,7 +6484,10 @@ function getCalendarSyncSignature(): string {
             const hasLayout = cell.containerElement.hasAttribute(GROUP_ROOM_LAYOUT_ATTRIBUTE) ? "1" : "0";
             const hasBadge = cell.containerElement.querySelector<HTMLElement>(`[${GROUP_ROOM_BADGE_ATTRIBUTE}]`) === null ? "0" : "1";
             const hasLastChange = cell.anchorElement.querySelector<HTMLElement>(`[${CALENDAR_LAST_CHANGE_ATTRIBUTE}]`) === null ? "0" : "1";
-            return `${cell.stayDate}:${hasLayout}:${hasBadge}:${hasLastChange}`;
+            const recommendationState = cell.anchorElement.getAttribute(RANK_RECOMMENDATION_CALENDAR_STATE_ATTRIBUTE) ?? "-";
+            const hasRecommendationCue = cell.anchorElement.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_CALENDAR_CUE_ATTRIBUTE}]`) === null ? "0" : "1";
+            const hasRecommendationDescription = cell.anchorElement.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_CALENDAR_DESCRIPTION_ATTRIBUTE}]`) === null ? "0" : "1";
+            return `${cell.stayDate}:${hasLayout}:${hasBadge}:${hasLastChange}:${recommendationState}:${hasRecommendationCue}:${hasRecommendationDescription}`;
         })
         .join(",");
 
@@ -6439,6 +6505,22 @@ function getCalendarSyncSignature(): string {
     const hasOverallSummary = firstCardParent?.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}]`) === null ? "0" : "1";
     const hasOverallCurve = firstCardParent?.querySelector<HTMLElement>(`[${SALES_SETTING_OVERALL_SUMMARY_ATTRIBUTE}] [${SALES_SETTING_BOOKING_CURVE_SECTION_ATTRIBUTE}][${SALES_SETTING_BOOKING_CURVE_KIND_ATTRIBUTE}="overall"]`) === null ? "0" : "1";
     const hasRankOverview = firstCardParent?.querySelector<HTMLElement>(`[${SALES_SETTING_RANK_OVERVIEW_ATTRIBUTE}]`) === null ? "0" : "1";
+    const rankRecommendationHost = resolveRankRecommendationListHost();
+    const rankRecommendationListElements = document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`);
+    const rankRecommendationDetailElements = document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_DETAIL_ATTRIBUTE}]`);
+    const rankRecommendationListElement = rankRecommendationListElements[0] ?? null;
+    const rankRecommendationDetailElement = rankRecommendationDetailElements[0] ?? null;
+    const workspaceState = rankRecommendationHost === null
+        ? `host:0:list:${rankRecommendationListElements.length}:detail:${rankRecommendationDetailElements.length}`
+        : [
+            "host:1",
+            `layout:${rankRecommendationHost.parentElement.getAttribute(RANK_RECOMMENDATION_WORKSPACE_LAYOUT_ATTRIBUTE) ?? "-"}`,
+            `calendar:${rankRecommendationHost.calendarElement?.hasAttribute(RANK_RECOMMENDATION_CALENDAR_ATTRIBUTE) === true ? "1" : "0"}`,
+            `list:${rankRecommendationListElements.length}`,
+            `detail:${rankRecommendationDetailElements.length}`,
+            `list-placement:${rankRecommendationListElement?.parentElement === rankRecommendationHost.parentElement && rankRecommendationListElement.previousElementSibling === rankRecommendationHost.insertAfterElement ? "1" : "0"}`,
+            `detail-placement:${rankRecommendationDetailElement?.parentElement === rankRecommendationHost.parentElement && rankRecommendationDetailElement.previousElementSibling === rankRecommendationListElement ? "1" : "0"}`
+        ].join(",");
 
     return [
         `href:${window.location.pathname}${window.location.search}`,
@@ -6451,7 +6533,8 @@ function getCalendarSyncSignature(): string {
         `cards:${cardState}`,
         `overall:${hasOverallSummary}`,
         `overall-curve:${hasOverallCurve}`,
-        `rank:${hasRankOverview}`
+        `rank:${hasRankOverview}`,
+        `rank-workspace:${workspaceState}`
     ].join("|");
 }
 
@@ -8163,6 +8246,78 @@ function cleanupMonthlyCalendarLatestChanges(): void {
     }
 }
 
+function createRankRecommendationCalendarSyncContext(
+    cells: readonly MonthlyCalendarCell[],
+    dateRange: { fromDateKey: string; toDateKey: string }
+): RankRecommendationCalendarSyncContext | null {
+    const calendarElement = resolveMonthlyCalendarContainerElement([...cells]);
+    const parentElement = calendarElement?.parentElement ?? null;
+    if (!(calendarElement instanceof HTMLElement) || !(parentElement instanceof HTMLElement)) {
+        return null;
+    }
+    return {
+        generation: monthlyCalendarDomGeneration,
+        interactionGeneration: rankRecommendationInteractionGeneration,
+        calendarElement,
+        parentElement,
+        fromDateKey: dateRange.fromDateKey,
+        toDateKey: dateRange.toDateKey,
+        cells: [...cells]
+    };
+}
+
+function isRankRecommendationCalendarSyncContextCurrent(
+    context: RankRecommendationCalendarSyncContext
+): boolean {
+    if (
+        context.generation !== monthlyCalendarDomGeneration
+        || context.interactionGeneration !== rankRecommendationInteractionGeneration
+        || !context.calendarElement.isConnected
+        || context.calendarElement.parentElement !== context.parentElement
+    ) {
+        return false;
+    }
+
+    const currentCells = collectMonthlyCalendarCells();
+    const currentDateRange = getMonthlyCalendarDateRange(currentCells);
+    if (
+        currentDateRange === null
+        || currentDateRange.fromDateKey !== context.fromDateKey
+        || currentDateRange.toDateKey !== context.toDateKey
+        || currentCells.length !== context.cells.length
+    ) {
+        return false;
+    }
+
+    const currentCalendarElement = resolveMonthlyCalendarContainerElement(currentCells);
+    return currentCalendarElement === context.calendarElement
+        && currentCells.every((cell, index) => (
+            cell.stayDate === context.cells[index]?.stayDate
+            && cell.anchorElement === context.cells[index]?.anchorElement
+        ));
+}
+
+function shouldAbortRankRecommendationCalendarSync(
+    context: RankRecommendationCalendarSyncContext,
+    batchDateKey: string,
+    facilityCacheKey: string
+): boolean {
+    if (activeAnalyzeDate !== null || activeBatchDateKey !== batchDateKey || activeFacilityCacheKey !== facilityCacheKey) {
+        return true;
+    }
+    if (isRankRecommendationCalendarSyncContextCurrent(context)) {
+        return false;
+    }
+
+    queueCalendarSync({
+        force: true,
+        reason: context.interactionGeneration === rankRecommendationInteractionGeneration
+            ? "rank-recommendation-calendar-stale"
+            : "rank-recommendation-interaction-stale"
+    });
+    return true;
+}
+
 async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey: string): Promise<void> {
     const cells = collectMonthlyCalendarCells();
     if (cells.length === 0 || activeAnalyzeDate !== null) {
@@ -8173,6 +8328,12 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
 
     const dateRange = getMonthlyCalendarDateRange(cells);
     if (dateRange === null) {
+        clearRankRecommendationWarmCachePriorityCandidates();
+        cleanupRankRecommendationList();
+        return;
+    }
+    const calendarSyncContext = createRankRecommendationCalendarSyncContext(cells, dateRange);
+    if (calendarSyncContext === null) {
         clearRankRecommendationWarmCachePriorityCandidates();
         cleanupRankRecommendationList();
         return;
@@ -8204,7 +8365,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             })
     ]);
 
-    if (activeAnalyzeDate !== null || activeBatchDateKey !== batchDateKey || activeFacilityCacheKey !== facilityCacheKey) {
+    if (shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)) {
         return;
     }
 
@@ -8241,6 +8402,9 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         visibleStayDates: new Set(cells.map((cell) => cell.stayDate)),
         rawSourceReader
     });
+    if (shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)) {
+        return;
+    }
 
     const rankOrderOverride = readRankRecommendationRankOrderOverride(facilityCacheKey);
     const rankOrderResolution = resolveRankRecommendationRankOrder({
@@ -8259,6 +8423,9 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         rankOrderOverride
     });
     const [decisionRecords, statuses] = await Promise.all([decisionRecordsRequest, statusesRequest]);
+    if (shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)) {
+        return;
+    }
     const decisionFilterResult = applyRankRecommendationDecisionFilter(candidates, decisionRecords, batchDateKey);
     const resolvedFilterResult = applyResolvedRankRecommendationFilter(
         decisionFilterResult.candidates,
@@ -8267,12 +8434,9 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     );
     const targetMonthOptions = buildRankRecommendationTargetMonthOptions(
         resolvedFilterResult.candidates,
-        getSalesSettingWarmCachePriorityMonthKeys(collectMonthlyCalendarCells())
+        getSalesSettingWarmCachePriorityMonthKeys(cells)
     );
     const effectiveTargetMonth = resolveRankRecommendationEffectiveTargetMonth(rankRecommendationTargetMonth, targetMonthOptions);
-    if (effectiveTargetMonth !== rankRecommendationTargetMonth) {
-        rankRecommendationTargetMonth = effectiveTargetMonth;
-    }
     const targetMonthFilterResult = applyRankRecommendationTargetMonthFilter(resolvedFilterResult.candidates, effectiveTargetMonth);
     const recentChangeCooldownByKey = buildRankRecommendationRecentChangeCooldownByKey(
         targetMonthFilterResult.candidates,
@@ -8288,9 +8452,6 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         rankRecommendationViewMode,
         workStateCounts
     );
-    if (effectiveViewMode !== rankRecommendationViewMode) {
-        rankRecommendationViewMode = effectiveViewMode;
-    }
     const recentChangeCooldownFilterResult = applyRankRecommendationRecentChangeCooldownFilter(
         targetMonthFilterResult.candidates,
         recentChangeCooldownByKey,
@@ -8317,6 +8478,11 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statuses,
         rawSourceReader
     });
+    if (shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)) {
+        return;
+    }
+    rankRecommendationTargetMonth = effectiveTargetMonth;
+    rankRecommendationViewMode = effectiveViewMode;
     rememberRankRecommendationCurvePreviewSnapshot(visibleCandidates, curvePreviewInfoByKey);
     const hiddenSummary = {
         userDecision: decisionFilterResult.hiddenCount,
@@ -10721,11 +10887,6 @@ function renderRankRecommendationList(
         recentChangeCooldownByKey: buildRecentChangeCooldownMapFromDisplayInfo(options.displayInfoByKey)
     });
 
-    cleanupStaleRankRecommendationWorkspaceLayout(host.parentElement, host.calendarElement);
-    if (host.calendarElement !== null) {
-        host.parentElement.setAttribute(RANK_RECOMMENDATION_WORKSPACE_LAYOUT_ATTRIBUTE, "");
-        host.calendarElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_ATTRIBUTE, "");
-    }
     if (rootElement.parentElement !== host.parentElement || rootElement.previousElementSibling !== host.insertAfterElement) {
         rootElement.remove();
         host.parentElement.insertBefore(rootElement, host.insertAfterElement.nextSibling);
@@ -10734,6 +10895,7 @@ function renderRankRecommendationList(
         detailElement.remove();
         host.parentElement.insertBefore(detailElement, rootElement.nextSibling);
     }
+    syncRankRecommendationWorkspaceLayout(host.parentElement, host.calendarElement);
 
     renderRankRecommendationCalendarStates(options.calendarCandidateStates ?? candidates.map((candidate) => ({
         stayDate: candidate.stayDate,
@@ -10741,6 +10903,9 @@ function renderRankRecommendationList(
     })));
 
     const reactActions: RankRecommendationReactActions = {
+        setTargetMonth: (value) => {
+            setRankRecommendationTargetMonth(value);
+        },
         hydrateEvidence: (candidateKey, container) => {
             const row = viewModel.rows.find((candidateRow) => buildRankRecommendationWorkspaceCandidateKey(candidateRow.candidate) === candidateKey);
             if (row === undefined) {
@@ -10826,6 +10991,130 @@ function cleanupStaleRankRecommendationWorkspaceLayout(
     });
 }
 
+function syncRankRecommendationWorkspaceLayout(
+    parentElement: HTMLElement,
+    calendarElement: HTMLElement | null
+): void {
+    cleanupStaleRankRecommendationWorkspaceLayout(parentElement, calendarElement);
+    if (calendarElement === null || calendarElement.parentElement !== parentElement) {
+        cleanupRankRecommendationWorkspaceResizeObserver();
+        parentElement.removeAttribute(RANK_RECOMMENDATION_WORKSPACE_LAYOUT_ATTRIBUTE);
+        return;
+    }
+
+    calendarElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_ATTRIBUTE, "");
+    if (
+        rankRecommendationWorkspaceResizeObserver !== null
+        && rankRecommendationWorkspaceResizeParentElement === parentElement
+        && rankRecommendationWorkspaceResizeCalendarElement === calendarElement
+    ) {
+        applyRankRecommendationWorkspaceLayout(parentElement, calendarElement);
+        return;
+    }
+
+    cleanupRankRecommendationWorkspaceResizeObserver();
+    rankRecommendationWorkspaceResizeParentElement = parentElement;
+    rankRecommendationWorkspaceResizeCalendarElement = calendarElement;
+    rankRecommendationWorkspaceResizeObserver = new ResizeObserver(() => {
+        if (
+            rankRecommendationWorkspaceResizeParentElement === parentElement
+            && rankRecommendationWorkspaceResizeCalendarElement === calendarElement
+        ) {
+            applyRankRecommendationWorkspaceLayout(parentElement, calendarElement);
+        }
+    });
+    rankRecommendationWorkspaceResizeObserver.observe(parentElement);
+    rankRecommendationWorkspaceResizeObserver.observe(calendarElement);
+    applyRankRecommendationWorkspaceLayout(parentElement, calendarElement);
+}
+
+function applyRankRecommendationWorkspaceLayout(
+    parentElement: HTMLElement,
+    calendarElement: HTMLElement
+): void {
+    if (!parentElement.isConnected || calendarElement.parentElement !== parentElement) {
+        cleanupRankRecommendationWorkspaceResizeObserver();
+        return;
+    }
+
+    const mode = resolveRankRecommendationWorkspaceLayoutMode({
+        containerWidth: parentElement.getBoundingClientRect().width,
+        calendarMinimumWidth: getRankRecommendationCalendarMinimumWidth(calendarElement),
+        structureSafe: isRankRecommendationWorkspaceStructureSafe(parentElement, calendarElement)
+    });
+    if (parentElement.getAttribute(RANK_RECOMMENDATION_WORKSPACE_LAYOUT_ATTRIBUTE) !== mode) {
+        parentElement.setAttribute(RANK_RECOMMENDATION_WORKSPACE_LAYOUT_ATTRIBUTE, mode);
+    }
+}
+
+function isRankRecommendationWorkspaceStructureSafe(
+    parentElement: HTMLElement,
+    calendarElement: HTMLElement
+): boolean {
+    if (parentElement === document.body || parentElement === document.documentElement) {
+        return false;
+    }
+    if (calendarElement.parentElement !== parentElement) {
+        return false;
+    }
+
+    const listElement = parentElement.querySelector<HTMLElement>(`:scope > [${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`);
+    const detailElement = parentElement.querySelector<HTMLElement>(`:scope > [${RANK_RECOMMENDATION_DETAIL_ATTRIBUTE}]`);
+    const monthlyCalendarElements = getRankRecommendationMonthlyCalendarElements(calendarElement);
+    if (listElement === null || detailElement === null || monthlyCalendarElements.length === 0) {
+        return false;
+    }
+
+    const cells = collectMonthlyCalendarCells();
+    return cells.length > 0 && cells.every((cell) => (
+        calendarElement.contains(cell.anchorElement)
+        && monthlyCalendarElements.some((monthlyCalendarElement) => monthlyCalendarElement.contains(cell.anchorElement))
+    ));
+}
+
+function getRankRecommendationMonthlyCalendarElements(calendarElement: HTMLElement): HTMLElement[] {
+    return Array.from(calendarElement.children).filter((child): child is HTMLElement => (
+        child instanceof HTMLElement
+        && child.getAttribute("data-testid") === RANK_RECOMMENDATION_MONTHLY_CALENDAR_TEST_ID
+    ));
+}
+
+function getRankRecommendationCalendarMinimumWidth(calendarElement: HTMLElement): number {
+    const monthlyCalendarElements = getRankRecommendationMonthlyCalendarElements(calendarElement);
+    if (monthlyCalendarElements.length === 0) {
+        return 0;
+    }
+
+    const calendarStyle = window.getComputedStyle(calendarElement);
+    const gap = parseCssPixelValue(calendarStyle.columnGap) ?? parseCssPixelValue(calendarStyle.gap) ?? 0;
+    const monthlyMinimumWidths = monthlyCalendarElements.map((monthlyCalendarElement) => (
+        parseCssPixelValue(window.getComputedStyle(monthlyCalendarElement).minWidth)
+    ));
+    if (monthlyMinimumWidths.some((minWidth) => minWidth === null)) {
+        return 0;
+    }
+    const monthlyMinimumWidth = monthlyMinimumWidths.reduce<number>(
+        (total, minWidth) => total + (minWidth ?? 0),
+        0
+    );
+    return monthlyMinimumWidth + gap * Math.max(0, monthlyCalendarElements.length - 1);
+}
+
+function parseCssPixelValue(value: string): number | null {
+    if (!value.endsWith("px")) {
+        return null;
+    }
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function cleanupRankRecommendationWorkspaceResizeObserver(): void {
+    rankRecommendationWorkspaceResizeObserver?.disconnect();
+    rankRecommendationWorkspaceResizeObserver = null;
+    rankRecommendationWorkspaceResizeParentElement = null;
+    rankRecommendationWorkspaceResizeCalendarElement = null;
+}
+
 function renderRankRecommendationCalendarStates(
     candidateStates: readonly { stayDate: string; state: RankRecommendationWorkState }[]
 ): void {
@@ -10837,7 +11126,7 @@ function renderRankRecommendationCalendarStates(
         statesByDate.set(candidateState.stayDate, states);
     }
 
-    for (const cell of collectMonthlyCalendarCells()) {
+    for (const [cellIndex, cell] of collectMonthlyCalendarCells().entries()) {
         const states = statesByDate.get(cell.stayDate) ?? [];
         if (states.length === 0) {
             continue;
@@ -10848,19 +11137,33 @@ function renderRankRecommendationCalendarStates(
         const counts = countRankRecommendationWorkStates(states);
         const cueElement = document.createElement("span");
         cueElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_CUE_ATTRIBUTE, "");
+        cueElement.setAttribute("aria-hidden", "true");
         const cueLabel = [
             `料金調整候補 ${states.length}件`,
             counts.ready > 0 ? `判断可能 ${counts.ready}件` : null,
             counts.needs_evidence > 0 ? `要確認 ${counts.needs_evidence}件` : null,
             counts.recent_or_held > 0 ? `保留・直近 ${counts.recent_or_held}件` : null
         ].filter((part): part is string => part !== null).join("、");
-        cueElement.setAttribute("aria-label", cueLabel);
-        cueElement.title = cueLabel;
-        cueElement.textContent = dominantState === "ready"
-            ? `判${counts.ready}`
-            : dominantState === "needs_evidence"
-                ? `要${counts.needs_evidence}`
-                : `保${counts.recent_or_held}`;
+        const descriptionElement = document.createElement("span");
+        const descriptionId = `ra-rank-recommendation-calendar-description-${cell.stayDate}-${cellIndex}`;
+        descriptionElement.id = descriptionId;
+        descriptionElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_DESCRIPTION_ATTRIBUTE, "");
+        descriptionElement.textContent = cueLabel;
+        const describedByTokens = (cell.anchorElement.getAttribute("aria-describedby") ?? "")
+            .split(/\s+/u)
+            .filter((token) => token !== "");
+        if (!describedByTokens.includes(descriptionId)) {
+            describedByTokens.push(descriptionId);
+        }
+        const descriptionHost = cell.anchorElement.closest<HTMLElement>(
+            `[data-testid="${RANK_RECOMMENDATION_MONTHLY_CALENDAR_TEST_ID}"]`
+        ) ?? cell.anchorElement.parentElement;
+        if (descriptionHost === null) {
+            continue;
+        }
+        descriptionHost.append(descriptionElement);
+        cell.anchorElement.setAttribute("aria-describedby", describedByTokens.join(" "));
+        cell.anchorElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE, descriptionId);
         cell.anchorElement.append(cueElement);
     }
 }
@@ -10878,7 +11181,22 @@ function resolveDominantRankRecommendationCalendarState(
 }
 
 function cleanupRankRecommendationCalendarStates(): void {
+    document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE}]`).forEach((element) => {
+        const addedToken = element.getAttribute(RANK_RECOMMENDATION_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE);
+        const remainingTokens = (element.getAttribute("aria-describedby") ?? "")
+            .split(/\s+/u)
+            .filter((token) => token !== "" && token !== addedToken);
+        if (remainingTokens.length === 0) {
+            element.removeAttribute("aria-describedby");
+        } else {
+            element.setAttribute("aria-describedby", remainingTokens.join(" "));
+        }
+        element.removeAttribute(RANK_RECOMMENDATION_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE);
+    });
     document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_CALENDAR_CUE_ATTRIBUTE}]`).forEach((element) => {
+        element.remove();
+    });
+    document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_CALENDAR_DESCRIPTION_ATTRIBUTE}]`).forEach((element) => {
         element.remove();
     });
     document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_CALENDAR_STATE_ATTRIBUTE}]`).forEach((element) => {
@@ -12219,11 +12537,16 @@ function findLowestCommonElementAncestor(leftElement: HTMLElement, rightElement:
 }
 
 function cleanupRankRecommendationList(): void {
+    cleanupRankRecommendationWorkspaceResizeObserver();
     latestRankRecommendationCurvePreviewSnapshotByKey.clear();
     latestRankRecommendationCandidateByCompetitorPreviewKey.clear();
     unmountRankRecommendationReactIsland();
-    document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`)?.remove();
-    document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_DETAIL_ATTRIBUTE}]`)?.remove();
+    document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`).forEach((element) => {
+        element.remove();
+    });
+    document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_DETAIL_ATTRIBUTE}]`).forEach((element) => {
+        element.remove();
+    });
     cleanupRankRecommendationCalendarStates();
     document.querySelectorAll<HTMLElement>(`[${RANK_RECOMMENDATION_WORKSPACE_LAYOUT_ATTRIBUTE}]`).forEach((element) => {
         element.removeAttribute(RANK_RECOMMENDATION_WORKSPACE_LAYOUT_ATTRIBUTE);
@@ -12989,6 +13312,9 @@ function renderSalesSettingRankInsightsFromStatuses(
 function collectMonthlyCalendarCells(): MonthlyCalendarCell[] {
     return Array.from(document.querySelectorAll<HTMLAnchorElement>(`[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`))
         .flatMap((anchorElement) => {
+            if (!isVisibleMonthlyCalendarCell(anchorElement)) {
+                return [];
+            }
             const testId = anchorElement.getAttribute("data-testid");
             if (testId === null || !testId.startsWith(CALENDAR_DATE_TEST_ID_PREFIX)) {
                 return [];
@@ -13009,6 +13335,36 @@ function collectMonthlyCalendarCells(): MonthlyCalendarCell[] {
                 indicatorElement: anchorElement.querySelector<HTMLElement>(`[data-testid="indicator-${stayDateWithHyphen}"]`)
             }];
         });
+}
+
+function isVisibleMonthlyCalendarCell(anchorElement: HTMLAnchorElement): boolean {
+    if (
+        anchorElement.closest("[hidden]") !== null
+        || anchorElement.closest('[aria-hidden="true"]') !== null
+        || anchorElement.getClientRects().length === 0
+    ) {
+        return false;
+    }
+
+    const monthlyCalendarElement = anchorElement.closest<HTMLElement>(
+        `[data-testid="${RANK_RECOMMENDATION_MONTHLY_CALENDAR_TEST_ID}"]`
+    );
+    const visibilityPath: HTMLElement[] = [];
+    let currentElement: HTMLElement | null = anchorElement;
+    while (currentElement !== null) {
+        visibilityPath.push(currentElement);
+        if (currentElement === monthlyCalendarElement) {
+            break;
+        }
+        currentElement = currentElement.parentElement;
+    }
+    for (const element of visibilityPath) {
+        const style = window.getComputedStyle(element);
+        if (style.display === "none" || style.visibility === "hidden" || style.opacity === "0") {
+            return false;
+        }
+    }
+    return true;
 }
 
 function collectLegacySalesSettingCards(): SalesSettingCard[] {

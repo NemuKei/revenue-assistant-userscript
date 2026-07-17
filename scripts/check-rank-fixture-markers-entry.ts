@@ -3,6 +3,7 @@ import {
     buildAllFixtureSnapshots,
     renderRankRecommendationReactListElement
 } from "../src/dev/rankRecommendationFixture";
+import { resolveRankRecommendationWorkspaceLayoutMode } from "../src/rankRecommendationWorkspaceLayout";
 
 interface MarkerMetric {
     name: string;
@@ -33,6 +34,7 @@ function assertNotContains(renderedHtml: string, label: string, forbiddenText: s
 }
 
 export function runRankFixtureMarkerCheck(): void {
+    assertWorkspaceLayoutBoundaries();
     const snapshots = buildAllFixtureSnapshots();
     const renderedHtml = snapshots
         .map((snapshot) => (
@@ -82,9 +84,31 @@ export function runRankFixtureMarkerCheck(): void {
     assertNotContains(renderedHtml, "legacy quick-submit copy", "推奨反映");
     assertNotContains(renderedHtml, "automatic write countdown", "秒後に送信");
     assertNotContains(renderedHtml, "legacy nine-column table", "row-layout");
+    assertContains(renderedHtml, "controlled target month", '<option value="202607" selected="">');
 
     console.log("rank fixture marker check passed");
     for (const metric of metrics) {
         console.log(`${metric.name}: ${metric.count}`);
+    }
+}
+
+function assertWorkspaceLayoutBoundaries(): void {
+    const wide = resolveRankRecommendationWorkspaceLayoutMode({
+        containerWidth: 1920,
+        calendarMinimumWidth: 1080,
+        structureSafe: true
+    });
+    const stacked = resolveRankRecommendationWorkspaceLayoutMode({
+        containerWidth: 1425,
+        calendarMinimumWidth: 1080,
+        structureSafe: true
+    });
+    const unsafe = resolveRankRecommendationWorkspaceLayoutMode({
+        containerWidth: 1920,
+        calendarMinimumWidth: 1080,
+        structureSafe: false
+    });
+    if (wide !== "wide" || stacked !== "stacked" || unsafe !== "stacked") {
+        throw new Error(`workspace layout boundary mismatch: ${wide}/${stacked}/${unsafe}`);
     }
 }

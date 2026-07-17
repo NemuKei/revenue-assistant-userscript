@@ -48,7 +48,39 @@
   - Browser fixture は 1440 x 1024、1920 x 911、390 x 844 で確認し、document overflow 0、console error / warning 0、Vite overlay 0、review open / cancel の focus return と mock submit 0 を確認した。final 明示押下は safe fixture で 1 件のみを確認した。
   - `design-qa.md` に reference / implementation screenshot、comparison、interaction / accessibility QA、live gate を記録した。
 
-Remaining Task Triage は空とする。publish は同じ自動 closeout とみなさず明示承認 gate とする。
+### RAU-UX-139〜142 workspace を実画面の host、月遷移、標準カレンダーと安全に共存させる
+
+- 状態:
+  - `RAU-UX-139`〜`141` は local 実装・fixture QA 完了。`RAU-UX-142` は Revenue Assistant 実 DOM の read-only preflight まで完了し、未配布 candidate の runtime smoke は未実施。
+- 実画面で確認した競合条件:
+  - 表示中カレンダーは、`data-testid="monthly-calendar"` を持つ 3 か月分が横並びの flex container に入る。
+  - その親はカレンダー専用ではなく、標準 toolbar、カレンダー、月別優先取得 controls、旧候補表示、inline status、標準 footer 相当を direct child として共有する。親全体を無条件に grid 化すると標準領域の順序と幅を壊す。
+- 実装:
+  - `RAU-UX-139`: 実際の host 幅と direct-child 構造が安全な場合だけ calendar / rail の 2 列にする。安全性を確認できない場合や必要幅を満たさない場合は、Revenue Assistant 親の `display` / `flex-direction` を変えず縦並びへ退避する。
+  - `RAU-UX-140`: 表示中 calendar host、日付範囲、cell identity、DOM generation を同期 context とし、非同期取得中に月または calendar DOM が切り替わった結果は描画せず強制再同期する。対象月 select は React の controlled input とする。
+  - `RAU-UX-141`: 標準の黒い数値と青い `団n`、today / selected / focus / warm-cache marker を占有しない左端 cue と screen-reader description を使う。既存 `aria-describedby` token は保持し、RAU token だけを追加・削除する。
+  - `RAU-UX-142`: 実 DOM の host 構造は read-only で確認した。candidate bundle を実画面へ注入または Tampermonkey 更新して行う runtime smoke は、配布状態と二重実行を避けるため別 gate とする。
+- 受け入れ条件:
+  - 3 か月 fixture で、親幅が十分な場合だけ 2 列、不足時と mobile は標準親の flex-column のまま縦並びになる。document 全体には横 overflow を出さず、カレンダー内部の横 scroll だけを許容する。
+  - 対象月切替後は新しい月だけに cue が移り、empty / HTTP 401 / 403 では RAU cue と RAU description token だけが消える。
+  - 標準の黒い値、青い `団n`、native `aria-describedby`、native box-shadow が ready / empty / 再同期後も変わらない。
+  - stale async result、重複 workspace root / detail、削除された RAU cue / root の再同期を検出できる。
+- 非目標 / gate:
+  - candidate scoring、priority、confidence、reasonFingerprint、API request 範囲、request pace、保存 schema、rank change payload、write guard は変更しない。
+  - 実 write、Tampermonkey 更新、GitHub Pages / userscript 公開、`main` push は含めない。
+- metadata:
+  - `spec-impact`: yes
+  - `target-spec`: `docs/spec_003_rank_recommendation_signal.md`
+  - `decision`: `D-20260717-002`
+  - `verify`: 3-month fixture, wide / stacked / mobile browser QA, target-month / empty / native-token QA, type / lint / build / marker / smoke checks, `git diff --check`
+- local verification:
+  - `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:candidate`、`npm run build:compare:vite` は pass。candidate metadata mismatch は 0、正規 build との差は 10 bytes。
+  - `npm run react:doctor -- --diff false --verbose` は exit 0、51 warnings。entry detection が import 済み source を unused file とする false positive、`TOKEN_ATTRIBUTE` 名を secret とする false positive、直前に length を比較済みの `.every()`、既存の sequential await / `flushSync` / unused dependency を含み、今回差分の blocking finding はない。
+  - Browser fixture は親幅 1500px で wide、1393px と359pxで標準 flex-column の stacked を確認した。mobile は document 375px / scrollWidth 375px、3 か月 calendar 内だけ clientWidth 359px / scrollWidth 1080px。console error / warning は 0。
+  - 7月から8月への対象月切替で cue は8月だけへ移り、empty では RAU cue / description / token だけが消えた。native token、黒い値、青い `団2`、native inset highlight は維持された。description は日付 link 外にあり、link text へ RAU 文言を混入させない。
+  - 最終 code review で、deferred preview await 中の月・状態・表示件数変更が旧同期で巻き戻る race を発見し、interaction generation を stale context へ追加して修正した。静的再レビューは pass。ただし、この deferred interleaving を自動再現する integration test は未整備で、未配布 candidate runtime smoke とともに残リスクとする。
+
+Remaining Task Triage は Next `RAU-UX-142` の未配布 candidate runtime smoke とする。publish は同じ自動 closeout とみなさず明示承認 gate とする。
 
 ## 2026-06-29 Docs Governance Profile
 

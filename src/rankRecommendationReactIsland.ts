@@ -118,6 +118,7 @@ export interface RankRecommendationReactListSnapshot {
 
 export interface RankRecommendationReactActions {
     hydrateEvidence: (candidateKey: string, container: HTMLElement) => void;
+    setTargetMonth: (value: string) => void;
 }
 
 export interface RankRecommendationReactRenderOptions {
@@ -126,7 +127,8 @@ export interface RankRecommendationReactRenderOptions {
 }
 
 const NOOP_REACT_ACTIONS: RankRecommendationReactActions = {
-    hydrateEvidence: () => undefined
+    hydrateEvidence: () => undefined,
+    setTargetMonth: () => undefined
 };
 
 const mountedRoots = new WeakMap<HTMLElement, Root>();
@@ -234,6 +236,7 @@ function RankRecommendationWorkspace(props: {
         React.createElement(RankRecommendationRail, {
             snapshot,
             selectedKey: selectedCandidate?.key ?? null,
+            onTargetMonthChange: (value: string) => (options?.actions ?? NOOP_REACT_ACTIONS).setTargetMonth(value),
             onSelect: (candidateKey: string) => {
                 setInteraction((current) => ({
                     ...current,
@@ -249,6 +252,7 @@ function RankRecommendationWorkspace(props: {
 function RankRecommendationRail(props: {
     snapshot: RankRecommendationReactListSnapshot;
     selectedKey: string | null;
+    onTargetMonthChange: (value: string) => void;
     onSelect: (candidateKey: string) => void;
 }): React.ReactElement {
     const { snapshot } = props;
@@ -262,7 +266,7 @@ function RankRecommendationRail(props: {
             }, snapshot.metaText)
         ),
         React.createElement("div", { "data-ra-rank-recommendation-ui-component": "rail-controls" },
-            renderTargetMonthControl(snapshot.controls.targetMonth),
+            renderTargetMonthControl(snapshot.controls.targetMonth, props.onTargetMonthChange),
             renderWorkStateControl(snapshot.controls.workState)
         ),
         React.createElement("div", { "data-ra-rank-recommendation-ui-component": "task-list" },
@@ -557,7 +561,8 @@ function renderMetric(
 }
 
 function renderTargetMonthControl(
-    control: RankRecommendationReactControlsSnapshot["targetMonth"]
+    control: RankRecommendationReactControlsSnapshot["targetMonth"],
+    onChange: (value: string) => void
 ): React.ReactElement | null {
     if (control === null) {
         return null;
@@ -567,7 +572,8 @@ function renderTargetMonthControl(
         React.createElement("select", {
             [TARGET_MONTH_ATTRIBUTE]: "",
             title: "料金調整候補の対象宿泊月で絞り込む",
-            defaultValue: control.currentValue
+            value: control.currentValue,
+            onChange: (event: React.ChangeEvent<HTMLSelectElement>) => onChange(event.currentTarget.value)
         }, control.options.map((option) => React.createElement("option", {
             key: option.value,
             value: option.value

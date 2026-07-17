@@ -7,6 +7,7 @@ import {
 } from "../rankRecommendationReactIsland";
 import { RANK_RECOMMENDATION_WORKSPACE_STYLES } from "../rankRecommendationWorkspaceStyles";
 import type { RankRecommendationWorkState } from "../rankRecommendationWorkspaceModel";
+import { resolveRankRecommendationWorkspaceLayoutMode } from "../rankRecommendationWorkspaceLayout";
 
 type FixtureState =
     | "ready"
@@ -41,7 +42,16 @@ const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
     { value: "empty", label: "候補なし" }
 ];
 
+const FIXTURE_CALENDAR_MONTHS = ["202607", "202608", "202609"] as const;
+const FIXTURE_CANDIDATE_DATES = new Set(["20260723", "20260724", "20260805", "20260812", "20260908", "20260918"]);
+const FIXTURE_NATIVE_HIGHLIGHT_DATES = new Set(["20260723", "20260805", "20260908"]);
+const FIXTURE_CALENDAR_CUE_ATTRIBUTE = "data-ra-rank-recommendation-calendar-cue";
+const FIXTURE_CALENDAR_DESCRIPTION_ATTRIBUTE = "data-ra-rank-recommendation-calendar-description";
+const FIXTURE_CALENDAR_STATE_ATTRIBUTE = "data-ra-rank-recommendation-calendar-state";
+const FIXTURE_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE = "data-ra-rank-recommendation-calendar-describedby-token";
+
 let currentFixtureState: FixtureState = "ready";
+let currentFixtureTargetMonth = "202607";
 let fixtureWritePostCount = 0;
 let fixtureSuccessTimeoutId: number | null = null;
 
@@ -49,14 +59,20 @@ if (typeof document !== "undefined") {
     const rootElement = document.getElementById("rank-fixture-root");
     const detailElement = document.getElementById("rank-fixture-detail");
     const stateSelectElement = document.getElementById("rank-fixture-state");
+    const nativeParentElement = document.querySelector<HTMLElement>("[data-ra-fixture-native-parent]");
+    const calendarStripElement = document.querySelector<HTMLElement>("[data-ra-fixture-calendar-strip]");
 
     if (!(rootElement instanceof HTMLElement)
         || !(detailElement instanceof HTMLElement)
-        || !(stateSelectElement instanceof HTMLSelectElement)) {
+        || !(stateSelectElement instanceof HTMLSelectElement)
+        || !(nativeParentElement instanceof HTMLElement)
+        || !(calendarStripElement instanceof HTMLElement)) {
         throw new Error("Rank recommendation fixture root is missing.");
     }
 
     installFixtureStyles();
+    renderFixtureCalendars(calendarStripElement);
+    installFixtureWorkspaceLayoutObserver(nativeParentElement, calendarStripElement);
     installStateOptions(stateSelectElement);
     renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
 
@@ -148,6 +164,10 @@ if (typeof document !== "undefined") {
             }, 900);
         }
     });
+
+    calendarStripElement.addEventListener("click", (event) => {
+        event.preventDefault();
+    });
 }
 
 function installStateOptions(selectElement: HTMLSelectElement): void {
@@ -171,7 +191,11 @@ function renderFixture(
     syncRankRecommendationReactList(rootElement, buildFixtureSnapshot(state), {
         detailContainer: detailElement,
         actions: {
-            hydrateEvidence: (_candidateKey, container) => renderFixtureEvidence(container, state)
+            hydrateEvidence: (_candidateKey, container) => renderFixtureEvidence(container, state),
+            setTargetMonth: (value) => {
+                currentFixtureTargetMonth = value;
+                renderFixture(rootElement, detailElement, stateSelectElement, state);
+            }
         }
     });
     syncFixtureCalendarMarkers(state);
@@ -193,10 +217,11 @@ export function buildFixtureSnapshot(state: FixtureState): RankRecommendationRea
         emptyText,
         controls: {
             targetMonth: {
-                currentValue: "202607",
+                currentValue: currentFixtureTargetMonth,
                 options: [
                     { value: "202607", label: "2026年7月 (6件)" },
-                    { value: "202608", label: "2026年8月 (2件)" }
+                    { value: "202608", label: "2026年8月 (2件)" },
+                    { value: "202609", label: "2026年9月 (2件)" }
                 ]
             },
             workState: {
@@ -593,15 +618,189 @@ function buildMetaText(state: FixtureState, count: number): string {
     return `${count}件 / 基準日 7月17日 / 個人・団体を分離表示`;
 }
 
+function renderFixtureCalendars(calendarStripElement: HTMLElement): void {
+    calendarStripElement.replaceChildren(...FIXTURE_CALENDAR_MONTHS.map((monthKey) => createFixtureMonthCalendar(monthKey)));
+}
+
+function createFixtureMonthCalendar(monthKey: string): HTMLElement {
+    const year = Number.parseInt(monthKey.slice(0, 4), 10);
+    const monthIndex = Number.parseInt(monthKey.slice(4, 6), 10) - 1;
+    const monthElement = document.createElement("section");
+    monthElement.setAttribute("data-testid", "monthly-calendar");
+    monthElement.setAttribute("data-ra-fixture-calendar", "");
+    monthElement.setAttribute("aria-label", `${year}年${monthIndex + 1}月カレンダー`);
+
+    const headerElement = document.createElement("header");
+    headerElement.setAttribute("data-ra-fixture-calendar-header", "");
+    headerElement.textContent = `${year}年${monthIndex + 1}月`;
+
+    const gridElement = document.createElement("div");
+    gridElement.setAttribute("data-ra-fixture-calendar-grid", "");
+    for (const weekday of ["日", "月", "火", "水", "木", "金", "土"]) {
+        const weekdayElement = document.createElement("div");
+        weekdayElement.setAttribute("data-ra-fixture-weekday", "");
+        weekdayElement.textContent = weekday;
+        gridElement.append(weekdayElement);
+    }
+
+    const firstWeekday = new Date(Date.UTC(year, monthIndex, 1)).getUTCDay();
+    for (let index = 0; index < firstWeekday; index += 1) {
+        const blankElement = document.createElement("div");
+        blankElement.setAttribute("data-ra-fixture-calendar-blank", "");
+        gridElement.append(blankElement);
+    }
+
+    const daysInMonth = new Date(Date.UTC(year, monthIndex + 1, 0)).getUTCDate();
+    for (let day = 1; day <= daysInMonth; day += 1) {
+        gridElement.append(createFixtureCalendarCell(year, monthIndex + 1, day));
+    }
+
+    monthElement.append(headerElement, gridElement);
+    return monthElement;
+}
+
+function createFixtureCalendarCell(year: number, month: number, day: number): DocumentFragment {
+    const dateWithHyphen = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const compactDate = dateWithHyphen.replaceAll("-", "");
+    const roomCount = 2 + ((day * 3 + month) % 11);
+    const groupCount = day % 5 === 0 ? 0 : (day + month) % 4;
+    const anchorElement = document.createElement("a");
+    anchorElement.href = "#";
+    anchorElement.setAttribute("data-testid", `calendar-date-${dateWithHyphen}`);
+    anchorElement.setAttribute("data-ra-fixture-calendar-cell", "");
+    anchorElement.setAttribute("data-ra-fixture-stay-month", compactDate.slice(0, 6));
+    if (FIXTURE_CANDIDATE_DATES.has(compactDate)) {
+        anchorElement.setAttribute("data-ra-fixture-candidate-date", "");
+    }
+    if (FIXTURE_NATIVE_HIGHLIGHT_DATES.has(compactDate)) {
+        anchorElement.setAttribute("data-ra-fixture-native-highlight", "");
+    }
+
+    const dateElement = document.createElement("span");
+    dateElement.setAttribute("data-ra-fixture-date", "");
+    dateElement.textContent = String(day);
+
+    const roomLineElement = document.createElement("span");
+    roomLineElement.setAttribute("data-ra-fixture-room-line", "");
+    const roomElement = document.createElement("span");
+    roomElement.setAttribute("data-testid", `room-num-${dateWithHyphen}`);
+    roomElement.setAttribute("data-ra-fixture-room", "");
+    roomElement.textContent = String(roomCount);
+    const groupElement = document.createElement("span");
+    groupElement.setAttribute("data-ra-fixture-group", "");
+    groupElement.textContent = `団${groupCount}`;
+    roomLineElement.append(roomElement, groupElement);
+
+    const nativeDescriptionElement = document.createElement("span");
+    const nativeDescriptionId = `fixture-native-calendar-description-${compactDate}`;
+    nativeDescriptionElement.id = nativeDescriptionId;
+    nativeDescriptionElement.setAttribute("data-ra-fixture-native-description", "");
+    nativeDescriptionElement.textContent = "Revenue Assistant 標準カレンダー値";
+    anchorElement.setAttribute("aria-describedby", nativeDescriptionId);
+    anchorElement.append(dateElement, roomLineElement);
+    const fragment = document.createDocumentFragment();
+    fragment.append(anchorElement, nativeDescriptionElement);
+    return fragment;
+}
+
+function installFixtureWorkspaceLayoutObserver(parentElement: HTMLElement, calendarElement: HTMLElement): void {
+    const syncLayout = (): void => {
+        const monthlyCalendarElements = Array.from(
+            calendarElement.querySelectorAll<HTMLElement>(':scope > [data-testid="monthly-calendar"]')
+        );
+        const monthlyMinimumWidths = monthlyCalendarElements.map((element) => {
+            const minWidth = window.getComputedStyle(element).minWidth;
+            if (!minWidth.endsWith("px")) {
+                return null;
+            }
+            const parsed = Number.parseFloat(minWidth);
+            return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+        });
+        const calendarMinimumWidth = monthlyMinimumWidths.some((minWidth) => minWidth === null)
+            ? 0
+            : monthlyMinimumWidths.reduce<number>((total, minWidth) => total + (minWidth ?? 0), 0);
+        const mode = resolveRankRecommendationWorkspaceLayoutMode({
+            containerWidth: parentElement.getBoundingClientRect().width,
+            calendarMinimumWidth,
+            structureSafe: calendarElement.parentElement === parentElement
+                && monthlyCalendarElements.length === FIXTURE_CALENDAR_MONTHS.length
+                && parentElement.querySelector(':scope > [data-ra-rank-recommendation-list]') !== null
+                && parentElement.querySelector(':scope > [data-ra-rank-recommendation-detail]') !== null
+        });
+        parentElement.setAttribute("data-ra-rank-recommendation-workspace-layout", mode);
+    };
+    const resizeObserver = new ResizeObserver(syncLayout);
+    resizeObserver.observe(parentElement);
+    resizeObserver.observe(calendarElement);
+    syncLayout();
+}
+
 function syncFixtureCalendarMarkers(state: FixtureState): void {
+    cleanupFixtureCalendarMarkers();
     const activeState = resolveFixtureWorkState(state);
     document.querySelectorAll<HTMLElement>("[data-ra-fixture-candidate-date]").forEach((element, index) => {
-        if (state === "empty" || state === "current-settings-401" || state === "current-settings-403" || index > 1) {
-            element.removeAttribute("data-ra-rank-recommendation-calendar-state");
+        if (
+            state === "empty"
+            || state === "current-settings-401"
+            || state === "current-settings-403"
+            || element.getAttribute("data-ra-fixture-stay-month") !== currentFixtureTargetMonth
+        ) {
             return;
         }
-        element.setAttribute("data-ra-rank-recommendation-calendar-state", activeState);
+        element.setAttribute(FIXTURE_CALENDAR_STATE_ATTRIBUTE, activeState);
+        const cueElement = document.createElement("span");
+        cueElement.setAttribute(FIXTURE_CALENDAR_CUE_ATTRIBUTE, "");
+        cueElement.setAttribute("aria-hidden", "true");
+        const descriptionElement = document.createElement("span");
+        const descriptionId = `fixture-rank-calendar-description-${currentFixtureTargetMonth}-${index}`;
+        descriptionElement.id = descriptionId;
+        descriptionElement.setAttribute(FIXTURE_CALENDAR_DESCRIPTION_ATTRIBUTE, "");
+        descriptionElement.textContent = `料金調整候補 1件、${formatFixtureWorkState(activeState)} 1件`;
+        const describedByTokens = (element.getAttribute("aria-describedby") ?? "")
+            .split(/\s+/u)
+            .filter((token) => token !== "");
+        describedByTokens.push(descriptionId);
+        const descriptionHost = element.closest<HTMLElement>('[data-testid="monthly-calendar"]')
+            ?? element.parentElement;
+        if (descriptionHost === null) {
+            return;
+        }
+        descriptionHost.append(descriptionElement);
+        element.setAttribute("aria-describedby", describedByTokens.join(" "));
+        element.setAttribute(FIXTURE_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE, descriptionId);
+        element.append(cueElement);
     });
+}
+
+function cleanupFixtureCalendarMarkers(): void {
+    document.querySelectorAll<HTMLElement>(`[${FIXTURE_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE}]`).forEach((element) => {
+        const addedToken = element.getAttribute(FIXTURE_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE);
+        const remainingTokens = (element.getAttribute("aria-describedby") ?? "")
+            .split(/\s+/u)
+            .filter((token) => token !== "" && token !== addedToken);
+        if (remainingTokens.length === 0) {
+            element.removeAttribute("aria-describedby");
+        } else {
+            element.setAttribute("aria-describedby", remainingTokens.join(" "));
+        }
+        element.removeAttribute(FIXTURE_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE);
+    });
+    document.querySelectorAll<HTMLElement>(`[${FIXTURE_CALENDAR_CUE_ATTRIBUTE}], [${FIXTURE_CALENDAR_DESCRIPTION_ATTRIBUTE}]`).forEach((element) => {
+        element.remove();
+    });
+    document.querySelectorAll<HTMLElement>(`[${FIXTURE_CALENDAR_STATE_ATTRIBUTE}]`).forEach((element) => {
+        element.removeAttribute(FIXTURE_CALENDAR_STATE_ATTRIBUTE);
+    });
+}
+
+function formatFixtureWorkState(state: RankRecommendationWorkState): string {
+    if (state === "needs_evidence") {
+        return "要確認";
+    }
+    if (state === "recent_or_held") {
+        return "保留・直近";
+    }
+    return "判断可能";
 }
 
 function renderFixtureEvidence(container: HTMLElement, state: FixtureState): void {
@@ -740,6 +939,12 @@ function getFixtureShellStyles(): string {
         margin: 18px auto 50px;
     }
 
+    [data-ra-fixture-native-parent][data-ra-rank-recommendation-workspace-layout="stacked"] {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+    }
+
     [data-ra-fixture-toolbar] {
         display: flex;
         align-items: center;
@@ -785,28 +990,63 @@ function getFixtureShellStyles(): string {
         font-weight: 750;
     }
 
+    [data-ra-fixture-toolbar-actions],
+    [data-testid="segmented-control"] {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+    }
+
+    [data-testid="segmented-control"] button,
+    [data-ra-fixture-native-control] button {
+        min-height: 32px;
+        padding: 5px 10px;
+        border: 1px solid #aebdce;
+        border-radius: 7px;
+        background: #ffffff;
+        color: #385069;
+        font: inherit;
+        font-size: 11px;
+        font-weight: 800;
+    }
+
+    [data-ra-fixture-calendar-strip] {
+        display: flex;
+        min-width: 0;
+        overflow-x: auto;
+    }
+
     [data-ra-fixture-calendar] {
+        flex: 1 0 auto;
+        min-width: 360px;
         overflow: hidden;
         border: 1px solid #d4dde7;
-        border-radius: 10px;
+        border-radius: 0;
         background: #ffffff;
-        box-shadow: 0 8px 22px rgba(34, 54, 78, 0.07);
+    }
+
+    [data-ra-fixture-calendar]:first-child {
+        border-radius: 10px 0 0 10px;
+    }
+
+    [data-ra-fixture-calendar]:last-child {
+        border-radius: 0 10px 10px 0;
     }
 
     [data-ra-fixture-calendar-header] {
         display: flex;
         align-items: center;
         justify-content: center;
-        min-height: 52px;
+        min-height: 42px;
         border-bottom: 1px solid #dfe5ec;
         color: #2c3f54;
-        font-size: 16px;
+        font-size: 14px;
         font-weight: 850;
     }
 
     [data-ra-fixture-calendar-grid] {
         display: grid;
-        grid-template-columns: repeat(7, minmax(72px, 1fr));
+        grid-template-columns: repeat(7, minmax(0, 1fr));
     }
 
     [data-ra-fixture-weekday] {
@@ -823,9 +1063,9 @@ function getFixtureShellStyles(): string {
     [data-ra-fixture-calendar-cell] {
         position: relative;
         display: grid;
-        min-height: 88px;
+        min-height: 62px;
         align-content: space-between;
-        padding: 8px;
+        padding: 6px;
         border: 0;
         border-right: 1px solid #e4e9ef;
         border-bottom: 1px solid #e4e9ef;
@@ -834,10 +1074,45 @@ function getFixtureShellStyles(): string {
         text-decoration: none;
     }
 
-    [data-ra-fixture-calendar-cell][data-muted="true"] { color: #a1acb8; background: #fafbfd; }
+    [data-ra-fixture-calendar-blank] { min-height: 62px; border-right: 1px solid #e4e9ef; border-bottom: 1px solid #e4e9ef; background: #fafbfd; }
+    [data-ra-fixture-native-highlight] { box-shadow: inset 0 0 0 2px #6a8db2; }
     [data-ra-fixture-date] { font-size: 11px; font-weight: 800; }
     [data-ra-fixture-room-line] { display: flex; align-items: center; gap: 5px; font-size: 12px; font-weight: 850; }
+    [data-ra-fixture-room] { color: #28394c; }
     [data-ra-fixture-group] { color: #2367a7; font-size: 10px; font-weight: 850; }
+
+    [data-ra-fixture-native-description] {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 1px;
+        height: 1px;
+        padding: 0;
+        margin: -1px;
+        overflow: hidden;
+        clip: rect(0, 0, 0, 0);
+        white-space: nowrap;
+        border: 0;
+    }
+
+    [data-ra-fixture-native-control],
+    [data-ra-fixture-native-status],
+    [data-ra-fixture-native-footer] {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border: 1px solid #d5dee8;
+        border-radius: 8px;
+        background: #ffffff;
+        color: #596b7e;
+        font-size: 11px;
+        font-weight: 750;
+    }
+
+    [data-ra-fixture-native-control] {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
 
     [data-ra-fixture-booking-curve] { display: grid; gap: 5px; margin: 0; }
     [data-ra-fixture-booking-curve] canvas { display: block; width: 100%; height: auto; border: 1px solid #e0e6ed; border-radius: 7px; }
@@ -848,8 +1123,8 @@ function getFixtureShellStyles(): string {
         [data-ra-fixture-nav] { display: none; }
         [data-ra-fixture-shell] { width: min(100% - 16px, 720px); margin-top: 8px; }
         [data-ra-fixture-toolbar] { align-items: stretch; flex-direction: column; }
-        [data-ra-fixture-calendar] { overflow-x: auto; }
-        [data-ra-fixture-calendar-grid] { min-width: 700px; }
+        [data-ra-fixture-toolbar-actions] { align-items: stretch; flex-direction: column; }
+        [data-ra-fixture-calendar] { min-width: 360px; }
     }
     `;
 }

@@ -69,6 +69,16 @@
 - safe fixture では review open 後 5 秒以上待っても mock submit 0、cancel 後 0、最終明示押下後 1 を確認する。live Revenue Assistant endpoint へ final submit しない。
 - final visual evidence、reference comparison、interaction / accessibility QA、iteration 履歴は root `design-qa.md` に記録した。local synthetic fixture は pass、live Revenue Assistant / Tampermonkey 配布版と実 write は未確認として分ける。
 
+### Live Host Compatibility Follow-up
+
+- task: `RAU-UX-139`〜`RAU-UX-142`。
+- 初回 fixture は toolbar を workspace 親の外へ置いた 1 か月 calendar で、option 2 の hierarchy と操作を確認するには十分だったが、Revenue Assistant 実画面の layout contract を再現していなかった。
+- 実画面の read-only 観測では、3 つの `monthly-calendar` が横並びの flex container に入り、その親は標準 toolbar、calendar、月別優先取得 controls、旧候補表示、inline status、footer 相当を direct child として共有していた。この親を無条件に grid 化すると、calendar 以外の標準領域まで 2 列へ流れ、順序と幅が競合する。
+- follow-up fixture は同じ direct-child 構造と 3 か月 calendar を合成データで再現した。wide は host 構造と実際の親幅が安全な場合だけにし、それ以外は標準親の flex-column を維持して rail / detail を積む。
+- calendar の黒い標準値と青い `団n` は判断情報そのものなので、RAU cue の可視性より優先する。cue は値領域や native `box-shadow` を使わず、左端 edge と screen-reader description に限定した。OH / 個人 / 団体は引き続き選択詳細で明示する。
+- 月 select は controlled input にし、DOM generation、calendar host、日付範囲、cell identity が変わった非同期結果を捨てる。これにより 7 月から 8 月へ移動中の 7 月結果が、新しい 8 月 DOM を上書きする経路を閉じる。
+- local 3 か月 fixture の wide / stacked / mobile、対象月切替、empty cleanup、native `aria-describedby` / inset highlight 保持は pass。実 DOM の host preflight も pass。未配布 candidate / Tampermonkey runtime smoke は配布 gate と分けて残す。
+
 ## Top Candidate UI Brushup Audit 2026-06-19
 
 ### Brief Playback

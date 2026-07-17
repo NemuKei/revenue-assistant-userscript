@@ -714,6 +714,13 @@ UI primitive 導入方針:
 
 - 既存カレンダーは React で置き換えず、Revenue Assistant 側 DOM を左 pane として使う。React island は右 rail を描画し、選択詳細は専用 sibling container へ portal する。
 - layout style は workspace root 配下へ限定し、Revenue Assistant 本体の `body`、標準 button、標準 select、標準 table、標準 calendar へ global style、CSS reset、theme class を当てない。
+- calendar / rail の 2 列 layout は viewport 幅ではなく、表示中 calendar host の direct-child 構造と実際の親幅で決める。表示中の `monthly-calendar` 群、calendar cell、host identity を安全に解決でき、calendar minimum width、rail 最大幅、gap を確保できる場合だけ wide にする。
+- host の安全性を確認できない場合、必要幅を満たさない場合、または mobile では stacked にする。stacked は Revenue Assistant 親の `display` / `flex-direction` を上書きせず、rail と detail の配置だけを制御する。標準 toolbar、月別優先取得 controls、inline status、footer 相当は full row とし、順序を変えない。
+- 表示対象 calendar cell は、`hidden`、`aria-hidden="true"`、`display:none`、`visibility:hidden`、`opacity:0`、または layout box を持たない transition / offscreen duplicate を除外する。
+- calendar 同期は、DOM generation、表示中 calendar element と parent、日付範囲、cell count / order / element identity を context とする。非同期取得の await 後に context が変わっていれば結果を描画せず、最新 DOM へ forced resync する。stale result で target month、work state、calendar cue、workspace root を巻き戻さない。
+- target month は React の controlled select とし、選択値を main module へ明示的に渡す。選択中月が候補 month options から外れた場合は `全ての月` へ戻す。
+- calendar の判断 cue は日付 cell 左端の非文字 edge cue と screen-reader 用 description に限定する。description node は日付 link の accessible name へ混入しないよう link 外へ置く。標準の黒い値、青い `団n`、today / selected / focus / warm-cache marker、native `box-shadow` を上書きしない。既存 `aria-describedby` token を保持し、RAU token だけを追加・削除する。右下の `判` / `要` / `保` pill は使わない。
+- Revenue Assistant または React 再描画で workspace root、detail、calendar cue が取り除かれた場合は、重複を作らず最新 context へ自己修復する。対象外 route または機能停止では workspace、layout 属性、cue、description token を cleanup する。empty、HTTP 401 / 403 では workspace の状態表示と safe layout を残し、calendar cue と RAU description token だけを cleanup する。
 - `data-ra-rank-recommendation-ui-component` は `workspace-rail`、rail header / controls / task list、detail、review、pending、result の確認入口として使う。旧 table / row marker の存在を現行合格条件にしない。
 - evidence は選択中 candidate だけを hydrate する。React の再描画で data adapter、candidate scoring、API request を重複実行しない。
 - desktop と narrow layout の両方で、task selection、3 つの work-state control、target month、Analyze、様子見、対応不要、変更内容確認、確認 cancel、最終変更の keyboard / focus / disabled 状態を verify する。

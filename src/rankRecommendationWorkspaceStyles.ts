@@ -1,34 +1,61 @@
 export const RANK_RECOMMENDATION_WORKSPACE_STYLES = `
-    [data-ra-rank-recommendation-workspace-layout] {
+    [data-ra-rank-recommendation-workspace-layout="wide"] {
         display: grid;
         grid-template-columns: minmax(0, 1fr) minmax(300px, 356px);
         gap: 14px;
         align-items: start;
     }
 
-    [data-ra-rank-recommendation-workspace-layout] > * {
-        min-width: 0;
+    [data-ra-rank-recommendation-workspace-layout="wide"] > * {
         grid-column: 1 / -1;
     }
 
-    [data-ra-rank-recommendation-workspace-layout] > [data-ra-rank-recommendation-calendar] {
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-rank-recommendation-calendar],
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-rank-recommendation-list],
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-rank-recommendation-detail],
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-sales-setting-warm-cache-month-controls],
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-sales-setting-warm-cache-inline-status] {
+        min-width: 0;
+    }
+
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-rank-recommendation-calendar] {
         grid-column: 1;
     }
 
-    [data-ra-rank-recommendation-workspace-layout] > [data-ra-rank-recommendation-list] {
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-rank-recommendation-list] {
         grid-column: 2;
         align-self: stretch;
     }
 
-    [data-ra-rank-recommendation-workspace-layout] > [data-ra-rank-recommendation-detail],
-    [data-ra-rank-recommendation-workspace-layout] > [data-ra-sales-setting-warm-cache-month-controls],
-    [data-ra-rank-recommendation-workspace-layout] > [data-ra-sales-setting-warm-cache-inline-status] {
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-rank-recommendation-detail],
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-sales-setting-warm-cache-month-controls],
+    [data-ra-rank-recommendation-workspace-layout="wide"] > [data-ra-sales-setting-warm-cache-inline-status] {
         grid-column: 1 / -1;
+    }
+
+    [data-ra-rank-recommendation-workspace-layout="stacked"] > [data-ra-rank-recommendation-list] {
+        width: 100%;
+        margin-top: 14px;
+    }
+
+    [data-ra-rank-recommendation-workspace-layout="stacked"] > [data-ra-rank-recommendation-detail] {
+        width: 100%;
+        margin-top: 14px;
     }
 
     [data-ra-rank-recommendation-calendar-state] {
         position: relative;
-        box-shadow: inset 0 -3px 0 var(--ra-calendar-candidate-color, #4d79a8);
+    }
+
+    [data-ra-rank-recommendation-calendar-cue] {
+        position: absolute;
+        top: 5px;
+        bottom: 5px;
+        left: 2px;
+        width: 3px;
+        border-radius: 999px;
+        background: var(--ra-calendar-candidate-color, #4d79a8);
+        pointer-events: none;
     }
 
     [data-ra-rank-recommendation-calendar-state="needs_evidence"] {
@@ -39,25 +66,18 @@ export const RANK_RECOMMENDATION_WORKSPACE_STYLES = `
         --ra-calendar-candidate-color: #7a8797;
     }
 
-    [data-ra-rank-recommendation-calendar-cue] {
+    [data-ra-rank-recommendation-calendar-description] {
         position: absolute !important;
-        right: 3px !important;
-        bottom: 4px !important;
-        z-index: 1 !important;
-        display: inline-flex !important;
-        align-items: center !important;
-        min-width: 20px !important;
-        height: 14px !important;
-        padding: 0 3px !important;
-        border: 1px solid var(--ra-calendar-candidate-color, #4d79a8) !important;
-        border-radius: 999px !important;
-        background: rgba(255, 255, 255, 0.94) !important;
-        color: var(--ra-calendar-candidate-color, #4d79a8) !important;
-        font-size: 9px !important;
-        font-weight: 700 !important;
-        line-height: 1 !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
         white-space: nowrap !important;
-        pointer-events: none !important;
+        border: 0 !important;
     }
 
     [data-ra-rank-recommendation-list] {
@@ -738,15 +758,6 @@ export const RANK_RECOMMENDATION_WORKSPACE_STYLES = `
     }
 
     @media (max-width: 1180px) {
-        [data-ra-rank-recommendation-workspace-layout] {
-            grid-template-columns: minmax(0, 1fr);
-        }
-
-        [data-ra-rank-recommendation-workspace-layout] > [data-ra-rank-recommendation-calendar],
-        [data-ra-rank-recommendation-workspace-layout] > [data-ra-rank-recommendation-list] {
-            grid-column: 1;
-        }
-
         [data-ra-rank-recommendation-ui-component="task-list"] {
             max-height: 440px;
         }
