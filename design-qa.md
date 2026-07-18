@@ -1,11 +1,11 @@
 # Design QA: RAU-UX-138〜142 Top Decision Workspace
 
-最終確認日: 2026-07-17
+最終確認日: 2026-07-18
 
 ## 対象と判定
 
 - 対象: Revenue Assistant top の 3 か月カレンダー、`今日の判断` rail、選択候補の詳細、rank 変更の最終確認、標準 UI との host / cue 競合。
-- 判定: 3 か月 synthetic fixture と Revenue Assistant 実 DOM の read-only host preflight は pass。未配布 candidate / Tampermonkey 配布版の runtime smoke と実 write は未確認。
+- 判定: 3 か月 synthetic fixture、Revenue Assistant 実 DOM の read-only host preflight、未配布 candidate の cold-start shell smoke は pass。candidate の ready-state live interaction と Tampermonkey 配布版 smoke、実 write は未確認。
 - 採用方向: 既存カレンダーを左、`今日の判断` rail を右、選択詳細を下へ置く option 2。
 
 ## Visual Evidence
@@ -68,10 +68,23 @@ reference と safe wide / stacked / mobile screenshot を同じ comparison input
 8. calendar cue の右下 `判` / `要` / `保` pill と `box-shadow` 上書きを廃止し、標準表示と重ならない左端 edge cue へ変更した。
 9. 月切替中の非同期結果が旧 calendar へ戻らないよう、DOM generation、host、日付範囲、cell identity の stale guard を追加した。
 10. 最終 code review で、preview await 中の月・状態・表示件数変更が旧同期で巻き戻る race を発見した。interaction generation を stale context に追加して修正し、静的再レビューは pass。deferred interleaving を自動再現する integration test は残る検証課題である。
+11. candidate cold start では API 完了まで workspace が空だったため、最初の await 前に calendar を塞がない loading shell と live region を追加した。再同期前から有効な list がある場合は loading shell へ戻さない。
+12. dev fixture の対象月切替が calendar cue だけへ反映され、rail / detail に旧月候補が残る不整合を修正した。cue の screen-reader description も日付別候補総数と状態別件数を集約し、同日2候補を1件と読まないようにした。production path は target-month-filtered candidates を rail と cue の双方へ渡していることを別 source review で確認した。
+
+## 2026-07-18 Candidate Runtime / Fixture Follow-up
+
+- 利用者が既存 Tampermonkey userscript を手動無効化し、reload 後に旧 RAU root / group badge / workspace が 0 であることを確認してから、未配布 candidate を 1 回だけ注入した。二重 runtime ではない。
+- 修正前 candidate は calendar の標準表示と group badge を描画したが、2分30秒超と `/api/v4/booking_curve` 200件超の read-only 取得後も workspace ready state に到達しなかった。画面を空のままにする問題を cold-start defect として扱った。
+- 修正版 candidate は 626ms で loading workspace を描画した。workspace / rail / detail / React island は各 1、3 か月 calendar は維持、layout は live 幅で `wide`、calendar / rail / detail の sibling 順は正しく、work-state / target-month / task はデータ準備前に出さない。標準 segmented control は 1、横 overflow、framework overlay、console warning / error は 0 だった。
+- final candidate artifact は 630,066 bytes、正規 build との差 10 bytes、metadata mismatch 0、SHA-256 `935C88A14A0FBD82A04636B8966E74C6E9BEAD5C79E9A99ECA4765E9257B5109`。`npm run check`、fixture / candidate build、fixture marker、distribution / booking-curve smoke fixture、build compare は pass。React Doctor は exit 0、51 warnings で、今回差分の blocking finding はない。
+- candidate live smoke 中に write 操作は行わず、監視対象 write API POST は 0 だった。実施設値、価格・在庫、request / response body、raw trace、screenshot は保存していない。
+- live page は cold-cache request 継続後に DOM read へ応答しなくなった。candidate を除去する reload は開始したが、post-reload root 0 の DOM verification は完了していない。candidate は一時注入で永続化していない。利用者は検証後に Tampermonkey userscript を再有効化したと確認済みである。
+- synthetic fixture では対象月を 2026-08 へ変更すると rail / detail の宿泊日と calendar cue がすべて 2026-08 へ同期した。`判断可能` から `要確認` への切替、2件の task、選択詳細、Analyze 導線を確認し、mock write count は 0 のままだった。
+- `OH 0 / キャパ 18`、`個人 0`、`団体 0` と、`OH 未取得 / キャパ 未取得`、`個人 未取得`、`団体 未取得` を別状態で確認した。対象月 / work-state 切替前後で標準日付、黒い室数、青い `団n`、native highlight の text / color / size / box-shadow は不変で、document overflow と console warning / error は 0 だった。
 
 ## Remaining Live Gate
 
-- Revenue Assistant 実 DOM では、3 か月 flex calendar と共有親の direct-child 構造を read-only で確認した。実施設値を含む screenshot、raw trace、response body は保存していない。
-- 未配布 candidate または更新済み Tampermonkey 版で、wide / stacked 切替、calendar edge cue、2-panel booking curve、長い実 roomGroup 名、標準 UI 非干渉を確認する。
-- live smoke では `/api/v1/lincoln/suggest` を含む監視対象 write API POST 0 件のまま review open / cancel まで確認する。
+- Tampermonkey userscript は利用者が再有効化済みである。通常 runtime の DOM 再読取は行っていないため、次の live gate で version / root を改めて確認する。拡張 UI は自動操作しない。
+- `RAU-UX-143` で first actionable candidate までの cold-start latency と段階表示を設計・実装した後、単一 runtime の未配布 candidate または更新済み Tampermonkey 版で ready-state interaction、wide / stacked 切替、calendar edge cue、2-panel booking curve、長い実 roomGroup 名、標準 UI 非干渉を確認する。
+- live ready-state smoke では `/api/v1/lincoln/suggest` を含む監視対象 write API POST 0 件のまま task selection、対象月、work-state、Analyze、review open / cancel まで確認する。
 - 実 write、Tampermonkey 更新、GitHub Pages 公開はこの QA に含めない。

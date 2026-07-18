@@ -51,7 +51,7 @@
 ### RAU-UX-139〜142 workspace を実画面の host、月遷移、標準カレンダーと安全に共存させる
 
 - 状態:
-  - `RAU-UX-139`〜`141` は local 実装・fixture QA 完了。`RAU-UX-142` は Revenue Assistant 実 DOM の read-only preflight まで完了し、未配布 candidate の runtime smoke は未実施。
+  - `RAU-UX-139`〜`141` は local 実装・fixture QA 完了。`RAU-UX-142` は Revenue Assistant 実 DOM の read-only preflight と、既存 Tampermonkey userscript を手動無効化した単一 runtime での candidate cold-start smoke まで完了した。ready-state live interaction は cold cache の長時間取得により未完了で、`RAU-UX-143` の後続対象とする。
 - 実画面で確認した競合条件:
   - 表示中カレンダーは、`data-testid="monthly-calendar"` を持つ 3 か月分が横並びの flex container に入る。
   - その親はカレンダー専用ではなく、標準 toolbar、カレンダー、月別優先取得 controls、旧候補表示、inline status、標準 footer 相当を direct child として共有する。親全体を無条件に grid 化すると標準領域の順序と幅を壊す。
@@ -59,7 +59,7 @@
   - `RAU-UX-139`: 実際の host 幅と direct-child 構造が安全な場合だけ calendar / rail の 2 列にする。安全性を確認できない場合や必要幅を満たさない場合は、Revenue Assistant 親の `display` / `flex-direction` を変えず縦並びへ退避する。
   - `RAU-UX-140`: 表示中 calendar host、日付範囲、cell identity、DOM generation を同期 context とし、非同期取得中に月または calendar DOM が切り替わった結果は描画せず強制再同期する。対象月 select は React の controlled input とする。
   - `RAU-UX-141`: 標準の黒い数値と青い `団n`、today / selected / focus / warm-cache marker を占有しない左端 cue と screen-reader description を使う。既存 `aria-describedby` token は保持し、RAU token だけを追加・削除する。
-  - `RAU-UX-142`: 実 DOM の host 構造は read-only で確認した。candidate bundle を実画面へ注入または Tampermonkey 更新して行う runtime smoke は、配布状態と二重実行を避けるため別 gate とする。
+  - `RAU-UX-142`: 実 DOM の host 構造を read-only で確認した後、既存 Tampermonkey userscript を手動無効化し、未配布 candidate を 1 回だけ注入した。初回 await 前に non-blocking loading shell を描画し、カレンダーを操作可能なまま待機状態を明示する。実データの値、response body、screenshot は保存しない。
 - 受け入れ条件:
   - 3 か月 fixture で、親幅が十分な場合だけ 2 列、不足時と mobile は標準親の flex-column のまま縦並びになる。document 全体には横 overflow を出さず、カレンダー内部の横 scroll だけを許容する。
   - 対象月切替後は新しい月だけに cue が移り、empty / HTTP 401 / 403 では RAU cue と RAU description token だけが消える。
@@ -79,8 +79,26 @@
   - Browser fixture は親幅 1500px で wide、1393px と359pxで標準 flex-column の stacked を確認した。mobile は document 375px / scrollWidth 375px、3 か月 calendar 内だけ clientWidth 359px / scrollWidth 1080px。console error / warning は 0。
   - 7月から8月への対象月切替で cue は8月だけへ移り、empty では RAU cue / description / token だけが消えた。native token、黒い値、青い `団2`、native inset highlight は維持された。description は日付 link 外にあり、link text へ RAU 文言を混入させない。
   - 最終 code review で、deferred preview await 中の月・状態・表示件数変更が旧同期で巻き戻る race を発見し、interaction generation を stale context へ追加して修正した。静的再レビューは pass。ただし、この deferred interleaving を自動再現する integration test は未整備で、未配布 candidate runtime smoke とともに残リスクとする。
+  - 2026-07-18 の candidate smoke では、旧 runtime がないことを確認してから candidate を 1 回だけ注入し、loading workspace を 626ms で確認した。3 か月 calendar、workspace / rail / detail 各 1、標準 segmented control、横 overflow なし、console warning / error 0、監視対象 write API POST 0 だった。live cold cache は 2分30秒超、`/api/v4/booking_curve` 200件超でも ready state に達せず、post-reload DOM read も応答しなかったため、ready-state interaction は未確認である。
+  - dev fixture の対象月切替で calendar cue だけが8月へ移り、rail / detail が7月に残る不整合を発見した。fixture candidate 日付も対象月へ同期させ、7月 / 8月 / 9月の candidate snapshot / controlled select / calendar cue source contract check を追加した。cue は同じ宿泊日の候補総数 / 状態別件数 / dominant state / 読み上げ文言まで集約して固定した。本番経路は同じ target-month-filtered candidates を rail と cue に渡すことを source review で確認した。Browser fixture では8月の rail / detail / cue 同期、3 work state、task selection、Analyze、OH / 個人 / 団体の 0 / 未取得、標準文字・色・寸法・native highlight の不変、write count 0、console warning / error 0 を確認した。
+  - fresh local verify は `npm run check`、`npm run build:vite:fixture`、`npm run build:vite:candidate`、`npm run check:fixture-markers`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:compare:vite`、`npm run react:doctor -- --diff false --verbose` が exit 0。candidate は 630,066 bytes、正規 build との差 10 bytes、metadata mismatch 0、SHA-256 `935C88A14A0FBD82A04636B8966E74C6E9BEAD5C79E9A99ECA4765E9257B5109`。React Doctor は 51 warnings で、既知の entry detection、sequential await / `flushSync`、token 名の false positive、既存 unused dependency を含み、今回差分の blocking finding はない。
 
-Remaining Task Triage は Next `RAU-UX-142` の未配布 candidate runtime smoke とする。publish は同じ自動 closeout とみなさず明示承認 gate とする。
+### RAU-UX-143 cold start から最初の判断可能候補までの待ち時間を短縮する
+
+- 状態:
+  - 未着手。`RAU-UX-142` の live candidate smoke で、loading shell は即時表示できたが、cold cache では 2分30秒超と read-only request 200件超の後も ready state に到達しなかった。
+- 目的:
+  - カレンダーを塞がない loading shell を維持しつつ、最初に実務判断できる候補が現れるまでの時間を短くする。
+  - request 数や concurrency を増やすことを先に解決策とせず、current settings、対象月、候補生成、evidence hydration の依存順を分け、最小の正しい候補を段階表示できるか判断する。
+- 受け入れ条件:
+  - shell 表示、current settings 完了、最初の正しい task 表示、選択詳細の evidence 完了、全対象月完了の sanitized timing / count を区別して計測できる。実施設値、価格・在庫、response body、raw trace は保存しない。
+  - 対象月または表示中月を優先する案、保存済み evidence だけで先に表示する案、evidence 不足候補を `要確認` として段階表示する案を比較し、誤った `判断可能` を出さない。
+  - 段階表示中も、rail / detail / calendar cue の対象月、OH / 個人 / 団体の直接取得 / 未取得、stale async guard、標準 UI 非干渉、監視対象 write API POST 0 を維持する。
+  - API request scope、request pace、concurrency、保存 schemaを変える場合は、Yellow boundary として実装前に spec / decision を更新する。
+- gate:
+  - 利用者は 2026-07-18 の candidate smoke 後に Tampermonkey userscript を再有効化した。live 再試験は、再び単一 runtime を作る明示承認がある場合だけ行う。publish、実 write は含めない。
+
+Remaining Task Triage は Next `RAU-UX-143` とする。`RAU-UX-142` の ready-state live interaction は `RAU-UX-143` の first-ready latency 対応後に再確認する。publish は同じ自動 closeout とみなさず明示承認 gate とする。
 
 ## 2026-06-29 Docs Governance Profile
 

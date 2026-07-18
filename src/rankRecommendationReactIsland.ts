@@ -283,7 +283,11 @@ function RankRecommendationRail(props: {
                         onSelect: props.onSelect
                     }))
                 ])
-                : React.createElement("p", { "data-ra-rank-recommendation-empty": "" }, snapshot.emptyText)
+                : React.createElement("p", {
+                    "data-ra-rank-recommendation-empty": "",
+                    role: "status",
+                    "aria-live": "polite"
+                }, snapshot.emptyText)
         ),
         React.createElement("footer", { "data-ra-rank-recommendation-ui-component": "rail-footer" },
             renderDisplayLimitControl(snapshot.controls.displayLimit),

@@ -1,6 +1,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import {
     buildAllFixtureSnapshots,
+    buildFixtureCalendarCueAggregates,
+    buildFixtureSnapshot,
     renderRankRecommendationReactListElement
 } from "../src/dev/rankRecommendationFixture";
 import { resolveRankRecommendationWorkspaceLayoutMode } from "../src/rankRecommendationWorkspaceLayout";
@@ -36,6 +38,25 @@ function assertNotContains(renderedHtml: string, label: string, forbiddenText: s
 export function runRankFixtureMarkerCheck(): void {
     assertWorkspaceLayoutBoundaries();
     const snapshots = buildAllFixtureSnapshots();
+    const firstSnapshot = snapshots[0];
+    if (firstSnapshot === undefined) {
+        throw new Error("rank fixture snapshots are empty");
+    }
+    const loadingText = "判断データを準備しています。カレンダーはそのまま操作できます。";
+    const loadingHtml = renderToStaticMarkup(renderRankRecommendationReactListElement({
+        ...firstSnapshot,
+        signature: "loading:fixture",
+        metaText: loadingText,
+        metaTitle: loadingText,
+        emptyText: loadingText,
+        controls: {
+            targetMonth: null,
+            workState: null,
+            displayLimit: null,
+            rankOrder: null
+        },
+        candidates: []
+    }));
     const renderedHtml = snapshots
         .map((snapshot) => (
             `<section data-ra-rank-recommendation-list>${renderToStaticMarkup(renderRankRecommendationReactListElement(snapshot))}</section>`
@@ -85,10 +106,81 @@ export function runRankFixtureMarkerCheck(): void {
     assertNotContains(renderedHtml, "automatic write countdown", "秒後に送信");
     assertNotContains(renderedHtml, "legacy nine-column table", "row-layout");
     assertContains(renderedHtml, "controlled target month", '<option value="202607" selected="">');
+    assertTargetMonthCandidateContract();
+    assertContains(loadingHtml, "cold-start loading copy", loadingText);
+    assertContains(loadingHtml, "cold-start live region", 'role="status" aria-live="polite"');
+    assertNotContains(loadingHtml, "cold-start candidate task", 'data-ra-rank-recommendation-task=""');
 
     console.log("rank fixture marker check passed");
     for (const metric of metrics) {
         console.log(`${metric.name}: ${metric.count}`);
+    }
+}
+
+function assertTargetMonthCandidateContract(): void {
+    for (const state of ["ready", "needs-evidence", "recent"] as const) {
+        for (const targetMonth of ["202607", "202608", "202609"] as const) {
+            const snapshot = buildFixtureSnapshot(state, targetMonth);
+            if (snapshot.controls.targetMonth?.currentValue !== targetMonth) {
+                throw new Error(`target month control mismatch: ${state}/${targetMonth}`);
+            }
+            if (
+                snapshot.candidates.length === 0
+                || snapshot.candidates.some((candidate) => !candidate.stayDateKey.startsWith(targetMonth))
+            ) {
+                throw new Error(`target month candidate mismatch: ${state}/${targetMonth}`);
+            }
+            const expectedCueAggregates = Array.from(
+                snapshot.candidates.reduce((statesByStayDate, candidate) => {
+                    const states = statesByStayDate.get(candidate.stayDateKey) ?? [];
+                    states.push(candidate.workState);
+                    statesByStayDate.set(candidate.stayDateKey, states);
+                    return statesByStayDate;
+                }, new Map<string, Array<(typeof snapshot.candidates)[number]["workState"]>>()),
+                ([stayDateKey, states]) => {
+                    const ready = states.filter((workState) => workState === "ready").length;
+                    const needsEvidence = states.filter((workState) => workState === "needs_evidence").length;
+                    const recentOrHeld = states.filter((workState) => workState === "recent_or_held").length;
+                    return {
+                        stayDateKey,
+                        totalCount: states.length,
+                        dominantState: ready > 0
+                            ? "ready"
+                            : needsEvidence > 0
+                                ? "needs_evidence"
+                                : "recent_or_held",
+                        ready,
+                        needsEvidence,
+                        recentOrHeld,
+                        label: [
+                            `料金調整候補 ${states.length}件`,
+                            ready > 0 ? `判断可能 ${ready}件` : null,
+                            needsEvidence > 0 ? `要確認 ${needsEvidence}件` : null,
+                            recentOrHeld > 0 ? `保留・直近 ${recentOrHeld}件` : null
+                        ].filter((part): part is string => part !== null).join("、")
+                    };
+                }
+            );
+            const cueAggregates = buildFixtureCalendarCueAggregates(state, targetMonth).map((cue) => ({
+                stayDateKey: cue.stayDateKey,
+                totalCount: cue.totalCount,
+                dominantState: cue.dominantState,
+                ready: cue.stateCounts.ready,
+                needsEvidence: cue.stateCounts.needs_evidence,
+                recentOrHeld: cue.stateCounts.recent_or_held,
+                label: cue.label
+            }));
+            if (JSON.stringify(expectedCueAggregates) !== JSON.stringify(cueAggregates)) {
+                throw new Error(`target month cue mismatch: ${state}/${targetMonth}`);
+            }
+            const workStateTotal = snapshot.controls.workState?.options
+                .reduce((total, option) => total + option.count, 0) ?? 0;
+            const targetMonthOption = snapshot.controls.targetMonth?.options
+                .find((option) => option.value === targetMonth);
+            if (targetMonthOption === undefined || !targetMonthOption.label.endsWith(`(${workStateTotal}件)`)) {
+                throw new Error(`target month count mismatch: ${state}/${targetMonth}`);
+            }
+        }
     }
 }
 

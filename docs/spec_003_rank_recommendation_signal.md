@@ -573,8 +573,10 @@ rank response dataset の first contract:
 
 `今日の判断` rail 契約:
 
+- 初回同期では、current settings、rank ladder、booking curve evidence の完了を待って空白にせず、最初の await 前に loading shell を 1 件だけ描画する。loading shell はカレンダーを覆わず、`判断データを準備しています。カレンダーはそのまま操作できます。` を live region で伝え、候補 task、work-state control、target month control、write CTA をまだ表示しない。同じ facility / batch / calendar range の有効な list がある再同期では、その list を loading shell へ戻さない。異なる context の list、error、別 context の loading、または host 配置が古い workspace は保持せず、現在 context の loading shell へ自己修復する。
 - 候補単位は `stayDate x roomGroup` とし、選択 key は少なくとも stayDate と roomGroup を含む安定 key にする。
 - 対象月 filter と表示件数 control は維持する。候補は宿泊日で grouping し、各 task に部屋タイプ、判断方向、現在 rank、候補 rank、根拠取得状態を表示する。
+- 対象月を変更した場合は、rail の task、選択詳細、calendar cue を同じ対象月へ同期する。calendar cue だけが新しい月へ移り、rail または詳細に旧月の候補が残る状態を許容しない。
 - 作業状態は `判断可能`、`要確認`、`保留・直近` の 3 つとし、各件数を表示する。pending decision、rank 変更処理中、直近変更がある候補は `保留・直近` を優先する。変更候補または根拠が揃わない、注意が残る、送信不可、監視、対象外の候補は `要確認` とする。それ以外の active な上げ / 下げ候補を `判断可能` とする。
 - 選択中 task は視覚表示と `aria-selected` で区別する。filter または再同期で選択中 task が消えた場合は、利用可能な state と候補へ安全に fallback し、別 task の詳細を同じ選択として扱わない。
 - HTTP 401 は再ログイン、HTTP 403 は権限確認、その他 HTTP status と network error は取得失敗として区別し、候補が空である状態と混同しない。
@@ -719,12 +721,12 @@ UI primitive 導入方針:
 - 表示対象 calendar cell は、`hidden`、`aria-hidden="true"`、`display:none`、`visibility:hidden`、`opacity:0`、または layout box を持たない transition / offscreen duplicate を除外する。
 - calendar 同期は、DOM generation、表示中 calendar element と parent、日付範囲、cell count / order / element identity を context とする。非同期取得の await 後に context が変わっていれば結果を描画せず、最新 DOM へ forced resync する。stale result で target month、work state、calendar cue、workspace root を巻き戻さない。
 - target month は React の controlled select とし、選択値を main module へ明示的に渡す。選択中月が候補 month options から外れた場合は `全ての月` へ戻す。
-- calendar の判断 cue は日付 cell 左端の非文字 edge cue と screen-reader 用 description に限定する。description node は日付 link の accessible name へ混入しないよう link 外へ置く。標準の黒い値、青い `団n`、today / selected / focus / warm-cache marker、native `box-shadow` を上書きしない。既存 `aria-describedby` token を保持し、RAU token だけを追加・削除する。右下の `判` / `要` / `保` pill は使わない。
+- calendar の判断 cue は日付 cell 左端の非文字 edge cue と screen-reader 用 description に限定する。description は同じ宿泊日の候補を集約し、候補総数と `判断可能` / `要確認` / `保留・直近` の日付別件数を rail と一致させる。description node は日付 link の accessible name へ混入しないよう link 外へ置く。標準の黒い値、青い `団n`、today / selected / focus / warm-cache marker、native `box-shadow` を上書きしない。既存 `aria-describedby` token を保持し、RAU token だけを追加・削除する。右下の `判` / `要` / `保` pill は使わない。
 - Revenue Assistant または React 再描画で workspace root、detail、calendar cue が取り除かれた場合は、重複を作らず最新 context へ自己修復する。対象外 route または機能停止では workspace、layout 属性、cue、description token を cleanup する。empty、HTTP 401 / 403 では workspace の状態表示と safe layout を残し、calendar cue と RAU description token だけを cleanup する。
 - `data-ra-rank-recommendation-ui-component` は `workspace-rail`、rail header / controls / task list、detail、review、pending、result の確認入口として使う。旧 table / row marker の存在を現行合格条件にしない。
 - evidence は選択中 candidate だけを hydrate する。React の再描画で data adapter、candidate scoring、API request を重複実行しない。
 - desktop と narrow layout の両方で、task selection、3 つの work-state control、target month、Analyze、様子見、対応不要、変更内容確認、確認 cancel、最終変更の keyboard / focus / disabled 状態を verify する。
-- Vite fixture は合成データだけを使い、候補あり、empty、OH / 個人 / 団体の missing / zero / large count、long room name、decision pending、rank change confirming / success / failure、HTTP 401 / 403、mobile を確認できるようにする。実データ、認証情報、API response body、価格や在庫の非公開データは保存しない。
+- Vite fixture は合成データだけを使い、候補あり、empty、OH / 個人 / 団体の missing / zero / large count、long room name、decision pending、rank change confirming / success / failure、HTTP 401 / 403、mobile を確認できるようにする。対象月を変えた snapshot の候補日、controlled select、calendar cue source が同じ `YYYYMM` で、対象月件数が work-state 件数合計と一致し、日付別 cue の総数 / 状態別件数 / dominant state / 読み上げ文言が候補と一致することを contract check で固定する。実 DOM 上の cue 移動と標準表示の不変は Browser fixture で確認する。実データ、認証情報、API response body、価格や在庫の非公開データは保存しない。
 - write fixture は確認 region を開いた後に 5 秒以上待っても送信 count が 0 のままであること、cancel でも 0 のままであること、最終 button の明示押下で mock submit が 1 回だけ発生することを確認する。fixture から live endpoint は呼ばない。
 
 2026-06-01 UI overhaul 契約 (2026-07-17 layout / rank-write interaction superseded; historical):

@@ -8318,6 +8318,39 @@ function shouldAbortRankRecommendationCalendarSync(
     return true;
 }
 
+function shouldRenderRankRecommendationLoadingShell(
+    loadingSignature: string,
+    readySignaturePrefix: string
+): boolean {
+    const rootElement = document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`);
+    const detailElement = document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_DETAIL_ATTRIBUTE}]`);
+    const host = resolveRankRecommendationListHost();
+    if (rootElement === null || detailElement === null || host === null) {
+        return true;
+    }
+
+    const isCurrentPlacement = rootElement.parentElement === host.parentElement
+        && rootElement.previousElementSibling === host.insertAfterElement
+        && detailElement.parentElement === host.parentElement
+        && detailElement.previousElementSibling === rootElement;
+    if (!isCurrentPlacement) {
+        return true;
+    }
+
+    const existingSignature = rootElement.getAttribute(RANK_RECOMMENDATION_LIST_SIGNATURE_ATTRIBUTE);
+    if (existingSignature === loadingSignature) {
+        return false;
+    }
+    if (
+        existingSignature === null
+        || existingSignature.startsWith("loading:")
+        || existingSignature.startsWith("error:")
+    ) {
+        return true;
+    }
+    return !existingSignature.startsWith(readySignaturePrefix);
+}
+
 async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey: string): Promise<void> {
     const cells = collectMonthlyCalendarCells();
     if (cells.length === 0 || activeAnalyzeDate !== null) {
@@ -8343,6 +8376,15 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     if (isRankRecommendationFixtureModeEnabled()) {
         renderRankRecommendationListFixture(batchDateKey, facilityCacheKey, cells);
         return;
+    }
+
+    const loadingSignature = `loading:${facilityCacheKey}:${batchDateKey}:${dateRange.fromDateKey}:${dateRange.toDateKey}`;
+    const readySignaturePrefix = `${facilityCacheKey}:${batchDateKey}:${dateRange.fromDateKey}:${dateRange.toDateKey}:`;
+    if (shouldRenderRankRecommendationLoadingShell(loadingSignature, readySignaturePrefix)) {
+        renderRankRecommendationList([], {
+            signature: loadingSignature,
+            statusText: "判断データを準備しています。カレンダーはそのまま操作できます。"
+        });
     }
 
     const generatedAt = new Date().toISOString();

@@ -43,8 +43,24 @@ const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
 ];
 
 const FIXTURE_CALENDAR_MONTHS = ["202607", "202608", "202609"] as const;
-const FIXTURE_CANDIDATE_DATES = new Set(["20260723", "20260724", "20260805", "20260812", "20260908", "20260918"]);
 const FIXTURE_NATIVE_HIGHLIGHT_DATES = new Set(["20260723", "20260805", "20260908"]);
+const FIXTURE_CANDIDATE_DATE_KEYS_BY_MONTH = {
+    "202607": {
+        primary: "20260723",
+        secondary: "20260724",
+        needsEvidence: "20260727"
+    },
+    "202608": {
+        primary: "20260805",
+        secondary: "20260812",
+        needsEvidence: "20260812"
+    },
+    "202609": {
+        primary: "20260908",
+        secondary: "20260918",
+        needsEvidence: "20260918"
+    }
+} as const;
 const FIXTURE_CALENDAR_CUE_ATTRIBUTE = "data-ra-rank-recommendation-calendar-cue";
 const FIXTURE_CALENDAR_DESCRIPTION_ATTRIBUTE = "data-ra-rank-recommendation-calendar-description";
 const FIXTURE_CALENDAR_STATE_ATTRIBUTE = "data-ra-rank-recommendation-calendar-state";
@@ -201,8 +217,11 @@ function renderFixture(
     syncFixtureCalendarMarkers(state);
 }
 
-export function buildFixtureSnapshot(state: FixtureState): RankRecommendationReactListSnapshot {
-    const candidates = buildCandidatesForState(state);
+export function buildFixtureSnapshot(
+    state: FixtureState,
+    targetMonth = currentFixtureTargetMonth
+): RankRecommendationReactListSnapshot {
+    const candidates = buildCandidatesForState(state, targetMonth);
     const activeWorkState = resolveFixtureWorkState(state);
     const emptyText = getEmptyTextForState(state);
     const workStateCounts = candidates.length === 0
@@ -217,11 +236,11 @@ export function buildFixtureSnapshot(state: FixtureState): RankRecommendationRea
         emptyText,
         controls: {
             targetMonth: {
-                currentValue: currentFixtureTargetMonth,
+                currentValue: targetMonth,
                 options: [
                     { value: "202607", label: "2026年7月 (6件)" },
-                    { value: "202608", label: "2026年8月 (2件)" },
-                    { value: "202609", label: "2026年9月 (2件)" }
+                    { value: "202608", label: "2026年8月 (6件)" },
+                    { value: "202609", label: "2026年9月 (6件)" }
                 ]
             },
             workState: {
@@ -279,9 +298,55 @@ export function buildAllFixtureSnapshots(): readonly RankRecommendationReactList
     return FIXTURE_STATES.map((state) => buildFixtureSnapshot(state.value));
 }
 
+export function buildFixtureCalendarCueAggregates(
+    state: FixtureState,
+    targetMonth = currentFixtureTargetMonth
+): readonly {
+    stayDateKey: string;
+    dominantState: RankRecommendationWorkState;
+    totalCount: number;
+    stateCounts: Record<RankRecommendationWorkState, number>;
+    label: string;
+}[] {
+    const statesByStayDate = new Map<string, RankRecommendationWorkState[]>();
+    for (const candidate of buildCandidatesForState(state, targetMonth)) {
+        const states = statesByStayDate.get(candidate.stayDateKey) ?? [];
+        states.push(candidate.workState);
+        statesByStayDate.set(candidate.stayDateKey, states);
+    }
+    return Array.from(statesByStayDate, ([stayDateKey, states]) => {
+        const stateCounts: Record<RankRecommendationWorkState, number> = {
+            ready: states.filter((workState) => workState === "ready").length,
+            needs_evidence: states.filter((workState) => workState === "needs_evidence").length,
+            recent_or_held: states.filter((workState) => workState === "recent_or_held").length
+        };
+        const dominantState: RankRecommendationWorkState = stateCounts.ready > 0
+            ? "ready"
+            : stateCounts.needs_evidence > 0
+                ? "needs_evidence"
+                : "recent_or_held";
+        const label = [
+            `料金調整候補 ${states.length}件`,
+            stateCounts.ready > 0 ? `判断可能 ${stateCounts.ready}件` : null,
+            stateCounts.needs_evidence > 0 ? `要確認 ${stateCounts.needs_evidence}件` : null,
+            stateCounts.recent_or_held > 0 ? `保留・直近 ${stateCounts.recent_or_held}件` : null
+        ].filter((part): part is string => part !== null).join("、");
+        return {
+            stayDateKey,
+            dominantState,
+            totalCount: states.length,
+            stateCounts,
+            label
+        };
+    });
+}
+
 export { renderRankRecommendationReactListElement };
 
-function buildCandidatesForState(state: FixtureState): RankRecommendationReactCandidateSnapshot[] {
+function buildCandidatesForState(
+    state: FixtureState,
+    targetMonth: string
+): RankRecommendationReactCandidateSnapshot[] {
     if (state === "empty" || state === "current-settings-401" || state === "current-settings-403") {
         return [];
     }
@@ -364,22 +429,26 @@ function buildCandidatesForState(state: FixtureState): RankRecommendationReactCa
         });
     }
 
+    const candidateDateKeys = resolveFixtureCandidateDateKeys(targetMonth);
+    const primaryDateLabel = formatFixtureStayDateLabel(candidateDateKeys.primary);
+    const secondaryDateLabel = formatFixtureStayDateLabel(candidateDateKeys.secondary);
+    const needsEvidenceDateLabel = formatFixtureStayDateLabel(candidateDateKeys.needsEvidence);
     const primary: RankRecommendationReactCandidateSnapshot = {
         ...buildCandidate({
-        key: "fixture:20260723:camp-twin-s",
-        stayDateKey: "20260723",
-        stayDateLabel: "2026-07-23（木）",
-        dateGroupLabel: "2026-07-23（木）",
-        roomGroupName: "キャンプ、ツインS",
-        action: "raise_watch",
-        actionLabel: "上げ検討",
-        currentRankText: "11",
-        recommendedRankText: "10",
-        occupancyText: "OH 7 / キャパ 18",
-        individualText: "5",
-        groupText: "2",
-        reasonText: "個人の予約ペースが基準を上回り、団体を除いても需要の強さを確認",
-        evidenceStatusText: "個人・団体を直接取得 / 最新基準日あり"
+            key: `fixture:${candidateDateKeys.primary}:camp-twin-s`,
+            stayDateKey: candidateDateKeys.primary,
+            stayDateLabel: primaryDateLabel,
+            dateGroupLabel: primaryDateLabel,
+            roomGroupName: "キャンプ、ツインS",
+            action: "raise_watch",
+            actionLabel: "上げ検討",
+            currentRankText: "11",
+            recommendedRankText: "10",
+            occupancyText: "OH 7 / キャパ 18",
+            individualText: "5",
+            groupText: "2",
+            reasonText: "個人の予約ペースが基準を上回り、団体を除いても需要の強さを確認",
+            evidenceStatusText: "個人・団体を直接取得 / 最新基準日あり"
         }),
         ...baseOverrides
     };
@@ -397,10 +466,10 @@ function buildCandidatesForState(state: FixtureState): RankRecommendationReactCa
                 confirmButton: { ...primary.confirmButton, disabled: true }
             },
             buildCandidate({
-                key: "fixture:20260727:single",
-                stayDateKey: "20260727",
-                stayDateLabel: "2026-07-27（月）",
-                dateGroupLabel: "2026-07-27（月）",
+                key: `fixture:${candidateDateKeys.needsEvidence}:single`,
+                stayDateKey: candidateDateKeys.needsEvidence,
+                stayDateLabel: needsEvidenceDateLabel,
+                dateGroupLabel: needsEvidenceDateLabel,
                 roomGroupName: "シングル",
                 workState: "needs_evidence",
                 action: "lower_watch",
@@ -432,10 +501,10 @@ function buildCandidatesForState(state: FixtureState): RankRecommendationReactCa
     return [
         primary,
         buildCandidate({
-            key: "fixture:20260724:standard-twin",
-            stayDateKey: "20260724",
-            stayDateLabel: "2026-07-24（金）",
-            dateGroupLabel: "2026-07-24（金）",
+            key: `fixture:${candidateDateKeys.secondary}:standard-twin`,
+            stayDateKey: candidateDateKeys.secondary,
+            stayDateLabel: secondaryDateLabel,
+            dateGroupLabel: secondaryDateLabel,
             roomGroupName: "スタンダードツイン",
             action: "lower_watch",
             actionLabel: "下げ注意",
@@ -448,10 +517,10 @@ function buildCandidatesForState(state: FixtureState): RankRecommendationReactCa
             evidenceStatusText: "個人・団体を直接取得 / 最新基準日あり"
         }),
         buildCandidate({
-            key: "fixture:20260724:family",
-            stayDateKey: "20260724",
-            stayDateLabel: "2026-07-24（金）",
-            dateGroupLabel: "2026-07-24（金）",
+            key: `fixture:${candidateDateKeys.secondary}:family`,
+            stayDateKey: candidateDateKeys.secondary,
+            stayDateLabel: secondaryDateLabel,
+            dateGroupLabel: secondaryDateLabel,
             roomGroupName: "ファミリールーム",
             action: "raise_watch",
             actionLabel: "上げ検討",
@@ -464,6 +533,17 @@ function buildCandidatesForState(state: FixtureState): RankRecommendationReactCa
             evidenceStatusText: "個人・団体を直接取得 / 最新基準日あり"
         })
     ];
+}
+
+function resolveFixtureCandidateDateKeys(
+    targetMonth: string
+): (typeof FIXTURE_CANDIDATE_DATE_KEYS_BY_MONTH)[keyof typeof FIXTURE_CANDIDATE_DATE_KEYS_BY_MONTH] {
+    if (targetMonth in FIXTURE_CANDIDATE_DATE_KEYS_BY_MONTH) {
+        return FIXTURE_CANDIDATE_DATE_KEYS_BY_MONTH[
+            targetMonth as keyof typeof FIXTURE_CANDIDATE_DATE_KEYS_BY_MONTH
+        ];
+    }
+    return FIXTURE_CANDIDATE_DATE_KEYS_BY_MONTH["202607"];
 }
 
 function buildCandidate(
@@ -588,6 +668,16 @@ function formatFixtureStayDatePath(stayDateKey: string): string {
         : stayDateKey;
 }
 
+function formatFixtureStayDateLabel(stayDateKey: string): string {
+    const year = Number(stayDateKey.slice(0, 4));
+    const month = Number(stayDateKey.slice(4, 6));
+    const day = Number(stayDateKey.slice(6, 8));
+    const weekday = ["日", "月", "火", "水", "木", "金", "土"][
+        new Date(Date.UTC(year, month - 1, day)).getUTCDay()
+    ];
+    return `${formatFixtureStayDatePath(stayDateKey)}（${weekday}）`;
+}
+
 function resolveFixtureWorkState(state: FixtureState): RankRecommendationWorkState {
     if (state === "needs-evidence" || state === "missing-counts" || state === "write-failure") {
         return "needs_evidence";
@@ -668,10 +758,8 @@ function createFixtureCalendarCell(year: number, month: number, day: number): Do
     anchorElement.href = "#";
     anchorElement.setAttribute("data-testid", `calendar-date-${dateWithHyphen}`);
     anchorElement.setAttribute("data-ra-fixture-calendar-cell", "");
+    anchorElement.setAttribute("data-ra-fixture-stay-date", compactDate);
     anchorElement.setAttribute("data-ra-fixture-stay-month", compactDate.slice(0, 6));
-    if (FIXTURE_CANDIDATE_DATES.has(compactDate)) {
-        anchorElement.setAttribute("data-ra-fixture-candidate-date", "");
-    }
     if (FIXTURE_NATIVE_HIGHLIGHT_DATES.has(compactDate)) {
         anchorElement.setAttribute("data-ra-fixture-native-highlight", "");
     }
@@ -737,25 +825,25 @@ function installFixtureWorkspaceLayoutObserver(parentElement: HTMLElement, calen
 
 function syncFixtureCalendarMarkers(state: FixtureState): void {
     cleanupFixtureCalendarMarkers();
-    const activeState = resolveFixtureWorkState(state);
-    document.querySelectorAll<HTMLElement>("[data-ra-fixture-candidate-date]").forEach((element, index) => {
-        if (
-            state === "empty"
-            || state === "current-settings-401"
-            || state === "current-settings-403"
-            || element.getAttribute("data-ra-fixture-stay-month") !== currentFixtureTargetMonth
-        ) {
+    const cueByStayDate = new Map(
+        buildFixtureCalendarCueAggregates(state, currentFixtureTargetMonth)
+            .map((cue) => [cue.stayDateKey, cue] as const)
+    );
+    document.querySelectorAll<HTMLElement>("[data-ra-fixture-calendar-cell]").forEach((element) => {
+        const stayDate = element.getAttribute("data-ra-fixture-stay-date");
+        const cue = stayDate === null ? undefined : cueByStayDate.get(stayDate);
+        if (stayDate === null || cue === undefined) {
             return;
         }
-        element.setAttribute(FIXTURE_CALENDAR_STATE_ATTRIBUTE, activeState);
+        element.setAttribute(FIXTURE_CALENDAR_STATE_ATTRIBUTE, cue.dominantState);
         const cueElement = document.createElement("span");
         cueElement.setAttribute(FIXTURE_CALENDAR_CUE_ATTRIBUTE, "");
         cueElement.setAttribute("aria-hidden", "true");
         const descriptionElement = document.createElement("span");
-        const descriptionId = `fixture-rank-calendar-description-${currentFixtureTargetMonth}-${index}`;
+        const descriptionId = `fixture-rank-calendar-description-${stayDate}`;
         descriptionElement.id = descriptionId;
         descriptionElement.setAttribute(FIXTURE_CALENDAR_DESCRIPTION_ATTRIBUTE, "");
-        descriptionElement.textContent = `料金調整候補 1件、${formatFixtureWorkState(activeState)} 1件`;
+        descriptionElement.textContent = cue.label;
         const describedByTokens = (element.getAttribute("aria-describedby") ?? "")
             .split(/\s+/u)
             .filter((token) => token !== "");
@@ -791,16 +879,6 @@ function cleanupFixtureCalendarMarkers(): void {
     document.querySelectorAll<HTMLElement>(`[${FIXTURE_CALENDAR_STATE_ATTRIBUTE}]`).forEach((element) => {
         element.removeAttribute(FIXTURE_CALENDAR_STATE_ATTRIBUTE);
     });
-}
-
-function formatFixtureWorkState(state: RankRecommendationWorkState): string {
-    if (state === "needs_evidence") {
-        return "要確認";
-    }
-    if (state === "recent_or_held") {
-        return "保留・直近";
-    }
-    return "判断可能";
 }
 
 function renderFixtureEvidence(container: HTMLElement, state: FixtureState): void {
