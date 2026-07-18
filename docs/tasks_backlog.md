@@ -86,19 +86,26 @@
 ### RAU-UX-143 cold start から最初の判断可能候補までの待ち時間を短縮する
 
 - 状態:
-  - 未着手。`RAU-UX-142` の live candidate smoke で、loading shell は即時表示できたが、cold cache では 2分30秒超と read-only request 200件超の後も ready state に到達しなかった。
+  - 2026-07-18 に local 実装と合成 fixture QA を完了した。`RAU-UX-142` の live candidate smoke で確認した loading shell は維持し、booking curve scoring、lifecycle、対象月、work-state filter が確定した時点で最初の正しい task を先に描画する。current settings だけから仮の方向、rank、reasonFingerprint は出さず、重い reference / graph preview は選択中候補だけを lazy hydrate する。
 - 目的:
   - カレンダーを塞がない loading shell を維持しつつ、最初に実務判断できる候補が現れるまでの時間を短くする。
   - request 数や concurrency を増やすことを先に解決策とせず、current settings、対象月、候補生成、evidence hydration の依存順を分け、最小の正しい候補を段階表示できるか判断する。
 - 受け入れ条件:
-  - shell 表示、current settings 完了、最初の正しい task 表示、選択詳細の evidence 完了、全対象月完了の sanitized timing / count を区別して計測できる。実施設値、価格・在庫、response body、raw trace は保存しない。
+  - shell 表示、current settings 完了、表示範囲の candidate evidence 解決、最初の正しい task 表示、選択詳細の evidence 完了を sanitized timing / count で区別して計測できる。実施設値、価格・在庫、response body、raw trace は保存しない。
   - 対象月または表示中月を優先する案、保存済み evidence だけで先に表示する案、evidence 不足候補を `要確認` として段階表示する案を比較し、誤った `判断可能` を出さない。
   - 段階表示中も、rail / detail / calendar cue の対象月、OH / 個人 / 団体の直接取得 / 未取得、stale async guard、標準 UI 非干渉、監視対象 write API POST 0 を維持する。
   - API request scope、request pace、concurrency、保存 schemaを変える場合は、Yellow boundary として実装前に spec / decision を更新する。
 - gate:
   - 利用者は 2026-07-18 の candidate smoke 後に Tampermonkey userscript を再有効化した。live 再試験は、再び単一 runtime を作る明示承認がある場合だけ行う。publish、実 write は含めない。
+- local implementation:
+  - readiness を `loading` / `first_task` / `needs_evidence` / `complete` / `error`、選択詳細 evidence を `pending` / `complete` / `missing` として明示した。`first_task` では OH / キャパを current settings、個人 / 団体を scoring evidence の直接値で表示し、task 選択、対象月切替、Analyze だけを有効にする。work-state、表示件数、rank 順編集、`変更内容を確認`、`様子見`、`対応不要` は preview complete まで無効または非表示にする。terminal missing は `needs_evidence` として work-state navigation だけを戻し、候補の判断操作は無効を維持する。同一 context で一度表示した work-state navigation は別候補または retry の pending 中も維持し、focus と pressed 状態を失わない。0 は `0`、欠損は `未取得` とし、差し引き補完しない。
+  - 選択候補 preview の async 完了は calendar DOM generation、interaction generation、facility、batch、range の既存 stale guard を通し、readiness を含む `chartKey` で old graph を pending 表示へ確実に置き換える。selected-only coordinator により、A 取得中に B を選んだ場合も A の完了で B を完了扱いせず、未選択 C を自動取得しない。missing は work-state filter / count / calendar cue を再計算し、active view も候補の新しい state へ移す。選択候補が新 view の11件目以降でも表示上限内へ pin し、同一 context の terminal readiness を再同期へ引き継ぐ。work-state navigation は current run 内で切り替えて missing 判定を失わず、ユーザーが別 state を明示選択した場合だけ次の候補を選ぶ。raw source / stored status / reference cache の browser-local read error は transient として terminal cache へ固定せず、選択中候補の `判断根拠を再取得` だけで明示的に再読込する。permanent missing、自動 retry、warm-cache request、外部 API request、未選択候補の hydrate は追加しない。対象月 option は facility / batch / calendar range が一致する場合だけ再利用し、旧 context または旧 option の event は warm-cache priority へ渡さない。対象月切替は select を残した loading へ即時移り、旧月の rail / detail / cue を消す。rail header だけを安定した polite live region とし、detail evidence は重複通知しない。
+  - `data-ra-fetch-performance-summary` に run / shell / current settings / candidate evidence / first task / selected evidence の timestamp と、current settings、evidence、candidate、target month の件数・selected evidence status だけを追加した。rank readiness metrics は後続 warm cache reset でも保持する。facility、stay date、roomGroup、価格・在庫値、request / response body、raw trace は追加していない。API request scope、request pace、concurrency、保存 schema、Revenue Assistant write API は変更していない。
+- local verification:
+  - Browser fixture で `loading`、7月 / 8月の `first_task`、`complete`、0、missing を確認した。対象月、rail、detail、calendar cue は同月で、OH `7 / 18`、個人 `5`、団体 `2` の直接値、pending graph 0 canvas、判断操作 3 件 disabled、Analyze enabled、rail live region 1、document overflow 0、mock write 0 だった。ready から first-task へ戻した際に旧 graph が残る不具合と、8月 first-task の progress 文言が7月固定になる不整合を検出して修正した。後続の独立レビューで見つけた月切替 loading、single live region、controls、missing 再分類、表示上限外 selection、判断状態 navigation、旧 context 月 option、transient retry / permanent missing の分離、retry 中の navigation 維持は production / fixture 共用 policy、deferred A/B/C coordinator test、source review で追加確認した。retry button の実 DOM focus ring は live gate のため未確認である。
+  - `npm run check`、`npm run build:vite:fixture`、`npm run build:vite:candidate`、`npm run check:fixture-markers`、`npm run check:request-scheduler`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:compare:vite`、`npm run react:doctor -- --diff false --verbose`、`git diff --check` は exit 0。candidate は 643,178 bytes、正規 build との差 10 bytes、metadata mismatch 0、SHA-256 `ABDAAE64A5045576860494EF40E6A422D0F2365B31D6C59846A5C846D5DBFB89`。React Doctor は 51 warnings で、既知の entry detection、sequential await / `flushSync`、token 名の false positive、既存 unused dependency を含む。独立した pipeline / test / UX 再監査は P1 / P2 残存なし。実 DOM の retry focus ring は live gate のため未確認である。
 
-Remaining Task Triage は Next `RAU-UX-143` とする。`RAU-UX-142` の ready-state live interaction は `RAU-UX-143` の first-ready latency 対応後に再確認する。publish は同じ自動 closeout とみなさず明示承認 gate とする。
+Remaining Task Triage は local implementation の未着手項目なしとする。外部 gate として、単一 userscript runtime を再作成する明示承認後の cold-cache / ready-state live interaction と timing 実測、その後の別の publish 明示承認だけが残る。publish は同じ自動 closeout とみなさず、`main` push を行わない。
 
 ## 2026-06-29 Docs Governance Profile
 

@@ -4,13 +4,25 @@ import {
     syncMonthlyProgressPage
 } from "./monthlyProgress";
 import {
+    resolveRankRecommendationReactReadinessStage,
     syncRankRecommendationReactList,
     unmountRankRecommendationReactIsland,
     type RankRecommendationReactButtonSnapshot,
     type RankRecommendationReactCandidateSnapshot,
     type RankRecommendationReactControlsSnapshot,
-    type RankRecommendationReactActions
+    type RankRecommendationReactActions,
+    type RankRecommendationReactEvidenceReadiness,
+    type RankRecommendationReactReadinessStage
 } from "./rankRecommendationReactIsland";
+import {
+    buildRankRecommendationProgressiveContextSignature,
+    createRankRecommendationProgressiveEvidenceCoordinator,
+    createRankRecommendationProgressiveEvidenceRequestCache,
+    limitRankRecommendationItemsWithSelectedKey,
+    resolveRankRecommendationProgressiveControlVisibility,
+    resolveRankRecommendationProgressiveWorkStateControlPublished,
+    shouldCacheRankRecommendationProgressiveEvidence
+} from "./rankRecommendationProgressiveReadiness";
 import {
     countRankRecommendationWorkStates,
     resolveRankRecommendationWorkState,
@@ -262,6 +274,7 @@ const RANK_RECOMMENDATION_CURVE_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommenda
 const RANK_RECOMMENDATION_CURVE_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-cell";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_KEY_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-key";
 const RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-diagnostics";
+const RANK_RECOMMENDATION_CURVE_PREVIEW_LOADING_ATTRIBUTE = "data-ra-rank-recommendation-curve-preview-loading";
 const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_ROW_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-row";
 const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_CELL_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-cell";
 const RANK_RECOMMENDATION_COMPETITOR_PREVIEW_KEY_ATTRIBUTE = "data-ra-rank-recommendation-competitor-preview-key";
@@ -922,6 +935,21 @@ interface FetchPerformanceBookingCurveMetrics {
     referenceInteractiveWaitMs: number | null;
     referenceInteractiveMaxConcurrentRequests: number;
     referenceInteractiveMinStartIntervalMs: number | null;
+    rankRecommendationRunStartedAt: number | null;
+    rankRecommendationShellRenderedAt: number | null;
+    rankRecommendationCurrentSettingsCompletedAt: number | null;
+    rankRecommendationCandidateEvidenceResolvedAt: number | null;
+    rankRecommendationFirstTaskRenderedAt: number | null;
+    rankRecommendationSelectedEvidenceCompletedAt: number | null;
+    rankRecommendationCurrentSettingDateCount: number;
+    rankRecommendationCurrentSettingRoomGroupCount: number;
+    rankRecommendationCandidateEvidenceResolvedCount: number;
+    rankRecommendationCandidateEvidenceCompleteCount: number;
+    rankRecommendationCandidateEvidenceMissingCount: number;
+    rankRecommendationCandidateCount: number;
+    rankRecommendationVisibleCandidateCount: number;
+    rankRecommendationTargetMonthCount: number;
+    rankRecommendationSelectedEvidenceStatus: RankRecommendationReactEvidenceReadiness | null;
     httpErrorCount: number;
     autoTightenedReason: string | null;
 }
@@ -1110,6 +1138,9 @@ interface RankRecommendationListViewRow {
     candidate: RankRecommendationCandidate;
     displayInfo: RankRecommendationDisplayInfo | null;
     curvePreviewInfo: RankRecommendationCurvePreviewInfo | null;
+    curvePreviewReadiness: RankRecommendationReactEvidenceReadiness;
+    individualRoomCount: number | null;
+    groupRoomCount: number | null;
     rankOptions: readonly { code: string; name: string }[];
     actionLabel: string;
     reasonText: string;
@@ -1148,6 +1179,7 @@ interface RankRecommendationCurvePreviewInfo {
     currentOverallRoomCount: number | null;
     currentSecondaryRoomCount: number | null;
     rawSourceStatus: RankRecommendationRawSourceStatus;
+    transientFailure: boolean;
     segmentVariants: Partial<Record<SalesSettingBookingCurveSecondarySegment, RankRecommendationCurvePreviewSegmentVariant>>;
     diagnostics: string[];
     signature: string;
@@ -1240,7 +1272,20 @@ let rankRecommendationWarmCachePriorityCandidates: RankRecommendationWarmCachePr
 let rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
 let rankRecommendationViewMode: RankRecommendationViewMode = "ready";
 let rankRecommendationTargetMonth: string | null = null;
+let rankRecommendationTargetMonthOptions: RankRecommendationTargetMonthOption[] = [];
+let rankRecommendationTargetMonthOptionsContextSignature = "";
 let rankRecommendationInteractionGeneration = 0;
+let rankRecommendationProgressiveEvidenceContextSignature = "";
+let rankRecommendationProgressiveEvidenceContextGeneration = 0;
+let rankRecommendationProgressiveSelectedCandidateKey: string | null = null;
+let rankRecommendationProgressiveWorkStateControlPublished = false;
+const rankRecommendationProgressiveEvidenceCacheByKey = new Map<string, {
+    readiness: RankRecommendationReactEvidenceReadiness;
+    value: RankRecommendationCurvePreviewInfo;
+}>();
+const rankRecommendationProgressiveEvidenceRequestCache =
+    createRankRecommendationProgressiveEvidenceRequestCache<RankRecommendationCurvePreviewInfo>();
+let rankRecommendationSyncRunGeneration = 0;
 let salesSettingWarmCacheStoredCalendarMarkerSignature = "";
 let salesSettingWarmCacheStoredCalendarMarkerRequestSeq = 0;
 let salesSettingWarmCacheStoredCalendarMarkerStates = new Map<string, SalesSettingWarmCacheStoredMarkerState>();
@@ -3041,7 +3086,15 @@ function resetRankRecommendationDisplayLimit(): void {
 
 function setRankRecommendationViewModeFromElement(element: HTMLElement): void {
     const viewMode = parseRankRecommendationViewMode(element.getAttribute(RANK_RECOMMENDATION_VIEW_MODE_ATTRIBUTE));
-    if (viewMode === null || viewMode === rankRecommendationViewMode) {
+    if (viewMode === null) {
+        return;
+    }
+
+    setRankRecommendationViewMode(viewMode);
+}
+
+function setRankRecommendationViewMode(viewMode: RankRecommendationViewMode): void {
+    if (viewMode === rankRecommendationViewMode) {
         return;
     }
 
@@ -3059,7 +3112,19 @@ function setRankRecommendationTargetMonthFromElement(element: HTMLSelectElement)
 }
 
 function setRankRecommendationTargetMonth(value: string): void {
+    if (!hasCurrentRankRecommendationTargetMonthOptionsContext()) {
+        clearRankRecommendationTargetMonthOptionsContext();
+        queueCalendarSync({ force: true, reason: "rank-recommendation-stale-target-month-control" });
+        return;
+    }
     const targetMonth = parseRankRecommendationTargetMonth(value);
+    if (
+        targetMonth !== null
+        && !rankRecommendationTargetMonthOptions.some((option) => option.month === targetMonth)
+    ) {
+        queueCalendarSync({ force: true, reason: "rank-recommendation-stale-target-month-option" });
+        return;
+    }
     if (targetMonth === rankRecommendationTargetMonth) {
         return;
     }
@@ -3070,10 +3135,53 @@ function setRankRecommendationTargetMonth(value: string): void {
     rankRecommendationCurvePreviewOpenState.clear();
     rankRecommendationCompetitorPreviewOpenState.clear();
     rankRecommendationRankChangePreviewOpenState.clear();
+    renderRankRecommendationTargetMonthTransition(targetMonth);
     if (targetMonth !== null) {
         requestSalesSettingWarmCachePriorityMonth(targetMonth);
     }
     queueCalendarSync({ force: true, reason: "rank-recommendation-target-month" });
+}
+
+function hasCurrentRankRecommendationTargetMonthOptionsContext(): boolean {
+    if (
+        rankRecommendationTargetMonthOptionsContextSignature === ""
+        || activeFacilityCacheKey === null
+        || activeBatchDateKey === null
+    ) {
+        return false;
+    }
+    const cells = collectMonthlyCalendarCells();
+    const dateRange = getMonthlyCalendarDateRange(cells);
+    if (dateRange === null) {
+        return false;
+    }
+    return rankRecommendationTargetMonthOptionsContextSignature === buildRankRecommendationProgressiveContextSignature({
+        facilityCacheKey: activeFacilityCacheKey,
+        batchDateKey: activeBatchDateKey,
+        fromDateKey: dateRange.fromDateKey,
+        toDateKey: dateRange.toDateKey
+    });
+}
+
+function clearRankRecommendationTargetMonthOptionsContext(): void {
+    rankRecommendationTargetMonthOptions = [];
+    rankRecommendationTargetMonthOptionsContextSignature = "";
+}
+
+function renderRankRecommendationTargetMonthTransition(targetMonth: string | null): void {
+    if (rankRecommendationTargetMonthOptions.length === 0) {
+        return;
+    }
+    const targetLabel = targetMonth === null
+        ? "全ての月"
+        : formatRankRecommendationTargetMonthLabel(targetMonth);
+    renderRankRecommendationList([], {
+        signature: `loading:target-month:${rankRecommendationInteractionGeneration}:${targetMonth ?? "all"}`,
+        readinessStage: "loading",
+        statusText: `${targetLabel}の候補判定を準備しています。カレンダーはそのまま操作できます。`,
+        targetMonth,
+        targetMonthOptions: rankRecommendationTargetMonthOptions
+    });
 }
 
 function parseRankRecommendationViewMode(value: string | null): RankRecommendationViewMode | null {
@@ -3685,6 +3793,21 @@ function createInitialFetchPerformanceMetrics(): FetchPerformanceMetrics {
             referenceInteractiveWaitMs: null,
             referenceInteractiveMaxConcurrentRequests: 0,
             referenceInteractiveMinStartIntervalMs: null,
+            rankRecommendationRunStartedAt: null,
+            rankRecommendationShellRenderedAt: null,
+            rankRecommendationCurrentSettingsCompletedAt: null,
+            rankRecommendationCandidateEvidenceResolvedAt: null,
+            rankRecommendationFirstTaskRenderedAt: null,
+            rankRecommendationSelectedEvidenceCompletedAt: null,
+            rankRecommendationCurrentSettingDateCount: 0,
+            rankRecommendationCurrentSettingRoomGroupCount: 0,
+            rankRecommendationCandidateEvidenceResolvedCount: 0,
+            rankRecommendationCandidateEvidenceCompleteCount: 0,
+            rankRecommendationCandidateEvidenceMissingCount: 0,
+            rankRecommendationCandidateCount: 0,
+            rankRecommendationVisibleCandidateCount: 0,
+            rankRecommendationTargetMonthCount: 0,
+            rankRecommendationSelectedEvidenceStatus: null,
             httpErrorCount: 0,
             autoTightenedReason: null
         },
@@ -3739,9 +3862,37 @@ function updateFetchPerformancePriceTrendMetrics(updates: Partial<FetchPerforman
 function resetFetchPerformanceBookingCurveMetrics(reason: string): void {
     fetchPerformanceBookingCurveReferenceActiveRequestCount = 0;
     fetchPerformanceBookingCurveReferenceLastStartedAt = null;
+    const currentRankRecommendationMetrics = fetchPerformanceMetrics.bookingCurve;
     fetchPerformanceMetrics = {
         ...fetchPerformanceMetrics,
-        bookingCurve: createInitialFetchPerformanceMetrics().bookingCurve
+        bookingCurve: {
+            ...createInitialFetchPerformanceMetrics().bookingCurve,
+            rankRecommendationRunStartedAt: currentRankRecommendationMetrics.rankRecommendationRunStartedAt,
+            rankRecommendationShellRenderedAt: currentRankRecommendationMetrics.rankRecommendationShellRenderedAt,
+            rankRecommendationCurrentSettingsCompletedAt:
+                currentRankRecommendationMetrics.rankRecommendationCurrentSettingsCompletedAt,
+            rankRecommendationCandidateEvidenceResolvedAt:
+                currentRankRecommendationMetrics.rankRecommendationCandidateEvidenceResolvedAt,
+            rankRecommendationFirstTaskRenderedAt: currentRankRecommendationMetrics.rankRecommendationFirstTaskRenderedAt,
+            rankRecommendationSelectedEvidenceCompletedAt:
+                currentRankRecommendationMetrics.rankRecommendationSelectedEvidenceCompletedAt,
+            rankRecommendationCurrentSettingDateCount:
+                currentRankRecommendationMetrics.rankRecommendationCurrentSettingDateCount,
+            rankRecommendationCurrentSettingRoomGroupCount:
+                currentRankRecommendationMetrics.rankRecommendationCurrentSettingRoomGroupCount,
+            rankRecommendationCandidateEvidenceResolvedCount:
+                currentRankRecommendationMetrics.rankRecommendationCandidateEvidenceResolvedCount,
+            rankRecommendationCandidateEvidenceCompleteCount:
+                currentRankRecommendationMetrics.rankRecommendationCandidateEvidenceCompleteCount,
+            rankRecommendationCandidateEvidenceMissingCount:
+                currentRankRecommendationMetrics.rankRecommendationCandidateEvidenceMissingCount,
+            rankRecommendationCandidateCount: currentRankRecommendationMetrics.rankRecommendationCandidateCount,
+            rankRecommendationVisibleCandidateCount:
+                currentRankRecommendationMetrics.rankRecommendationVisibleCandidateCount,
+            rankRecommendationTargetMonthCount: currentRankRecommendationMetrics.rankRecommendationTargetMonthCount,
+            rankRecommendationSelectedEvidenceStatus:
+                currentRankRecommendationMetrics.rankRecommendationSelectedEvidenceStatus
+        }
     };
     publishFetchPerformanceSummary(reason);
 }
@@ -3755,6 +3906,26 @@ function updateFetchPerformanceBookingCurveMetrics(updates: Partial<FetchPerform
         }
     };
     publishFetchPerformanceSummary(reason);
+}
+
+function resetFetchPerformanceRankRecommendationMetrics(startedAt: number): void {
+    updateFetchPerformanceBookingCurveMetrics({
+        rankRecommendationRunStartedAt: startedAt,
+        rankRecommendationShellRenderedAt: null,
+        rankRecommendationCurrentSettingsCompletedAt: null,
+        rankRecommendationCandidateEvidenceResolvedAt: null,
+        rankRecommendationFirstTaskRenderedAt: null,
+        rankRecommendationSelectedEvidenceCompletedAt: null,
+        rankRecommendationCurrentSettingDateCount: 0,
+        rankRecommendationCurrentSettingRoomGroupCount: 0,
+        rankRecommendationCandidateEvidenceResolvedCount: 0,
+        rankRecommendationCandidateEvidenceCompleteCount: 0,
+        rankRecommendationCandidateEvidenceMissingCount: 0,
+        rankRecommendationCandidateCount: 0,
+        rankRecommendationVisibleCandidateCount: 0,
+        rankRecommendationTargetMonthCount: 0,
+        rankRecommendationSelectedEvidenceStatus: null
+    }, "bookingCurve.rankRecommendationStarted");
 }
 
 function resetFetchPerformanceCompetitorPriceMetrics(updates: Partial<FetchPerformanceCompetitorPriceMetrics>, reason: string): void {
@@ -8153,13 +8324,17 @@ function renderRankRecommendationListFixture(
         rankLadder,
         override: null
     });
+    const curvePreviewReadinessByKey = new Map<string, RankRecommendationReactEvidenceReadiness>(
+        candidates.map((candidate) => [buildRankRecommendationCandidateDisplayInfoKey(candidate), "missing"])
+    );
     renderRankRecommendationList(candidates, {
         signature: `fixture:${facilityCacheKey}:${batchDateKey}:${firstStayDate}:${secondStayDate}`,
-        statusText: null,
+        readinessStage: "needs_evidence",
+        statusText: "fixture候補を表示しています。判断根拠の推移は未取得です。",
         facilityCacheKey,
         rankLadder,
         rankOrder,
-        viewMode: "ready",
+        viewMode: "needs_evidence",
         targetMonth: null,
         targetMonthOptions: buildRankRecommendationTargetMonthOptions(candidates, getSalesSettingWarmCachePriorityMonthKeys([...cells])),
         hiddenSummary: {
@@ -8172,10 +8347,16 @@ function renderRankRecommendationListFixture(
         },
         displayInfoByKey: new Map(),
         curvePreviewInfoByKey: new Map(),
-        workStateCounts: buildRankRecommendationWorkStateCounts(candidates, new Map()),
+        curvePreviewReadinessByKey,
+        workStateCounts: buildRankRecommendationWorkStateCounts(
+            candidates,
+            new Map(),
+            undefined,
+            curvePreviewReadinessByKey
+        ),
         calendarCandidateStates: candidates.map((candidate) => ({
             stayDate: candidate.stayDate,
-            state: resolveCandidateRankRecommendationWorkState(candidate)
+            state: resolveCandidateRankRecommendationWorkState(candidate, new Map(), false)
         })),
         canShowMore: false,
         canResetDisplayLimit: false
@@ -8378,13 +8559,48 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         return;
     }
 
+    const syncRunGeneration = ++rankRecommendationSyncRunGeneration;
+    const readinessStartedAt = Date.now();
+    resetFetchPerformanceRankRecommendationMetrics(readinessStartedAt);
+    const targetMonthOptionsContextSignature = buildRankRecommendationProgressiveContextSignature({
+        facilityCacheKey,
+        batchDateKey,
+        fromDateKey: dateRange.fromDateKey,
+        toDateKey: dateRange.toDateKey
+    });
+    if (rankRecommendationTargetMonthOptionsContextSignature !== targetMonthOptionsContextSignature) {
+        clearRankRecommendationTargetMonthOptionsContext();
+    }
+    if (rankRecommendationProgressiveEvidenceContextSignature !== targetMonthOptionsContextSignature) {
+        rankRecommendationProgressiveEvidenceCacheByKey.clear();
+        rankRecommendationProgressiveEvidenceRequestCache.clear();
+        rankRecommendationProgressiveSelectedCandidateKey = null;
+        rankRecommendationProgressiveWorkStateControlPublished =
+            resolveRankRecommendationProgressiveWorkStateControlPublished({
+                wasPublished: rankRecommendationProgressiveWorkStateControlPublished,
+                readinessStage: "loading",
+                reset: true
+            });
+        rankRecommendationProgressiveEvidenceContextGeneration += 1;
+        rankRecommendationProgressiveEvidenceContextSignature = targetMonthOptionsContextSignature;
+    }
+    const progressiveEvidenceContextGeneration = rankRecommendationProgressiveEvidenceContextGeneration;
+    const cachedTargetMonthOptions = rankRecommendationTargetMonthOptionsContextSignature === targetMonthOptionsContextSignature
+        ? rankRecommendationTargetMonthOptions
+        : [];
     const loadingSignature = `loading:${facilityCacheKey}:${batchDateKey}:${dateRange.fromDateKey}:${dateRange.toDateKey}`;
     const readySignaturePrefix = `${facilityCacheKey}:${batchDateKey}:${dateRange.fromDateKey}:${dateRange.toDateKey}:`;
     if (shouldRenderRankRecommendationLoadingShell(loadingSignature, readySignaturePrefix)) {
         renderRankRecommendationList([], {
             signature: loadingSignature,
-            statusText: "判断データを準備しています。カレンダーはそのまま操作できます。"
+            readinessStage: "loading",
+            statusText: "判断データを準備しています。カレンダーはそのまま操作できます。",
+            targetMonth: cachedTargetMonthOptions.length > 0 ? rankRecommendationTargetMonth : null,
+            targetMonthOptions: cachedTargetMonthOptions
         });
+        updateFetchPerformanceBookingCurveMetrics({
+            rankRecommendationShellRenderedAt: Date.now()
+        }, "bookingCurve.rankRecommendationShellRendered");
     }
 
     const generatedAt = new Date().toISOString();
@@ -8411,13 +8627,42 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         return;
     }
 
+    const currentSettingsCompletedAt = Date.now();
     if (response === null) {
+        updateFetchPerformanceBookingCurveMetrics({
+            rankRecommendationCurrentSettingsCompletedAt: currentSettingsCompletedAt
+        }, "bookingCurve.rankRecommendationCurrentSettingsFailed");
         clearRankRecommendationWarmCachePriorityCandidates();
         renderRankRecommendationList([], {
             signature: `error:${facilityCacheKey}:${batchDateKey}:${dateRange.fromDateKey}:${dateRange.toDateKey}`,
+            readinessStage: "error",
             statusText: formatRankRecommendationCurrentSettingsErrorStatus(currentSettingsLoadError)
         });
         return;
+    }
+
+    const visibleStayDates = new Set(cells.map((cell) => cell.stayDate));
+    const visibleCurrentSettings = (response.suggest_output_current_settings ?? []).filter((currentSetting) => {
+        const stayDate = toCompactDateKey(currentSetting.stay_date ?? "");
+        return stayDate !== null && visibleStayDates.has(stayDate);
+    });
+    updateFetchPerformanceBookingCurveMetrics({
+        rankRecommendationCurrentSettingsCompletedAt: currentSettingsCompletedAt,
+        rankRecommendationCurrentSettingDateCount: visibleCurrentSettings.length,
+        rankRecommendationCurrentSettingRoomGroupCount: visibleCurrentSettings.reduce(
+            (total, currentSetting) => total + (currentSetting.rm_room_groups?.length ?? 0),
+            0
+        )
+    }, "bookingCurve.rankRecommendationCurrentSettingsCompleted");
+    const currentLoadingElement = document.querySelector<HTMLElement>(`[${RANK_RECOMMENDATION_LIST_ATTRIBUTE}]`);
+    if (currentLoadingElement?.getAttribute(RANK_RECOMMENDATION_LIST_SIGNATURE_ATTRIBUTE) === loadingSignature) {
+        renderRankRecommendationList([], {
+            signature: loadingSignature,
+            readinessStage: "loading",
+            statusText: "現在のランクと在庫を確認しました。個人・団体と判断根拠を確認中です。",
+            targetMonth: cachedTargetMonthOptions.length > 0 ? rankRecommendationTargetMonth : null,
+            targetMonthOptions: cachedTargetMonthOptions
+        });
     }
 
     const decisionRecordsRequest = readRankRecommendationDecisionRecords()
@@ -8441,12 +8686,22 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     const curveEvidenceByKey = await buildRankRecommendationCurveEvidenceByKey(response, {
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
-        visibleStayDates: new Set(cells.map((cell) => cell.stayDate)),
+        visibleStayDates,
         rawSourceReader
     });
     if (shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)) {
         return;
     }
+    const curveEvidenceValues = Array.from(curveEvidenceByKey.values());
+    const completeCurveEvidenceCount = curveEvidenceValues.filter((evidence) => (
+        evidence.currentTransientRooms !== null && evidence.currentGroupRooms !== null
+    )).length;
+    updateFetchPerformanceBookingCurveMetrics({
+        rankRecommendationCandidateEvidenceResolvedAt: Date.now(),
+        rankRecommendationCandidateEvidenceResolvedCount: curveEvidenceValues.length,
+        rankRecommendationCandidateEvidenceCompleteCount: completeCurveEvidenceCount,
+        rankRecommendationCandidateEvidenceMissingCount: curveEvidenceValues.length - completeCurveEvidenceCount
+    }, "bookingCurve.rankRecommendationCandidateEvidenceResolved");
 
     const rankOrderOverride = readRankRecommendationRankOrderOverride(facilityCacheKey);
     const rankOrderResolution = resolveRankRecommendationRankOrder({
@@ -8458,7 +8713,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         response,
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
-        visibleStayDates: new Set(cells.map((cell) => cell.stayDate)),
+        visibleStayDates,
         generatedAt,
         curveEvidenceByKey,
         rankLadder,
@@ -8478,6 +8733,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         resolvedFilterResult.candidates,
         getSalesSettingWarmCachePriorityMonthKeys(cells)
     );
+    rankRecommendationTargetMonthOptions = targetMonthOptions;
+    rankRecommendationTargetMonthOptionsContextSignature = targetMonthOptionsContextSignature;
     const effectiveTargetMonth = resolveRankRecommendationEffectiveTargetMonth(rankRecommendationTargetMonth, targetMonthOptions);
     const targetMonthFilterResult = applyRankRecommendationTargetMonthFilter(resolvedFilterResult.candidates, effectiveTargetMonth);
     const recentChangeCooldownByKey = buildRankRecommendationRecentChangeCooldownByKey(
@@ -8485,59 +8742,119 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         statuses,
         rankOrderResolution
     );
-    const workStateCounts = buildRankRecommendationWorkStateCounts(
-        targetMonthFilterResult.candidates,
-        recentChangeCooldownByKey,
-        curveEvidenceByKey
+    rankRecommendationTargetMonth = effectiveTargetMonth;
+    const validProgressiveEvidenceKeys = new Set(
+        resolvedFilterResult.candidates.map(buildRankRecommendationCandidateDisplayInfoKey)
     );
-    const effectiveViewMode = selectAvailableRankRecommendationWorkState(
-        rankRecommendationViewMode,
-        workStateCounts
+    for (const key of rankRecommendationProgressiveEvidenceCacheByKey.keys()) {
+        if (!validProgressiveEvidenceKeys.has(key)) {
+            rankRecommendationProgressiveEvidenceCacheByKey.delete(key);
+        }
+    }
+    const evidenceCoordinator = createRankRecommendationProgressiveEvidenceCoordinator<RankRecommendationCurvePreviewInfo>(
+        targetMonthFilterResult.candidates.map((candidate) => {
+            const key = buildRankRecommendationCandidateDisplayInfoKey(candidate);
+            const cached = rankRecommendationProgressiveEvidenceCacheByKey.get(key);
+            return cached === undefined
+                ? { key, readiness: "pending" as const }
+                : { key, readiness: cached.readiness, value: cached.value };
+        })
     );
-    const recentChangeCooldownFilterResult = applyRankRecommendationRecentChangeCooldownFilter(
-        targetMonthFilterResult.candidates,
-        recentChangeCooldownByKey,
-        effectiveViewMode
-    );
-    const viewModeFilterResult = applyRankRecommendationViewModeFilter(
-        recentChangeCooldownFilterResult.candidates,
-        effectiveViewMode,
-        recentChangeCooldownByKey,
-        curveEvidenceByKey
-    );
-    const visibleCandidates = viewModeFilterResult.candidates.slice(0, rankRecommendationDisplayLimit);
-    const displayInfoByKey = buildRankRecommendationDisplayInfoByKey(
-        visibleCandidates,
-        decisionRecords,
-        statuses,
-        batchDateKey,
-        rankGapContextByScope,
-        rankOrderResolution
-    );
-    const curvePreviewInfoByKey = await buildRankRecommendationCurvePreviewInfoByKey(visibleCandidates, {
+    const curvePreviewInfoByKey = evidenceCoordinator.valueByKey;
+    const curvePreviewReadinessByKey = evidenceCoordinator.readinessByKey;
+    const loadCurvePreview = createRankRecommendationCurvePreviewLoader({
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
-        statuses,
-        rawSourceReader
+        statuses
     });
-    if (shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)) {
-        return;
-    }
-    rankRecommendationTargetMonth = effectiveTargetMonth;
-    rankRecommendationViewMode = effectiveViewMode;
-    rememberRankRecommendationCurvePreviewSnapshot(visibleCandidates, curvePreviewInfoByKey);
-    const hiddenSummary = {
-        userDecision: decisionFilterResult.hiddenCount,
-        resolvedRankChange: resolvedFilterResult.hiddenCount,
-        recentChangeCooldown: recentChangeCooldownFilterResult.hiddenCount,
-        targetMonth: targetMonthFilterResult.hiddenCount,
-        viewMode: viewModeFilterResult.hiddenCount,
-        overflow: Math.max(0, viewModeFilterResult.candidates.length - visibleCandidates.length)
+    const loadCurvePreviewForProgressiveContext = (
+        candidate: RankRecommendationCandidate,
+        key: string
+    ): Promise<RankRecommendationCurvePreviewInfo> => {
+        const requestKey = `${progressiveEvidenceContextGeneration}:${key}`;
+        return rankRecommendationProgressiveEvidenceRequestCache.getOrCreate(
+            requestKey,
+            () => loadCurvePreview(candidate)
+                .catch((error: unknown) => {
+                    console.warn(`[${SCRIPT_NAME}] failed to hydrate selected rank recommendation evidence`, { error });
+                    return buildMissingRankRecommendationCurvePreviewInfo(
+                        ["booking_curve_preview_load_failed"],
+                        "error",
+                        true
+                    );
+                })
+        ).then((previewInfo) => {
+            const readiness = resolveRankRecommendationCurvePreviewReadiness(previewInfo);
+            if (
+                rankRecommendationProgressiveEvidenceContextGeneration === progressiveEvidenceContextGeneration
+                && rankRecommendationProgressiveEvidenceContextSignature === targetMonthOptionsContextSignature
+                && shouldCacheRankRecommendationProgressiveEvidence({
+                    readiness,
+                    transientFailure: previewInfo.transientFailure
+                })
+            ) {
+                rankRecommendationProgressiveEvidenceCacheByKey.set(key, {
+                    readiness,
+                    value: previewInfo
+                });
+            }
+            return previewInfo;
+        });
     };
+    let selectedCandidateKey: string | null = rankRecommendationProgressiveSelectedCandidateKey;
+    const setSelectedCandidateKey = (key: string | null): void => {
+        selectedCandidateKey = key;
+        rankRecommendationProgressiveSelectedCandidateKey = key;
+    };
+    let renderWorkspaceQueued = false;
+    let warmCachePriorityInitialized = false;
 
-    rememberRankRecommendationWarmCachePriorityCandidates(visibleCandidates);
-    renderRankRecommendationList(visibleCandidates, {
-        signature: [
+    const resolveWorkspaceState = () => {
+        const workStateCounts = buildRankRecommendationWorkStateCounts(
+            targetMonthFilterResult.candidates,
+            recentChangeCooldownByKey,
+            curveEvidenceByKey,
+            curvePreviewReadinessByKey
+        );
+        const effectiveViewMode = selectAvailableRankRecommendationWorkState(
+            rankRecommendationViewMode,
+            workStateCounts
+        );
+        const recentChangeCooldownFilterResult = applyRankRecommendationRecentChangeCooldownFilter(
+            targetMonthFilterResult.candidates,
+            recentChangeCooldownByKey,
+            effectiveViewMode
+        );
+        const viewModeFilterResult = applyRankRecommendationViewModeFilter(
+            recentChangeCooldownFilterResult.candidates,
+            effectiveViewMode,
+            recentChangeCooldownByKey,
+            curveEvidenceByKey,
+            curvePreviewReadinessByKey
+        );
+        const visibleCandidates = limitRankRecommendationItemsWithSelectedKey({
+            items: viewModeFilterResult.candidates,
+            limit: rankRecommendationDisplayLimit,
+            selectedKey: selectedCandidateKey,
+            getKey: buildRankRecommendationWorkspaceCandidateKey
+        });
+        const displayInfoByKey = buildRankRecommendationDisplayInfoByKey(
+            visibleCandidates,
+            decisionRecords,
+            statuses,
+            batchDateKey,
+            rankGapContextByScope,
+            rankOrderResolution
+        );
+        const hiddenSummary = {
+            userDecision: decisionFilterResult.hiddenCount,
+            resolvedRankChange: resolvedFilterResult.hiddenCount,
+            recentChangeCooldown: recentChangeCooldownFilterResult.hiddenCount,
+            targetMonth: targetMonthFilterResult.hiddenCount,
+            viewMode: viewModeFilterResult.hiddenCount,
+            overflow: Math.max(0, viewModeFilterResult.candidates.length - visibleCandidates.length)
+        };
+        const signature = [
             facilityCacheKey,
             batchDateKey,
             dateRange.fromDateKey,
@@ -8556,6 +8873,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             `overflow:${hiddenSummary.overflow}`,
             `display-limit:${rankRecommendationDisplayLimit}`,
             visibleCandidates.map((candidate) => [
+                buildRankRecommendationWorkspaceCandidateKey(candidate),
                 candidate.reasonFingerprint,
                 candidate.action,
                 candidate.priority,
@@ -8571,35 +8889,217 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
                     })
                 ),
                 displayInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate))?.signature ?? "",
-                curvePreviewInfoByKey.get(buildRankRecommendationCandidateDisplayInfoKey(candidate))?.signature ?? "",
                 isRankRecommendationCurvePreviewOpen(candidate) ? "preview-open" : "preview-closed",
                 isRankRecommendationRankChangePreviewOpen(candidate) ? "rank-change-open" : "rank-change-closed",
                 getPendingRankRecommendationRankChange(candidate) === null ? "rank-change-no-pending" : "rank-change-pending",
                 getRankRecommendationRankChangeResult(candidate)?.message ?? ""
             ].join(",")).join("|")
-        ].join(":"),
-        statusText: null,
-        facilityCacheKey,
-        rankLadder,
-        rankOrder: rankOrderResolution,
-        viewMode: effectiveViewMode,
-        workStateCounts,
-        calendarCandidateStates: targetMonthFilterResult.candidates.map((candidate) => ({
-            stayDate: candidate.stayDate,
-            state: resolveCandidateRankRecommendationWorkState(
-                candidate,
+        ].join(":");
+        return {
+            displayInfoByKey,
+            effectiveViewMode,
+            hiddenSummary,
+            signature,
+            visibleCandidates,
+            workStateCounts
+        };
+    };
+    const formatProgressiveStatusText = (
+        readiness: RankRecommendationReactEvidenceReadiness
+    ): string => {
+        const targetLabel = effectiveTargetMonth === null
+            ? "候補"
+            : `${formatRankRecommendationTargetMonthLabel(effectiveTargetMonth)}の候補`;
+        return readiness === "missing"
+            ? `${targetLabel}判定は完了しました。選択中の推移グラフを取得できませんでした。`
+            : `${targetLabel}判定は完了しました。選択中の推移グラフを準備しています。`;
+    };
+    const renderWorkspace = (): void => {
+        if (
+            syncRunGeneration !== rankRecommendationSyncRunGeneration
+            || shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)
+        ) {
+            return;
+        }
+        const selectedCandidateBeforeFilter = targetMonthFilterResult.candidates.find((candidate) => (
+            buildRankRecommendationWorkspaceCandidateKey(candidate) === selectedCandidateKey
+        )) ?? null;
+        if (selectedCandidateBeforeFilter !== null) {
+            rankRecommendationViewMode = resolveCandidateRankRecommendationWorkState(
+                selectedCandidateBeforeFilter,
                 recentChangeCooldownByKey,
-                hasCompleteRankRecommendationIndividualGroupEvidence(candidate, curveEvidenceByKey)
+                hasCompleteRankRecommendationCandidateEvidence(
+                    selectedCandidateBeforeFilter,
+                    curveEvidenceByKey,
+                    curvePreviewReadinessByKey
+                )
+            );
+        }
+        const state = resolveWorkspaceState();
+        rankRecommendationViewMode = state.effectiveViewMode;
+        if (
+            selectedCandidateKey === null
+            || !state.visibleCandidates.some((candidate) => (
+                buildRankRecommendationWorkspaceCandidateKey(candidate) === selectedCandidateKey
+            ))
+        ) {
+            setSelectedCandidateKey(state.visibleCandidates[0] === undefined
+                ? null
+                : buildRankRecommendationWorkspaceCandidateKey(state.visibleCandidates[0]));
+        }
+        const selectedCandidate = state.visibleCandidates.find((candidate) => (
+            buildRankRecommendationWorkspaceCandidateKey(candidate) === selectedCandidateKey
+        )) ?? null;
+        evidenceCoordinator.select(selectedCandidate === null
+            ? null
+            : buildRankRecommendationCandidateDisplayInfoKey(selectedCandidate));
+        const selectedReadiness = evidenceCoordinator.getSelectedReadiness();
+        const readinessStage = resolveRankRecommendationReactReadinessStage(selectedReadiness);
+        rankRecommendationProgressiveWorkStateControlPublished =
+            resolveRankRecommendationProgressiveWorkStateControlPublished({
+                wasPublished: rankRecommendationProgressiveWorkStateControlPublished,
+                readinessStage
+            });
+        const statusText = selectedReadiness === null || selectedReadiness === "complete"
+            ? null
+            : formatProgressiveStatusText(selectedReadiness);
+        if (
+            selectedReadiness !== null
+            && (
+                fetchPerformanceMetrics.bookingCurve.rankRecommendationSelectedEvidenceStatus !== selectedReadiness
+                || (
+                    selectedReadiness === "complete"
+                    && fetchPerformanceMetrics.bookingCurve.rankRecommendationSelectedEvidenceCompletedAt === null
+                )
             )
-        })),
-        targetMonth: effectiveTargetMonth,
-        targetMonthOptions,
-        hiddenSummary,
-        displayInfoByKey,
-        curvePreviewInfoByKey,
-        canShowMore: hiddenSummary.overflow > 0 && rankRecommendationDisplayLimit < RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
-        canResetDisplayLimit: rankRecommendationDisplayLimit > RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT
-    });
+        ) {
+            updateFetchPerformanceBookingCurveMetrics({
+                rankRecommendationSelectedEvidenceCompletedAt: selectedReadiness === "complete"
+                    ? (fetchPerformanceMetrics.bookingCurve.rankRecommendationSelectedEvidenceCompletedAt ?? Date.now())
+                    : fetchPerformanceMetrics.bookingCurve.rankRecommendationSelectedEvidenceCompletedAt,
+                rankRecommendationSelectedEvidenceStatus: selectedReadiness
+            }, selectedReadiness === "complete"
+                ? "bookingCurve.rankRecommendationSelectedEvidenceCompleted"
+                : `bookingCurve.rankRecommendationSelectedEvidence${selectedReadiness === "missing" ? "Missing" : "Pending"}`);
+        }
+        rememberRankRecommendationCurvePreviewSnapshot(state.visibleCandidates, curvePreviewInfoByKey);
+        if (!warmCachePriorityInitialized) {
+            rememberRankRecommendationWarmCachePriorityCandidates(state.visibleCandidates);
+            warmCachePriorityInitialized = true;
+        }
+        renderRankRecommendationList(state.visibleCandidates, {
+            signature: state.signature,
+            readinessStage,
+            statusText,
+            facilityCacheKey,
+            rankLadder,
+            rankOrder: rankOrderResolution,
+            viewMode: state.effectiveViewMode,
+            workStateCounts: state.workStateCounts,
+            calendarCandidateStates: targetMonthFilterResult.candidates.map((candidate) => ({
+                stayDate: candidate.stayDate,
+                state: resolveCandidateRankRecommendationWorkState(
+                    candidate,
+                    recentChangeCooldownByKey,
+                    hasCompleteRankRecommendationCandidateEvidence(
+                        candidate,
+                        curveEvidenceByKey,
+                        curvePreviewReadinessByKey
+                    )
+                )
+            })),
+            targetMonth: effectiveTargetMonth,
+            targetMonthOptions,
+            hiddenSummary: state.hiddenSummary,
+            displayInfoByKey: state.displayInfoByKey,
+            curveEvidenceByKey,
+            curvePreviewInfoByKey,
+            curvePreviewReadinessByKey,
+            requestCurvePreview,
+            retryCurvePreview: (candidate) => {
+                const key = buildRankRecommendationCandidateDisplayInfoKey(candidate);
+                if (!evidenceCoordinator.retrySelected(key, (previewInfo) => (
+                    previewInfo?.transientFailure === true
+                ))) {
+                    return;
+                }
+                rankRecommendationProgressiveEvidenceCacheByKey.delete(key);
+                scheduleRenderWorkspace();
+            },
+            selectCandidate: (candidate) => {
+                setSelectedCandidateKey(buildRankRecommendationWorkspaceCandidateKey(candidate));
+                evidenceCoordinator.select(buildRankRecommendationCandidateDisplayInfoKey(candidate));
+                scheduleRenderWorkspace();
+            },
+            setViewMode: (viewMode) => {
+                if (viewMode === rankRecommendationViewMode) {
+                    return;
+                }
+                rankRecommendationViewMode = viewMode;
+                rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
+                rankRecommendationCurvePreviewOpenState.clear();
+                rankRecommendationCompetitorPreviewOpenState.clear();
+                rankRecommendationRankChangePreviewOpenState.clear();
+                setSelectedCandidateKey(null);
+                evidenceCoordinator.select(null);
+                scheduleRenderWorkspace();
+            },
+            canShowMore: state.hiddenSummary.overflow > 0
+                && rankRecommendationDisplayLimit < RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
+            canResetDisplayLimit: rankRecommendationDisplayLimit > RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT,
+            preserveWorkStateControl: rankRecommendationProgressiveWorkStateControlPublished
+        });
+        if (fetchPerformanceMetrics.bookingCurve.rankRecommendationVisibleCandidateCount !== state.visibleCandidates.length) {
+            updateFetchPerformanceBookingCurveMetrics({
+                rankRecommendationVisibleCandidateCount: state.visibleCandidates.length
+            }, "bookingCurve.rankRecommendationVisibleCandidatesChanged");
+        }
+        if (selectedCandidate !== null && selectedReadiness === "pending") {
+            requestCurvePreview(selectedCandidate);
+        }
+    };
+    const scheduleRenderWorkspace = (): void => {
+        if (renderWorkspaceQueued) {
+            return;
+        }
+        renderWorkspaceQueued = true;
+        queueMicrotask(() => {
+            renderWorkspaceQueued = false;
+            renderWorkspace();
+        });
+    };
+    const requestCurvePreview = (candidate: RankRecommendationCandidate): void => {
+        const key = buildRankRecommendationCandidateDisplayInfoKey(candidate);
+        const request = evidenceCoordinator.requestSelected(
+            key,
+            () => loadCurvePreviewForProgressiveContext(candidate, key),
+            resolveRankRecommendationCurvePreviewReadiness
+        );
+        if (request === null) {
+            return;
+        }
+        void request.then(() => {
+            if (
+                syncRunGeneration !== rankRecommendationSyncRunGeneration
+                || shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)
+            ) {
+                return;
+            }
+            renderWorkspace();
+        });
+    };
+
+    updateFetchPerformanceBookingCurveMetrics({
+        rankRecommendationCandidateCount: candidates.length,
+        rankRecommendationTargetMonthCount: targetMonthOptions.length
+    }, "bookingCurve.rankRecommendationCandidatesResolved");
+    renderWorkspace();
+    if (selectedCandidateKey !== null) {
+        updateFetchPerformanceBookingCurveMetrics({
+            rankRecommendationFirstTaskRenderedAt:
+                fetchPerformanceMetrics.bookingCurve.rankRecommendationFirstTaskRenderedAt ?? Date.now()
+        }, "bookingCurve.rankRecommendationFirstTaskRendered");
+    }
 }
 
 async function syncAnalyzeRankRecommendationList(
@@ -8935,6 +9435,7 @@ interface RankRecommendationRawSourceRecordReader {
         stayDate: string;
         roomGroupId: string;
     }): Promise<BookingCurveRawSourceRecord | undefined>;
+    hasReadFailures: () => boolean;
 }
 
 function createRankRecommendationRawSourceRecordReader(options: {
@@ -8942,7 +9443,8 @@ function createRankRecommendationRawSourceRecordReader(options: {
     asOfDate: string;
 }): RankRecommendationRawSourceRecordReader {
     const pendingByKey = new Map<string, Promise<BookingCurveRawSourceRecord | undefined>>();
-    return ({ stayDate, roomGroupId }) => {
+    let readFailureCount = 0;
+    const reader = (({ stayDate, roomGroupId }) => {
         const query = buildBookingCurveQuerySignature(stayDate, roomGroupId);
         const rawSourceKey = buildBookingCurveRawSourceCacheKey({
             facilityId: options.facilityId,
@@ -8960,6 +9462,7 @@ function createRankRecommendationRawSourceRecordReader(options: {
 
         const request = readBookingCurveRawSourceRecord(rawSourceKey)
             .catch((error: unknown) => {
+                readFailureCount += 1;
                 console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation booking curve raw source`, {
                     stayDate,
                     asOfDate: options.asOfDate,
@@ -8970,7 +9473,9 @@ function createRankRecommendationRawSourceRecordReader(options: {
             });
         pendingByKey.set(rawSourceKey, request);
         return request;
-    };
+    }) as RankRecommendationRawSourceRecordReader;
+    reader.hasReadFailures = () => readFailureCount > 0;
+    return reader;
 }
 
 async function buildRankRecommendationCurveEvidenceByKey(
@@ -9030,19 +9535,13 @@ async function buildRankRecommendationCurveEvidenceByKey(
     return new Map(entries.filter((entry): entry is [string, RankRecommendationCurveEvidence] => entry !== null));
 }
 
-async function buildRankRecommendationCurvePreviewInfoByKey(
-    candidates: readonly RankRecommendationCandidate[],
+function createRankRecommendationCurvePreviewLoader(
     options: {
         facilityId: string;
         asOfDate: string;
         statuses: readonly LincolnSuggestStatus[];
-        rawSourceReader?: RankRecommendationRawSourceRecordReader;
     }
-): Promise<Map<string, RankRecommendationCurvePreviewInfo>> {
-    const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
-        facilityId: options.facilityId,
-        asOfDate: options.asOfDate
-    });
+): (candidate: RankRecommendationCandidate) => Promise<RankRecommendationCurvePreviewInfo> {
     const rankHistoryByStayDate = new Map<string, Map<string, SalesSettingRankHistoryEvent[]>>();
     const getRankHistory = (candidate: RankRecommendationCandidate): SalesSettingRankHistoryEvent[] => {
         let historyByRoomGroupName = rankHistoryByStayDate.get(candidate.stayDate);
@@ -9053,18 +9552,14 @@ async function buildRankRecommendationCurvePreviewInfoByKey(
         return historyByRoomGroupName.get(candidate.roomGroupName) ?? [];
     };
 
-    const entries = await Promise.all(candidates.map(async (candidate) => {
-        const key = buildRankRecommendationCandidateDisplayInfoKey(candidate);
-        const previewInfo = await readRankRecommendationCurvePreviewInfo({
+    return (candidate) => {
+        return readRankRecommendationCurvePreviewInfo({
             candidate,
             facilityId: options.facilityId,
             asOfDate: options.asOfDate,
-            rankHistory: getRankHistory(candidate),
-            rawSourceReader
+            rankHistory: getRankHistory(candidate)
         });
-        return [key, previewInfo] as const;
-    }));
-    return new Map(entries);
+    };
 }
 
 async function readRankRecommendationCurvePreviewInfo(options: {
@@ -9072,9 +9567,8 @@ async function readRankRecommendationCurvePreviewInfo(options: {
     facilityId: string;
     asOfDate: string;
     rankHistory: SalesSettingRankHistoryEvent[];
-    rawSourceReader?: RankRecommendationRawSourceRecordReader;
 }): Promise<RankRecommendationCurvePreviewInfo> {
-    const rawSourceReader = options.rawSourceReader ?? createRankRecommendationRawSourceRecordReader({
+    const rawSourceReader = createRankRecommendationRawSourceRecordReader({
         facilityId: options.facilityId,
         asOfDate: options.asOfDate
     });
@@ -9084,12 +9578,14 @@ async function readRankRecommendationCurvePreviewInfo(options: {
     });
 
     if (record === undefined) {
+        let storedStatusReadFailed = false;
         const storedRoomGroupStatus = await readBookingCurveRawSourceStoredRoomGroupStatus(
             options.facilityId,
             options.candidate.stayDate,
             options.asOfDate,
             options.candidate.roomGroupId
         ).catch((error: unknown) => {
+            storedStatusReadFailed = true;
             console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation raw source status`, {
                 stayDate: options.candidate.stayDate,
                 asOfDate: options.asOfDate,
@@ -9100,22 +9596,31 @@ async function readRankRecommendationCurvePreviewInfo(options: {
         });
         return buildMissingRankRecommendationCurvePreviewInfo(
             ["booking_curve_source_missing"],
-            convertBookingCurveRawSourceStoredStatus(storedRoomGroupStatus)
+            convertBookingCurveRawSourceStoredStatus(storedRoomGroupStatus),
+            rawSourceReader.hasReadFailures() || storedStatusReadFailed
         );
     }
 
     const response = record.response as BookingCurveResponse;
     const point = findLatestBookingCurvePoint(response, options.asOfDate);
     if (point === null) {
-        return buildMissingRankRecommendationCurvePreviewInfo(["booking_curve_point_missing"], "currentAsOf");
+        return buildMissingRankRecommendationCurvePreviewInfo(
+            ["booking_curve_point_missing"],
+            "currentAsOf",
+            rawSourceReader.hasReadFailures()
+        );
     }
 
+    let referenceCacheReadFailure = false;
     const referenceData = await buildRankRecommendationCurvePreviewReferenceData({
         candidate: options.candidate,
         facilityId: options.facilityId,
         asOfDate: options.asOfDate,
         response,
-        rawSourceReader
+        rawSourceReader,
+        onTransientFailure: () => {
+            referenceCacheReadFailure = true;
+        }
     });
     const currentOverallRoomCount = normalizeBookingCurveRoomCount(point.all?.this_year_room_sum);
     const diagnostics = collectRankRecommendationCurvePreviewDiagnostics(referenceData);
@@ -9154,6 +9659,7 @@ async function readRankRecommendationCurvePreviewInfo(options: {
     };
     const secondarySegment = getSalesSettingBookingCurveSecondarySegment();
     const activeVariant = segmentVariants[secondarySegment];
+    const transientFailure = rawSourceReader.hasReadFailures() || referenceCacheReadFailure;
 
     return {
         curveData: activeVariant.curveData,
@@ -9161,6 +9667,7 @@ async function readRankRecommendationCurvePreviewInfo(options: {
         currentOverallRoomCount,
         currentSecondaryRoomCount: activeVariant.currentSecondaryRoomCount,
         rawSourceStatus: "currentAsOf",
+        transientFailure,
         segmentVariants,
         diagnostics,
         signature: [
@@ -9170,14 +9677,16 @@ async function readRankRecommendationCurvePreviewInfo(options: {
             `overall:${activeVariant.curveData.overall.signature}`,
             `individual:${segmentVariants.individual.signature}`,
             `group:${segmentVariants.group.signature}`,
-            `diagnostics:${diagnostics.join("/")}`
+            `diagnostics:${diagnostics.join("/")}`,
+            `transient:${transientFailure ? "1" : "0"}`
         ].join("|")
     };
 }
 
 function buildMissingRankRecommendationCurvePreviewInfo(
     diagnostics: string[],
-    rawSourceStatus: RankRecommendationRawSourceStatus = "missing"
+    rawSourceStatus: RankRecommendationRawSourceStatus = "missing",
+    transientFailure = false
 ): RankRecommendationCurvePreviewInfo {
     return {
         curveData: null,
@@ -9185,10 +9694,19 @@ function buildMissingRankRecommendationCurvePreviewInfo(
         currentOverallRoomCount: null,
         currentSecondaryRoomCount: null,
         rawSourceStatus,
+        transientFailure,
         segmentVariants: {},
         diagnostics,
-        signature: `missing:${diagnostics.join("/")}|raw:${rawSourceStatus}`
+        signature: `missing:${diagnostics.join("/")}|raw:${rawSourceStatus}|transient:${transientFailure ? "1" : "0"}`
     };
+}
+
+function resolveRankRecommendationCurvePreviewReadiness(
+    previewInfo: RankRecommendationCurvePreviewInfo
+): RankRecommendationReactEvidenceReadiness {
+    return previewInfo.curveData !== null && previewInfo.maxValue !== null
+        ? "complete"
+        : "missing";
 }
 
 function convertBookingCurveRawSourceStoredStatus(
@@ -9210,7 +9728,8 @@ async function buildRankRecommendationCurvePreviewReferenceData(options: {
     facilityId: string;
     asOfDate: string;
     response: BookingCurveResponse;
-    rawSourceReader?: RankRecommendationRawSourceRecordReader;
+    rawSourceReader: RankRecommendationRawSourceRecordReader;
+    onTransientFailure?: () => void;
 }): Promise<SalesSettingBookingCurveReferenceData> {
     const referenceSourcesByKind = new Map<ReferenceCurveKind, Promise<BookingCurveResponseSource[]>>();
     const getReferenceSources = (
@@ -9227,7 +9746,7 @@ async function buildRankRecommendationCurvePreviewReferenceData(options: {
             asOfDate: options.asOfDate,
             roomGroupId: options.candidate.roomGroupId,
             stayDates,
-            ...(options.rawSourceReader === undefined ? {} : { rawSourceReader: options.rawSourceReader })
+            rawSourceReader: options.rawSourceReader
         });
         referenceSourcesByKind.set(curveKind, request);
         return request;
@@ -9241,7 +9760,10 @@ async function buildRankRecommendationCurvePreviewReferenceData(options: {
             response: options.response,
             segment,
             curveKind,
-            getReferenceSources
+            getReferenceSources,
+            ...(options.onTransientFailure === undefined
+                ? {}
+                : { onTransientFailure: options.onTransientFailure })
         })
     );
     const [
@@ -9282,6 +9804,7 @@ async function readRankRecommendationCurvePreviewReferenceResult(options: {
         curveKind: ReferenceCurveKind,
         stayDates: readonly string[]
     ) => Promise<BookingCurveResponseSource[]>;
+    onTransientFailure?: () => void;
 }): Promise<ReferenceCurveResult | null> {
     const normalizedStayDate = normalizeDateKey(options.stayDate);
     const normalizedAsOfDate = normalizeDateKey(options.asOfDate);
@@ -9308,6 +9831,7 @@ async function readRankRecommendationCurvePreviewReferenceResult(options: {
     });
     const cachedRecord = await readReferenceCurveRecord(cacheKey)
         .catch((error: unknown) => {
+            options.onTransientFailure?.();
             console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation preview reference curve cache`, {
                 stayDate: options.stayDate,
                 asOfDate: options.asOfDate,
@@ -9367,9 +9891,10 @@ async function readRankRecommendationCurvePreviewReferenceResult(options: {
             });
     }
 
-    return options.curveKind === "seasonal_component"
+    const fallbackResult = options.curveKind === "seasonal_component"
         ? buildRankRecommendationHistoricalReferenceCurveResult(options)
         : null;
+    return fallbackResult;
 }
 
 async function readRankRecommendationCurvePreviewReferenceSources(options: {
@@ -10194,10 +10719,17 @@ function applyRankRecommendationViewModeFilter(
     candidates: RankRecommendationCandidate[],
     viewMode: RankRecommendationViewMode,
     recentChangeCooldownByKey: ReadonlyMap<string, RankRecommendationRecentChangeCooldown> = new Map(),
-    curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>
+    curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>,
+    curvePreviewReadinessByKey?: ReadonlyMap<string, RankRecommendationReactEvidenceReadiness>
 ): RankRecommendationCandidateFilterResult {
     const visibleCandidates = candidates.filter((candidate) => (
-        isRankRecommendationVisibleInViewMode(candidate, viewMode, recentChangeCooldownByKey, curveEvidenceByKey)
+        isRankRecommendationVisibleInViewMode(
+            candidate,
+            viewMode,
+            recentChangeCooldownByKey,
+            curveEvidenceByKey,
+            curvePreviewReadinessByKey
+        )
     ));
     return {
         candidates: visibleCandidates,
@@ -10267,12 +10799,17 @@ function isRankRecommendationVisibleInViewMode(
     candidate: RankRecommendationCandidate,
     viewMode: RankRecommendationViewMode,
     recentChangeCooldownByKey: ReadonlyMap<string, RankRecommendationRecentChangeCooldown> = new Map(),
-    curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>
+    curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>,
+    curvePreviewReadinessByKey?: ReadonlyMap<string, RankRecommendationReactEvidenceReadiness>
 ): boolean {
     return resolveCandidateRankRecommendationWorkState(
         candidate,
         recentChangeCooldownByKey,
-        hasCompleteRankRecommendationIndividualGroupEvidence(candidate, curveEvidenceByKey)
+        hasCompleteRankRecommendationCandidateEvidence(
+            candidate,
+            curveEvidenceByKey,
+            curvePreviewReadinessByKey
+        )
     ) === viewMode;
 }
 
@@ -10330,15 +10867,29 @@ function resolveCandidateRankRecommendationWorkState(
 function buildRankRecommendationWorkStateCounts(
     candidates: readonly RankRecommendationCandidate[],
     recentChangeCooldownByKey: ReadonlyMap<string, RankRecommendationRecentChangeCooldown>,
-    curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>
+    curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>,
+    curvePreviewReadinessByKey?: ReadonlyMap<string, RankRecommendationReactEvidenceReadiness>
 ): RankRecommendationWorkStateCounts {
     return countRankRecommendationWorkStates(
         candidates.map((candidate) => resolveCandidateRankRecommendationWorkState(
             candidate,
             recentChangeCooldownByKey,
-            hasCompleteRankRecommendationIndividualGroupEvidence(candidate, curveEvidenceByKey)
+            hasCompleteRankRecommendationCandidateEvidence(
+                candidate,
+                curveEvidenceByKey,
+                curvePreviewReadinessByKey
+            )
         ))
     );
+}
+
+function hasCompleteRankRecommendationCandidateEvidence(
+    candidate: RankRecommendationCandidate,
+    curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>,
+    curvePreviewReadinessByKey?: ReadonlyMap<string, RankRecommendationReactEvidenceReadiness>
+): boolean {
+    return hasCompleteRankRecommendationIndividualGroupEvidence(candidate, curveEvidenceByKey)
+        && curvePreviewReadinessByKey?.get(buildRankRecommendationCandidateDisplayInfoKey(candidate)) !== "missing";
 }
 
 function hasCompleteRankRecommendationIndividualGroupEvidence(
@@ -10882,6 +11433,7 @@ function renderRankRecommendationList(
     candidates: RankRecommendationCandidate[],
     options: {
         signature: string;
+        readinessStage: RankRecommendationReactReadinessStage;
         statusText: string | null;
         facilityCacheKey?: string;
         rankLadder?: readonly RankRecommendationRankLadderEntry[];
@@ -10891,7 +11443,14 @@ function renderRankRecommendationList(
         targetMonthOptions?: readonly RankRecommendationTargetMonthOption[];
         hiddenSummary?: RankRecommendationHiddenSummary;
         displayInfoByKey?: ReadonlyMap<string, RankRecommendationDisplayInfo>;
+        curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>;
         curvePreviewInfoByKey?: ReadonlyMap<string, RankRecommendationCurvePreviewInfo>;
+        curvePreviewReadinessByKey?: ReadonlyMap<string, RankRecommendationReactEvidenceReadiness>;
+        requestCurvePreview?: (candidate: RankRecommendationCandidate) => void;
+        retryCurvePreview?: (candidate: RankRecommendationCandidate) => void;
+        selectCandidate?: (candidate: RankRecommendationCandidate) => void;
+        setViewMode?: (viewMode: RankRecommendationViewMode) => void;
+        preserveWorkStateControl?: boolean;
         canShowMore?: boolean;
         canResetDisplayLimit?: boolean;
         workStateCounts?: RankRecommendationWorkStateCounts;
@@ -10924,7 +11483,9 @@ function renderRankRecommendationList(
 
     const viewModel = buildRankRecommendationListViewModel(candidates, {
         displayInfoByKey: options.displayInfoByKey,
+        curveEvidenceByKey: options.curveEvidenceByKey,
         curvePreviewInfoByKey: options.curvePreviewInfoByKey,
+        curvePreviewReadinessByKey: options.curvePreviewReadinessByKey,
         rankOptions: options.rankOrder?.ranksHighToLow ?? [],
         recentChangeCooldownByKey: buildRecentChangeCooldownMapFromDisplayInfo(options.displayInfoByKey)
     });
@@ -10948,22 +11509,51 @@ function renderRankRecommendationList(
         setTargetMonth: (value) => {
             setRankRecommendationTargetMonth(value);
         },
+        setViewMode: (viewMode) => {
+            if (options.setViewMode !== undefined) {
+                options.setViewMode(viewMode);
+                return;
+            }
+            setRankRecommendationViewMode(viewMode);
+        },
+        selectCandidate: (candidateKey) => {
+            const row = viewModel.rows.find((candidateRow) => (
+                buildRankRecommendationWorkspaceCandidateKey(candidateRow.candidate) === candidateKey
+            ));
+            if (row !== undefined) {
+                options.selectCandidate?.(row.candidate);
+            }
+        },
         hydrateEvidence: (candidateKey, container) => {
             const row = viewModel.rows.find((candidateRow) => buildRankRecommendationWorkspaceCandidateKey(candidateRow.candidate) === candidateKey);
             if (row === undefined) {
                 container.replaceChildren();
                 return;
             }
+            if (row.curvePreviewReadiness === "pending") {
+                container.replaceChildren(createRankRecommendationCurvePreviewLoading());
+                options.requestCurvePreview?.(row.candidate);
+                return;
+            }
             const evidenceFocus = captureRankRecommendationEvidenceFocus(container);
             container.replaceChildren(...createRankRecommendationCurvePreviewCellChildren(row.candidate, row.curvePreviewInfo));
             restoreRankRecommendationEvidenceFocus(container, evidenceFocus);
             restorePendingSalesSettingBookingCurveToggleFocus(container, candidateKey);
+        },
+        retryEvidence: (candidateKey) => {
+            const row = viewModel.rows.find((candidateRow) => (
+                buildRankRecommendationWorkspaceCandidateKey(candidateRow.candidate) === candidateKey
+            ));
+            if (row !== undefined) {
+                options.retryCurvePreview?.(row.candidate);
+            }
         }
     };
 
     syncRankRecommendationReactList(rootElement, {
         signature: options.signature,
         mode: options.signature.startsWith("fixture:") ? "fixture" : "live",
+        readinessStage: options.readinessStage,
         title: "今日の判断",
         metaText: formatRankRecommendationListShortMeta(
             candidates,
@@ -10974,10 +11564,11 @@ function renderRankRecommendationList(
             options.curvePreviewInfoByKey
         ),
         metaTitle: metaDetailText,
-        emptyText: candidates.length === 0
-            ? (options.statusText ?? "現在の判断状態に該当する料金調整候補はありません")
+        emptyText: candidates.length === 0 && options.statusText === null
+            ? "現在の判断状態に該当する料金調整候補はありません"
             : null,
         controls: buildRankRecommendationReactControlsSnapshot({
+            readinessStage: options.readinessStage,
             statusText: options.statusText,
             viewMode: options.viewMode ?? "ready",
             workStateCounts: options.workStateCounts ?? {
@@ -10991,7 +11582,8 @@ function renderRankRecommendationList(
             canShowMore: options.canShowMore === true,
             canResetDisplayLimit: options.canResetDisplayLimit === true,
             rankLadder: options.rankLadder,
-            rankOrder: options.rankOrder
+            rankOrder: options.rankOrder,
+            preserveWorkState: options.preserveWorkStateControl === true
         }),
         candidates: viewModel.rows.map(buildRankRecommendationReactCandidateSnapshot)
     }, {
@@ -11250,7 +11842,9 @@ function buildRankRecommendationListViewModel(
     candidates: readonly RankRecommendationCandidate[],
     options: {
         displayInfoByKey?: ReadonlyMap<string, RankRecommendationDisplayInfo> | undefined;
+        curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence> | undefined;
         curvePreviewInfoByKey?: ReadonlyMap<string, RankRecommendationCurvePreviewInfo> | undefined;
+        curvePreviewReadinessByKey?: ReadonlyMap<string, RankRecommendationReactEvidenceReadiness> | undefined;
         rankOptions: readonly { code: string; name: string }[];
         recentChangeCooldownByKey: ReadonlyMap<string, RankRecommendationRecentChangeCooldown>;
     }
@@ -11259,12 +11853,20 @@ function buildRankRecommendationListViewModel(
         rows: candidates.map((candidate) => {
             const displayInfoKey = buildRankRecommendationCandidateDisplayInfoKey(candidate);
             const curvePreviewInfo = options.curvePreviewInfoByKey?.get(displayInfoKey) ?? null;
-            const hasCompleteIndividualGroupEvidence = curvePreviewInfo === null || (
-                curvePreviewInfo.segmentVariants.individual?.currentSecondaryRoomCount !== null
-                && curvePreviewInfo.segmentVariants.individual?.currentSecondaryRoomCount !== undefined
-                && curvePreviewInfo.segmentVariants.group?.currentSecondaryRoomCount !== null
-                && curvePreviewInfo.segmentVariants.group?.currentSecondaryRoomCount !== undefined
+            const curveEvidence = options.curveEvidenceByKey?.get(
+                buildRankRecommendationEvidenceKey(candidate.stayDate, candidate.roomGroupId)
             );
+            const individualRoomCount = options.curveEvidenceByKey === undefined
+                ? (curvePreviewInfo?.segmentVariants.individual?.currentSecondaryRoomCount ?? null)
+                : (curveEvidence?.currentTransientRooms ?? null);
+            const groupRoomCount = options.curveEvidenceByKey === undefined
+                ? (curvePreviewInfo?.segmentVariants.group?.currentSecondaryRoomCount ?? null)
+                : (curveEvidence?.currentGroupRooms ?? null);
+            const hasCompleteIndividualGroupEvidence = individualRoomCount !== null && groupRoomCount !== null;
+            const curvePreviewReadiness = options.curvePreviewReadinessByKey?.get(displayInfoKey)
+                ?? (curvePreviewInfo === null
+                    ? "missing"
+                    : resolveRankRecommendationCurvePreviewReadiness(curvePreviewInfo));
             const rankChangeProposal = buildRankRecommendationRankChangeProposal({
                 candidate,
                 provider: "lincoln_custom_suggest"
@@ -11273,6 +11875,9 @@ function buildRankRecommendationListViewModel(
                 candidate,
                 displayInfo: options.displayInfoByKey?.get(displayInfoKey) ?? null,
                 curvePreviewInfo,
+                curvePreviewReadiness,
+                individualRoomCount,
+                groupRoomCount,
                 rankOptions: options.rankOptions,
                 actionLabel: formatRankRecommendationAction(candidate),
                 reasonText: hasCompleteIndividualGroupEvidence
@@ -11289,7 +11894,7 @@ function buildRankRecommendationListViewModel(
                 workState: resolveCandidateRankRecommendationWorkState(
                     candidate,
                     options.recentChangeCooldownByKey,
-                    hasCompleteIndividualGroupEvidence
+                    hasCompleteIndividualGroupEvidence && curvePreviewReadiness !== "missing"
                 )
             };
         })
@@ -11297,6 +11902,7 @@ function buildRankRecommendationListViewModel(
 }
 
 function buildRankRecommendationReactControlsSnapshot(options: {
+    readinessStage: RankRecommendationReactReadinessStage;
     statusText: string | null;
     viewMode: RankRecommendationViewMode;
     workStateCounts: RankRecommendationWorkStateCounts;
@@ -11307,9 +11913,16 @@ function buildRankRecommendationReactControlsSnapshot(options: {
     canResetDisplayLimit: boolean;
     rankLadder: readonly RankRecommendationRankLadderEntry[] | undefined;
     rankOrder: RankRecommendationRankOrderResolution | undefined;
+    preserveWorkState?: boolean;
 }): RankRecommendationReactControlsSnapshot {
+    const controlVisibility = resolveRankRecommendationProgressiveControlVisibility({
+        readinessStage: options.readinessStage,
+        hasStatusText: options.statusText !== null,
+        targetMonthOptionCount: options.targetMonthOptions.length,
+        preserveWorkState: options.preserveWorkState === true
+    });
     return {
-        targetMonth: options.statusText === null && options.targetMonthOptions.length > 0
+        targetMonth: controlVisibility.targetMonth
             ? {
                 currentValue: options.targetMonth ?? "all",
                 options: [
@@ -11324,7 +11937,7 @@ function buildRankRecommendationReactControlsSnapshot(options: {
                 ]
             }
             : null,
-        workState: options.statusText === null
+        workState: controlVisibility.workState
             ? {
                 options: RANK_RECOMMENDATION_VIEW_MODE_OPTIONS.map((option) => ({
                     mode: option.mode,
@@ -11335,7 +11948,7 @@ function buildRankRecommendationReactControlsSnapshot(options: {
                 }))
             }
             : null,
-        displayLimit: options.canShowMore || options.canResetDisplayLimit
+        displayLimit: controlVisibility.displayLimit && (options.canShowMore || options.canResetDisplayLimit)
             ? {
                 showMoreButton: options.canShowMore
                     ? buildRankRecommendationButtonSnapshot({
@@ -11353,7 +11966,7 @@ function buildRankRecommendationReactControlsSnapshot(options: {
                     : null
             }
             : null,
-        rankOrder: options.rankLadder !== undefined && options.rankOrder !== undefined
+        rankOrder: controlVisibility.rankOrder && options.rankLadder !== undefined && options.rankOrder !== undefined
             ? {
                 source: options.rankOrder.source,
                 ladderJson: JSON.stringify(options.rankLadder),
@@ -11380,6 +11993,9 @@ function buildRankRecommendationReactCandidateSnapshot(
         candidate,
         displayInfo,
         curvePreviewInfo,
+        curvePreviewReadiness,
+        individualRoomCount,
+        groupRoomCount,
         rankOptions,
         actionLabel,
         reasonText,
@@ -11393,17 +12009,19 @@ function buildRankRecommendationReactCandidateSnapshot(
     const hasPendingDecision = pendingDecision !== null;
     const targetRankGapEntry = displayInfo?.rankGapContext?.entries.find((entry) => entry.isTarget) ?? null;
     const occupancyCapacity = targetRankGapEntry?.occupancyCapacity ?? null;
-    const individualRoomCount = curvePreviewInfo?.segmentVariants.individual?.currentSecondaryRoomCount ?? null;
-    const groupRoomCount = curvePreviewInfo?.segmentVariants.group?.currentSecondaryRoomCount ?? null;
     const isRankChangeUnavailable = isRankChangeBlockedByScope
         || rankOptions.length === 0
         || individualRoomCount === null
         || groupRoomCount === null
+        || curvePreviewReadiness !== "complete"
         || hasPendingDecision
         || rankChangeResult?.status === "confirming"
         || rankChangeResult?.status === "success";
     const isDecisionUnavailable = hasPendingDecision
         || isRankChangeBlockedByScope
+        || individualRoomCount === null
+        || groupRoomCount === null
+        || curvePreviewReadiness !== "complete"
         || rankChangeResult?.status === "confirming"
         || rankChangeResult?.status === "success";
     const sourceStatus = getRankRecommendationRawSourceStatus(candidate, curvePreviewInfo === null
@@ -11414,10 +12032,14 @@ function buildRankRecommendationReactCandidateSnapshot(
         key: buildRankRecommendationWorkspaceCandidateKey(candidate),
         chartKey: [
             curvePreviewInfo?.signature ?? buildRankRecommendationCurvePreviewKey(candidate),
+            `readiness:${curvePreviewReadiness}`,
             `segment:${getSalesSettingBookingCurveSecondarySegment()}`,
             getSalesSettingBookingCurveReferenceVisibilitySignature(),
             `same-weekday:${isSalesSettingBookingCurveSameWeekdayVisible() ? "1" : "0"}`
         ].join("|"),
+        evidenceReadiness: curvePreviewReadiness,
+        evidenceRetryAvailable: curvePreviewReadiness !== "pending"
+            && curvePreviewInfo?.transientFailure === true,
         workState,
         stayDateKey: candidate.stayDate,
         stayDateLabel: formatRankRecommendationStayDateForDisplay(candidate.stayDate),
@@ -11442,7 +12064,8 @@ function buildRankRecommendationReactCandidateSnapshot(
         evidenceStatusText: formatRankRecommendationWorkspaceEvidenceStatus(
             individualRoomCount,
             groupRoomCount,
-            sourceStatus
+            sourceStatus,
+            curvePreviewReadiness
         ),
         rankOptions,
         selectedRankCode: rankChangeProposal.targetRankCode,
@@ -11480,15 +12103,21 @@ function buildRankRecommendationWorkspaceCandidateKey(candidate: RankRecommendat
 function formatRankRecommendationWorkspaceEvidenceStatus(
     individualRoomCount: number | null,
     groupRoomCount: number | null,
-    sourceStatus: RankRecommendationRawSourceStatus
+    sourceStatus: RankRecommendationRawSourceStatus,
+    previewReadiness: RankRecommendationReactEvidenceReadiness
 ): string {
-    if (individualRoomCount !== null && groupRoomCount !== null) {
-        return `個人・団体を直接取得 / ${formatRankRecommendationRawSourceStatus(sourceStatus)}`;
+    const countStatus = individualRoomCount !== null && groupRoomCount !== null
+        ? "個人・団体を直接取得"
+        : individualRoomCount === null && groupRoomCount === null
+            ? "個人・団体は未取得"
+            : `${individualRoomCount === null ? "個人" : "団体"}は未取得`;
+    if (previewReadiness === "pending") {
+        return `${countStatus} / 判断根拠の推移を取得中`;
     }
-    if (individualRoomCount === null && groupRoomCount === null) {
-        return `個人・団体は未取得 / ${formatRankRecommendationRawSourceStatus(sourceStatus)}`;
+    if (previewReadiness === "missing") {
+        return `${countStatus} / 判断根拠の推移は未取得 / ${formatRankRecommendationRawSourceStatus(sourceStatus)}`;
     }
-    return `${individualRoomCount === null ? "個人" : "団体"}は未取得 / ${formatRankRecommendationRawSourceStatus(sourceStatus)}`;
+    return `${countStatus} / ${formatRankRecommendationRawSourceStatus(sourceStatus)}`;
 }
 
 function buildRankRecommendationButtonSnapshot(options: {
@@ -12005,6 +12634,13 @@ function createRankRecommendationCurvePreviewCellChildren(
     ];
 }
 
+function createRankRecommendationCurvePreviewLoading(): HTMLElement {
+    const element = document.createElement("div");
+    element.setAttribute(RANK_RECOMMENDATION_CURVE_PREVIEW_LOADING_ATTRIBUTE, "");
+    element.textContent = "グラフを準備しています。";
+    return element;
+}
+
 function createRankRecommendationCurvePreviewSection(
     candidate: RankRecommendationCandidate,
     curvePreviewInfo: RankRecommendationCurvePreviewInfo,
@@ -12082,6 +12718,8 @@ function formatRankRecommendationCurvePreviewDiagnostic(diagnostic: string): str
             return "基準日以前の booking_curve 点がありません";
         case "booking_curve_segment_missing":
             return "選択中の個人 / 団体区分の preview データを取得できません";
+        case "booking_curve_preview_load_failed":
+            return "選択中候補の判断根拠を取得できませんでした";
         case "raw_history_reference_missing":
             return "前年実績から作る reference curve が不足しています";
         default:
@@ -12580,6 +13218,13 @@ function findLowestCommonElementAncestor(leftElement: HTMLElement, rightElement:
 
 function cleanupRankRecommendationList(): void {
     cleanupRankRecommendationWorkspaceResizeObserver();
+    clearRankRecommendationTargetMonthOptionsContext();
+    rankRecommendationProgressiveEvidenceContextSignature = "";
+    rankRecommendationProgressiveEvidenceContextGeneration += 1;
+    rankRecommendationProgressiveSelectedCandidateKey = null;
+    rankRecommendationProgressiveWorkStateControlPublished = false;
+    rankRecommendationProgressiveEvidenceCacheByKey.clear();
+    rankRecommendationProgressiveEvidenceRequestCache.clear();
     latestRankRecommendationCurvePreviewSnapshotByKey.clear();
     latestRankRecommendationCandidateByCompetitorPreviewKey.clear();
     unmountRankRecommendationReactIsland();
@@ -20575,7 +21220,8 @@ function ensureGroupRoomStyles(): void {
             margin-left: auto;
         }
 
-        [${RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE}] {
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_DIAGNOSTICS_ATTRIBUTE}],
+        [${RANK_RECOMMENDATION_CURVE_PREVIEW_LOADING_ATTRIBUTE}] {
             margin-top: 6px;
             color: #5b6b7d;
             font-size: 11px;

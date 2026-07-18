@@ -1,6 +1,11 @@
 import * as React from "react";
 import { flushSync, createPortal } from "react-dom";
 import { createRoot, type Root } from "react-dom/client";
+import {
+    resolveRankRecommendationProgressiveReadinessStage,
+    type RankRecommendationProgressiveEvidenceReadiness,
+    type RankRecommendationProgressiveReadinessStage
+} from "./rankRecommendationProgressiveReadiness";
 import type { RankRecommendationWorkState } from "./rankRecommendationWorkspaceModel";
 
 const REACT_ISLAND_HOST_ATTRIBUTE = "data-ra-rank-recommendation-react-island-host";
@@ -23,6 +28,10 @@ const RANK_CHANGE_TARGET_CODE_ATTRIBUTE = "data-ra-rank-recommendation-rank-chan
 const RANK_CHANGE_TARGET_NAME_ATTRIBUTE = "data-ra-rank-recommendation-rank-change-target-name";
 
 type RankRecommendationReactMode = "live" | "fixture";
+
+export type RankRecommendationReactReadinessStage = RankRecommendationProgressiveReadinessStage;
+export type RankRecommendationReactEvidenceReadiness = RankRecommendationProgressiveEvidenceReadiness;
+export const resolveRankRecommendationReactReadinessStage = resolveRankRecommendationProgressiveReadinessStage;
 
 export interface RankRecommendationReactButtonSnapshot {
     text: string;
@@ -67,6 +76,8 @@ export interface RankRecommendationReactControlsSnapshot {
 export interface RankRecommendationReactCandidateSnapshot {
     key: string;
     chartKey: string;
+    evidenceReadiness: RankRecommendationReactEvidenceReadiness;
+    evidenceRetryAvailable: boolean;
     workState: RankRecommendationWorkState;
     stayDateKey: string;
     stayDateLabel: string;
@@ -108,6 +119,7 @@ export interface RankRecommendationReactCandidateSnapshot {
 export interface RankRecommendationReactListSnapshot {
     signature: string;
     mode: RankRecommendationReactMode;
+    readinessStage: RankRecommendationReactReadinessStage;
     title: string;
     metaText: string;
     metaTitle?: string;
@@ -118,7 +130,10 @@ export interface RankRecommendationReactListSnapshot {
 
 export interface RankRecommendationReactActions {
     hydrateEvidence: (candidateKey: string, container: HTMLElement) => void;
+    retryEvidence: (candidateKey: string) => void;
+    selectCandidate: (candidateKey: string) => void;
     setTargetMonth: (value: string) => void;
+    setViewMode: (viewMode: RankRecommendationWorkState) => void;
 }
 
 export interface RankRecommendationReactRenderOptions {
@@ -128,7 +143,10 @@ export interface RankRecommendationReactRenderOptions {
 
 const NOOP_REACT_ACTIONS: RankRecommendationReactActions = {
     hydrateEvidence: () => undefined,
-    setTargetMonth: () => undefined
+    retryEvidence: () => undefined,
+    selectCandidate: () => undefined,
+    setTargetMonth: () => undefined,
+    setViewMode: () => undefined
 };
 
 const mountedRoots = new WeakMap<HTMLElement, Root>();
@@ -230,6 +248,7 @@ function RankRecommendationWorkspace(props: {
             [REACT_ISLAND_ATTRIBUTE]: "mounted",
             "data-row-count": String(snapshot.candidates.length),
             "data-mode": snapshot.mode,
+            "data-readiness-stage": snapshot.readinessStage,
             "data-signature": snapshot.signature,
             hidden: true
         }),
@@ -237,7 +256,9 @@ function RankRecommendationWorkspace(props: {
             snapshot,
             selectedKey: selectedCandidate?.key ?? null,
             onTargetMonthChange: (value: string) => (options?.actions ?? NOOP_REACT_ACTIONS).setTargetMonth(value),
+            onViewModeChange: (viewMode) => (options?.actions ?? NOOP_REACT_ACTIONS).setViewMode(viewMode),
             onSelect: (candidateKey: string) => {
+                (options?.actions ?? NOOP_REACT_ACTIONS).selectCandidate(candidateKey);
                 setInteraction((current) => ({
                     ...current,
                     selectedKey: candidateKey,
@@ -253,21 +274,28 @@ function RankRecommendationRail(props: {
     snapshot: RankRecommendationReactListSnapshot;
     selectedKey: string | null;
     onTargetMonthChange: (value: string) => void;
+    onViewModeChange: (viewMode: RankRecommendationWorkState) => void;
     onSelect: (candidateKey: string) => void;
 }): React.ReactElement {
     const { snapshot } = props;
     const groupedCandidates = groupCandidatesByDate(snapshot.candidates);
-    return React.createElement("div", { "data-ra-rank-recommendation-ui-component": "workspace-rail" },
+    return React.createElement("div", {
+        "data-ra-rank-recommendation-ui-component": "workspace-rail",
+        "data-ra-rank-recommendation-readiness-stage": snapshot.readinessStage
+    },
         React.createElement("header", { "data-ra-rank-recommendation-ui-component": "rail-header" },
             React.createElement("h2", null, snapshot.title),
             React.createElement("p", {
                 "data-ra-rank-recommendation-meta": "",
+                role: "status",
+                "aria-live": "polite",
+                "aria-atomic": "true",
                 title: snapshot.metaTitle
             }, snapshot.metaText)
         ),
         React.createElement("div", { "data-ra-rank-recommendation-ui-component": "rail-controls" },
             renderTargetMonthControl(snapshot.controls.targetMonth, props.onTargetMonthChange),
-            renderWorkStateControl(snapshot.controls.workState)
+            renderWorkStateControl(snapshot.controls.workState, props.onViewModeChange)
         ),
         React.createElement("div", { "data-ra-rank-recommendation-ui-component": "task-list" },
             snapshot.emptyText === null
@@ -284,9 +312,7 @@ function RankRecommendationRail(props: {
                     }))
                 ])
                 : React.createElement("p", {
-                    "data-ra-rank-recommendation-empty": "",
-                    role: "status",
-                    "aria-live": "polite"
+                    "data-ra-rank-recommendation-empty": ""
                 }, snapshot.emptyText)
         ),
         React.createElement("footer", { "data-ra-rank-recommendation-ui-component": "rail-footer" },
@@ -509,19 +535,39 @@ function RankRecommendationDetail(props: {
                     renderMetric("団体", candidate.groupText, "group")
                 )
             ),
-            React.createElement("section", { "data-ra-rank-recommendation-evidence-card": "" },
+            React.createElement("section", {
+                "data-ra-rank-recommendation-evidence-card": "",
+                "data-ra-rank-recommendation-evidence-readiness": candidate.evidenceReadiness
+            },
                 React.createElement("div", null,
                     React.createElement("h3", null, "判断根拠の推移"),
-                    React.createElement("p", {
-                        role: "status",
-                        "aria-live": "polite",
-                        "aria-atomic": "true"
-                    }, candidate.evidenceStatusText)
+                    React.createElement("p", null, candidate.evidenceStatusText)
                 ),
+                candidate.evidenceRetryAvailable
+                    ? React.createElement("div", { "data-ra-rank-recommendation-actions": "" },
+                        renderButton({
+                            text: "判断根拠を再取得",
+                            title: "一時的に取得できなかった判断根拠をもう一度読み込む",
+                            attrs: {
+                                [BUTTON_ATTRIBUTE]: "",
+                                [BUTTON_ACTION_ATTRIBUTE]: "evidence-retry"
+                            }
+                        }, {
+                            onClick: (event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                evidenceHostRef.current?.focus();
+                                props.actions.retryEvidence(candidate.key);
+                            }
+                        })
+                    )
+                    : null,
                 React.createElement("div", {
                     ref: evidenceHostRef,
                     "data-ra-rank-recommendation-evidence-host": "",
-                    "data-candidate-key": candidate.key
+                    "data-candidate-key": candidate.key,
+                    "aria-busy": candidate.evidenceReadiness === "pending" ? "true" : "false",
+                    tabIndex: -1
                 })
             ),
             React.createElement("section", { "data-ra-rank-recommendation-reason-card": "" },
@@ -586,7 +632,8 @@ function renderTargetMonthControl(
 }
 
 function renderWorkStateControl(
-    control: RankRecommendationReactControlsSnapshot["workState"]
+    control: RankRecommendationReactControlsSnapshot["workState"],
+    onChange: (viewMode: RankRecommendationWorkState) => void
 ): React.ReactElement | null {
     if (control === null) {
         return null;
@@ -603,7 +650,12 @@ function renderWorkStateControl(
         [VIEW_MODE_ATTRIBUTE]: option.mode,
         "aria-pressed": option.pressed ? "true" : "false",
         title: option.count === 0 ? `${option.title}（候補なし）` : option.title,
-        disabled: option.count === 0 && !option.pressed
+        disabled: option.count === 0 && !option.pressed,
+        onClick: (event: React.MouseEvent<HTMLButtonElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onChange(option.mode);
+        }
     },
         React.createElement("strong", null, String(option.count)),
         React.createElement("span", null, option.label)

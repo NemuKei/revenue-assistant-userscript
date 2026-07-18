@@ -23,4 +23,4 @@ await build({
 });
 
 const { runRankFixtureMarkerCheck } = require(outFile);
-runRankFixtureMarkerCheck();
+await runRankFixtureMarkerCheck();

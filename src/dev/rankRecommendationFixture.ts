@@ -5,11 +5,14 @@ import {
     type RankRecommendationReactCandidateSnapshot,
     type RankRecommendationReactListSnapshot
 } from "../rankRecommendationReactIsland";
+import { resolveRankRecommendationProgressiveControlVisibility } from "../rankRecommendationProgressiveReadiness";
 import { RANK_RECOMMENDATION_WORKSPACE_STYLES } from "../rankRecommendationWorkspaceStyles";
 import type { RankRecommendationWorkState } from "../rankRecommendationWorkspaceModel";
 import { resolveRankRecommendationWorkspaceLayoutMode } from "../rankRecommendationWorkspaceLayout";
 
 type FixtureState =
+    | "loading"
+    | "first-task"
     | "ready"
     | "needs-evidence"
     | "recent"
@@ -26,6 +29,8 @@ type FixtureState =
     | "current-settings-403";
 
 const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
+    { value: "loading", label: "初回 loading" },
+    { value: "first-task", label: "最初の正しい task" },
     { value: "ready", label: "判断可能" },
     { value: "needs-evidence", label: "要確認" },
     { value: "recent", label: "保留・直近" },
@@ -208,6 +213,9 @@ function renderFixture(
         detailContainer: detailElement,
         actions: {
             hydrateEvidence: (_candidateKey, container) => renderFixtureEvidence(container, state),
+            retryEvidence: () => undefined,
+            selectCandidate: () => undefined,
+            setViewMode: () => undefined,
             setTargetMonth: (value) => {
                 currentFixtureTargetMonth = value;
                 renderFixture(rootElement, detailElement, stateSelectElement, state);
@@ -227,68 +235,86 @@ export function buildFixtureSnapshot(
     const workStateCounts = candidates.length === 0
         ? { ready: 0, needs_evidence: 0, recent_or_held: 0 }
         : { ready: 3, needs_evidence: 2, recent_or_held: 1 };
+    const targetMonthControl = {
+        currentValue: targetMonth,
+        options: [
+            { value: "202607", label: "2026年7月 (6件)" },
+            { value: "202608", label: "2026年8月 (6件)" },
+            { value: "202609", label: "2026年9月 (6件)" }
+        ]
+    };
+    const workStateControl = {
+        options: [
+            {
+                mode: "ready" as const,
+                label: "判断可能",
+                title: "根拠と変更候補が揃った候補",
+                count: workStateCounts.ready,
+                pressed: activeWorkState === "ready"
+            },
+            {
+                mode: "needs_evidence" as const,
+                label: "要確認",
+                title: "不足または注意が残る候補",
+                count: workStateCounts.needs_evidence,
+                pressed: activeWorkState === "needs_evidence"
+            },
+            {
+                mode: "recent_or_held" as const,
+                label: "保留・直近",
+                title: "保留操作中、処理中、または直近変更がある候補",
+                count: workStateCounts.recent_or_held,
+                pressed: activeWorkState === "recent_or_held"
+            }
+        ]
+    };
+    const readinessStage = state === "loading"
+        ? "loading"
+        : state === "first-task"
+            ? "first_task"
+            : state === "missing-counts"
+                ? "needs_evidence"
+                : state === "current-settings-401" || state === "current-settings-403"
+                    ? "error"
+                    : "complete";
+    const controlVisibility = resolveRankRecommendationProgressiveControlVisibility({
+        readinessStage,
+        hasStatusText: readinessStage !== "complete",
+        targetMonthOptionCount: state === "loading" ? 0 : targetMonthControl.options.length
+    });
+    const rankOrderControl = {
+        source: "manual_override",
+        ladderJson: JSON.stringify([
+            { code: "10", name: "10" },
+            { code: "11", name: "11" },
+            { code: "12", name: "12" }
+        ]),
+        summary: "ランク順序: 手動",
+        summaryTitle: "高い順 10、11、12",
+        inputValue: "10, 11, 12",
+        status: "保存済み",
+        saveButton: buildButton("保存", "rank-order-save"),
+        reverseButton: buildButton("上下を反転", "rank-order-reverse"),
+        resetButton: buildButton("リセット", "rank-order-reset")
+    };
     return {
         signature: `fixture:${state}:${candidates.map((candidate) => candidate.key).join("|")}`,
         mode: "fixture",
+        readinessStage,
         title: "今日の判断",
-        metaText: buildMetaText(state, candidates.length),
+        metaText: buildMetaText(state, candidates.length, targetMonth),
         metaTitle: "カレンダーで日付感を保ち、右の判断レールと下の詳細で一件ずつ判断する fixture",
         emptyText,
         controls: {
-            targetMonth: {
-                currentValue: targetMonth,
-                options: [
-                    { value: "202607", label: "2026年7月 (6件)" },
-                    { value: "202608", label: "2026年8月 (6件)" },
-                    { value: "202609", label: "2026年9月 (6件)" }
-                ]
-            },
-            workState: {
-                options: [
-                    {
-                        mode: "ready",
-                        label: "判断可能",
-                        title: "根拠と変更候補が揃った候補",
-                        count: workStateCounts.ready,
-                        pressed: activeWorkState === "ready"
-                    },
-                    {
-                        mode: "needs_evidence",
-                        label: "要確認",
-                        title: "不足または注意が残る候補",
-                        count: workStateCounts.needs_evidence,
-                        pressed: activeWorkState === "needs_evidence"
-                    },
-                    {
-                        mode: "recent_or_held",
-                        label: "保留・直近",
-                        title: "保留操作中、処理中、または直近変更がある候補",
-                        count: workStateCounts.recent_or_held,
-                        pressed: activeWorkState === "recent_or_held"
-                    }
-                ]
-            },
-            displayLimit: state === "ready"
+            targetMonth: controlVisibility.targetMonth ? targetMonthControl : null,
+            workState: controlVisibility.workState ? workStateControl : null,
+            displayLimit: controlVisibility.displayLimit && state === "ready"
                 ? {
                     showMoreButton: buildButton("さらに表示 (3件)", "display-more"),
                     resetButton: null
                 }
                 : null,
-            rankOrder: {
-                source: "manual_override",
-                ladderJson: JSON.stringify([
-                    { code: "10", name: "10" },
-                    { code: "11", name: "11" },
-                    { code: "12", name: "12" }
-                ]),
-                summary: "ランク順序: 手動",
-                summaryTitle: "高い順 10、11、12",
-                inputValue: "10, 11, 12",
-                status: "保存済み",
-                saveButton: buildButton("保存", "rank-order-save"),
-                reverseButton: buildButton("上下を反転", "rank-order-reverse"),
-                resetButton: buildButton("リセット", "rank-order-reset")
-            }
+            rankOrder: controlVisibility.rankOrder ? rankOrderControl : null
         },
         candidates
     };
@@ -347,20 +373,23 @@ function buildCandidatesForState(
     state: FixtureState,
     targetMonth: string
 ): RankRecommendationReactCandidateSnapshot[] {
-    if (state === "empty" || state === "current-settings-401" || state === "current-settings-403") {
+    if (state === "loading" || state === "empty" || state === "current-settings-401" || state === "current-settings-403") {
         return [];
     }
 
     const baseOverrides: Partial<RankRecommendationReactCandidateSnapshot> = {};
     if (state === "missing-counts") {
         Object.assign(baseOverrides, {
+            evidenceReadiness: "missing" as const,
             workState: "needs_evidence" as const,
             occupancyText: "OH 未取得 / キャパ 未取得",
             individualText: "未取得",
             groupText: "未取得",
             reasonText: "個人・団体の内訳を取得できず、現時点では判断を確定できません",
             cautionText: "個人・団体の内訳を取得できていません",
-            evidenceStatusText: "個人・団体は未取得 / 未保存"
+            evidenceStatusText: "個人・団体は未取得 / 判断根拠の推移は未取得 / 未保存",
+            snoozeButton: buildButton("様子見", "snooze", true),
+            dismissButton: buildButton("対応不要", "dismiss", true)
         });
     }
     if (state === "zero-counts") {
@@ -453,6 +482,17 @@ function buildCandidatesForState(
         ...baseOverrides
     };
 
+    if (state === "first-task") {
+        return [{
+            ...primary,
+            chartKey: `${primary.chartKey}:pending`,
+            evidenceReadiness: "pending",
+            evidenceStatusText: "個人・団体を直接取得 / 判断根拠の推移を取得中",
+            confirmButton: { ...primary.confirmButton, disabled: true },
+            snoozeButton: { ...primary.snoozeButton, disabled: true },
+            dismissButton: { ...primary.dismissButton, disabled: true }
+        }];
+    }
     if (state === "needs-evidence" || state === "missing-counts" || state === "write-failure") {
         return [
             {
@@ -574,6 +614,7 @@ function buildCandidate(
     });
     return {
         chartKey: `${overrides.key}:chart`,
+        evidenceReadiness: "complete",
         workState: "ready",
         priorityLabel: "優先度 高",
         confidenceLabel: "高",
@@ -596,7 +637,8 @@ function buildCandidate(
         dismissButton: buildButton("対応不要", "dismiss"),
         pendingDecision: null,
         rankChangeResult: null,
-        ...overrides
+        ...overrides,
+        evidenceRetryAvailable: overrides.evidenceRetryAvailable ?? false
     };
 }
 
@@ -689,21 +731,31 @@ function resolveFixtureWorkState(state: FixtureState): RankRecommendationWorkSta
 }
 
 function getEmptyTextForState(state: FixtureState): string | null {
-    if (state === "current-settings-401") {
-        return "候補の現在設定を取得できませんでした（HTTP 401）。ログイン状態を確認してください。";
-    }
-    if (state === "current-settings-403") {
-        return "候補の現在設定を取得できませんでした（HTTP 403）。施設権限を確認してください。";
-    }
     if (state === "empty") {
         return "現在の判断状態に該当する料金調整候補はありません";
     }
     return null;
 }
 
-function buildMetaText(state: FixtureState, count: number): string {
-    if (state === "current-settings-401" || state === "current-settings-403") {
-        return "候補データの取得に失敗";
+function buildMetaText(state: FixtureState, count: number, targetMonth: string): string {
+    if (state === "loading") {
+        return "判断データを準備しています。カレンダーはそのまま操作できます。";
+    }
+    if (state === "first-task") {
+        const year = Number.parseInt(targetMonth.slice(0, 4), 10);
+        const month = Number.parseInt(targetMonth.slice(4, 6), 10);
+        return `${year}年${month}月の候補判定は完了しました。選択中の推移グラフを準備しています。`;
+    }
+    if (state === "missing-counts") {
+        const year = Number.parseInt(targetMonth.slice(0, 4), 10);
+        const month = Number.parseInt(targetMonth.slice(4, 6), 10);
+        return `${year}年${month}月の候補判定は完了しました。選択中の推移グラフを取得できませんでした。`;
+    }
+    if (state === "current-settings-401") {
+        return "候補の現在設定を取得できませんでした（HTTP 401）。ログイン状態を確認してください。";
+    }
+    if (state === "current-settings-403") {
+        return "候補の現在設定を取得できませんでした（HTTP 403）。施設権限を確認してください。";
     }
     return `${count}件 / 基準日 7月17日 / 個人・団体を分離表示`;
 }
@@ -882,6 +934,13 @@ function cleanupFixtureCalendarMarkers(): void {
 }
 
 function renderFixtureEvidence(container: HTMLElement, state: FixtureState): void {
+    if (state === "first-task") {
+        const status = document.createElement("p");
+        status.setAttribute("data-ra-fixture-evidence-loading", "");
+        status.textContent = "グラフを準備しています。";
+        container.replaceChildren(status);
+        return;
+    }
     const figure = document.createElement("figure");
     figure.setAttribute("data-ra-fixture-booking-curve", "");
 
