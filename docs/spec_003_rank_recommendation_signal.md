@@ -571,6 +571,9 @@ rank response dataset の first contract:
 - 料金調整候補の有無や選択状態を日付セルへ補助表示してよいが、黒い数値、青い `団n`、warm cache marker、保存済み raw source signal、最終変更表示の意味を上書きしない。
 - 標準の日付 link は Revenue Assistant が absolute positioning とセル寸法を管理する。RAU の cue はその既存 positioning context を使う子要素とし、日付 link 自体の `position`、3 か月の幅、行位置、cell identity を変更しない。
 - カレンダーは日付と曜日の位置関係を把握する基準であり、作業順は rail が担う。
+- calendar cue の source は、user decision / resolved、対象月、直近変更 cooldown、work-state、表示上限を適用し、表示上限外の選択中 task を pin した後の最終 `visibleCandidates` とする。対象月の全 active candidate や priority threshold だけから cue を作らない。これにより、cue は常に `今日の判断` rail に現在表示中の task 日付と一致する。
+- 初期表示では優先度順 top 10 の日付だけを cue にし、`さらに表示` で rail を 10 件増やした場合は追加された task 日付へ cue を増やす。`10件に戻す` では初期密度へ戻す。表示上限外の候補数と `さらに表示` は維持し、高優先候補を candidate pool から削除しない。11件以上が同じ優先度の場合も、calendar だけへ別 threshold を設けず、rail と同じ順序・表示範囲を正とする。
+- cue の短い凡例は `カレンダー左線：今日の判断に表示中の候補日` とする。cue 自体は `aria-hidden` のままにし、日付 link の外に置く説明 node で `今日の判断に表示中 n件` と work-state 内訳を読み上げる。既存 `aria-describedby` token は保持し、RAU が追加した token だけを cleanup する。
 
 `今日の判断` rail 契約:
 

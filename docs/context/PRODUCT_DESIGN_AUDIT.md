@@ -30,6 +30,41 @@
 - interactivity level:
   - 実装へ進む場合は full interactivity を前提にする。つまり、hover、focus、keyboard、loading、empty、error、disabled、pending、cancel、mobile 表示を実装と verify の対象に含める。
 
+## Calendar Cue Density Audit 2026-07-20
+
+### Brief Playback
+
+- task: `RAU-UX-144`
+- 対象 surface: 3か月標準カレンダー、左端 calendar cue、`今日の判断` rail。
+- 目的: 438件でもカレンダーを塗りつぶさず、日付認知と「次に見る日」の両方を維持する。候補 scoring、default target month、priority threshold は先に変更しない。
+- 制約: 黒い標準値、青い `団n`、OH / 個人 / 団体、標準 date link の absolute positioning、API / write boundary を維持する。
+
+### Audited Steps And Health
+
+1. `表示中 task` の現行 fixtureを capture。3 task / 2日で rail と cue は一致したが、旧 fixture は production の全 active cue を再現しておらず、比較 evidence としては不十分だった。health: 改善必要。
+2. 3か月438件相当、対象月146候補の `全 active` policyを合成。7月31日すべてに cue が出て、左線が候補識別ではなく背景の縞になった。health: 不採用。
+3. 同じ pool を `high priority` 24候補 / 12日に限定。全件より減るが件数上限がなく、rail の work-state / 表示上限 / selected pin と対応しない。health: 不採用。
+4. `visible tasks` policyへ戻し、同じdense poolのpriority-first top 10をrailとcueへ渡した。対象月、work-state、表示上限、selected pin 後の候補集合を cue source に採用し、screen-reader description と短い凡例も同じ意味へ統一した。health: 採用。
+
+### Evidence
+
+- Browser fixture、同一 viewport の比較画像:
+  - `.tmp/ux-144-audit/03-all-active.png`: 全 active、146候補 / 31日。
+  - `.tmp/ux-144-audit/04-high-priority.png`: 高優先、24候補 / 12日。
+  - `.tmp/ux-144-audit/08-final-top10-top.jpg`: 表示中 task、初期10候補 / 10日。
+- 採用案の DOM では初期10候補 / cue 10日、20件展開後20候補 / cue 12日、11件目を選択して10件へ戻した後は選択日を含む10候補 / cue 10日だった。rail と cue の日付集合、説明文 `今日の判断に表示中`、native `aria-describedby` と RAU token の双方を保持した。date link は `position:absolute`、document overflow 0、fixture write 0だった。
+- 比較中の凡例は `対象月の全候補日（比較）`、`対象月の高優先候補日（比較）`、`今日の判断に表示中の候補日` へ切り替わる。比較 control は同一dense poolを使う `判断可能` stateだけで有効にし、他stateでは採用policyへ戻す。
+- 390 x 844 では document overflow 0、calendar は359px内で1080pxの内部横scroll、task / cue は10件 / 10日のままだった。
+- fresh Browser tab はVite overlayなし、console warning / error 0、fixture write 0だった。Revenue Assistant live page と実writeは未確認のまま維持する。
+- 標準値は黒系 `rgb(40, 57, 76)`、`団n` は青 `rgb(35, 103, 167)` のまま。選択詳細も `OH 7 / キャパ 18`、`個人 5`、`団体 2` を分離表示した。
+- 実施設データと Revenue Assistant live page は今回再利用または再注入していない。比較は合成 fixture と source / contract check に限定する。
+
+### Adopted Direction And Failure Conditions
+
+- cue の意味は `カレンダー左線：今日の判断に表示中の候補日` とする。日付全体の候補総数や high-priority-only marker とは扱わない。
+- 初期 top 10 は priority-first sort 後なので、calendar 専用 threshold を追加しない。11件以上が同じ優先度の場合、後続候補は既存残件数と `さらに表示` で到達し、表示した時点で cue に加わる。
+- `さらに表示` で最大50件まで広げた結果の再飽和は利用者の明示操作によるものとして許容し、`10件に戻す` で初期密度へ戻す。selected candidate を pin した場合は rail と cue の一致を優先する。
+
 ## Live Progressive Workspace Audit 2026-07-20
 
 ### Finding

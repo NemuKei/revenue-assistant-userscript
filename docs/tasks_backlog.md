@@ -111,7 +111,7 @@
 ### RAU-UX-144 calendar cue と候補件数の情報密度を再評価する
 
 - 状態:
-  - 未着手。`RAU-UX-143` の live candidate では 3 か月で候補 438 件、初期表示 10 件となり、標準カレンダー寸法は維持できた一方、左端 cue が多くの日付へ出るため優先日の識別力が下がる可能性を確認した。
+  - 2026-07-20 に合成 fixture の比較、正本判断、local 実装を完了した。`main` push / 公開と Revenue Assistant live page への再注入は未実施。
 - 目的:
   - candidate scoring を先に変えず、calendar cue を全 active candidate から作る現行案、表示中 top task だけから作る案、対象月または優先度で絞る案を fixture で比較し、カレンダーが「日付認知」と「次に見る日」の両方を担える最小表現を決める。
 - 受け入れ条件:
@@ -119,8 +119,18 @@
   - 標準 calendar geometry、黒い値、青い `団n`、OH / 個人 / 団体、API / write boundary を変えない。
 - gate:
   - まず合成 fixture の比較と正本判断までを行い、candidate scoring、default target month、priority threshold を変える場合は別実装 checkpoint とする。
+- 比較と採用判断:
+  - 3か月438件相当の同一合成 pool では、対象月の全 active は146候補 / 31日、高優先限定は24候補 / 12日、表示中 task はpriority-first top 10候補 / 10日だった。全 active は cue が背景化し、高優先限定は rail の work-state / 表示上限 / selected pin と対応せず、件数上限もないため不採用とした。
+  - `visible_tasks` を採用し、cue source を対象月、直近変更 cooldown、work-state、表示上限、selected pin 適用後の最終 `visibleCandidates` に統一した。初期 top 10 は既存 priority-first sort 後であり、表示上限外の候補は残件数と `さらに表示` で到達可能なままにする。
+- local implementation:
+  - production の cue、rail、対象月、work-state、表示件数、selected pin を同じ候補集合へ揃えた。短い凡例を `カレンダー左線：今日の判断に表示中の候補日`、screen-reader description を `今日の判断に表示中 n件` と state 内訳へ変更した。
+  - production / fixture 共用 policy selector と cue summary を `rankRecommendationWorkspaceModel` に集約した。fixture には `全 active（438件相当）`、`表示中 task（採用案）`、`高優先のみ` の比較 control と候補数 / 日数 summary を追加した。比較 control は同一dense poolを使う `判断可能` stateだけで有効にし、policyごとに凡例も切り替える。
+  - candidate scoring、default target month、priority threshold、標準 calendar geometry、黒い値、青い `団n`、OH / 個人 / 団体、API / write boundary は変更していない。
+- local verification:
+  - Browser fixture の同一 viewport で3案を比較した。採用案は初期10候補 / cue 10日、20件展開後20候補 / cue 12日、11件目を選択して10件へ戻した後は選択日を含む10候補 / cue 10日で、rail と cue の日付集合が一致した。native + RAU `aria-describedby` token、date link `position:absolute`、document overflow 0、fixture write 0を確認した。標準値の黒系色、青い `団n`、`OH 7 / キャパ 18`、`個人 5`、`団体 2` は維持した。390 x 844ではdocument overflow 0、calendarだけが359px内で1080pxを横scrollする。
+  - `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run check:request-scheduler`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:candidate`、`npm run build:compare:vite`、`npm run react:doctor -- --diff false --verbose`、`git diff --check` は pass。React Doctorは既存53 diagnosticsで今回差分固有の指摘なし。candidateは653,137 bytes、SHA-256 `716ABE09104257DB7C339DBC22542F0438904CFE17BDEC7856D75AFB389221B1`、currentとの差は10 bytes、metadata mismatch 0だった。
 
-Remaining Task Triage は Now `RAU-UX-144`、Next なし、After Next なし、Later なしとする。publish は別の明示承認が必要であり、同じ自動 closeout とみなさず `main` push を行わない。
+Remaining Task Triage は Now / Next / After Next / Later なしとする。publish は別の明示承認が必要であり、同じ自動 closeout とみなさず `main` push を行わない。
 
 ## 2026-06-29 Docs Governance Profile
 

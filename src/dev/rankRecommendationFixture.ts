@@ -5,13 +5,22 @@ import {
     type RankRecommendationReactCandidateSnapshot,
     type RankRecommendationReactListSnapshot
 } from "../rankRecommendationReactIsland";
-import { resolveRankRecommendationProgressiveControlVisibility } from "../rankRecommendationProgressiveReadiness";
+import {
+    limitRankRecommendationItemsWithSelectedKey,
+    resolveRankRecommendationProgressiveControlVisibility
+} from "../rankRecommendationProgressiveReadiness";
 import { formatRankRecommendationCoverageStatus } from "../rankRecommendationCoverage";
 import { RANK_RECOMMENDATION_WORKSPACE_STYLES } from "../rankRecommendationWorkspaceStyles";
-import type { RankRecommendationWorkState } from "../rankRecommendationWorkspaceModel";
+import {
+    buildRankRecommendationCalendarCueSummary,
+    countRankRecommendationWorkStates,
+    selectRankRecommendationCalendarCueItems,
+    type RankRecommendationCalendarCuePolicy,
+    type RankRecommendationWorkState
+} from "../rankRecommendationWorkspaceModel";
 import { resolveRankRecommendationWorkspaceLayoutMode } from "../rankRecommendationWorkspaceLayout";
 
-type FixtureState =
+export type FixtureState =
     | "loading"
     | "first-task"
     | "coverage-partial"
@@ -77,9 +86,20 @@ const FIXTURE_CALENDAR_CUE_ATTRIBUTE = "data-ra-rank-recommendation-calendar-cue
 const FIXTURE_CALENDAR_DESCRIPTION_ATTRIBUTE = "data-ra-rank-recommendation-calendar-description";
 const FIXTURE_CALENDAR_STATE_ATTRIBUTE = "data-ra-rank-recommendation-calendar-state";
 const FIXTURE_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE = "data-ra-rank-recommendation-calendar-describedby-token";
+const FIXTURE_INITIAL_DISPLAY_LIMIT = 10;
+const FIXTURE_DISPLAY_LIMIT_STEP = 10;
+const FIXTURE_MAX_DISPLAY_LIMIT = 50;
+const FIXTURE_CALENDAR_CUE_POLICIES: readonly { value: RankRecommendationCalendarCuePolicy; label: string }[] = [
+    { value: "all_active", label: "全 active（438件相当）" },
+    { value: "visible_tasks", label: "表示中 task（採用案）" },
+    { value: "high_priority", label: "高優先のみ" }
+];
 
 let currentFixtureState: FixtureState = "ready";
 let currentFixtureTargetMonth = "202607";
+let currentFixtureCalendarCuePolicy: RankRecommendationCalendarCuePolicy = "visible_tasks";
+let currentFixtureDisplayLimit = FIXTURE_INITIAL_DISPLAY_LIMIT;
+let currentFixtureSelectedCandidateKey: string | null = null;
 let fixtureWritePostCount = 0;
 let fixtureSuccessTimeoutId: number | null = null;
 
@@ -87,12 +107,16 @@ if (typeof document !== "undefined") {
     const rootElement = document.getElementById("rank-fixture-root");
     const detailElement = document.getElementById("rank-fixture-detail");
     const stateSelectElement = document.getElementById("rank-fixture-state");
+    const cuePolicySelectElement = document.getElementById("rank-fixture-cue-policy");
+    const cuePolicySummaryElement = document.getElementById("rank-fixture-cue-policy-summary");
     const nativeParentElement = document.querySelector<HTMLElement>("[data-ra-fixture-native-parent]");
     const calendarStripElement = document.querySelector<HTMLElement>("[data-ra-fixture-calendar-strip]");
 
     if (!(rootElement instanceof HTMLElement)
         || !(detailElement instanceof HTMLElement)
         || !(stateSelectElement instanceof HTMLSelectElement)
+        || !(cuePolicySelectElement instanceof HTMLSelectElement)
+        || !(cuePolicySummaryElement instanceof HTMLElement)
         || !(nativeParentElement instanceof HTMLElement)
         || !(calendarStripElement instanceof HTMLElement)) {
         throw new Error("Rank recommendation fixture root is missing.");
@@ -102,7 +126,8 @@ if (typeof document !== "undefined") {
     renderFixtureCalendars(calendarStripElement);
     installFixtureWorkspaceLayoutObserver(nativeParentElement, calendarStripElement);
     installStateOptions(stateSelectElement);
-    renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+    installCuePolicyOptions(cuePolicySelectElement);
+    renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
 
     stateSelectElement.addEventListener("change", () => {
         if (fixtureSuccessTimeoutId !== null) {
@@ -110,7 +135,13 @@ if (typeof document !== "undefined") {
             fixtureSuccessTimeoutId = null;
         }
         currentFixtureState = stateSelectElement.value as FixtureState;
-        renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+        resetFixtureTaskViewport();
+        renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
+    });
+
+    cuePolicySelectElement.addEventListener("change", () => {
+        currentFixtureCalendarCuePolicy = cuePolicySelectElement.value as RankRecommendationCalendarCuePolicy;
+        renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
     });
 
     document.addEventListener("click", (event) => {
@@ -130,8 +161,22 @@ if (typeof document !== "undefined") {
                 : mode === "recent_or_held"
                     ? "recent"
                     : "ready";
+            resetFixtureTaskViewport();
             stateSelectElement.value = currentFixtureState;
-            renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
+            return;
+        }
+
+        const displayLimitButton = target.closest<HTMLElement>(
+            '[data-ra-rank-recommendation-button-action="display-more"],'
+            + '[data-ra-rank-recommendation-button-action="display-reset"]'
+        );
+        if (displayLimitButton !== null) {
+            event.preventDefault();
+            currentFixtureDisplayLimit = displayLimitButton.getAttribute("data-ra-rank-recommendation-button-action") === "display-more"
+                ? Math.min(FIXTURE_MAX_DISPLAY_LIMIT, currentFixtureDisplayLimit + FIXTURE_DISPLAY_LIMIT_STEP)
+                : FIXTURE_INITIAL_DISPLAY_LIMIT;
+            renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
             return;
         }
 
@@ -154,7 +199,7 @@ if (typeof document !== "undefined") {
                 ? "decision-pending"
                 : "empty";
             stateSelectElement.value = currentFixtureState;
-            renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
             return;
         }
 
@@ -165,7 +210,7 @@ if (typeof document !== "undefined") {
             event.preventDefault();
             currentFixtureState = "ready";
             stateSelectElement.value = currentFixtureState;
-            renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
             return;
         }
 
@@ -177,7 +222,7 @@ if (typeof document !== "undefined") {
             fixtureWritePostCount += 1;
             currentFixtureState = "write-confirming";
             stateSelectElement.value = currentFixtureState;
-            renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+            renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
             if (fixtureSuccessTimeoutId !== null) {
                 window.clearTimeout(fixtureSuccessTimeoutId);
             }
@@ -188,7 +233,7 @@ if (typeof document !== "undefined") {
                 }
                 currentFixtureState = "write-success";
                 stateSelectElement.value = currentFixtureState;
-                renderFixture(rootElement, detailElement, stateSelectElement, currentFixtureState);
+                renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, currentFixtureState);
             }, 900);
         }
     });
@@ -208,41 +253,105 @@ function installStateOptions(selectElement: HTMLSelectElement): void {
     selectElement.value = currentFixtureState;
 }
 
+function installCuePolicyOptions(selectElement: HTMLSelectElement): void {
+    selectElement.replaceChildren(...FIXTURE_CALENDAR_CUE_POLICIES.map((policy) => {
+        const option = document.createElement("option");
+        option.value = policy.value;
+        option.textContent = policy.label;
+        return option;
+    }));
+    selectElement.value = currentFixtureCalendarCuePolicy;
+}
+
+function resetFixtureTaskViewport(): void {
+    currentFixtureDisplayLimit = FIXTURE_INITIAL_DISPLAY_LIMIT;
+    currentFixtureSelectedCandidateKey = null;
+}
+
 function renderFixture(
     rootElement: HTMLElement,
     detailElement: HTMLElement,
     stateSelectElement: HTMLSelectElement,
+    cuePolicySummaryElement: HTMLElement,
     state: FixtureState
 ): void {
     stateSelectElement.value = state;
+    const cuePolicySelectElement = document.getElementById("rank-fixture-cue-policy");
+    if (cuePolicySelectElement instanceof HTMLSelectElement) {
+        const comparisonAvailable = isFixtureCalendarCuePolicyComparisonAvailable(state);
+        cuePolicySelectElement.disabled = !comparisonAvailable;
+        if (!comparisonAvailable) {
+            currentFixtureCalendarCuePolicy = "visible_tasks";
+            cuePolicySelectElement.value = currentFixtureCalendarCuePolicy;
+        }
+    }
     rootElement.setAttribute("data-ra-fixture-write-post-count", String(fixtureWritePostCount));
-    syncRankRecommendationReactList(rootElement, buildFixtureSnapshot(state), {
+    const snapshot = buildFixtureSnapshot(state, currentFixtureTargetMonth, {
+        displayLimit: currentFixtureDisplayLimit,
+        selectedCandidateKey: currentFixtureSelectedCandidateKey,
+        calendarCuePolicy: currentFixtureCalendarCuePolicy
+    });
+    syncRankRecommendationReactList(rootElement, snapshot, {
         detailContainer: detailElement,
         actions: {
             hydrateEvidence: (_candidateKey, container) => renderFixtureEvidence(container, state),
             retryEvidence: () => undefined,
-            selectCandidate: () => undefined,
+            selectCandidate: (candidateKey) => {
+                currentFixtureSelectedCandidateKey = candidateKey;
+            },
             setViewMode: () => undefined,
             setTargetMonth: (value) => {
                 currentFixtureTargetMonth = value;
-                renderFixture(rootElement, detailElement, stateSelectElement, state);
+                resetFixtureTaskViewport();
+                renderFixture(rootElement, detailElement, stateSelectElement, cuePolicySummaryElement, state);
             }
         }
     });
-    syncFixtureCalendarMarkers(state);
+    syncFixtureCalendarMarkers(
+        state,
+        currentFixtureCalendarCuePolicy,
+        cuePolicySummaryElement,
+        snapshot.candidates
+    );
+}
+
+export interface FixtureSnapshotOptions {
+    displayLimit?: number;
+    selectedCandidateKey?: string | null;
+    calendarCuePolicy?: RankRecommendationCalendarCuePolicy;
+}
+
+export interface FixtureCalendarCueAggregateOptions extends FixtureSnapshotOptions {
+    visibleCandidates?: readonly RankRecommendationReactCandidateSnapshot[];
 }
 
 export function buildFixtureSnapshot(
     state: FixtureState,
-    targetMonth = currentFixtureTargetMonth
+    targetMonth = currentFixtureTargetMonth,
+    options: FixtureSnapshotOptions = {}
 ): RankRecommendationReactListSnapshot {
-    const candidates = buildCandidatesForState(state, targetMonth);
+    const displayLimit = Math.min(
+        FIXTURE_MAX_DISPLAY_LIMIT,
+        Math.max(FIXTURE_INITIAL_DISPLAY_LIMIT, options.displayLimit ?? FIXTURE_INITIAL_DISPLAY_LIMIT)
+    );
+    const candidates = buildCandidatesForState(state, targetMonth, {
+        displayLimit,
+        selectedCandidateKey: options.selectedCandidateKey ?? null
+    });
+    const densePool = state === "ready" ? buildDenseFixtureCalendarCueCandidates(targetMonth) : [];
+    const effectiveCalendarCuePolicy = resolveFixtureCalendarCuePolicy(
+        state,
+        options.calendarCuePolicy ?? "visible_tasks"
+    );
+    const eligibleReadyCount = densePool.filter((candidate) => candidate.workState === "ready").length;
     const activeWorkState = resolveFixtureWorkState(state);
     const emptyText = getEmptyTextForState(state);
     const isPartialCoverageState = state === "coverage-partial"
         || state === "coverage-partial-empty"
         || state === "coverage-unavailable";
-    const workStateCounts = candidates.length === 0
+    const workStateCounts = state === "ready"
+        ? countRankRecommendationWorkStates(densePool.map((candidate) => candidate.workState))
+        : candidates.length === 0
         ? { ready: 0, needs_evidence: 0, recent_or_held: 0 }
         : isPartialCoverageState
             ? {
@@ -256,7 +365,9 @@ export function buildFixtureSnapshot(
         options: ["202607", "202608", "202609"].map((monthKey) => {
             const year = Number.parseInt(monthKey.slice(0, 4), 10);
             const month = Number.parseInt(monthKey.slice(4, 6), 10);
-            const count = monthKey === targetMonth ? candidates.length : 0;
+            const count = state === "ready"
+                ? buildDenseFixtureCalendarCueCandidates(monthKey).length
+                : monthKey === targetMonth ? candidates.length : 0;
             const isMonthPartial = state === "coverage-partial"
                 || state === "coverage-partial-empty"
                 || (state === "coverage-unavailable" && monthKey !== targetMonth);
@@ -264,7 +375,7 @@ export function buildFixtureSnapshot(
                 value: monthKey,
                 label: isMonthPartial
                     ? `${year}年${month}月 (確認済み ${count}件)`
-                    : `${year}年${month}月 (${state === "coverage-unavailable" ? count : 6}件)`
+                    : `${year}年${month}月 (${state === "ready" || state === "coverage-unavailable" ? count : 6}件)`
             };
         })
     };
@@ -325,20 +436,28 @@ export function buildFixtureSnapshot(
         resetButton: buildButton("リセット", "rank-order-reset")
     };
     return {
-        signature: `fixture:${state}:${candidates.map((candidate) => candidate.key).join("|")}`,
+        signature: `fixture:${state}:${displayLimit}:${options.selectedCandidateKey ?? "none"}:${candidates.map((candidate) => candidate.key).join("|")}`,
         mode: "fixture",
         readinessStage,
         title: "今日の判断",
-        metaText: buildMetaText(state, candidates.length, targetMonth),
+        metaText: buildMetaText(state, candidates.length, targetMonth, densePool.length),
         metaTitle: "カレンダーで日付感を保ち、右の判断レールと下の詳細で一件ずつ判断する fixture",
+        calendarCueLegendText: resolveFixtureCalendarCueLegend(effectiveCalendarCuePolicy),
         emptyText,
         controls: {
             targetMonth: controlVisibility.targetMonth ? targetMonthControl : null,
             workState: controlVisibility.workState ? workStateControl : null,
             displayLimit: controlVisibility.displayLimit && state === "ready"
                 ? {
-                    showMoreButton: buildButton("さらに表示 (3件)", "display-more"),
-                    resetButton: null
+                    showMoreButton: displayLimit < eligibleReadyCount && displayLimit < FIXTURE_MAX_DISPLAY_LIMIT
+                        ? buildButton(
+                            `さらに表示 (${Math.min(FIXTURE_DISPLAY_LIMIT_STEP, eligibleReadyCount - displayLimit)}件)`,
+                            "display-more"
+                        )
+                        : null,
+                    resetButton: displayLimit > FIXTURE_INITIAL_DISPLAY_LIMIT
+                        ? buildButton("10件に戻す", "display-reset")
+                        : null
                 }
                 : null,
             rankOrder: controlVisibility.rankOrder ? rankOrderControl : null
@@ -353,7 +472,9 @@ export function buildAllFixtureSnapshots(): readonly RankRecommendationReactList
 
 export function buildFixtureCalendarCueAggregates(
     state: FixtureState,
-    targetMonth = currentFixtureTargetMonth
+    targetMonth = currentFixtureTargetMonth,
+    policy: RankRecommendationCalendarCuePolicy = "visible_tasks",
+    options: FixtureCalendarCueAggregateOptions = {}
 ): readonly {
     stayDateKey: string;
     dominantState: RankRecommendationWorkState;
@@ -361,44 +482,149 @@ export function buildFixtureCalendarCueAggregates(
     stateCounts: Record<RankRecommendationWorkState, number>;
     label: string;
 }[] {
+    const effectivePolicy = resolveFixtureCalendarCuePolicy(state, policy);
+    const visibleItems = (options.visibleCandidates ?? buildCandidatesForState(state, targetMonth, options)).map((candidate) => ({
+        stayDateKey: candidate.stayDateKey,
+        workState: candidate.workState,
+        priority: candidate.priorityLabel.endsWith("高")
+            ? "high" as const
+            : candidate.priorityLabel.endsWith("中")
+                ? "medium" as const
+                : "low" as const
+    }));
+    const activeItems = state === "ready" ? buildDenseFixtureCalendarCueCandidates(targetMonth) : visibleItems;
+    const cueItems = selectRankRecommendationCalendarCueItems({
+        activeItems,
+        visibleItems,
+        policy: effectivePolicy
+    });
     const statesByStayDate = new Map<string, RankRecommendationWorkState[]>();
-    for (const candidate of buildCandidatesForState(state, targetMonth)) {
+    for (const candidate of cueItems) {
         const states = statesByStayDate.get(candidate.stayDateKey) ?? [];
         states.push(candidate.workState);
         statesByStayDate.set(candidate.stayDateKey, states);
     }
     return Array.from(statesByStayDate, ([stayDateKey, states]) => {
-        const stateCounts: Record<RankRecommendationWorkState, number> = {
-            ready: states.filter((workState) => workState === "ready").length,
-            needs_evidence: states.filter((workState) => workState === "needs_evidence").length,
-            recent_or_held: states.filter((workState) => workState === "recent_or_held").length
-        };
-        const dominantState: RankRecommendationWorkState = stateCounts.ready > 0
-            ? "ready"
-            : stateCounts.needs_evidence > 0
-                ? "needs_evidence"
-                : "recent_or_held";
-        const label = [
-            `料金調整候補 ${states.length}件`,
-            stateCounts.ready > 0 ? `判断可能 ${stateCounts.ready}件` : null,
-            stateCounts.needs_evidence > 0 ? `要確認 ${stateCounts.needs_evidence}件` : null,
-            stateCounts.recent_or_held > 0 ? `保留・直近 ${stateCounts.recent_or_held}件` : null
-        ].filter((part): part is string => part !== null).join("、");
+        const summary = buildRankRecommendationCalendarCueSummary(
+            states,
+            resolveFixtureCalendarCueSubjectLabel(effectivePolicy)
+        );
         return {
             stayDateKey,
-            dominantState,
-            totalCount: states.length,
-            stateCounts,
-            label
+            dominantState: summary.dominantState,
+            totalCount: summary.totalCount,
+            stateCounts: summary.stateCounts,
+            label: summary.label
         };
     });
 }
 
+function buildDenseFixtureCalendarCueCandidates(targetMonth: string): readonly {
+    key: string;
+    stayDateKey: string;
+    workState: RankRecommendationWorkState;
+    priority: "high" | "medium" | "low";
+    ordinal: number;
+}[] {
+    const year = Number.parseInt(targetMonth.slice(0, 4), 10);
+    const month = Number.parseInt(targetMonth.slice(4, 6), 10);
+    const daysInMonth = new Date(Date.UTC(year, month, 0)).getUTCDate();
+    const highPriorityDays = new Set([2, 5, 8, 11, 14, 17, 20, 23, 24, 26, 28, 30]
+        .filter((day) => day <= daysInMonth));
+    return Array.from({ length: 146 }, (_, index) => {
+        const day = index % daysInMonth + 1;
+        const occurrence = Math.floor(index / daysInMonth);
+        const priority = highPriorityDays.has(day) && occurrence < 2
+            ? "high" as const
+            : index % 3 === 0
+                ? "low" as const
+                : "medium" as const;
+        const workState: RankRecommendationWorkState = priority === "high"
+            ? "ready"
+            : index % 11 === 0
+                ? "recent_or_held"
+                : index % 7 === 0
+                    ? "needs_evidence"
+                    : "ready";
+        return {
+            key: `fixture-dense:${targetMonth}:${index + 1}`,
+            stayDateKey: `${targetMonth}${String(day).padStart(2, "0")}`,
+            workState,
+            priority,
+            ordinal: index
+        };
+    });
+}
+
+function resolveFixtureCalendarCueSubjectLabel(policy: RankRecommendationCalendarCuePolicy): string {
+    if (policy === "all_active") {
+        return "対象月の全候補";
+    }
+    if (policy === "high_priority") {
+        return "対象月の高優先候補";
+    }
+    return "今日の判断に表示中";
+}
+
+export function isFixtureCalendarCuePolicyComparisonAvailable(state: FixtureState): boolean {
+    return state === "ready";
+}
+
+export function resolveFixtureCalendarCuePolicy(
+    state: FixtureState,
+    requestedPolicy: RankRecommendationCalendarCuePolicy
+): RankRecommendationCalendarCuePolicy {
+    return isFixtureCalendarCuePolicyComparisonAvailable(state) ? requestedPolicy : "visible_tasks";
+}
+
 export { renderRankRecommendationReactListElement };
+
+function buildDenseFixtureTaskCandidates(targetMonth: string): RankRecommendationReactCandidateSnapshot[] {
+    const priorityWeight = { high: 0, medium: 1, low: 2 } as const;
+    return [...buildDenseFixtureCalendarCueCandidates(targetMonth)]
+        .filter((candidate) => candidate.workState === "ready")
+        .sort((left, right) => (
+            priorityWeight[left.priority] - priorityWeight[right.priority]
+            || left.ordinal - right.ordinal
+        ))
+        .map((candidate, index) => {
+            const stayDateLabel = formatFixtureStayDateLabel(candidate.stayDateKey);
+            const roomGroupName = index === 0
+                ? "キャンプ、ツインS"
+                : ["スタンダードツイン", "ファミリールーム", "シングル", "和洋室"][index % 4]
+                    ?? "スタンダードツイン";
+            const individualCount = index === 0 ? 5 : 2 + index % 7;
+            const groupCount = index === 0 ? 2 : index % 4;
+            return buildCandidate({
+                key: candidate.key,
+                stayDateKey: candidate.stayDateKey,
+                stayDateLabel,
+                dateGroupLabel: stayDateLabel,
+                roomGroupName,
+                action: index % 3 === 1 ? "lower_watch" : "raise_watch",
+                actionLabel: index % 3 === 1 ? "下げ注意" : "上げ検討",
+                priorityLabel: candidate.priority === "high"
+                    ? "優先度 高"
+                    : candidate.priority === "medium"
+                        ? "優先度 中"
+                        : "優先度 低",
+                currentRankText: String(8 + index % 5),
+                recommendedRankText: String(7 + index % 5),
+                occupancyText: index === 0 ? "OH 7 / キャパ 18" : `OH ${individualCount + groupCount} / キャパ 20`,
+                individualText: String(individualCount),
+                groupText: String(groupCount),
+                reasonText: index === 0
+                    ? "個人の予約ペースが基準を上回り、団体を除いても需要の強さを確認"
+                    : "個人需要と団体需要を分けて確認した合成候補",
+                evidenceStatusText: "個人・団体を直接取得 / 最新基準日あり"
+            });
+        });
+}
 
 function buildCandidatesForState(
     state: FixtureState,
-    targetMonth: string
+    targetMonth: string,
+    options: FixtureSnapshotOptions = {}
 ): RankRecommendationReactCandidateSnapshot[] {
     if (
         state === "loading"
@@ -408,6 +634,20 @@ function buildCandidatesForState(
         || state === "current-settings-403"
     ) {
         return [];
+    }
+
+    if (state === "ready") {
+        const displayLimit = Math.min(
+            FIXTURE_MAX_DISPLAY_LIMIT,
+            Math.max(FIXTURE_INITIAL_DISPLAY_LIMIT, options.displayLimit ?? FIXTURE_INITIAL_DISPLAY_LIMIT)
+        );
+        const candidates = buildDenseFixtureTaskCandidates(targetMonth);
+        return [...limitRankRecommendationItemsWithSelectedKey({
+            items: candidates,
+            limit: displayLimit,
+            selectedKey: options.selectedCandidateKey ?? null,
+            getKey: (candidate) => candidate.key
+        })];
     }
 
     const baseOverrides: Partial<RankRecommendationReactCandidateSnapshot> = {};
@@ -791,7 +1031,12 @@ function getEmptyTextForState(state: FixtureState): string | null {
     return null;
 }
 
-function buildMetaText(state: FixtureState, count: number, targetMonth: string): string {
+function buildMetaText(
+    state: FixtureState,
+    count: number,
+    targetMonth: string,
+    totalCandidateCount = count
+): string {
     const year = Number.parseInt(targetMonth.slice(0, 4), 10);
     const month = Number.parseInt(targetMonth.slice(4, 6), 10);
     const targetLabel = `${year}年${month}月`;
@@ -821,6 +1066,9 @@ function buildMetaText(state: FixtureState, count: number, targetMonth: string):
     }
     if (state === "missing-counts") {
         return `${targetLabel}の候補判定は完了しました。選択中の推移グラフを取得できませんでした。`;
+    }
+    if (state === "ready") {
+        return `候補${totalCandidateCount}件が見つかっています（現在${count}件表示） / 基準日 7月17日 / 個人・団体を分離表示`;
     }
     if (state === "current-settings-401") {
         return "候補の現在設定を取得できませんでした（HTTP 401）。ログイン状態を確認してください。";
@@ -948,11 +1196,36 @@ function installFixtureWorkspaceLayoutObserver(parentElement: HTMLElement, calen
     syncLayout();
 }
 
-function syncFixtureCalendarMarkers(state: FixtureState): void {
+function syncFixtureCalendarMarkers(
+    state: FixtureState,
+    policy: RankRecommendationCalendarCuePolicy,
+    summaryElement: HTMLElement,
+    visibleCandidates: readonly RankRecommendationReactCandidateSnapshot[]
+): void {
     cleanupFixtureCalendarMarkers();
+    const effectivePolicy = resolveFixtureCalendarCuePolicy(state, policy);
+    const cues = buildFixtureCalendarCueAggregates(
+        state,
+        currentFixtureTargetMonth,
+        effectivePolicy,
+        {
+            displayLimit: currentFixtureDisplayLimit,
+            selectedCandidateKey: currentFixtureSelectedCandidateKey,
+            visibleCandidates
+        }
+    );
+    const totalCandidateCount = cues.reduce((total, cue) => total + cue.totalCount, 0);
+    const scopeLabel = effectivePolicy === "all_active"
+        ? "全 active"
+        : effectivePolicy === "high_priority"
+            ? "高優先"
+            : "表示中 task";
+    const correspondenceLabel = effectivePolicy === "visible_tasks"
+        ? "。rail と cue は同じ候補集合です"
+        : "。比較用の候補集合です";
+    summaryElement.textContent = `${scopeLabel}: ${totalCandidateCount}候補 / ${cues.length}日${correspondenceLabel}`;
     const cueByStayDate = new Map(
-        buildFixtureCalendarCueAggregates(state, currentFixtureTargetMonth)
-            .map((cue) => [cue.stayDateKey, cue] as const)
+        cues.map((cue) => [cue.stayDateKey, cue] as const)
     );
     document.querySelectorAll<HTMLElement>("[data-ra-fixture-calendar-cell]").forEach((element) => {
         const stayDate = element.getAttribute("data-ra-fixture-stay-date");
@@ -983,6 +1256,16 @@ function syncFixtureCalendarMarkers(state: FixtureState): void {
         element.setAttribute(FIXTURE_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE, descriptionId);
         element.append(cueElement);
     });
+}
+
+export function resolveFixtureCalendarCueLegend(policy: RankRecommendationCalendarCuePolicy): string {
+    if (policy === "all_active") {
+        return "カレンダー左線：対象月の全候補日（比較）";
+    }
+    if (policy === "high_priority") {
+        return "カレンダー左線：対象月の高優先候補日（比較）";
+    }
+    return "カレンダー左線：今日の判断に表示中の候補日";
 }
 
 function cleanupFixtureCalendarMarkers(): void {
@@ -1180,6 +1463,10 @@ export function getRankRecommendationFixtureShellStyles(): string {
         font-weight: 700;
     }
 
+    [data-ra-fixture-toolbar] [data-ra-fixture-cue-policy-summary] {
+        color: #385069;
+    }
+
     [data-ra-fixture-toolbar] label {
         display: flex;
         align-items: center;
@@ -1205,6 +1492,11 @@ export function getRankRecommendationFixtureShellStyles(): string {
         display: flex;
         align-items: center;
         gap: 7px;
+    }
+
+    [data-ra-fixture-toolbar-actions] {
+        flex-wrap: wrap;
+        justify-content: flex-end;
     }
 
     [data-testid="segmented-control"] button,

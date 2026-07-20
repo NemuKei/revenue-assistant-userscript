@@ -21,6 +21,7 @@
                     <div>
                         <h1>料金調整の判断ワークスペース</h1>
                         <p>3か月カレンダーと既存操作が同じ親にいる実画面相当の合成 fixture。黒い標準数値と青い「団n」は既存表記のままです。</p>
+                        <p id="rank-fixture-cue-policy-summary" data-ra-fixture-cue-policy-summary></p>
                     </div>
                     <div data-ra-fixture-toolbar-actions>
                         <div data-testid="segmented-control" aria-label="表示単位">
@@ -30,6 +31,10 @@
                         <label>
                             <span>確認 state</span>
                             <select id="rank-fixture-state"></select>
+                        </label>
+                        <label>
+                            <span>cue 範囲</span>
+                            <select id="rank-fixture-cue-policy" aria-describedby="rank-fixture-cue-policy-summary"></select>
                         </label>
                     </div>
                 </section>

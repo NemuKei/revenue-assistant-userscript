@@ -123,6 +123,7 @@ export interface RankRecommendationReactListSnapshot {
     title: string;
     metaText: string;
     metaTitle?: string;
+    calendarCueLegendText?: string | null;
     emptyText: string | null;
     controls: RankRecommendationReactControlsSnapshot;
     candidates: readonly RankRecommendationReactCandidateSnapshot[];
@@ -279,6 +280,9 @@ function RankRecommendationRail(props: {
 }): React.ReactElement {
     const { snapshot } = props;
     const groupedCandidates = groupCandidatesByDate(snapshot.candidates);
+    const calendarCueLegendText = snapshot.calendarCueLegendText === undefined
+        ? "カレンダー左線：今日の判断に表示中の候補日"
+        : snapshot.calendarCueLegendText;
     return React.createElement("div", {
         "data-ra-rank-recommendation-ui-component": "workspace-rail",
         "data-ra-rank-recommendation-readiness-stage": snapshot.readinessStage
@@ -291,7 +295,12 @@ function RankRecommendationRail(props: {
                 "aria-live": "polite",
                 "aria-atomic": "true",
                 title: snapshot.metaTitle
-            }, snapshot.metaText)
+            }, snapshot.metaText),
+            snapshot.candidates.length === 0 || calendarCueLegendText === null
+                ? null
+                : React.createElement("p", {
+                    "data-ra-rank-recommendation-calendar-cue-legend": ""
+                }, calendarCueLegendText)
         ),
         React.createElement("div", { "data-ra-rank-recommendation-ui-component": "rail-controls" },
             renderTargetMonthControl(snapshot.controls.targetMonth, props.onTargetMonthChange),

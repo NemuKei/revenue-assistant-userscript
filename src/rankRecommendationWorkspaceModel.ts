@@ -14,6 +14,21 @@ export interface RankRecommendationWorkStateInput {
 
 export type RankRecommendationWorkStateCounts = Record<RankRecommendationWorkState, number>;
 
+export type RankRecommendationCalendarCuePolicy = "all_active" | "visible_tasks" | "high_priority";
+
+export interface RankRecommendationCalendarCueSelectable {
+    priority: "high" | "medium" | "low";
+}
+
+export interface RankRecommendationCalendarCueSummary {
+    dominantState: RankRecommendationWorkState;
+    totalCount: number;
+    stateCounts: RankRecommendationWorkStateCounts;
+    label: string;
+}
+
+export const DEFAULT_RANK_RECOMMENDATION_CALENDAR_CUE_POLICY: RankRecommendationCalendarCuePolicy = "visible_tasks";
+
 export function resolveRankRecommendationWorkState(
     input: RankRecommendationWorkStateInput
 ): RankRecommendationWorkState {
@@ -55,6 +70,45 @@ export function countRankRecommendationWorkStates(
         counts[state] += 1;
     }
     return counts;
+}
+
+export function selectRankRecommendationCalendarCueItems<T extends RankRecommendationCalendarCueSelectable>(options: {
+    activeItems: readonly T[];
+    visibleItems: readonly T[];
+    policy?: RankRecommendationCalendarCuePolicy;
+}): readonly T[] {
+    const policy = options.policy ?? DEFAULT_RANK_RECOMMENDATION_CALENDAR_CUE_POLICY;
+    if (policy === "all_active") {
+        return options.activeItems;
+    }
+    if (policy === "high_priority") {
+        return options.activeItems.filter((item) => item.priority === "high");
+    }
+    return options.visibleItems;
+}
+
+export function buildRankRecommendationCalendarCueSummary(
+    states: readonly RankRecommendationWorkState[],
+    subjectLabel: string
+): RankRecommendationCalendarCueSummary {
+    const stateCounts = countRankRecommendationWorkStates(states);
+    const dominantState: RankRecommendationWorkState = stateCounts.ready > 0
+        ? "ready"
+        : stateCounts.needs_evidence > 0
+            ? "needs_evidence"
+            : "recent_or_held";
+    const label = [
+        `${subjectLabel} ${states.length}件`,
+        stateCounts.ready > 0 ? `判断可能 ${stateCounts.ready}件` : null,
+        stateCounts.needs_evidence > 0 ? `要確認 ${stateCounts.needs_evidence}件` : null,
+        stateCounts.recent_or_held > 0 ? `保留・直近 ${stateCounts.recent_or_held}件` : null
+    ].filter((part): part is string => part !== null).join("、");
+    return {
+        dominantState,
+        totalCount: states.length,
+        stateCounts,
+        label
+    };
 }
 
 export function selectAvailableRankRecommendationWorkState(

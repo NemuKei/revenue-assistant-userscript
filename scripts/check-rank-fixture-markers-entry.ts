@@ -4,10 +4,17 @@ import {
     buildFixtureCalendarCueAggregates,
     buildFixtureSnapshot,
     getRankRecommendationFixtureShellStyles,
-    renderRankRecommendationReactListElement
+    isFixtureCalendarCuePolicyComparisonAvailable,
+    renderRankRecommendationReactListElement,
+    resolveFixtureCalendarCuePolicy
 } from "../src/dev/rankRecommendationFixture";
 import { resolveRankRecommendationWorkspaceLayoutMode } from "../src/rankRecommendationWorkspaceLayout";
 import { RANK_RECOMMENDATION_WORKSPACE_STYLES } from "../src/rankRecommendationWorkspaceStyles";
+import {
+    buildRankRecommendationCalendarCueSummary,
+    DEFAULT_RANK_RECOMMENDATION_CALENDAR_CUE_POLICY,
+    selectRankRecommendationCalendarCueItems
+} from "../src/rankRecommendationWorkspaceModel";
 import {
     buildRankRecommendationCoverageDayFingerprint,
     buildRankRecommendationCoverageDays,
@@ -68,6 +75,7 @@ function assertNotContains(renderedHtml: string, label: string, forbiddenText: s
 export async function runRankFixtureMarkerCheck(): Promise<void> {
     assertWorkspaceLayoutBoundaries();
     assertCalendarCueNativePositioningContract();
+    assertCalendarCueDensityPolicyContract();
     assertRankRecommendationCoverageContract();
     const snapshots = buildAllFixtureSnapshots();
     const firstSnapshot = snapshots[0];
@@ -95,6 +103,7 @@ export async function runRankFixtureMarkerCheck(): Promise<void> {
         ))
         .join("\n");
     const snapshotsWithControls = snapshots.filter((snapshot) => snapshot.controls.workState !== null);
+    const snapshotsWithCandidates = snapshots.filter((snapshot) => snapshot.candidates.length > 0);
 
     const fixtureCount = countMatches(renderedHtml, /data-ra-rank-recommendation-react-island="mounted"/g);
     const taskCount = countMatches(renderedHtml, /data-ra-rank-recommendation-task=""/g);
@@ -106,6 +115,7 @@ export async function runRankFixtureMarkerCheck(): Promise<void> {
         { name: "work-state controls", count: countMatches(renderedHtml, /data-ra-rank-recommendation-view-mode="(?:ready|needs_evidence|recent_or_held)"/g), min: snapshotsWithControls.length * 3 },
         { name: "task list", count: countMatches(renderedHtml, /data-ra-rank-recommendation-ui-component="task-list"/g), min: fixtureCount },
         { name: "candidate tasks", count: taskCount, min: 3 },
+        { name: "calendar cue legend", count: countMatches(renderedHtml, /data-ra-rank-recommendation-calendar-cue-legend=""/g), min: snapshotsWithCandidates.length },
         { name: "selected detail", count: detailCount, min: 3 },
         { name: "OH metrics", count: countMatches(renderedHtml, /OH (?:\d+|未取得)/g), min: 3 },
         { name: "individual labels", count: countMatches(renderedHtml, />個人</g), min: 3 },
@@ -132,6 +142,11 @@ export async function runRankFixtureMarkerCheck(): Promise<void> {
     }
 
     assertContains(renderedHtml, "workspace title", "今日の判断");
+    assertContains(
+        renderedHtml,
+        "calendar cue legend copy",
+        "カレンダー左線：今日の判断に表示中の候補日"
+    );
     assertContains(renderedHtml, "individual and group evidence", "個人・団体を直接取得");
     assertContains(renderedHtml, "missing counts", "OH 未取得 / キャパ 未取得");
     assertContains(renderedHtml, "zero group count", "OH 0 / キャパ 18");
@@ -968,7 +983,7 @@ function assertTargetMonthCandidateContract(): void {
                         needsEvidence,
                         recentOrHeld,
                         label: [
-                            `料金調整候補 ${states.length}件`,
+                            `今日の判断に表示中 ${states.length}件`,
                             ready > 0 ? `判断可能 ${ready}件` : null,
                             needsEvidence > 0 ? `要確認 ${needsEvidence}件` : null,
                             recentOrHeld > 0 ? `保留・直近 ${recentOrHeld}件` : null
@@ -1026,6 +1041,133 @@ function assertWorkspaceLayoutBoundaries(): void {
     });
     if (wide !== "wide" || standardDesktop !== "stacked" || stacked !== "stacked" || unsafe !== "stacked") {
         throw new Error(`workspace layout boundary mismatch: ${wide}/${standardDesktop}/${stacked}/${unsafe}`);
+    }
+}
+
+function assertCalendarCueDensityPolicyContract(): void {
+    const activeItems = Array.from({ length: 438 }, (_, index) => ({
+        key: `candidate-${index + 1}`,
+        priority: index < 20 ? "high" as const : "medium" as const
+    }));
+    const visibleItems = activeItems.slice(0, 10);
+    const defaultCueItems = selectRankRecommendationCalendarCueItems({
+        activeItems,
+        visibleItems
+    });
+    const allActiveCueItems = selectRankRecommendationCalendarCueItems({
+        activeItems,
+        visibleItems,
+        policy: "all_active"
+    });
+    const highPriorityCueItems = selectRankRecommendationCalendarCueItems({
+        activeItems,
+        visibleItems,
+        policy: "high_priority"
+    });
+    const expandedVisibleItems = activeItems.slice(0, 20);
+    const expandedCueItems = selectRankRecommendationCalendarCueItems({
+        activeItems,
+        visibleItems: expandedVisibleItems
+    });
+    const pinnedVisibleItems = limitRankRecommendationItemsWithSelectedKey({
+        items: activeItems,
+        limit: 10,
+        selectedKey: "candidate-11",
+        getKey: (item) => item.key
+    });
+    const pinnedCueItems = selectRankRecommendationCalendarCueItems({
+        activeItems,
+        visibleItems: pinnedVisibleItems
+    });
+    if (
+        DEFAULT_RANK_RECOMMENDATION_CALENDAR_CUE_POLICY !== "visible_tasks"
+        || defaultCueItems !== visibleItems
+        || defaultCueItems.length !== 10
+        || allActiveCueItems.length !== 438
+        || highPriorityCueItems.length !== 20
+        || expandedCueItems !== expandedVisibleItems
+        || expandedCueItems.length !== 20
+        || pinnedCueItems !== pinnedVisibleItems
+        || !pinnedCueItems.some((item) => item.key === "candidate-11")
+    ) {
+        throw new Error("calendar cue policy must default to the currently visible priority-first tasks");
+    }
+
+    const visibleCues = buildFixtureCalendarCueAggregates("ready", "202607", "visible_tasks");
+    const allActiveCues = buildFixtureCalendarCueAggregates("ready", "202607", "all_active");
+    const highPriorityCues = buildFixtureCalendarCueAggregates("ready", "202607", "high_priority");
+    const expandedSnapshot = buildFixtureSnapshot("ready", "202607", { displayLimit: 20 });
+    const expandedCues = buildFixtureCalendarCueAggregates("ready", "202607", "visible_tasks", {
+        displayLimit: 20,
+        visibleCandidates: expandedSnapshot.candidates
+    });
+    const selectedCandidate = expandedSnapshot.candidates[10];
+    if (selectedCandidate === undefined) {
+        throw new Error("dense fixture must expose an eleventh candidate for selected pin verification");
+    }
+    const pinnedSnapshot = buildFixtureSnapshot("ready", "202607", {
+        displayLimit: 10,
+        selectedCandidateKey: selectedCandidate.key
+    });
+    const pinnedCues = buildFixtureCalendarCueAggregates("ready", "202607", "visible_tasks", {
+        displayLimit: 10,
+        selectedCandidateKey: selectedCandidate.key,
+        visibleCandidates: pinnedSnapshot.candidates
+    });
+    const countCandidates = (cues: typeof visibleCues): number => (
+        cues.reduce((total, cue) => total + cue.totalCount, 0)
+    );
+    const cueDates = (cues: typeof visibleCues): string => cues.map((cue) => cue.stayDateKey).sort().join("|");
+    const snapshotDates = (snapshot: ReturnType<typeof buildFixtureSnapshot>): string => (
+        Array.from(new Set(snapshot.candidates.map((candidate) => candidate.stayDateKey))).sort().join("|")
+    );
+    const mixedSummary = buildRankRecommendationCalendarCueSummary(
+        ["needs_evidence", "recent_or_held", "ready", "needs_evidence"],
+        "今日の判断に表示中"
+    );
+    const allPolicySnapshot = buildFixtureSnapshot("ready", "202607", {
+        calendarCuePolicy: "all_active"
+    });
+    const highPolicySnapshot = buildFixtureSnapshot("ready", "202607", {
+        calendarCuePolicy: "high_priority"
+    });
+    const nonReadyPolicySnapshot = buildFixtureSnapshot("needs-evidence", "202607", {
+        calendarCuePolicy: "all_active"
+    });
+    const allPolicyHtml = renderToStaticMarkup(renderRankRecommendationReactListElement(allPolicySnapshot));
+    if (
+        visibleCues.length !== 10
+        || countCandidates(visibleCues) !== 10
+        || !visibleCues.every((cue) => cue.label.startsWith("今日の判断に表示中 "))
+        || cueDates(visibleCues) !== snapshotDates(buildFixtureSnapshot("ready", "202607"))
+        || allActiveCues.length !== 31
+        || countCandidates(allActiveCues) !== 146
+        || !allActiveCues.every((cue) => cue.label.startsWith("対象月の全候補 "))
+        || highPriorityCues.length !== 12
+        || countCandidates(highPriorityCues) !== 24
+        || !highPriorityCues.every((cue) => cue.label.startsWith("対象月の高優先候補 "))
+        || expandedSnapshot.candidates.length !== 20
+        || countCandidates(expandedCues) !== 20
+        || expandedCues.length !== 12
+        || cueDates(expandedCues) !== snapshotDates(expandedSnapshot)
+        || pinnedSnapshot.candidates.length !== 10
+        || !pinnedSnapshot.candidates.some((candidate) => candidate.key === selectedCandidate.key)
+        || cueDates(pinnedCues) !== snapshotDates(pinnedSnapshot)
+        || !pinnedCues.some((cue) => cue.stayDateKey === selectedCandidate.stayDateKey)
+        || mixedSummary.dominantState !== "ready"
+        || mixedSummary.totalCount !== 4
+        || mixedSummary.label !== "今日の判断に表示中 4件、判断可能 1件、要確認 2件、保留・直近 1件"
+        || !isFixtureCalendarCuePolicyComparisonAvailable("ready")
+        || isFixtureCalendarCuePolicyComparisonAvailable("needs-evidence")
+        || resolveFixtureCalendarCuePolicy("ready", "all_active") !== "all_active"
+        || resolveFixtureCalendarCuePolicy("needs-evidence", "all_active") !== "visible_tasks"
+        || allPolicySnapshot.calendarCueLegendText !== "カレンダー左線：対象月の全候補日（比較）"
+        || highPolicySnapshot.calendarCueLegendText !== "カレンダー左線：対象月の高優先候補日（比較）"
+        || nonReadyPolicySnapshot.calendarCueLegendText !== "カレンダー左線：今日の判断に表示中の候補日"
+        || !allPolicyHtml.includes("カレンダー左線：対象月の全候補日（比較）")
+        || allPolicyHtml.includes("カレンダー左線：今日の判断に表示中の候補日")
+    ) {
+        throw new Error("dense fixture calendar cue policy comparison mismatch");
     }
 }
 

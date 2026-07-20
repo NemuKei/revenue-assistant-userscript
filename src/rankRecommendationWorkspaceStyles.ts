@@ -134,6 +134,14 @@ export const RANK_RECOMMENDATION_WORKSPACE_STYLES = `
         line-height: 1.45;
     }
 
+    [data-ra-rank-recommendation-calendar-cue-legend] {
+        margin: 0;
+        color: var(--ra-ui-muted);
+        font-size: 10px;
+        font-weight: 700;
+        line-height: 1.4;
+    }
+
     [data-ra-rank-recommendation-ui-component="rail-controls"] {
         display: grid;
         gap: 10px;

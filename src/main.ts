@@ -47,8 +47,11 @@ import {
     type RankRecommendationWarmCacheDependency
 } from "./rankRecommendationCoverage";
 import {
+    buildRankRecommendationCalendarCueSummary,
     countRankRecommendationWorkStates,
+    DEFAULT_RANK_RECOMMENDATION_CALENDAR_CUE_POLICY,
     resolveRankRecommendationWorkState,
+    selectRankRecommendationCalendarCueItems,
     selectAvailableRankRecommendationWorkState,
     type RankRecommendationWorkState,
     type RankRecommendationWorkStateCounts
@@ -9275,7 +9278,11 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             rankOrder: rankOrderResolution,
             viewMode: state.effectiveViewMode,
             workStateCounts: state.workStateCounts,
-            calendarCandidateStates: targetMonthFilterResult.candidates.map((candidate) => ({
+            calendarCandidateStates: selectRankRecommendationCalendarCueItems({
+                activeItems: targetMonthFilterResult.candidates,
+                visibleItems: state.visibleCandidates,
+                policy: DEFAULT_RANK_RECOMMENDATION_CALENDAR_CUE_POLICY
+            }).map((candidate) => ({
                 stayDate: candidate.stayDate,
                 state: resolveCandidateRankRecommendationWorkState(
                     candidate,
@@ -12164,23 +12171,16 @@ function renderRankRecommendationCalendarStates(
             continue;
         }
 
-        const dominantState = resolveDominantRankRecommendationCalendarState(states);
-        cell.anchorElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_STATE_ATTRIBUTE, dominantState);
-        const counts = countRankRecommendationWorkStates(states);
+        const cueSummary = buildRankRecommendationCalendarCueSummary(states, "今日の判断に表示中");
+        cell.anchorElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_STATE_ATTRIBUTE, cueSummary.dominantState);
         const cueElement = document.createElement("span");
         cueElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_CUE_ATTRIBUTE, "");
         cueElement.setAttribute("aria-hidden", "true");
-        const cueLabel = [
-            `料金調整候補 ${states.length}件`,
-            counts.ready > 0 ? `判断可能 ${counts.ready}件` : null,
-            counts.needs_evidence > 0 ? `要確認 ${counts.needs_evidence}件` : null,
-            counts.recent_or_held > 0 ? `保留・直近 ${counts.recent_or_held}件` : null
-        ].filter((part): part is string => part !== null).join("、");
         const descriptionElement = document.createElement("span");
         const descriptionId = `ra-rank-recommendation-calendar-description-${cell.stayDate}-${cellIndex}`;
         descriptionElement.id = descriptionId;
         descriptionElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_DESCRIPTION_ATTRIBUTE, "");
-        descriptionElement.textContent = cueLabel;
+        descriptionElement.textContent = cueSummary.label;
         const describedByTokens = (cell.anchorElement.getAttribute("aria-describedby") ?? "")
             .split(/\s+/u)
             .filter((token) => token !== "");
@@ -12198,18 +12198,6 @@ function renderRankRecommendationCalendarStates(
         cell.anchorElement.setAttribute(RANK_RECOMMENDATION_CALENDAR_DESCRIBEDBY_TOKEN_ATTRIBUTE, descriptionId);
         cell.anchorElement.append(cueElement);
     }
-}
-
-function resolveDominantRankRecommendationCalendarState(
-    states: readonly RankRecommendationWorkState[]
-): RankRecommendationWorkState {
-    if (states.includes("ready")) {
-        return "ready";
-    }
-    if (states.includes("needs_evidence")) {
-        return "needs_evidence";
-    }
-    return "recent_or_held";
 }
 
 function cleanupRankRecommendationCalendarStates(): void {
