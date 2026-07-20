@@ -43,10 +43,6 @@ export const RANK_RECOMMENDATION_WORKSPACE_STYLES = `
         margin-top: 14px;
     }
 
-    [data-ra-rank-recommendation-calendar-state] {
-        position: relative;
-    }
-
     [data-ra-rank-recommendation-calendar-cue] {
         position: absolute;
         top: 5px;

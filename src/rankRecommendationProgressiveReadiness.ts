@@ -105,6 +105,20 @@ export function buildRankRecommendationProgressiveContextSignature(parts: {
     ]);
 }
 
+export function shouldResetRankRecommendationPerformanceMetrics(
+    currentContextSignature: string,
+    nextContextSignature: string
+): boolean {
+    return currentContextSignature !== nextContextSignature;
+}
+
+export function buildRankRecommendationPerformanceContextSignature(parts: {
+    facilityCacheKey: string;
+    batchDateKey: string;
+}): string {
+    return JSON.stringify([parts.facilityCacheKey, parts.batchDateKey]);
+}
+
 export function limitRankRecommendationItemsWithSelectedKey<T>(options: {
     items: readonly T[];
     limit: number;

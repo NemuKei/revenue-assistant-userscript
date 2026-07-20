@@ -6,6 +6,7 @@ import {
     type RankRecommendationReactListSnapshot
 } from "../rankRecommendationReactIsland";
 import { resolveRankRecommendationProgressiveControlVisibility } from "../rankRecommendationProgressiveReadiness";
+import { formatRankRecommendationCoverageStatus } from "../rankRecommendationCoverage";
 import { RANK_RECOMMENDATION_WORKSPACE_STYLES } from "../rankRecommendationWorkspaceStyles";
 import type { RankRecommendationWorkState } from "../rankRecommendationWorkspaceModel";
 import { resolveRankRecommendationWorkspaceLayoutMode } from "../rankRecommendationWorkspaceLayout";
@@ -13,6 +14,9 @@ import { resolveRankRecommendationWorkspaceLayoutMode } from "../rankRecommendat
 type FixtureState =
     | "loading"
     | "first-task"
+    | "coverage-partial"
+    | "coverage-partial-empty"
+    | "coverage-unavailable"
     | "ready"
     | "needs-evidence"
     | "recent"
@@ -31,6 +35,9 @@ type FixtureState =
 const FIXTURE_STATES: readonly { value: FixtureState; label: string }[] = [
     { value: "loading", label: "初回 loading" },
     { value: "first-task", label: "最初の正しい task" },
+    { value: "coverage-partial", label: "確認範囲を拡張中" },
+    { value: "coverage-partial-empty", label: "確認範囲を拡張中・候補0" },
+    { value: "coverage-unavailable", label: "確認完了・内訳未取得日あり" },
     { value: "ready", label: "判断可能" },
     { value: "needs-evidence", label: "要確認" },
     { value: "recent", label: "保留・直近" },
@@ -232,16 +239,34 @@ export function buildFixtureSnapshot(
     const candidates = buildCandidatesForState(state, targetMonth);
     const activeWorkState = resolveFixtureWorkState(state);
     const emptyText = getEmptyTextForState(state);
+    const isPartialCoverageState = state === "coverage-partial"
+        || state === "coverage-partial-empty"
+        || state === "coverage-unavailable";
     const workStateCounts = candidates.length === 0
         ? { ready: 0, needs_evidence: 0, recent_or_held: 0 }
-        : { ready: 3, needs_evidence: 2, recent_or_held: 1 };
+        : isPartialCoverageState
+            ? {
+                ready: candidates.filter((candidate) => candidate.workState === "ready").length,
+                needs_evidence: candidates.filter((candidate) => candidate.workState === "needs_evidence").length,
+                recent_or_held: candidates.filter((candidate) => candidate.workState === "recent_or_held").length
+            }
+            : { ready: 3, needs_evidence: 2, recent_or_held: 1 };
     const targetMonthControl = {
         currentValue: targetMonth,
-        options: [
-            { value: "202607", label: "2026年7月 (6件)" },
-            { value: "202608", label: "2026年8月 (6件)" },
-            { value: "202609", label: "2026年9月 (6件)" }
-        ]
+        options: ["202607", "202608", "202609"].map((monthKey) => {
+            const year = Number.parseInt(monthKey.slice(0, 4), 10);
+            const month = Number.parseInt(monthKey.slice(4, 6), 10);
+            const count = monthKey === targetMonth ? candidates.length : 0;
+            const isMonthPartial = state === "coverage-partial"
+                || state === "coverage-partial-empty"
+                || (state === "coverage-unavailable" && monthKey !== targetMonth);
+            return {
+                value: monthKey,
+                label: isMonthPartial
+                    ? `${year}年${month}月 (確認済み ${count}件)`
+                    : `${year}年${month}月 (${state === "coverage-unavailable" ? count : 6}件)`
+            };
+        })
     };
     const workStateControl = {
         options: [
@@ -270,9 +295,11 @@ export function buildFixtureSnapshot(
     };
     const readinessStage = state === "loading"
         ? "loading"
-        : state === "first-task"
+        : state === "coverage-partial-empty"
+            ? "loading"
+            : state === "first-task" || state === "coverage-partial"
             ? "first_task"
-            : state === "missing-counts"
+            : state === "missing-counts" || state === "coverage-unavailable"
                 ? "needs_evidence"
                 : state === "current-settings-401" || state === "current-settings-403"
                     ? "error"
@@ -373,12 +400,18 @@ function buildCandidatesForState(
     state: FixtureState,
     targetMonth: string
 ): RankRecommendationReactCandidateSnapshot[] {
-    if (state === "loading" || state === "empty" || state === "current-settings-401" || state === "current-settings-403") {
+    if (
+        state === "loading"
+        || state === "coverage-partial-empty"
+        || state === "empty"
+        || state === "current-settings-401"
+        || state === "current-settings-403"
+    ) {
         return [];
     }
 
     const baseOverrides: Partial<RankRecommendationReactCandidateSnapshot> = {};
-    if (state === "missing-counts") {
+    if (state === "missing-counts" || state === "coverage-unavailable") {
         Object.assign(baseOverrides, {
             evidenceReadiness: "missing" as const,
             workState: "needs_evidence" as const,
@@ -482,7 +515,7 @@ function buildCandidatesForState(
         ...baseOverrides
     };
 
-    if (state === "first-task") {
+    if (state === "first-task" || state === "coverage-partial") {
         return [{
             ...primary,
             chartKey: `${primary.chartKey}:pending`,
@@ -493,7 +526,21 @@ function buildCandidatesForState(
             dismissButton: { ...primary.dismissButton, disabled: true }
         }];
     }
-    if (state === "needs-evidence" || state === "missing-counts" || state === "write-failure") {
+    if (state === "coverage-unavailable") {
+        return [{
+            ...primary,
+            workState: "needs_evidence",
+            action: "watch",
+            actionLabel: "要確認",
+            recommendedRankText: "未確定",
+            confirmButton: { ...primary.confirmButton, disabled: true }
+        }];
+    }
+    if (
+        state === "needs-evidence"
+        || state === "missing-counts"
+        || state === "write-failure"
+    ) {
         return [
             {
                 ...primary,
@@ -502,7 +549,9 @@ function buildCandidatesForState(
                 actionLabel: "要確認",
                 recommendedRankText: "未確定",
                 cautionText: primary.cautionText ?? "基準線が不足しているためランク変更はまだ確定できません",
-                evidenceStatusText: state === "missing-counts" ? primary.evidenceStatusText : "季節基準線は未取得 / 現在値のみ取得",
+                evidenceStatusText: state === "missing-counts"
+                    ? primary.evidenceStatusText
+                    : "季節基準線は未取得 / 現在値のみ取得",
                 confirmButton: { ...primary.confirmButton, disabled: true }
             },
             buildCandidate({
@@ -721,7 +770,12 @@ function formatFixtureStayDateLabel(stayDateKey: string): string {
 }
 
 function resolveFixtureWorkState(state: FixtureState): RankRecommendationWorkState {
-    if (state === "needs-evidence" || state === "missing-counts" || state === "write-failure") {
+    if (
+        state === "needs-evidence"
+        || state === "missing-counts"
+        || state === "coverage-unavailable"
+        || state === "write-failure"
+    ) {
         return "needs_evidence";
     }
     if (state === "recent" || state === "write-confirming" || state === "write-success") {
@@ -738,18 +792,35 @@ function getEmptyTextForState(state: FixtureState): string | null {
 }
 
 function buildMetaText(state: FixtureState, count: number, targetMonth: string): string {
+    const year = Number.parseInt(targetMonth.slice(0, 4), 10);
+    const month = Number.parseInt(targetMonth.slice(4, 6), 10);
+    const targetLabel = `${year}年${month}月`;
     if (state === "loading") {
         return "判断データを準備しています。カレンダーはそのまま操作できます。";
     }
     if (state === "first-task") {
-        const year = Number.parseInt(targetMonth.slice(0, 4), 10);
-        const month = Number.parseInt(targetMonth.slice(4, 6), 10);
-        return `${year}年${month}月の候補判定は完了しました。選択中の推移グラフを準備しています。`;
+        return `${targetLabel}の候補判定は完了しました。選択中の推移グラフを準備しています。`;
+    }
+    if (state === "coverage-partial" || state === "coverage-partial-empty" || state === "coverage-unavailable") {
+        return formatRankRecommendationCoverageStatus({
+            targetLabel,
+            coverageCounts: {
+                total: 31,
+                covered: state === "coverage-unavailable" ? 31 : 1,
+                complete: state === "coverage-unavailable"
+            },
+            candidateCount: count,
+            visibleCandidateCount: count,
+            unavailableDayCount: state === "coverage-unavailable" ? 1 : 0,
+            selectedEvidenceReadiness: state === "coverage-partial"
+                ? "pending"
+                : state === "coverage-unavailable"
+                    ? "missing"
+                    : null
+        });
     }
     if (state === "missing-counts") {
-        const year = Number.parseInt(targetMonth.slice(0, 4), 10);
-        const month = Number.parseInt(targetMonth.slice(4, 6), 10);
-        return `${year}年${month}月の候補判定は完了しました。選択中の推移グラフを取得できませんでした。`;
+        return `${targetLabel}の候補判定は完了しました。選択中の推移グラフを取得できませんでした。`;
     }
     if (state === "current-settings-401") {
         return "候補の現在設定を取得できませんでした（HTTP 401）。ログイン状態を確認してください。";
@@ -801,11 +872,13 @@ function createFixtureMonthCalendar(monthKey: string): HTMLElement {
     return monthElement;
 }
 
-function createFixtureCalendarCell(year: number, month: number, day: number): DocumentFragment {
+function createFixtureCalendarCell(year: number, month: number, day: number): HTMLElement {
     const dateWithHyphen = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
     const compactDate = dateWithHyphen.replaceAll("-", "");
     const roomCount = 2 + ((day * 3 + month) % 11);
     const groupCount = day % 5 === 0 ? 0 : (day + month) % 4;
+    const cellElement = document.createElement("div");
+    cellElement.setAttribute("data-ra-fixture-calendar-slot", "");
     const anchorElement = document.createElement("a");
     anchorElement.href = "#";
     anchorElement.setAttribute("data-testid", `calendar-date-${dateWithHyphen}`);
@@ -838,9 +911,8 @@ function createFixtureCalendarCell(year: number, month: number, day: number): Do
     nativeDescriptionElement.textContent = "Revenue Assistant 標準カレンダー値";
     anchorElement.setAttribute("aria-describedby", nativeDescriptionId);
     anchorElement.append(dateElement, roomLineElement);
-    const fragment = document.createDocumentFragment();
-    fragment.append(anchorElement, nativeDescriptionElement);
-    return fragment;
+    cellElement.append(anchorElement, nativeDescriptionElement);
+    return cellElement;
 }
 
 function installFixtureWorkspaceLayoutObserver(parentElement: HTMLElement, calendarElement: HTMLElement): void {
@@ -862,6 +934,7 @@ function installFixtureWorkspaceLayoutObserver(parentElement: HTMLElement, calen
         const mode = resolveRankRecommendationWorkspaceLayoutMode({
             containerWidth: parentElement.getBoundingClientRect().width,
             calendarMinimumWidth,
+            calendarMonthCount: monthlyCalendarElements.length,
             structureSafe: calendarElement.parentElement === parentElement
                 && monthlyCalendarElements.length === FIXTURE_CALENDAR_MONTHS.length
                 && parentElement.querySelector(':scope > [data-ra-rank-recommendation-list]') !== null
@@ -934,7 +1007,7 @@ function cleanupFixtureCalendarMarkers(): void {
 }
 
 function renderFixtureEvidence(container: HTMLElement, state: FixtureState): void {
-    if (state === "first-task") {
+    if (state === "first-task" || state === "coverage-partial") {
         const status = document.createElement("p");
         status.setAttribute("data-ra-fixture-evidence-loading", "");
         status.textContent = "グラフを準備しています。";
@@ -957,7 +1030,7 @@ function renderFixtureEvidence(container: HTMLElement, state: FixtureState): voi
 
     figure.append(canvas, caption);
     container.replaceChildren(figure);
-    if (state === "missing-counts") {
+    if (state === "missing-counts" || state === "coverage-unavailable") {
         return;
     }
     drawFixtureBookingCurve(canvas, state);
@@ -1031,11 +1104,11 @@ function drawFixtureSeries(
 
 function installFixtureStyles(): void {
     const style = document.createElement("style");
-    style.textContent = `${RANK_RECOMMENDATION_WORKSPACE_STYLES}\n${getFixtureShellStyles()}`;
+    style.textContent = `${RANK_RECOMMENDATION_WORKSPACE_STYLES}\n${getRankRecommendationFixtureShellStyles()}`;
     document.head.append(style);
 }
 
-function getFixtureShellStyles(): string {
+export function getRankRecommendationFixtureShellStyles(): string {
     return `
     :root {
         color-scheme: light;
@@ -1197,16 +1270,22 @@ function getFixtureShellStyles(): string {
         text-align: center;
     }
 
-    [data-ra-fixture-calendar-cell] {
+    [data-ra-fixture-calendar-slot] {
         position: relative;
-        display: grid;
         min-height: 62px;
-        align-content: space-between;
-        padding: 6px;
-        border: 0;
         border-right: 1px solid #e4e9ef;
         border-bottom: 1px solid #e4e9ef;
         background: #ffffff;
+    }
+
+    [data-ra-fixture-calendar-cell] {
+        position: absolute;
+        inset: 0;
+        display: grid;
+        align-content: space-between;
+        padding: 6px;
+        border: 0;
+        background: transparent;
         color: #28394c;
         text-decoration: none;
     }

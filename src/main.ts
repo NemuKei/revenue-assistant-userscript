@@ -15,14 +15,37 @@ import {
     type RankRecommendationReactReadinessStage
 } from "./rankRecommendationReactIsland";
 import {
+    buildRankRecommendationPerformanceContextSignature,
     buildRankRecommendationProgressiveContextSignature,
     createRankRecommendationProgressiveEvidenceCoordinator,
     createRankRecommendationProgressiveEvidenceRequestCache,
     limitRankRecommendationItemsWithSelectedKey,
     resolveRankRecommendationProgressiveControlVisibility,
     resolveRankRecommendationProgressiveWorkStateControlPublished,
-    shouldCacheRankRecommendationProgressiveEvidence
+    shouldCacheRankRecommendationProgressiveEvidence,
+    shouldResetRankRecommendationPerformanceMetrics
 } from "./rankRecommendationProgressiveReadiness";
+import {
+    buildRankRecommendationCoverageDayFingerprint,
+    buildRankRecommendationCoverageDays,
+    buildRankRecommendationCoverageScopeKey,
+    buildRankRecommendationWarmCacheDependencies,
+    buildRankRecommendationWarmCacheDependencyKey,
+    buildRankRecommendationWarmCacheTaskDependencyKey,
+    buildRankRecommendationWarmCachePriorityScopes,
+    findInvalidatedRankRecommendationCoverageStayDates,
+    formatRankRecommendationCoverageStatus,
+    getRankRecommendationCoverageCounts,
+    getRankRecommendationPartialTargetMonths,
+    isRankRecommendationWarmCacheDependencyTask,
+    prioritizeRankRecommendationWarmCacheTasks,
+    resolveRankRecommendationDayCoverage,
+    selectRankRecommendationCoverageBatchStayDates,
+    shouldResyncRankRecommendationCoverageAfterStaleWarmCacheTask,
+    type RankRecommendationCoverageDay,
+    type RankRecommendationCoverageScope,
+    type RankRecommendationWarmCacheDependency
+} from "./rankRecommendationCoverage";
 import {
     countRankRecommendationWorkStates,
     resolveRankRecommendationWorkState,
@@ -180,7 +203,7 @@ const SALES_SETTING_WARM_CACHE_MAX_RETRY_COUNT = 2;
 const SALES_SETTING_WARM_CACHE_ALLOW_HIDDEN_TAB_STORAGE_KEY = "revenue-assistant:sales-setting-warm-cache:v1:allow-hidden-tab";
 const CALENDAR_DATE_TEST_ID_PREFIX = "calendar-date-";
 const GROUP_ROOM_STYLE_ID = "revenue-assistant-group-room-style";
-const GROUP_ROOM_STYLE_VERSION = "20260717-rank-workspace-v1";
+const GROUP_ROOM_STYLE_VERSION = "20260720-rank-workspace-v2";
 const GROUP_ROOM_LAYOUT_ATTRIBUTE = "data-ra-group-room-layout";
 const GROUP_ROOM_BADGE_ATTRIBUTE = "data-ra-group-room-badge";
 const GROUP_ROOM_ROOM_ATTRIBUTE = "data-ra-group-room-room";
@@ -290,6 +313,8 @@ const RANK_RECOMMENDATION_DECISION_UNDO_DELAY_MS = 5000;
 const RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT = 10;
 const RANK_RECOMMENDATION_DISPLAY_LIMIT_STEP = 10;
 const RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT = 50;
+const RANK_RECOMMENDATION_INITIAL_COVERAGE_BATCH_DAY_COUNT = 1;
+const RANK_RECOMMENDATION_FOLLOWUP_COVERAGE_BATCH_DAY_COUNT = 7;
 type RankRecommendationViewMode = RankRecommendationWorkState;
 const RANK_RECOMMENDATION_VIEW_MODE_OPTIONS: readonly {
     mode: RankRecommendationViewMode;
@@ -568,6 +593,7 @@ interface SalesSettingWarmCacheQueueBuildResult {
     queue: SalesSettingWarmCacheTask[];
     preScanHitCount: number;
     rankRecommendationPreScanHitCount: number;
+    rankRecommendationEvidencePreScanHitStayDates: string[];
 }
 
 type CompetitorPriceSnapshotStatus = "idle" | "saving" | "stored" | "skipped" | "error";
@@ -622,7 +648,6 @@ interface MonthlyCalendarCell {
 }
 
 interface RankRecommendationCalendarSyncContext {
-    generation: number;
     interactionGeneration: number;
     calendarElement: HTMLElement;
     parentElement: HTMLElement;
@@ -1257,6 +1282,7 @@ let roomGroupListPromise: Promise<RoomGroup[]> | null = null;
 let salesSettingWarmCacheTimeoutId: number | null = null;
 let rankRecommendationWarmCacheSyncTimeoutId: number | null = null;
 let salesSettingWarmCacheRunSeq = 0;
+let salesSettingWarmCacheBuildRetrySignature = "";
 let competitorPriceSnapshotBackgroundTimeoutId: number | null = null;
 let competitorPriceSnapshotBackgroundRunning = false;
 let competitorPriceSnapshotBackgroundProgress: CompetitorPriceSnapshotBackgroundProgress = createInitialCompetitorPriceSnapshotBackgroundProgress();
@@ -1269,6 +1295,7 @@ let pendingCompetitorPriceTabSnapshotRequest: PendingCompetitorPriceTabSnapshotR
 let pendingPriceTrendTabRequest: PendingPriceTrendTabRequest | null = null;
 let salesSettingWarmCacheState: SalesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
 let rankRecommendationWarmCachePriorityCandidates: RankRecommendationWarmCachePriorityCandidate[] = [];
+let rankRecommendationWarmCachePriorityDependencies: RankRecommendationWarmCacheDependency[] = [];
 let rankRecommendationDisplayLimit = RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT;
 let rankRecommendationViewMode: RankRecommendationViewMode = "ready";
 let rankRecommendationTargetMonth: string | null = null;
@@ -1279,6 +1306,13 @@ let rankRecommendationProgressiveEvidenceContextSignature = "";
 let rankRecommendationProgressiveEvidenceContextGeneration = 0;
 let rankRecommendationProgressiveSelectedCandidateKey: string | null = null;
 let rankRecommendationProgressiveWorkStateControlPublished = false;
+let rankRecommendationPerformanceContextSignature = "";
+const rankRecommendationCoverageCommittedStayDates = new Set<string>();
+const rankRecommendationCoverageFingerprintByStayDate = new Map<string, string>();
+const rankRecommendationCoverageIncompleteEvidenceStayDates = new Set<string>();
+const rankRecommendationCoverageUnavailableStayDates = new Set<string>();
+const rankRecommendationCoverageCurveEvidenceByKey = new Map<string, RankRecommendationCurveEvidence>();
+let rankRecommendationCoverageReadRetrySignature = "";
 const rankRecommendationProgressiveEvidenceCacheByKey = new Map<string, {
     readiness: RankRecommendationReactEvidenceReadiness;
     value: RankRecommendationCurvePreviewInfo;
@@ -1300,7 +1334,6 @@ let activeAnalyzeDate: string | null = null;
 let activeBatchDateKey: string | null = null;
 let activeFacilityCacheKey: string | null = null;
 let calendarObserver: MutationObserver | null = null;
-let monthlyCalendarDomGeneration = 0;
 let rankRecommendationWorkspaceResizeObserver: ResizeObserver | null = null;
 let rankRecommendationWorkspaceResizeParentElement: HTMLElement | null = null;
 let rankRecommendationWorkspaceResizeCalendarElement: HTMLElement | null = null;
@@ -4460,10 +4493,16 @@ function scheduleSalesSettingWarmCache(
         && salesSettingWarmCacheState.asOfDate === batchDateKey
         && salesSettingWarmCacheState.priorityStayDate === priorityStayDate
         && salesSettingWarmCacheState.priorityMonth === priorityMonth;
-    if (sameContext && (salesSettingWarmCacheState.total > 0 || salesSettingWarmCacheState.status === "building")) {
-        const prioritizedQueue = prioritizeSalesSettingWarmCacheQueueForPriorityMonth(
-            prioritizeSalesSettingWarmCacheQueueForRankRecommendations(salesSettingWarmCacheState.queue),
-            priorityMonth
+    if (
+        sameContext
+        && (
+            salesSettingWarmCacheState.total > 0
+            || salesSettingWarmCacheState.status === "building"
+            || salesSettingWarmCacheState.status === "complete"
+        )
+    ) {
+        const prioritizedQueue = prioritizeSalesSettingWarmCacheQueueForRankRecommendations(
+            prioritizeSalesSettingWarmCacheQueueForPriorityMonth(salesSettingWarmCacheState.queue, priorityMonth)
         );
         salesSettingWarmCacheState = {
             ...salesSettingWarmCacheState,
@@ -4491,19 +4530,21 @@ function scheduleSalesSettingWarmCache(
         targetFromDate: null,
         targetToDate: null
     };
+    const queueBuildRunId = salesSettingWarmCacheState.runId;
     resetFetchPerformanceBookingCurveMetrics("bookingCurve.warmCacheQueueRequested");
     renderSalesSettingWarmCacheIndicator();
 
     void buildSalesSettingWarmCacheQueue(startDate, priorityStayDate, priorityMonth, facilityCacheKey, batchDateKey)
         .then((queueResult) => {
             if (
-                salesSettingWarmCacheState.facilityId !== facilityCacheKey
-                || salesSettingWarmCacheState.asOfDate !== batchDateKey
+                !isCurrentSalesSettingWarmCacheContext(facilityCacheKey, batchDateKey, queueBuildRunId)
+                || salesSettingWarmCacheState.priorityMonth !== priorityMonth
             ) {
                 return;
             }
 
             const queue = queueResult.queue;
+            salesSettingWarmCacheBuildRetrySignature = "";
             updateFetchPerformanceBookingCurveMetrics({
                 warmCacheQueueBuiltAt: Date.now(),
                 preScanHitCount: queueResult.preScanHitCount
@@ -4523,10 +4564,22 @@ function scheduleSalesSettingWarmCache(
                 preScanHitCount: queueResult.preScanHitCount,
                 pauseReason: null
             };
+            for (const stayDate of queueResult.rankRecommendationEvidencePreScanHitStayDates) {
+                invalidateRankRecommendationCommittedCoverageStayDate(stayDate);
+            }
+            if (queueResult.rankRecommendationEvidencePreScanHitStayDates.length > 0) {
+                queueDebouncedRankRecommendationWarmCacheSync();
+            }
             renderSalesSettingWarmCacheIndicator();
             scheduleSalesSettingWarmCacheDrain(0);
         })
         .catch((error: unknown) => {
+            if (
+                !isCurrentSalesSettingWarmCacheContext(facilityCacheKey, batchDateKey, queueBuildRunId)
+                || salesSettingWarmCacheState.priorityMonth !== priorityMonth
+            ) {
+                return;
+            }
             console.warn(`[${SCRIPT_NAME}] failed to build sales-setting warm cache queue`, {
                 startDate,
                 batchDateKey,
@@ -4538,6 +4591,18 @@ function scheduleSalesSettingWarmCache(
                 errors: salesSettingWarmCacheState.errors + 1,
                 pauseReason: "queue作成失敗"
             };
+            const buildRetrySignature = JSON.stringify([
+                facilityCacheKey,
+                batchDateKey,
+                priorityMonth
+            ]);
+            if (
+                rankRecommendationWarmCachePriorityDependencies.length > 0
+                && salesSettingWarmCacheBuildRetrySignature !== buildRetrySignature
+            ) {
+                salesSettingWarmCacheBuildRetrySignature = buildRetrySignature;
+                queueDebouncedRankRecommendationWarmCacheSync();
+            }
             renderSalesSettingWarmCacheIndicator();
         });
 }
@@ -4595,9 +4660,8 @@ async function buildSalesSettingWarmCacheQueue(
         }
     }
 
-    const prioritizedTasks = prioritizeSalesSettingWarmCacheQueueForPriorityMonth(
-        prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks),
-        priorityMonth
+    const prioritizedTasks = prioritizeSalesSettingWarmCacheQueueForRankRecommendations(
+        prioritizeSalesSettingWarmCacheQueueForPriorityMonth(tasks, priorityMonth)
     );
     return preScanSalesSettingWarmCacheRawSourceTasks(prioritizedTasks, facilityCacheKey, batchDateKey);
 }
@@ -4633,15 +4697,24 @@ function addSalesSettingWarmCacheTask(tasks: SalesSettingWarmCacheTask[], taskKe
 }
 
 function rememberRankRecommendationWarmCachePriorityCandidates(candidates: RankRecommendationCandidate[]): void {
+    rememberRankRecommendationWarmCachePriorityScopes(candidates.map((candidate) => ({
+        stayDate: candidate.stayDate,
+        roomGroupId: candidate.roomGroupId
+    })));
+}
+
+function rememberRankRecommendationWarmCachePriorityScopes(
+    scopes: readonly RankRecommendationCoverageScope[]
+): void {
     const seen = new Set<string>();
     const priorityCandidates: RankRecommendationWarmCachePriorityCandidate[] = [];
-    for (const candidate of candidates) {
-        const taskKey = buildRankRecommendationWarmCachePriorityTaskKey(candidate.stayDate, candidate.roomGroupId);
-        if (seen.has(taskKey)) {
+    for (const candidate of [...scopes, ...rankRecommendationWarmCachePriorityCandidates]) {
+        const scopeKey = buildRankRecommendationCoverageScopeKey(candidate);
+        if (seen.has(scopeKey)) {
             continue;
         }
 
-        seen.add(taskKey);
+        seen.add(scopeKey);
         priorityCandidates.push({
             stayDate: candidate.stayDate,
             roomGroupId: candidate.roomGroupId
@@ -4652,29 +4725,31 @@ function rememberRankRecommendationWarmCachePriorityCandidates(candidates: RankR
 
 function clearRankRecommendationWarmCachePriorityCandidates(): void {
     rankRecommendationWarmCachePriorityCandidates = [];
+    rankRecommendationWarmCachePriorityDependencies = [];
+}
+
+function rememberRankRecommendationWarmCachePriorityDependencies(
+    dependencies: readonly RankRecommendationWarmCacheDependency[]
+): void {
+    const seen = new Set<string>();
+    rankRecommendationWarmCachePriorityDependencies = [
+        ...dependencies,
+        ...rankRecommendationWarmCachePriorityDependencies
+    ].filter((dependency) => {
+        const key = buildRankRecommendationWarmCacheDependencyKey(dependency);
+        if (seen.has(key)) {
+            return false;
+        }
+        seen.add(key);
+        return true;
+    });
 }
 
 function prioritizeSalesSettingWarmCacheQueueForRankRecommendations(tasks: SalesSettingWarmCacheTask[]): SalesSettingWarmCacheTask[] {
-    if (rankRecommendationWarmCachePriorityCandidates.length === 0 || tasks.length <= 1) {
-        return tasks;
-    }
-
-    const priorityOrderByTaskKey = new Map(rankRecommendationWarmCachePriorityCandidates.map((candidate, index) => [
-        buildRankRecommendationWarmCachePriorityTaskKey(candidate.stayDate, candidate.roomGroupId),
-        index
-    ]));
-    return tasks
-        .map((task, index) => ({ task, index }))
-        .sort((left, right) => {
-            const leftOrder = priorityOrderByTaskKey.get(buildSalesSettingWarmCacheTaskKey(left.task)) ?? Number.POSITIVE_INFINITY;
-            const rightOrder = priorityOrderByTaskKey.get(buildSalesSettingWarmCacheTaskKey(right.task)) ?? Number.POSITIVE_INFINITY;
-            if (leftOrder !== rightOrder) {
-                return leftOrder - rightOrder;
-            }
-
-            return left.index - right.index;
-        })
-        .map(({ task }) => task);
+    return prioritizeRankRecommendationWarmCacheTasks(
+        tasks,
+        rankRecommendationWarmCachePriorityDependencies
+    );
 }
 
 function prioritizeSalesSettingWarmCacheQueueForPriorityMonth(tasks: SalesSettingWarmCacheTask[], priorityMonth: string | null): SalesSettingWarmCacheTask[] {
@@ -4708,19 +4783,6 @@ function getSalesSettingWarmCachePriorityMonthTaskRank(task: SalesSettingWarmCac
     return 2;
 }
 
-function buildRankRecommendationWarmCachePriorityTaskKey(stayDate: string, roomGroupId: string): string {
-    return [
-        "currentRaw",
-        "raw",
-        `target:${stayDate}`,
-        `stay:${stayDate}`,
-        "scope:roomGroup",
-        `roomGroup:${roomGroupId}`,
-        "segment:-",
-        "curve:-"
-    ].join("|");
-}
-
 function isRankRecommendationWarmCachePriorityTask(task: SalesSettingWarmCacheTask): boolean {
     return task.kind === "currentRaw"
         && task.scope === "roomGroup"
@@ -4729,6 +4791,46 @@ function isRankRecommendationWarmCachePriorityTask(task: SalesSettingWarmCacheTa
             candidate.stayDate === task.stayDate
             && candidate.roomGroupId === task.roomGroupId
         ));
+}
+
+function isRankRecommendationWarmCacheEvidencePriorityTask(task: SalesSettingWarmCacheTask): boolean {
+    return isRankRecommendationWarmCacheDependencyTask(
+        task,
+        rankRecommendationWarmCachePriorityDependencies
+    );
+}
+
+function hasPendingRankRecommendationWarmCacheEvidencePriorityTask(targetStayDate: string): boolean {
+    return [...salesSettingWarmCacheState.activeTasks, ...salesSettingWarmCacheState.queue].some((task) => (
+        task.targetStayDate === targetStayDate
+        && isRankRecommendationWarmCacheEvidencePriorityTask(task)
+    ));
+}
+
+function invalidateRankRecommendationCommittedCoverageStayDate(stayDate: string): boolean {
+    if (
+        !rankRecommendationCoverageCommittedStayDates.has(stayDate)
+        || (
+            !rankRecommendationCoverageIncompleteEvidenceStayDates.has(stayDate)
+            && !rankRecommendationCoverageUnavailableStayDates.has(stayDate)
+        )
+    ) {
+        return false;
+    }
+
+    rankRecommendationCoverageCommittedStayDates.delete(stayDate);
+    rankRecommendationCoverageFingerprintByStayDate.delete(stayDate);
+    rankRecommendationCoverageIncompleteEvidenceStayDates.delete(stayDate);
+    rankRecommendationCoverageUnavailableStayDates.delete(stayDate);
+    for (const evidenceKey of rankRecommendationCoverageCurveEvidenceByKey.keys()) {
+        if (evidenceKey.startsWith(`${stayDate}:`)) {
+            rankRecommendationCoverageCurveEvidenceByKey.delete(evidenceKey);
+        }
+    }
+    rankRecommendationProgressiveEvidenceContextGeneration += 1;
+    rankRecommendationProgressiveEvidenceCacheByKey.clear();
+    rankRecommendationProgressiveEvidenceRequestCache.clear();
+    return true;
 }
 
 function countRankRecommendationWarmCachePriorityTasks(tasks: readonly SalesSettingWarmCacheTask[]): number {
@@ -4773,6 +4875,7 @@ async function preScanSalesSettingWarmCacheRawSourceTasks(
 ): Promise<SalesSettingWarmCacheQueueBuildResult> {
     let preScanHitCount = 0;
     let rankRecommendationPreScanHitCount = 0;
+    const rankRecommendationEvidencePreScanHitStayDates = new Set<string>();
     const queue: SalesSettingWarmCacheTask[] = [];
     const rawSourceTaskKeyByTask = new Map<SalesSettingWarmCacheTask, string>();
 
@@ -4805,6 +4908,9 @@ async function preScanSalesSettingWarmCacheRawSourceTasks(
         }
 
         preScanHitCount += 1;
+        if (isRankRecommendationWarmCacheEvidencePriorityTask(task)) {
+            rankRecommendationEvidencePreScanHitStayDates.add(task.targetStayDate);
+        }
         if (isRankRecommendationWarmCachePriorityTask(task)) {
             rankRecommendationPreScanHitCount += 1;
             recordFetchPerformanceBookingCurvePriorityResult("skipped");
@@ -4814,7 +4920,8 @@ async function preScanSalesSettingWarmCacheRawSourceTasks(
     return {
         queue,
         preScanHitCount,
-        rankRecommendationPreScanHitCount
+        rankRecommendationPreScanHitCount,
+        rankRecommendationEvidencePreScanHitStayDates: Array.from(rankRecommendationEvidencePreScanHitStayDates)
     };
 }
 
@@ -5107,6 +5214,15 @@ async function runSalesSettingWarmCacheWorker(
     try {
         const taskResult = await runSalesSettingWarmCacheTask(task, facilityId, asOfDate);
         if (!isCurrentSalesSettingWarmCacheContext(facilityId, asOfDate, runId)) {
+            if (shouldResyncRankRecommendationCoverageAfterStaleWarmCacheTask({
+                sameDataContext: salesSettingWarmCacheState.facilityId === facilityId
+                    && salesSettingWarmCacheState.asOfDate === asOfDate,
+                task,
+                dependencies: rankRecommendationWarmCachePriorityDependencies
+            })) {
+                invalidateRankRecommendationCommittedCoverageStayDate(task.targetStayDate);
+                queueDebouncedRankRecommendationWarmCacheSync();
+            }
             return;
         }
         markSalesSettingWarmCacheDateProgress(task, false);
@@ -5121,7 +5237,11 @@ async function runSalesSettingWarmCacheWorker(
             currentTask: getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(task),
             ...(taskResult === "fetched" ? { lastFetchedAt: new Date().toISOString() } : {})
         };
-        if (taskResult === "fetched" && isRankRecommendationWarmCachePriorityTask(task)) {
+        if (
+            isRankRecommendationWarmCacheEvidencePriorityTask(task)
+            && !hasPendingRankRecommendationWarmCacheEvidencePriorityTask(task.targetStayDate)
+        ) {
+            invalidateRankRecommendationCommittedCoverageStayDate(task.targetStayDate);
             queueDebouncedRankRecommendationWarmCacheSync();
         }
     } catch (error: unknown) {
@@ -5152,13 +5272,19 @@ async function runSalesSettingWarmCacheWorker(
                 currentTask: getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(task)
             };
             pauseSalesSettingWarmCache(failureAction.reason, "error");
+            if (isRankRecommendationWarmCacheEvidencePriorityTask(task)) {
+                queueDebouncedRankRecommendationWarmCacheSync();
+            }
             return;
         }
 
         if (failureAction.kind === "cooldown") {
             const retryTask = buildSalesSettingWarmCacheRetryTask(task);
             if (retryTask !== null) {
-                salesSettingWarmCacheState.queue.unshift(retryTask);
+                salesSettingWarmCacheState.queue = prioritizeSalesSettingWarmCacheQueueForRankRecommendations([
+                    ...salesSettingWarmCacheState.queue,
+                    retryTask
+                ]);
             } else {
                 markSalesSettingWarmCacheDateProgress(task, true);
                 markRankRecommendationWarmCachePriorityTask(task, "error");
@@ -5172,12 +5298,22 @@ async function runSalesSettingWarmCacheWorker(
                 currentTask: getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(task)
             };
             startSalesSettingWarmCacheCooldown(failureAction.reason);
+            if (
+                retryTask === null
+                && isRankRecommendationWarmCacheEvidencePriorityTask(task)
+                && !hasPendingRankRecommendationWarmCacheEvidencePriorityTask(task.targetStayDate)
+            ) {
+                queueDebouncedRankRecommendationWarmCacheSync();
+            }
             return;
         }
 
         const retryTask = buildSalesSettingWarmCacheRetryTask(task);
         if (retryTask !== null) {
-            salesSettingWarmCacheState.queue.push(retryTask);
+            salesSettingWarmCacheState.queue = prioritizeSalesSettingWarmCacheQueueForRankRecommendations([
+                ...salesSettingWarmCacheState.queue,
+                retryTask
+            ]);
         } else {
             markSalesSettingWarmCacheDateProgress(task, true);
             markRankRecommendationWarmCachePriorityTask(task, "error");
@@ -5191,12 +5327,23 @@ async function runSalesSettingWarmCacheWorker(
             currentTask: getNextSalesSettingWarmCacheCurrentTaskAfterCompletion(task)
         };
 
+        if (
+            retryTask === null
+            && isRankRecommendationWarmCacheEvidencePriorityTask(task)
+            && !hasPendingRankRecommendationWarmCacheEvidencePriorityTask(task.targetStayDate)
+        ) {
+            queueDebouncedRankRecommendationWarmCacheSync();
+        }
+
         if (salesSettingWarmCacheState.consecutiveErrors >= SALES_SETTING_WARM_CACHE_MAX_CONSECUTIVE_ERRORS) {
             updateFetchPerformanceBookingCurveMetrics({
                 autoTightenedReason: fetchPerformanceMetrics.bookingCurve.autoTightenedReason
                     ?? formatHighThroughputAutoTightenReason("booking_curve", errorStatus, "consecutive errors")
             }, "bookingCurve.autoTightened");
             pauseSalesSettingWarmCache("連続エラー", "error");
+            if (isRankRecommendationWarmCacheEvidencePriorityTask(task)) {
+                queueDebouncedRankRecommendationWarmCacheSync();
+            }
             return;
         }
     }
@@ -5326,6 +5473,7 @@ function resetSalesSettingWarmCache(reason: string): void {
         window.clearTimeout(salesSettingWarmCacheTimeoutId);
         salesSettingWarmCacheTimeoutId = null;
     }
+    salesSettingWarmCacheBuildRetrySignature = "";
     salesSettingWarmCacheRunSeq += 1;
     finalizeSalesSettingWarmCacheRun("idle", reason);
     salesSettingWarmCacheState = createInitialSalesSettingWarmCacheState();
@@ -5349,6 +5497,12 @@ function finalizeSalesSettingWarmCacheRun(status: SalesSettingWarmCacheStatus, p
         activeTasks: [],
         pauseReason
     };
+    if (
+        rankRecommendationWarmCachePriorityDependencies.length > 0
+        && (status === "complete" || status === "error" || status === "limitReached")
+    ) {
+        queueDebouncedRankRecommendationWarmCacheSync();
+    }
     renderSalesSettingWarmCacheIndicator();
 }
 
@@ -6470,10 +6624,6 @@ function ensureCalendarObserver(): void {
             return;
         }
 
-        if (mutations.some((mutation) => isMonthlyCalendarGenerationMutation(mutation))) {
-            monthlyCalendarDomGeneration += 1;
-        }
-
         recordCalendarSyncMutationDebug(mutations);
         scheduleMutationObserverCalendarSync();
     });
@@ -6509,27 +6659,6 @@ function isRevenueAssistantManagedMutation(mutation: MutationRecord): boolean {
 
     const addedNodes = Array.from(mutation.addedNodes);
     return addedNodes.length > 0 && addedNodes.every((node) => isRevenueAssistantManagedNode(node));
-}
-
-function isMonthlyCalendarGenerationMutation(mutation: MutationRecord): boolean {
-    const monthlyCalendarSelector = `[data-testid="${RANK_RECOMMENDATION_MONTHLY_CALENDAR_TEST_ID}"]`;
-    const calendarDateSelector = `[data-testid^="${CALENDAR_DATE_TEST_ID_PREFIX}"]`;
-    const isCalendarElement = (node: Node): boolean => (
-        node instanceof Element
-        && (
-            node.matches(monthlyCalendarSelector)
-            || node.matches(calendarDateSelector)
-            || node.closest(monthlyCalendarSelector) !== null
-            || node.querySelector(monthlyCalendarSelector) !== null
-            || node.querySelector(calendarDateSelector) !== null
-        )
-    );
-
-    if (isCalendarElement(mutation.target)) {
-        return true;
-    }
-    return [...Array.from(mutation.addedNodes), ...Array.from(mutation.removedNodes)]
-        .some((node) => isCalendarElement(node));
 }
 
 function isRevenueAssistantManagedNode(node: Node | null): boolean {
@@ -8437,7 +8566,6 @@ function createRankRecommendationCalendarSyncContext(
         return null;
     }
     return {
-        generation: monthlyCalendarDomGeneration,
         interactionGeneration: rankRecommendationInteractionGeneration,
         calendarElement,
         parentElement,
@@ -8451,8 +8579,7 @@ function isRankRecommendationCalendarSyncContextCurrent(
     context: RankRecommendationCalendarSyncContext
 ): boolean {
     if (
-        context.generation !== monthlyCalendarDomGeneration
-        || context.interactionGeneration !== rankRecommendationInteractionGeneration
+        context.interactionGeneration !== rankRecommendationInteractionGeneration
         || !context.calendarElement.isConnected
         || context.calendarElement.parentElement !== context.parentElement
     ) {
@@ -8560,18 +8687,34 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     }
 
     const syncRunGeneration = ++rankRecommendationSyncRunGeneration;
-    const readinessStartedAt = Date.now();
-    resetFetchPerformanceRankRecommendationMetrics(readinessStartedAt);
     const targetMonthOptionsContextSignature = buildRankRecommendationProgressiveContextSignature({
         facilityCacheKey,
         batchDateKey,
         fromDateKey: dateRange.fromDateKey,
         toDateKey: dateRange.toDateKey
     });
+    const performanceContextSignature = buildRankRecommendationPerformanceContextSignature({
+        facilityCacheKey,
+        batchDateKey
+    });
+    if (shouldResetRankRecommendationPerformanceMetrics(
+        rankRecommendationPerformanceContextSignature,
+        performanceContextSignature
+    )) {
+        rankRecommendationPerformanceContextSignature = performanceContextSignature;
+        resetFetchPerformanceRankRecommendationMetrics(Date.now());
+    }
     if (rankRecommendationTargetMonthOptionsContextSignature !== targetMonthOptionsContextSignature) {
         clearRankRecommendationTargetMonthOptionsContext();
     }
     if (rankRecommendationProgressiveEvidenceContextSignature !== targetMonthOptionsContextSignature) {
+        clearRankRecommendationWarmCachePriorityCandidates();
+        rankRecommendationCoverageCommittedStayDates.clear();
+        rankRecommendationCoverageFingerprintByStayDate.clear();
+        rankRecommendationCoverageIncompleteEvidenceStayDates.clear();
+        rankRecommendationCoverageUnavailableStayDates.clear();
+        rankRecommendationCoverageCurveEvidenceByKey.clear();
+        rankRecommendationCoverageReadRetrySignature = "";
         rankRecommendationProgressiveEvidenceCacheByKey.clear();
         rankRecommendationProgressiveEvidenceRequestCache.clear();
         rankRecommendationProgressiveSelectedCandidateKey = null;
@@ -8647,7 +8790,8 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         return stayDate !== null && visibleStayDates.has(stayDate);
     });
     updateFetchPerformanceBookingCurveMetrics({
-        rankRecommendationCurrentSettingsCompletedAt: currentSettingsCompletedAt,
+        rankRecommendationCurrentSettingsCompletedAt:
+            fetchPerformanceMetrics.bookingCurve.rankRecommendationCurrentSettingsCompletedAt ?? currentSettingsCompletedAt,
         rankRecommendationCurrentSettingDateCount: visibleCurrentSettings.length,
         rankRecommendationCurrentSettingRoomGroupCount: visibleCurrentSettings.reduce(
             (total, currentSetting) => total + (currentSetting.rm_room_groups?.length ?? 0),
@@ -8665,6 +8809,46 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         });
     }
 
+    const preferredMonthKeys = getSalesSettingWarmCachePriorityMonthKeys(cells);
+    const priorityMonth = rankRecommendationTargetMonth ?? preferredMonthKeys[0] ?? null;
+    const coverageDays = buildRankRecommendationCoverageDays({
+        response,
+        visibleStayDates,
+        asOfDate: batchDateKey,
+        priorityMonth
+    });
+    const coverageDayByStayDate = new Map(coverageDays.map((day) => [day.stayDate, day]));
+    const invalidatedCoverageStayDates = findInvalidatedRankRecommendationCoverageStayDates({
+        days: coverageDays,
+        committedFingerprintByStayDate: rankRecommendationCoverageFingerprintByStayDate
+    });
+    for (const stayDate of invalidatedCoverageStayDates) {
+        rankRecommendationCoverageCommittedStayDates.delete(stayDate);
+        rankRecommendationCoverageFingerprintByStayDate.delete(stayDate);
+        rankRecommendationCoverageIncompleteEvidenceStayDates.delete(stayDate);
+        rankRecommendationCoverageUnavailableStayDates.delete(stayDate);
+        for (const evidenceKey of rankRecommendationCoverageCurveEvidenceByKey.keys()) {
+            if (evidenceKey.startsWith(`${stayDate}:`)) {
+                rankRecommendationCoverageCurveEvidenceByKey.delete(evidenceKey);
+            }
+        }
+    }
+    rememberRankRecommendationWarmCachePriorityScopes(
+        buildRankRecommendationWarmCachePriorityScopes(coverageDays, priorityMonth)
+    );
+    rememberRankRecommendationWarmCachePriorityDependencies(
+        buildRankRecommendationWarmCacheDependencies(coverageDays, priorityMonth)
+    );
+    const coverageProbeStayDates = selectRankRecommendationCoverageBatchStayDates({
+        days: coverageDays,
+        availableStayDates: new Set(coverageDays.map((day) => day.stayDate)),
+        committedStayDates: rankRecommendationCoverageCommittedStayDates,
+        initialBatchDayCount: RANK_RECOMMENDATION_INITIAL_COVERAGE_BATCH_DAY_COUNT,
+        followupBatchDayCount: RANK_RECOMMENDATION_FOLLOWUP_COVERAGE_BATCH_DAY_COUNT
+    });
+    const coverageProbeStayDateSet = new Set(coverageProbeStayDates);
+    const coverageProbeDays = coverageDays.filter((day) => coverageProbeStayDateSet.has(day.stayDate));
+
     const decisionRecordsRequest = readRankRecommendationDecisionRecords()
         .catch((error: unknown) => {
             console.warn(`[${SCRIPT_NAME}] failed to read rank recommendation decisions`, { error });
@@ -8679,25 +8863,76 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             });
             return [] as LincolnSuggestStatus[];
         });
-    const rawSourceReader = createRankRecommendationRawSourceRecordReader({
-        facilityId: facilityCacheKey,
-        asOfDate: batchDateKey
-    });
-    const curveEvidenceByKey = await buildRankRecommendationCurveEvidenceByKey(response, {
+    const coverageRawSources = await readRankRecommendationCoverageRawSources({
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
-        visibleStayDates,
+        days: coverageProbeDays
+    });
+    if (shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)) {
+        return;
+    }
+    scheduleSalesSettingWarmCache(batchDateKey, batchDateKey, facilityCacheKey, null, priorityMonth);
+    const coverageReadRetrySignature = JSON.stringify([
+        targetMonthOptionsContextSignature,
+        coverageProbeStayDates
+    ]);
+    const shouldRetryCoverageRead = coverageRawSources.readFailed
+        && rankRecommendationCoverageReadRetrySignature !== coverageReadRetrySignature;
+    rankRecommendationCoverageReadRetrySignature = coverageRawSources.readFailed
+        ? coverageReadRetrySignature
+        : "";
+    const availableCheckedStayDates = coverageRawSources.dayCoverage.checkedStayDates;
+    const nextCoverageBatchStayDates = coverageProbeStayDates.filter((stayDate) => (
+        availableCheckedStayDates.has(stayDate)
+        && !rankRecommendationCoverageCommittedStayDates.has(stayDate)
+    ));
+    const nextCoverageBatchStayDateSet = new Set(nextCoverageBatchStayDates);
+    const rawSourceReader = coverageRawSources.rawSourceReader;
+    const nextCurveEvidenceByKey = await buildRankRecommendationCurveEvidenceByKey(response, {
+        facilityId: facilityCacheKey,
+        asOfDate: batchDateKey,
+        visibleStayDates: nextCoverageBatchStayDateSet,
         rawSourceReader
     });
     if (shouldAbortRankRecommendationCalendarSync(calendarSyncContext, batchDateKey, facilityCacheKey)) {
         return;
     }
+    for (const [key, evidence] of nextCurveEvidenceByKey.entries()) {
+        rankRecommendationCoverageCurveEvidenceByKey.set(key, evidence);
+    }
+    for (const stayDate of nextCoverageBatchStayDates) {
+        rankRecommendationCoverageCommittedStayDates.add(stayDate);
+        const coverageDay = coverageDayByStayDate.get(stayDate);
+        if (coverageDay !== undefined) {
+            rankRecommendationCoverageFingerprintByStayDate.set(
+                stayDate,
+                buildRankRecommendationCoverageDayFingerprint(coverageDay)
+            );
+        }
+        if (coverageRawSources.dayCoverage.completeEvidenceStayDates.has(stayDate)) {
+            rankRecommendationCoverageIncompleteEvidenceStayDates.delete(stayDate);
+        } else {
+            rankRecommendationCoverageIncompleteEvidenceStayDates.add(stayDate);
+        }
+        if (coverageRawSources.dayCoverage.unavailableStayDates.has(stayDate)) {
+            rankRecommendationCoverageUnavailableStayDates.add(stayDate);
+        } else {
+            rankRecommendationCoverageUnavailableStayDates.delete(stayDate);
+        }
+    }
+    const checkedStayDates = new Set(rankRecommendationCoverageCommittedStayDates);
+    const incompleteEvidenceStayDates = new Set(rankRecommendationCoverageIncompleteEvidenceStayDates);
+    const curveEvidenceByKey = new Map(rankRecommendationCoverageCurveEvidenceByKey);
+    const hasRemainingCoverageDays = coverageDays.some((day) => !checkedStayDates.has(day.stayDate));
+    const shouldContinueCoverageDiscovery = hasRemainingCoverageDays
+        && coverageRawSources.dayCoverage.pendingStayDates.size === 0;
     const curveEvidenceValues = Array.from(curveEvidenceByKey.values());
     const completeCurveEvidenceCount = curveEvidenceValues.filter((evidence) => (
         evidence.currentTransientRooms !== null && evidence.currentGroupRooms !== null
     )).length;
     updateFetchPerformanceBookingCurveMetrics({
-        rankRecommendationCandidateEvidenceResolvedAt: Date.now(),
+        rankRecommendationCandidateEvidenceResolvedAt:
+            fetchPerformanceMetrics.bookingCurve.rankRecommendationCandidateEvidenceResolvedAt ?? Date.now(),
         rankRecommendationCandidateEvidenceResolvedCount: curveEvidenceValues.length,
         rankRecommendationCandidateEvidenceCompleteCount: completeCurveEvidenceCount,
         rankRecommendationCandidateEvidenceMissingCount: curveEvidenceValues.length - completeCurveEvidenceCount
@@ -8713,7 +8948,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
         response,
         facilityId: facilityCacheKey,
         asOfDate: batchDateKey,
-        visibleStayDates,
+        visibleStayDates: checkedStayDates,
         generatedAt,
         curveEvidenceByKey,
         rankLadder,
@@ -8731,11 +8966,35 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     );
     const targetMonthOptions = buildRankRecommendationTargetMonthOptions(
         resolvedFilterResult.candidates,
-        getSalesSettingWarmCachePriorityMonthKeys(cells)
+        preferredMonthKeys
     );
     rankRecommendationTargetMonthOptions = targetMonthOptions;
     rankRecommendationTargetMonthOptionsContextSignature = targetMonthOptionsContextSignature;
     const effectiveTargetMonth = resolveRankRecommendationEffectiveTargetMonth(rankRecommendationTargetMonth, targetMonthOptions);
+    const coverageCounts = getRankRecommendationCoverageCounts(
+        coverageDays,
+        checkedStayDates,
+        effectiveTargetMonth
+    );
+    const partialTargetMonths = getRankRecommendationPartialTargetMonths(
+        coverageDays,
+        checkedStayDates,
+        targetMonthOptions.map((option) => option.month)
+    );
+    const allTargetMonthCountsArePartial = !getRankRecommendationCoverageCounts(
+        coverageDays,
+        checkedStayDates,
+        null
+    ).complete;
+    const committedUnavailableStayDates = new Set(Array.from(
+        rankRecommendationCoverageUnavailableStayDates
+    ).filter((stayDate) => checkedStayDates.has(stayDate)));
+    const unavailableCoverageCounts = getRankRecommendationCoverageCounts(
+        coverageDays,
+        committedUnavailableStayDates,
+        effectiveTargetMonth
+    );
+    const hasPartialCoverage = !coverageCounts.complete;
     const targetMonthFilterResult = applyRankRecommendationTargetMonthFilter(resolvedFilterResult.candidates, effectiveTargetMonth);
     const recentChangeCooldownByKey = buildRankRecommendationRecentChangeCooldownByKey(
         targetMonthFilterResult.candidates,
@@ -8754,6 +9013,9 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
     const evidenceCoordinator = createRankRecommendationProgressiveEvidenceCoordinator<RankRecommendationCurvePreviewInfo>(
         targetMonthFilterResult.candidates.map((candidate) => {
             const key = buildRankRecommendationCandidateDisplayInfoKey(candidate);
+            if (incompleteEvidenceStayDates.has(candidate.stayDate)) {
+                return { key, readiness: "missing" as const };
+            }
             const cached = rankRecommendationProgressiveEvidenceCacheByKey.get(key);
             return cached === undefined
                 ? { key, readiness: "pending" as const }
@@ -8870,6 +9132,7 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             `target-month-options:${targetMonthOptions.map((option) => `${option.month}=${option.count}`).join(",")}`,
             `view-mode:${effectiveViewMode}`,
             `work-state-counts:${workStateCounts.ready},${workStateCounts.needs_evidence},${workStateCounts.recent_or_held}`,
+            `coverage:${coverageCounts.covered}/${coverageCounts.total}/${coverageCounts.complete ? "complete" : "partial"}`,
             `overflow:${hiddenSummary.overflow}`,
             `display-limit:${rankRecommendationDisplayLimit}`,
             visibleCandidates.map((candidate) => [
@@ -8954,15 +9217,31 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             ? null
             : buildRankRecommendationCandidateDisplayInfoKey(selectedCandidate));
         const selectedReadiness = evidenceCoordinator.getSelectedReadiness();
-        const readinessStage = resolveRankRecommendationReactReadinessStage(selectedReadiness);
+        const selectedEvidenceReadinessStage = resolveRankRecommendationReactReadinessStage(selectedReadiness);
+        const readinessStage: RankRecommendationReactReadinessStage = hasPartialCoverage
+            && selectedEvidenceReadinessStage === "complete"
+            ? (selectedCandidate === null ? "loading" : "first_task")
+            : selectedEvidenceReadinessStage;
         rankRecommendationProgressiveWorkStateControlPublished =
             resolveRankRecommendationProgressiveWorkStateControlPublished({
                 wasPublished: rankRecommendationProgressiveWorkStateControlPublished,
                 readinessStage
             });
-        const statusText = selectedReadiness === null || selectedReadiness === "complete"
-            ? null
-            : formatProgressiveStatusText(selectedReadiness);
+        const statusText = hasPartialCoverage || unavailableCoverageCounts.covered > 0
+            ? formatRankRecommendationCoverageStatus({
+                targetLabel: effectiveTargetMonth === null
+                    ? "表示範囲"
+                    : formatRankRecommendationTargetMonthLabel(effectiveTargetMonth),
+                coverageCounts,
+                candidateCount: targetMonthFilterResult.candidates.length,
+                visibleCandidateCount: state.visibleCandidates.length,
+                unavailableDayCount: unavailableCoverageCounts.covered,
+                selectedEvidenceReadiness: selectedReadiness,
+                readFailed: coverageRawSources.readFailed
+            })
+            : selectedReadiness === null || selectedReadiness === "complete"
+                ? null
+                : formatProgressiveStatusText(selectedReadiness);
         if (
             selectedReadiness !== null
             && (
@@ -9047,7 +9326,9 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             canShowMore: state.hiddenSummary.overflow > 0
                 && rankRecommendationDisplayLimit < RANK_RECOMMENDATION_MAX_DISPLAY_LIMIT,
             canResetDisplayLimit: rankRecommendationDisplayLimit > RANK_RECOMMENDATION_INITIAL_DISPLAY_LIMIT,
-            preserveWorkStateControl: rankRecommendationProgressiveWorkStateControlPublished
+            preserveWorkStateControl: rankRecommendationProgressiveWorkStateControlPublished,
+            partialTargetMonths,
+            allTargetMonthCountsArePartial
         });
         if (fetchPerformanceMetrics.bookingCurve.rankRecommendationVisibleCandidateCount !== state.visibleCandidates.length) {
             updateFetchPerformanceBookingCurveMetrics({
@@ -9099,6 +9380,9 @@ async function syncRankRecommendationList(batchDateKey: string, facilityCacheKey
             rankRecommendationFirstTaskRenderedAt:
                 fetchPerformanceMetrics.bookingCurve.rankRecommendationFirstTaskRenderedAt ?? Date.now()
         }, "bookingCurve.rankRecommendationFirstTaskRendered");
+    }
+    if (shouldContinueCoverageDiscovery || shouldRetryCoverageRead) {
+        queueDebouncedRankRecommendationWarmCacheSync();
     }
 }
 
@@ -9441,19 +9725,21 @@ interface RankRecommendationRawSourceRecordReader {
 function createRankRecommendationRawSourceRecordReader(options: {
     facilityId: string;
     asOfDate: string;
+    preloadedCacheKeys?: ReadonlySet<string>;
+    preloadedRecordsByKey?: Readonly<Record<string, BookingCurveRawSourceRecord>>;
+    initialReadFailure?: boolean;
 }): RankRecommendationRawSourceRecordReader {
     const pendingByKey = new Map<string, Promise<BookingCurveRawSourceRecord | undefined>>();
-    let readFailureCount = 0;
+    for (const cacheKey of options.preloadedCacheKeys ?? []) {
+        pendingByKey.set(cacheKey, Promise.resolve(options.preloadedRecordsByKey?.[cacheKey]));
+    }
+    let readFailureCount = options.initialReadFailure === true ? 1 : 0;
     const reader = (({ stayDate, roomGroupId }) => {
-        const query = buildBookingCurveQuerySignature(stayDate, roomGroupId);
-        const rawSourceKey = buildBookingCurveRawSourceCacheKey({
+        const rawSourceKey = buildRankRecommendationRawSourceCacheKey({
             facilityId: options.facilityId,
             stayDate,
             asOfDate: options.asOfDate,
-            scope: "roomGroup",
-            roomGroupId,
-            endpoint: BOOKING_CURVE_ENDPOINT,
-            query
+            roomGroupId
         });
         const cached = pendingByKey.get(rawSourceKey);
         if (cached !== undefined) {
@@ -9476,6 +9762,110 @@ function createRankRecommendationRawSourceRecordReader(options: {
     }) as RankRecommendationRawSourceRecordReader;
     reader.hasReadFailures = () => readFailureCount > 0;
     return reader;
+}
+
+async function readRankRecommendationCoverageRawSources(options: {
+    facilityId: string;
+    asOfDate: string;
+    days: readonly RankRecommendationCoverageDay[];
+}): Promise<{
+    dayCoverage: ReturnType<typeof resolveRankRecommendationDayCoverage>;
+    rawSourceReader: RankRecommendationRawSourceRecordReader;
+    readFailed: boolean;
+}> {
+    const cacheKeyByScopeKey = new Map<string, string>();
+    for (const day of options.days) {
+        for (const dependency of day.dependencies) {
+            const scopeKey = buildRankRecommendationCoverageScopeKey(dependency);
+            if (!cacheKeyByScopeKey.has(scopeKey)) {
+                cacheKeyByScopeKey.set(scopeKey, buildRankRecommendationRawSourceCacheKey({
+                    facilityId: options.facilityId,
+                    stayDate: dependency.stayDate,
+                    asOfDate: options.asOfDate,
+                    roomGroupId: dependency.roomGroupId
+                }));
+            }
+        }
+    }
+
+    let readFailed = false;
+    const cacheKeys = Array.from(cacheKeyByScopeKey.values());
+    const recordsByKey = await readBookingCurveRawSourceRecords(cacheKeys)
+        .catch((error: unknown) => {
+            readFailed = true;
+            console.warn(`[${SCRIPT_NAME}] failed to bulk-read rank recommendation booking curve sources`, {
+                asOfDate: options.asOfDate,
+                keyCount: cacheKeys.length,
+                error
+            });
+            return {} as Record<string, BookingCurveRawSourceRecord>;
+        });
+    const warmCacheContextMatches = salesSettingWarmCacheState.facilityId === options.facilityId
+        && salesSettingWarmCacheState.asOfDate === options.asOfDate;
+    const warmCacheQueueReady = warmCacheContextMatches
+        && salesSettingWarmCacheState.status !== "building"
+        && (
+            salesSettingWarmCacheState.total > 0
+            || salesSettingWarmCacheState.status === "complete"
+            || salesSettingWarmCacheState.status === "limitReached"
+        );
+    const canContinueWarmCache = salesSettingWarmCacheState.status === "building"
+        || salesSettingWarmCacheState.status === "idle"
+        || salesSettingWarmCacheState.status === "running"
+        || salesSettingWarmCacheState.status === "paused"
+        || salesSettingWarmCacheState.status === "cooldown";
+    const pendingDependencyKeys = new Set<string>();
+    if (warmCacheContextMatches && canContinueWarmCache) {
+        for (const tasks of [salesSettingWarmCacheState.activeTasks, salesSettingWarmCacheState.queue]) {
+            for (const task of tasks) {
+                const dependencyKey = buildRankRecommendationWarmCacheTaskDependencyKey(task);
+                if (dependencyKey !== null) {
+                    pendingDependencyKeys.add(dependencyKey);
+                }
+            }
+        }
+    }
+    const dayCoverage = resolveRankRecommendationDayCoverage({
+        days: options.days,
+        hasRawSource: (dependency) => {
+            const cacheKey = cacheKeyByScopeKey.get(buildRankRecommendationCoverageScopeKey(dependency));
+            return cacheKey !== undefined && recordsByKey[cacheKey] !== undefined;
+        },
+        isPending: (dependency) => {
+            const dependencyKey = buildRankRecommendationWarmCacheDependencyKey(dependency);
+            return pendingDependencyKeys.has(dependencyKey);
+        },
+        warmCacheSettled: warmCacheQueueReady,
+        readFailed
+    });
+    return {
+        dayCoverage,
+        readFailed,
+        rawSourceReader: createRankRecommendationRawSourceRecordReader({
+            facilityId: options.facilityId,
+            asOfDate: options.asOfDate,
+            preloadedCacheKeys: new Set(cacheKeys),
+            preloadedRecordsByKey: recordsByKey,
+            initialReadFailure: readFailed
+        })
+    };
+}
+
+function buildRankRecommendationRawSourceCacheKey(options: {
+    facilityId: string;
+    stayDate: string;
+    asOfDate: string;
+    roomGroupId: string;
+}): string {
+    return buildBookingCurveRawSourceCacheKey({
+        facilityId: options.facilityId,
+        stayDate: options.stayDate,
+        asOfDate: options.asOfDate,
+        scope: "roomGroup",
+        roomGroupId: options.roomGroupId,
+        endpoint: BOOKING_CURVE_ENDPOINT,
+        query: buildBookingCurveQuerySignature(options.stayDate, options.roomGroupId)
+    });
 }
 
 async function buildRankRecommendationCurveEvidenceByKey(
@@ -11441,6 +11831,8 @@ function renderRankRecommendationList(
         viewMode?: RankRecommendationViewMode;
         targetMonth?: string | null;
         targetMonthOptions?: readonly RankRecommendationTargetMonthOption[];
+        partialTargetMonths?: ReadonlySet<string>;
+        allTargetMonthCountsArePartial?: boolean;
         hiddenSummary?: RankRecommendationHiddenSummary;
         displayInfoByKey?: ReadonlyMap<string, RankRecommendationDisplayInfo>;
         curveEvidenceByKey?: ReadonlyMap<string, RankRecommendationCurveEvidence>;
@@ -11578,6 +11970,10 @@ function renderRankRecommendationList(
             },
             targetMonth: options.targetMonth ?? null,
             targetMonthOptions: options.targetMonthOptions ?? [],
+            ...(options.partialTargetMonths === undefined
+                ? {}
+                : { partialTargetMonths: options.partialTargetMonths }),
+            allTargetMonthCountsArePartial: options.allTargetMonthCountsArePartial === true,
             remainingCount: options.hiddenSummary?.overflow ?? 0,
             canShowMore: options.canShowMore === true,
             canResetDisplayLimit: options.canResetDisplayLimit === true,
@@ -11671,9 +12067,11 @@ function applyRankRecommendationWorkspaceLayout(
         return;
     }
 
+    const monthlyCalendarElements = getRankRecommendationMonthlyCalendarElements(calendarElement);
     const mode = resolveRankRecommendationWorkspaceLayoutMode({
         containerWidth: parentElement.getBoundingClientRect().width,
         calendarMinimumWidth: getRankRecommendationCalendarMinimumWidth(calendarElement),
+        calendarMonthCount: monthlyCalendarElements.length,
         structureSafe: isRankRecommendationWorkspaceStructureSafe(parentElement, calendarElement)
     });
     if (parentElement.getAttribute(RANK_RECOMMENDATION_WORKSPACE_LAYOUT_ATTRIBUTE) !== mode) {
@@ -11908,6 +12306,8 @@ function buildRankRecommendationReactControlsSnapshot(options: {
     workStateCounts: RankRecommendationWorkStateCounts;
     targetMonth: string | null;
     targetMonthOptions: readonly RankRecommendationTargetMonthOption[];
+    partialTargetMonths?: ReadonlySet<string>;
+    allTargetMonthCountsArePartial?: boolean;
     remainingCount: number;
     canShowMore: boolean;
     canResetDisplayLimit: boolean;
@@ -11928,11 +12328,15 @@ function buildRankRecommendationReactControlsSnapshot(options: {
                 options: [
                     {
                         value: "all",
-                        label: `全ての月 (${options.targetMonthOptions.reduce((total, option) => total + option.count, 0)}件)`
+                        label: options.allTargetMonthCountsArePartial === true
+                            ? `全ての月 (確認済み ${options.targetMonthOptions.reduce((total, option) => total + option.count, 0)}件)`
+                            : `全ての月 (${options.targetMonthOptions.reduce((total, option) => total + option.count, 0)}件)`
                     },
                     ...options.targetMonthOptions.map((option) => ({
                         value: option.month,
-                        label: `${formatRankRecommendationTargetMonthLabel(option.month)} (${option.count}件)`
+                        label: options.partialTargetMonths?.has(option.month) === true
+                            ? `${formatRankRecommendationTargetMonthLabel(option.month)} (確認済み ${option.count}件)`
+                            : `${formatRankRecommendationTargetMonthLabel(option.month)} (${option.count}件)`
                     }))
                 ]
             }
@@ -13219,6 +13623,7 @@ function findLowestCommonElementAncestor(leftElement: HTMLElement, rightElement:
 function cleanupRankRecommendationList(): void {
     cleanupRankRecommendationWorkspaceResizeObserver();
     clearRankRecommendationTargetMonthOptionsContext();
+    rankRecommendationPerformanceContextSignature = "";
     rankRecommendationProgressiveEvidenceContextSignature = "";
     rankRecommendationProgressiveEvidenceContextGeneration += 1;
     rankRecommendationProgressiveSelectedCandidateKey = null;

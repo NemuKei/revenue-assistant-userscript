@@ -561,24 +561,32 @@ rank response dataset の first contract:
 
 ### Top
 
-#### Current Decision Workspace Contract (2026-07-17)
+#### Current Decision Workspace Contract (2026-07-20)
 
-トップ画面の現行契約は、既存カレンダーを左、`今日の判断` rail を右、選択中候補の詳細をその下へ置く decision workspace である。desktop ではカレンダーと rail を横並びにし、狭幅ではカレンダー、rail、詳細を縦に積み、操作不能や横はみ出しを避ける。Revenue Assistant の期間切替、表示切替、標準操作領域を押し下げたり、標準要素へ global style を当てたりしない。
+トップ画面の現行契約は、既存カレンダーを空間的な基準として残し、`今日の判断` rail と選択中候補の詳細を組み合わせた decision workspace である。表示中の 3 か月それぞれに読み取り可能な幅を残せない標準 desktop では、カレンダーを全幅のまま先に置き、rail と詳細をその後ろへ縦に積む。カレンダー 1 か月あたり 560px、rail 最大 356px、workspace gap 14px を同時に確保できる十分な横幅だけで横 2 列を許容する。Revenue Assistant の期間切替、表示切替、標準操作領域を押し下げたり、標準要素へ global style を当てたりしない。
 
 カレンダー契約:
 
 - 標準画面由来の黒い数値と、既存の青い `団n` 表示は維持する。黒い数値は OH と同じ意味だと確認できていないため、`OH` へ relabel しない。
 - 料金調整候補の有無や選択状態を日付セルへ補助表示してよいが、黒い数値、青い `団n`、warm cache marker、保存済み raw source signal、最終変更表示の意味を上書きしない。
+- 標準の日付 link は Revenue Assistant が absolute positioning とセル寸法を管理する。RAU の cue はその既存 positioning context を使う子要素とし、日付 link 自体の `position`、3 か月の幅、行位置、cell identity を変更しない。
 - カレンダーは日付と曜日の位置関係を把握する基準であり、作業順は rail が担う。
 
 `今日の判断` rail 契約:
 
 - 初回同期では、current settings、rank ladder、booking curve evidence の完了を待って空白にせず、最初の await 前に loading shell を 1 件だけ描画する。loading shell はカレンダーを覆わず、`判断データを準備しています。カレンダーはそのまま操作できます。` を live region で伝え、候補 task、work-state control、target month control、write CTA をまだ表示しない。同じ facility / batch / calendar range の有効な list がある再同期では、その list を loading shell へ戻さない。異なる context の list、error、別 context の loading、または host 配置が古い workspace は保持せず、現在 context の loading shell へ自己修復する。
 - cold start は `loading shell`、`current settings 完了`、`最初の正しい task`、`選択詳細の evidence 完了`、`表示範囲の candidate evidence 解決` を別 stage として扱う。`最初の正しい task` は、booking curve の直接取得値を含む scoring、priority、confidence、reasonFingerprint、user decision / resolved / 対象月 / work-state filter が確定した候補だけを指し、current settings だけから作った仮方向や仮 rank は表示しない。
+- cold start の candidate discovery は、表示範囲全日を 1 回の barrier にしない。current settings から対象月優先・宿泊日順の coverage day を作り、初回は未確認 1 日、後続は最大 7 日ずつ確認して、確定済み候補と evidence を同じ context 内で蓄積する。確認済み日が増えても選択中候補を先頭候補へ戻さず、全日確認前は `候補なし` と断定しない。rail と対象月 option には `確認済み日数 / 対象日数` と部分件数であることを明示する。
+- 各 coverage day の必須依存は、その日の roomGroup `currentRaw` と、`asOfDate` 以降に実在する `-14 / -7 / +7 / +14日` の `sameWeekdayRaw` だけとする。current raw が warm cache の終端欠損ならその日は `unavailable`、same-weekday raw だけが終端欠損なら日付確認は進めるが evidence 不足として `要確認` を維持する。pending task がある日は候補確定へ進めず、取得または終端確定後の既存 forced sync で再評価する。
+- coverage の browser-local bulk read が失敗した場合は空データや終端欠損へ読み替えず、その batch 全日を transient pending のまま commit しない。同じ context / batch では browser-local read を 1 回だけ自動再試行し、再失敗後も `候補なし` や `unavailable` と断定しない。外部 API request は追加しない。次回の画面操作、warm-cache 完了同期、再入場でも再評価できる。
+- coverage day の commit は stayDate だけでなく、その日の roomGroup と exact dependency の fingerprint を保持する。同じ facility / batch / range の current settings で roomGroup が増減した場合は、その日だけ既存 evidence と commit を無効化して再確認する。
+- warm cache の対象範囲、task key 集合、request 数、pace、concurrency、retry、run limit は変えず、exact dependency と対象月・日付順で既存 queue を並べ替える。exact-priority task の retry も非優先 task の後ろへ送らない。queue build 完了時は facility / batch に加えて run ID と対象月を照合し、旧月の非同期結果で新しい queue を上書きしない。queue build 自体の失敗は `settled` とみなさず、同じ context では 1 回だけ build を自動再試行し、再失敗後も未確認日の commit を進めない。pre-scan cache hit、取得成功、skip、終端 error のいずれでも対象日の依存が settled した時点で再同期できる。以前 `unavailable` または evidence 不足として commit した日でも、その exact raw が後から保存された場合は該当日だけ commit と evidence を無効化して再評価する。別 worker の終端 error 後に同じ facility / batch の stale in-flight worker が exact raw を保存した場合も、旧 run の統計は更新せず該当日の再評価だけを起動する。performance の初回 timestamp は同じ facility / batch の forced sync でリセットせず、workspace cleanup 後の同日再入場では新しい cold start としてリセットする。
+- 非同期完了時の stale 判定は interaction generation、facility、batch、表示 range、calendar host、cell identity を照合する。calendar 内の無関係な class / style / child mutation だけで処理を捨てる粗い DOM generation gate は使わない。構造または利用者選択が実際に変わった場合だけ旧結果を捨てる。
 - candidate evidence と filter が確定した後は、選択詳細の重い reference / graph hydration を待たずに task を先に描画する。この段階では task 選択、対象月切替、`Analyzeで詳しく見る` だけを利用できるようにし、work-state、表示件数、rank 順編集、`変更内容を確認`、`様子見`、`対応不要` は選択候補の detail evidence が完了するまで無効または非表示にする。対象月切替時は旧月の rail / detail / calendar cue を即時に消し、同一 context の対象月 select を残した loading へ移る。対象月 option は facility / batch / calendar range が一致する context だけで再利用し、旧 context の select event から別施設や別範囲の月を warm-cache priority へ渡さない。evidence が欠損した場合は `needs_evidence` stage とし、work-state filter / count / calendar cue と active view を候補の新しい state へ再計算して選択を維持する。選択候補が新しい state の表示上限外でも上限内へ pin し、別候補へ自動 fallback しない。同一 context の terminal readiness は再同期へ引き継ぎ、work-state navigation は full calendar sync を起こさず現在 run 内で切り替える。同一 context で一度表示した work-state navigation は、別 state の先頭候補または再取得中の選択候補が pending でも unmount せず、pressed 状態と focus を維持する。これにより次候補の preview を自動 hydrate せず、work-state navigation だけを再び利用可能にする。候補の判断操作は `未取得` / `要確認` のまま無効を維持し、完了したように扱わない。
 - 選択詳細の booking curve preview は選択中候補だけを lazy hydrate し、全表示候補の preview 完了を rail 初描画の前提にしない。別 task を選択した場合はその候補だけを同じ契約で hydrate する。raw source、stored status、reference cache の browser-local read error は confirmed missing と分けて transient とし、terminal cache に保存しない。transient な complete / missing だけに `判断根拠を再取得` を表示し、押下時は選択中 1 候補の browser-local read だけを明示的に再試行する。permanent missing に再取得を表示せず、自動 retry、warm-cache request、未選択候補の hydrate、外部 API request を追加しない。これによって API request scope、request pace、concurrency、保存 schema は変更せず、保存済み evidence の読み取りと描画の依存順だけを分離する。
 - 段階描画中も OH / キャパは current settings、個人 / 団体は booking curve の直接取得値を使う。個人 / 団体の preview hydrate 完了前でも scoring evidence に直接値があればその値を表示し、0 は `0`、欠損は `未取得` とする。差し引き補完は行わない。
 - rail header の progress 文言は安定した 1 つの `aria-live="polite"` status で通知し、detail evidence の状態文は追加の live region にしない。stage ごとに focus を移動せず、候補 key または対象月 select が残る再描画では選択と focus を維持する。transient retry の押下時だけ、消える retry button から同じ evidence host へ focus を移して pending / 完了後も操作位置を失わない。
+- partial coverage の件数は、filter 前に見つかった候補総数と rail の実表示件数を分け、`候補N件が見つかっています（現在M件表示）` と伝える。対象月 option の `確認済み` は全体状態を一律に付けず、各月の coverage から個別に判定する。0件でも全日確認前は `確認を続けています` とし、終端の `候補はありません` と区別する。
 - `data-ra-fetch-performance-summary` には、rank recommendation run の開始、shell、current settings、candidate evidence、first task、selected evidence の timestamp と、日付・roomGroup・candidate・対象月・evidence 状態の件数だけを sanitized 値として追加できる。facility ID、stay date、roomGroup ID / 名、価格、在庫値、request / response body、raw trace、Cookie、token、credential は含めない。
 - 候補単位は `stayDate x roomGroup` とし、選択 key は少なくとも stayDate と roomGroup を含む安定 key にする。
 - 対象月 filter と表示件数 control は維持する。候補は宿泊日で grouping し、各 task に部屋タイプ、判断方向、現在 rank、候補 rank、根拠取得状態を表示する。
@@ -725,7 +733,7 @@ UI primitive 導入方針:
 - calendar / rail の 2 列 layout は viewport 幅ではなく、表示中 calendar host の direct-child 構造と実際の親幅で決める。表示中の `monthly-calendar` 群、calendar cell、host identity を安全に解決でき、calendar minimum width、rail 最大幅、gap を確保できる場合だけ wide にする。
 - host の安全性を確認できない場合、必要幅を満たさない場合、または mobile では stacked にする。stacked は Revenue Assistant 親の `display` / `flex-direction` を上書きせず、rail と detail の配置だけを制御する。標準 toolbar、月別優先取得 controls、inline status、footer 相当は full row とし、順序を変えない。
 - 表示対象 calendar cell は、`hidden`、`aria-hidden="true"`、`display:none`、`visibility:hidden`、`opacity:0`、または layout box を持たない transition / offscreen duplicate を除外する。
-- calendar 同期は、DOM generation、表示中 calendar element と parent、日付範囲、cell count / order / element identity を context とする。非同期取得の await 後に context が変わっていれば結果を描画せず、最新 DOM へ forced resync する。stale result で target month、work state、calendar cue、workspace root を巻き戻さない。
+- calendar 同期は、interaction generation、facility、batch、表示中 calendar element と parent、日付範囲、cell count / order / element identity を context とする。非同期取得の await 後に構造または利用者選択が変わっていれば結果を描画せず、最新 DOM へ forced resync する。無関係な class / style / child mutation だけでは処理を捨てず、stale result で target month、work state、calendar cue、workspace root を巻き戻さない。
 - target month は React の controlled select とし、選択値を main module へ明示的に渡す。選択中月が候補 month options から外れた場合は `全ての月` へ戻す。
 - calendar の判断 cue は日付 cell 左端の非文字 edge cue と screen-reader 用 description に限定する。description は同じ宿泊日の候補を集約し、候補総数と `判断可能` / `要確認` / `保留・直近` の日付別件数を rail と一致させる。description node は日付 link の accessible name へ混入しないよう link 外へ置く。標準の黒い値、青い `団n`、today / selected / focus / warm-cache marker、native `box-shadow` を上書きしない。既存 `aria-describedby` token を保持し、RAU token だけを追加・削除する。右下の `判` / `要` / `保` pill は使わない。
 - Revenue Assistant または React 再描画で workspace root、detail、calendar cue が取り除かれた場合は、重複を作らず最新 context へ自己修復する。対象外 route または機能停止では workspace、layout 属性、cue、description token を cleanup する。empty、HTTP 401 / 403 では workspace の状態表示と safe layout を残し、calendar cue と RAU description token だけを cleanup する。

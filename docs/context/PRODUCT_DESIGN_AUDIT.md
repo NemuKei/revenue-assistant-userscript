@@ -1,6 +1,6 @@
 # Product Design Audit
 
-最終更新: 2026-07-17
+最終更新: 2026-07-20
 
 ## Purpose
 
@@ -29,6 +29,34 @@
   - 金額、差額、percent、forecast 数値、sales / ADR 数値は top list の本文へ直接表示しない既存契約を維持する。
 - interactivity level:
   - 実装へ進む場合は full interactivity を前提にする。つまり、hover、focus、keyboard、loading、empty、error、disabled、pending、cancel、mobile 表示を実装と verify の対象に含める。
+
+## Live Progressive Workspace Audit 2026-07-20
+
+### Finding
+
+- Tampermonkey を無効化した単一 runtime で、Revenue Assistant 標準画面と未配布 candidate を同一 viewport で比較した。
+- 旧 wide layout は 1920px 級 desktop でも 356px rail を常設し、3 か月 calendar の横幅を約 2 割縮めた。カレンダー方式を選んだ目的に対して、標準の日付・OH・青い `団n`・既存指標の可読性を下げるため不採用とした。
+- calendar cue のために date link へ付けた `position: relative` は、Revenue Assistant の native `position: absolute` を上書きし、月幅、週行位置、calendar 高さを崩した。cue 自体の見た目ではなく、positioning context の所有権が競合原因だった。
+- current settings API は短時間で完了していたが、同時に起きる calendar mutation generation を stale とみなして結果を捨て、loading shell だけを残す競合も確認した。
+
+### Adopted Direction
+
+- 標準 desktop は calendar-first の縦積みにし、3 か月 calendar を全幅で維持する。横 2 列は 1 か月あたり 560px と rail / gap を同時に確保できる十分な横幅だけで使う。
+- date link の native positioning は変更せず、左端 cue は既存 absolute positioning context 内の子要素に限定する。
+- stale guard は interaction、facility / batch / range、host、cell identity を正とし、無関係な DOM mutation generation 単独では中断しない。
+- candidate discovery は全日 barrier ではなく、対象月優先・日付順の初回 1 日 / 後続最大 7 日で進める。最初の正しい task を先に出し、残日数は背景で確認する。
+
+### Live Evidence And Remaining UX Question
+
+- live 確認済み candidate では、標準画面と calendar 1905 x 747px、各月 603 x 707px、週行位置、date link positioning が一致した。shell 30ms、最初の正しい task 1,168ms、OH / 個人 / 団体、warning / error 0、監視対象 write API POST 0 を確認した。
+- live 値を含む比較 screenshot は判断後に削除し、docs へ画像や実施設値を残していない。
+- 3 か月で候補 438 件となり、多くの日付に同じ edge cue が出ると優先日の識別力が落ちる可能性がある。次の `RAU-UX-144` では scoring を先に変えず、全候補 cue、表示中 top task cue、対象月 / 優先度 cue を fixture で比較する。
+
+### Post-live Contract Hardening
+
+- 438 件に対して rail が 10 件のとき、旧 partial copy は総数を「表示しています」と読めた。progress は `候補N件が見つかっています（現在M件表示）` とし、発見総数と実表示件数を分ける。全日確認前の 0 件は `確認を続けています` とし、終端の候補なしと区別する。
+- browser-local bulk read failure と warm-cache queue build failure は空データや終端欠損として commit せず、未確認日のまま bounded retry する。同日 roomGroup 集合の変化に加え、後から exact raw が保存された incomplete / unavailable 日も再確認し、OH / 個人 / 団体の欠損候補を誤って判断可能にしない。
+- 合成 fixture に partial task、partial 0 件、内訳 unavailable、完了月と未確認月が混在する対象月 option を追加し、候補数、月別の `確認済み` label、disabled action、OH / 個人 / 団体を同じ snapshot で固定した。fixture の date link も標準画面と同じ absolute positioning とし、cue style が native positioning を上書きする回帰を静的 contract で検出する。
 
 ## Top Decision Workspace Redesign 2026-07-17
 
