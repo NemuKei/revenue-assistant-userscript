@@ -111,7 +111,7 @@
 ### RAU-UX-144 calendar cue と候補件数の情報密度を再評価する
 
 - 状態:
-  - 2026-07-20 に合成 fixture の比較、正本判断、local 実装を完了した。`main` push / 公開と Revenue Assistant live page への再注入は未実施。
+  - 2026-07-20 に合成 fixture の比較、正本判断、local 実装、Tampermonkeyを無効化した単一runtimeのlive candidate QAまで完了した。cue contractは実画面でも成立したが、stacked判断railが実host内でclipされるP1を検出したため、`main` push / 公開はblockする。
 - 目的:
   - candidate scoring を先に変えず、calendar cue を全 active candidate から作る現行案、表示中 top task だけから作る案、対象月または優先度で絞る案を fixture で比較し、カレンダーが「日付認知」と「次に見る日」の両方を担える最小表現を決める。
 - 受け入れ条件:
@@ -129,8 +129,24 @@
 - local verification:
   - Browser fixture の同一 viewport で3案を比較した。採用案は初期10候補 / cue 10日、20件展開後20候補 / cue 12日、11件目を選択して10件へ戻した後は選択日を含む10候補 / cue 10日で、rail と cue の日付集合が一致した。native + RAU `aria-describedby` token、date link `position:absolute`、document overflow 0、fixture write 0を確認した。標準値の黒系色、青い `団n`、`OH 7 / キャパ 18`、`個人 5`、`団体 2` は維持した。390 x 844ではdocument overflow 0、calendarだけが359px内で1080pxを横scrollする。
   - `npm run check`、`npm run build:vite:fixture`、`npm run check:fixture-markers`、`npm run check:request-scheduler`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:candidate`、`npm run build:compare:vite`、`npm run react:doctor -- --diff false --verbose`、`git diff --check` は pass。React Doctorは既存53 diagnosticsで今回差分固有の指摘なし。candidateは653,137 bytes、SHA-256 `716ABE09104257DB7C339DBC22542F0438904CFE17BDEC7856D75AFB389221B1`、currentとの差は10 bytes、metadata mismatch 0だった。
+  - liveでは初期10 task / 9 unique datesと9 cue dates、20件展開後20 task / 15 unique datesと15 cue datesが一致し、calendar geometry、date link positioning、OH / 個人 / 団体、console warning / error 0を確認した。一方、実画面の固定高flex-column host内でrail親要素が高さ2px / client height 0へ縮み、内側930pxのrailがclipされた。candidateはreloadで除去し、RAU marker / style 0と標準画面復元を確認した。Network event streamは不完全だったため監視対象write POST 0を完全な証跡とはせず、write-capable controlと最終送信は操作していない。
 
-Remaining Task Triage は Now / Next / After Next / Later なしとする。publish は別の明示承認が必要であり、同じ自動 closeout とみなさず `main` push を行わない。
+### RAU-UX-145 stacked実画面hostで判断railのflex shrinkを防ぐ
+
+- 状態:
+  - Now。`RAU-UX-144` live QAで検出したP1の修正と再発防止が未着手。公開前に完了必須。
+- 目的:
+  - Revenue Assistantの固定高・overflowありのflex-column hostでも、全幅calendarの後ろに置く`今日の判断` rail、詳細、状態表示、対象月controlを縮退させず、主要flowを開始できるようにする。
+- 受け入れ条件:
+  - 実hostと同じ固定高、`display:flex`、column、`overflow-y:auto`、縮小可能な兄弟要素をfixtureで再現し、stacked railの親要素が内容高を確保する。
+  - stacked list / detail / status / month controlsへ `flex-shrink: 0` または同等のlayout contractを適用し、標準calendarの幅、高さ、週行、date link `position:absolute`を変えない。
+  - rail、選択詳細、3作業状態、対象月、`さらに表示`、11件目selected pin、`10件に戻す`を操作でき、railのunique date集合とcue date集合が一致する。
+  - 390pxでRAU由来のdocument横overflowを増やさず、OH / 個人 / 団体、native `aria-describedby`、keyboard / focusを維持する。
+  - Tampermonkey無効の単一runtime live QAでrailの視認と操作を再確認し、注入前から機能する監視手段でwrite API POST 0を確認する。最終送信は行わない。
+- gate:
+  - runtime / fixture修正、local verify、live再QAまでを同一bundleに含める。公開、Tampermonkey再有効化、実writeは別gateのままにする。
+
+Remaining Task Triage は Now `RAU-UX-145`、Next / After Next / Later なしとする。P1修正とlive再QAが完了するまでpublishせず、`main` pushを行わない。
 
 ## 2026-06-29 Docs Governance Profile
 
@@ -11126,7 +11142,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- なし
+- `RAU-UX-145`: stacked実画面hostで判断railのflex shrinkを防ぎ、固定高host fixtureと単一runtime live再QAで主要flowを確認する。
 
 Next:
 

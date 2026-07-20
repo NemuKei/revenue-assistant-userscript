@@ -65,6 +65,28 @@
 - 初期 top 10 は priority-first sort 後なので、calendar 専用 threshold を追加しない。11件以上が同じ優先度の場合、後続候補は既存残件数と `さらに表示` で到達し、表示した時点で cue に加わる。
 - `さらに表示` で最大50件まで広げた結果の再飽和は利用者の明示操作によるものとして許容し、`10件に戻す` で初期密度へ戻す。selected candidate を pin した場合は rail と cue の一致を優先する。
 
+## RAU-UX-144 Live Candidate QA 2026-07-20
+
+### Audited Steps And Health
+
+1. 標準画面をbaseline化。Tampermonkeyを無効化し、RAU root / cue / styleが0、3か月calendarの寸法とdate linkのabsolute positioningを確認した。health: pass。
+2. SHA-256を固定したcandidateを同じdocumentで1回だけ実行。workspace / rail / detail / React islandが各1、readiness complete、console warning / error 0だった。health: pass。
+3. calendar cue契約を確認。初期10 task / 9 unique datesと9 cue dates、20件展開後20 task / 15 unique datesと15 cue datesが一致し、凡例、screen-reader description、native `aria-describedby`、OH / 個人 / 団体の分離、標準calendar geometryを維持した。health: pass。
+4. 主要flowの視認性を確認。Revenue Assistantの高さ861px、overflow-y autoのflex-column host内で、stacked layoutのrail親要素が高さ2px / client height 0まで縮み、内側930pxのrail全体がclipされた。詳細だけが見え、`今日の判断`から候補を選べない。health: P1 fail / publish blocker。
+5. 候補選択、作業状態、対象月、selected pin / reset、responsive interactionを確認。step 4のrail非表示により意味のある操作QAができなかった。health: blocked / 未確認。
+6. candidateをreloadで除去。RAU root / cue / badge / styleが0、標準calendar geometryとdate link positioningが復元された。health: pass。
+
+### Root Cause And Required Follow-up
+
+- fixtureはcalendar / rail / detailの内容とviewport幅を再現していたが、実画面の固定高flex-column hostと兄弟要素の縮小競合を再現していなかった。stacked時のRAU子要素がhost既定の `flex-shrink: 1` を受けたことが直接原因である。
+- `RAU-UX-145` ではstacked list / detail / status / month controlsを縮小させないlayout contractにし、固定高・overflowありの実host fixtureを追加する。calendar geometryを変えず、railが見えて操作できることをliveで再確認するまで公開しない。
+
+### Evidence Limits
+
+- live値を含むscreenshot、raw response、network traceは保存していない。画面はQA中に目視したが、repoへ永続化できる画像証跡はない。
+- CDP network event streamはreload時もNetwork eventを返さなかったため、今回runの監視対象write POST 0は完全なnetwork証跡として採用しない。write-capable controlと最終送信は操作せず、最終送信buttonも表示していない。
+- DOMのaccessibility contractは確認したが、実screen readerの読み上げ順は未確認である。
+
 ## Live Progressive Workspace Audit 2026-07-20
 
 ### Finding
