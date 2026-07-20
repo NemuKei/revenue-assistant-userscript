@@ -3,6 +3,7 @@ import {
     startRevenueAssistantRuntime
 } from "./runtimeLease";
 import { resolveNextRuntimeMarker } from "./runtimeMarker";
+import { startLiveSimilarityLensRuntime } from "./live/liveSimilarityLensRuntime";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -32,6 +33,7 @@ if (!runtimeResult.started) {
 
 function startNextCandidateRuntime(): void {
     document.documentElement.setAttribute(NEXT_RUNTIME_VERSION_ATTRIBUTE, SCRIPT_VERSION);
+    startLiveSimilarityLensRuntime(document, window);
     console.info(`[${SCRIPT_NAME}] candidate runtime ready`, {
         href: window.location.href,
         mode: "read-only",

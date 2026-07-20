@@ -149,16 +149,19 @@
 ### RAU-UX-146 Classicを凍結しNext userscriptの境界を分離する
 
 - 状態:
-  - Now。別 identity の Next candidate、runtime lease、artifact checker、基準日レンズ fixture まで local 実装済み。公開経路分離と実画面 read-only 接続は未着手。
+  - Now。別 identity の Next candidate、runtime lease、artifact checker、基準日レンズ fixture、実画面カレンダーへ接続する read-only shell まで local 実装済み。初回 live QA は実施済みで、最終 hardening 後の再注入は再ログイン待ち。公開経路分離、実データ adapter、Tampermonkey install / switch、publish は未着手。
 - 目的:
   - Classic の公開契約を壊さず、旧実装の負債を引き継がない Next を別 userscript として育て、最終的な UI / UX と機能 parity を確認してから cutover できるようにする。
 - 完了済み:
   - Next は Classic と異なる name、namespace、entry、filename を持ち、`.tmp/vite-next-candidate/` にだけ生成する。updateURL / downloadURL と `dist/` 出力を持たない。
-  - Next entry は read-only marker と document 単位 runtime lease だけを開始し、API request、listener、observer、write 操作を行わない。既存 Classic DOM または別 runtime lease を検出すると fail closed する。
+  - 初期 boundary-only entry で read-only marker と document 単位 runtime lease を先に確立し、既存 Classic DOM または別 runtime lease を検出すると fail closed する契約を確認した。その後の実画面接続 shell も API request、storage、write 操作は開始しない。
   - 基準日レンズの合成 fixture は、基準日を選んだ後だけ似た日を最大6日表示し、OH、個人、団体、競合を別根拠として説明する。重みと閾値は production contract ではなく仮説として隔離する。
+  - 実画面接続 shell は、表示中カレンダーの exact date / room marker と安全な挿入境界を確認してから上部へ描画する。通常の日付 click は既存 Analyze 導線を維持し、明示的な選択モード中の次の1日だけを捕捉する。実データ adapter 未接続時は OH / 個人 / 団体 / 競合を別々に `未接続` とし、値や類似日を推測しない。calendar / body 再描画へ追従し、Classic marker または重複 root を後から検出した場合も追加 DOM / style / accessibility 属性を除去して停止する。
+  - sanitized live shell fixture で通常 click、mouse / keyboard 選択、Escape、解除、focus復帰、calendar再描画、375px相当、Classic後発検知を確認した。artifact は `@grant none`、Revenue Assistant限定match、update / download / connect / require / resourceなし、network / storage / submit primitiveなしを固定検査する。
 - 残る受け入れ条件:
   - Classic の公開 version、artifact hash、source baseline を fresh に記録する。Next の公開先を足すだけではなく、Classic workflow の source input をその baseline へ固定するか、Next-only の source と履歴を Classic workflow から分離し、Classic 公開 artifact hash が byte-for-byte 不変であることを検証する。分離前に current branch を push しない。
   - 初回実画面 QA は Classic を手動無効化して reload し、Next を単一 runtime で一時導入する。完全な画面内 switch は Classic 側にも共通 guard を入れた後に別 gate で扱う。
+  - 最終 hardening 済みcandidateをログイン済み実画面へ1回だけ再注入し、通常日付 click、明示選択、keyboard / focus、SPA再描画、console、追加network / writeなし、reload後cleanupを再確認する。
   - Analyze、booking curve、競合価格、価格推移 graph、OH / 個人 / 団体、単一行 rank 調整操作と guard、様子見、対応不要の parity matrix を作り、cutover 前に残す / 再設計する / 廃止するを個別判断する。
   - publish、Tampermonkey install / switch、実データ接続、write 操作はそれぞれ別 gate とする。
 

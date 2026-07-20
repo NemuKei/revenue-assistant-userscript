@@ -36,13 +36,45 @@ assert.notDeepEqual(
 assert.deepEqual(metadata.get("name"), [userscript.name]);
 assert.deepEqual(metadata.get("namespace"), [userscript.namespace]);
 assert.deepEqual(metadata.get("version"), [userscript.version]);
-assert.deepEqual(metadata.get("match"), userscript.match);
-assert.deepEqual(metadata.get("grant"), userscript.grant);
-assert.deepEqual(metadata.get("run-at"), [userscript.runAt]);
+assert.deepEqual(metadata.get("match"), ["https://ra.jalan.net/*"]);
+assert.deepEqual(metadata.get("grant"), ["none"]);
+assert.deepEqual(metadata.get("run-at"), ["document-idle"]);
+assert.deepEqual(
+    Array.from(metadata.keys()).sort(),
+    ["author", "description", "grant", "match", "name", "namespace", "run-at", "version"],
+    "Next read-only candidate metadata keys must stay allowlisted"
+);
 assert.equal(metadata.has("updateURL"), false, "Next candidate must not self-update");
 assert.equal(metadata.has("downloadURL"), false, "Next candidate must not publish a download URL");
+assert.equal(metadata.has("connect"), false, "Next candidate must not declare network hosts");
+assert.equal(metadata.has("require"), false, "Next candidate must not load remote code");
+assert.equal(metadata.has("resource"), false, "Next candidate must not load remote resources");
 assert.match(artifactText, /data-ra-next-runtime-state/u);
 assert.match(artifactText, /ready-read-only/u);
+assert.match(artifactText, /data-ra-next-similarity-lens-root/u);
+
+for (const forbiddenPattern of [
+    /\bfetch\b/u,
+    /\bXMLHttpRequest\b/u,
+    /\bsendBeacon\b/u,
+    /\bWebSocket\b/u,
+    /\bEventSource\b/u,
+    /\bSharedWorker\b/u,
+    /\bWorker\b/u,
+    /\blocalStorage\b/u,
+    /\bsessionStorage\b/u,
+    /\bindexedDB\b/u,
+    /\bdocument\.cookie\b/u,
+    /\.requestSubmit\s*\(/u,
+    /\.submit\s*\(/u,
+    /\.location\.(?:assign|replace)\s*\(/u
+]) {
+    assert.equal(
+        forbiddenPattern.test(artifactText),
+        false,
+        `Next read-only shell must not include ${forbiddenPattern}`
+    );
+}
 
 console.log(JSON.stringify({
     artifact: relativeArtifactPath,

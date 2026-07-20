@@ -14,7 +14,10 @@ export default defineConfig({
         outDir: path.join(__dirname, ".tmp", "vite-next-fixture"),
         emptyOutDir: true,
         rollupOptions: {
-            input: path.join(__dirname, "dev", "fixtures", "similarity-lens", "index.html")
+            input: [
+                path.join(__dirname, "dev", "fixtures", "similarity-lens", "index.html"),
+                path.join(__dirname, "dev", "fixtures", "next-live-shell", "index.html")
+            ]
         }
     }
 });

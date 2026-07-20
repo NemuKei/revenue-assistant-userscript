@@ -15,7 +15,7 @@
 - `Classic`: 現在公開中の userscript。既存の name / namespace / filename / updateURL / downloadURL / 公開 URL を維持し、Next への cutover までは凍結する。
 - `Next`: 別 identity の未公開 candidate。`userscript.next.config.mjs` と `src/next/entry.ts` を入口にし、`.tmp/vite-next-candidate/revenue-assistant-next.candidate.user.js` へだけ生成する。自己更新 URL と `dist/` 出力を持たない。
 - Classic と Next を同じ Revenue Assistant tab で同時に実行しない。初期 Next QA は Tampermonkey で Classic を無効化してから reload する。Next は既に描画済みの Classic DOM を検出すると停止するが、現公開 Classic が後から起動する競合までは防げない。
-- Next の現在の entry は runtime 境界を確認する read-only shell であり、基準日レンズ UI は合成 fixture にだけ存在する。実画面 API / DOM 接続、Tampermonkey install / switch、publish、write 操作は未実施である。
+- Next の現在の entry は、Revenue Assistant の表示中カレンダーだけへ接続する read-only な基準日レンズ shell である。通常の日付クリックは変更せず、利用者が `基準日を選ぶ` を押した直後の1回だけ選択として扱う。OH / 個人 / 団体 / 競合の実データ adapter は未接続で、値・類似候補・一致度を推測表示しない。Tampermonkey install / switch、publish、write 操作は未実施である。
 
 ## 前提
 
@@ -40,9 +40,9 @@ npm run check
 - `npm run build:vite:fixture`: Vite fixture preview を build
 - `npm run build:vite:candidate`: 正規 `dist` を上書きしない Vite candidate userscript build を `.tmp/vite-candidate/` に生成
 - `npm run build:next:candidate`: Next の独立 userscript candidate を `.tmp/vite-next-candidate/` に生成
-- `npm run dev:next:fixture`: Next の基準日レンズ合成 fixture を `http://127.0.0.1:5173/dev/fixtures/similarity-lens/` で preview
+- `npm run dev:next:fixture`: Next の類似度モデル fixture を `http://127.0.0.1:5173/dev/fixtures/similarity-lens/`、実画面接続 shell fixture を `http://127.0.0.1:5173/dev/fixtures/next-live-shell/` で preview
 - `npm run build:next:fixture`: Next の基準日レンズ合成 fixture を `.tmp/vite-next-fixture/` に生成
-- `npm run check:next`: Next の型、lint、runtime lease、類似度 model、artifact metadata、fixture build をまとめて確認
+- `npm run check:next`: Next の型、lint、runtime lease、live shell の純粋ロジック、類似度 model、read-only artifact metadata、fixture build をまとめて確認。DOM interaction は Browser fixture と単一 runtime の実画面 QA で別途確認する
 - `npm run build:compare:vite`: 正規 `dist` と Vite candidate の userscript metadata、size、entry line を比較
 - `npm run check:fixture-markers`: Revenue Assistant 認証、Tampermonkey、通常 Chrome profile を使わず、fixture の合成 data だけで top のカレンダー連携型判断 workspace の主要 UI marker を確認
 - `npm run typecheck`: TypeScript の型検査
