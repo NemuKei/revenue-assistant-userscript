@@ -1,8 +1,8 @@
 # tasks_backlog
 
-## 2026-07-17 Top Decision Workspace Redesign
+## 2026-07-17 Next Design Evidence / Unpublished
 
-既存の料金調整候補を守ること自体ではなく、RM が今日の判断対象を短時間で見つけ、個人需要と団体需要を混同せず、安全に次操作へ進めることを目的に再設計する。比較した方向のうち、既存カレンダーに近く認知コストが低い「カレンダー左 + `今日の判断` rail 右 + 選択詳細下」を採用する。
+この section は `62f0568〜c9165cf` で試した未公開 Next 設計証拠である。各 task の「完了」「採用」「supersede」は当時の local candidate 内だけを指し、Classic の公開契約を変更しない。既存の料金調整候補を守ること自体ではなく、RM が今日の判断対象を短時間で見つけ、個人需要と団体需要を混同せず、安全に次操作へ進めることを目的に再設計した。比較案として、既存カレンダーに近い「カレンダー左 + `今日の判断` rail 右 + 選択詳細下」を実装したが、Next の現在の主仮説は基準日レンズであり、この rail 案を最終 layout として固定しない。
 
 ### RAU-UX-138 トップ料金調整候補を calendar decision workspace へ再設計する
 
@@ -19,7 +19,7 @@
   - 選択詳細では `OH n / キャパ m`、`個人 n`、`団体 n` を別項目で表示する。各値は直接取得 source を使い、欠損は差し引きで推測せず `未取得`、0 は `0` とする。
   - task card、カレンダー、初期詳細に最終 write CTA を置かない。`変更内容を確認` で最終確認 region を開き、`この内容で変更する` の明示押下だけが送信前 guard を開始する。確認を開いたまま待っても送信しない。
 - supersede:
-  - カレンダー下の 9 列 list、`全て / 上げ検討 / 下げ注意 / 注意あり / 直近変更` の旧 view mode、row 内 quick submit、`反映する -> 5 秒 pending -> 自動送信` を現行 UI 契約から外す。
+  - Next の当時の local candidate では、カレンダー下の 9 列 list、`全て / 上げ検討 / 下げ注意 / 注意あり / 直近変更` の view mode、row 内 quick submit、`反映する -> 5 秒 pending -> 自動送信` を比較対象から外した。Classic の公開 UI 契約は置き換えない。
   - 過去 task / decision の観測結果、candidate scoring、reasonFingerprint、lifecycle、current rank / rank status の fresh 再取得、同時更新停止、観測済み Lincoln custom rank path 限定、反映確認、自動 retry なしは維持する。
   - `様子見` / `対応不要` の browser-local decision に対する 5 秒 pending / 取消は維持する。
 - 非目標:
@@ -134,7 +134,7 @@
 ### RAU-UX-145 stacked実画面hostで判断railのflex shrinkを防ぐ
 
 - 状態:
-  - Now。`RAU-UX-144` live QAで検出したP1の修正と再発防止が未着手。公開前に完了必須。
+  - 保留。`RAU-UX-144` live QAで検出した finding だが、対象の calendar decision workspace は Classic 公開候補ではなく Next 設計証拠へ位置づけ直した。Next が同じ stacked rail を採用する場合に再開する。
 - 目的:
   - Revenue Assistantの固定高・overflowありのflex-column hostでも、全幅calendarの後ろに置く`今日の判断` rail、詳細、状態表示、対象月controlを縮退させず、主要flowを開始できるようにする。
 - 受け入れ条件:
@@ -144,9 +144,25 @@
   - 390pxでRAU由来のdocument横overflowを増やさず、OH / 個人 / 団体、native `aria-describedby`、keyboard / focusを維持する。
   - Tampermonkey無効の単一runtime live QAでrailの視認と操作を再確認し、注入前から機能する監視手段でwrite API POST 0を確認する。最終送信は行わない。
 - gate:
-  - runtime / fixture修正、local verify、live再QAまでを同一bundleに含める。公開、Tampermonkey再有効化、実writeは別gateのままにする。
+  - Next の画面構造を決めてから、同じ stacked rail を採用する場合だけ runtime / fixture 修正と live 再 QA を行う。Classic の公開 blocker にはしない。
 
-Remaining Task Triage は Now `RAU-UX-145`、Next / After Next / Later なしとする。P1修正とlive再QAが完了するまでpublishせず、`main` pushを行わない。
+### RAU-UX-146 Classicを凍結しNext userscriptの境界を分離する
+
+- 状態:
+  - Now。別 identity の Next candidate、runtime lease、artifact checker、基準日レンズ fixture まで local 実装済み。公開経路分離と実画面 read-only 接続は未着手。
+- 目的:
+  - Classic の公開契約を壊さず、旧実装の負債を引き継がない Next を別 userscript として育て、最終的な UI / UX と機能 parity を確認してから cutover できるようにする。
+- 完了済み:
+  - Next は Classic と異なる name、namespace、entry、filename を持ち、`.tmp/vite-next-candidate/` にだけ生成する。updateURL / downloadURL と `dist/` 出力を持たない。
+  - Next entry は read-only marker と document 単位 runtime lease だけを開始し、API request、listener、observer、write 操作を行わない。既存 Classic DOM または別 runtime lease を検出すると fail closed する。
+  - 基準日レンズの合成 fixture は、基準日を選んだ後だけ似た日を最大6日表示し、OH、個人、団体、競合を別根拠として説明する。重みと閾値は production contract ではなく仮説として隔離する。
+- 残る受け入れ条件:
+  - Classic の公開 version、artifact hash、source baseline を fresh に記録する。Next の公開先を足すだけではなく、Classic workflow の source input をその baseline へ固定するか、Next-only の source と履歴を Classic workflow から分離し、Classic 公開 artifact hash が byte-for-byte 不変であることを検証する。分離前に current branch を push しない。
+  - 初回実画面 QA は Classic を手動無効化して reload し、Next を単一 runtime で一時導入する。完全な画面内 switch は Classic 側にも共通 guard を入れた後に別 gate で扱う。
+  - Analyze、booking curve、競合価格、価格推移 graph、OH / 個人 / 団体、単一行 rank 調整操作と guard、様子見、対応不要の parity matrix を作り、cutover 前に残す / 再設計する / 廃止するを個別判断する。
+  - publish、Tampermonkey install / switch、実データ接続、write 操作はそれぞれ別 gate とする。
+
+Remaining Task Triage は Now `RAU-UX-146`、Next `RAU-UX-145` の再採用判断、After Next / Later なしとする。Classic / Next の公開経路を分離するまで `main` pushを行わない。
 
 ## 2026-06-29 Docs Governance Profile
 

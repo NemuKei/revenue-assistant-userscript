@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="ja">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>RAU Next 基準日レンズ fixture</title>
+    </head>
+    <body>
+        <header data-ra-next-fixture-app-header>
+            <div data-ra-next-fixture-brand>Revenue Assistant</div>
+            <nav data-ra-next-fixture-nav aria-label="主な画面">
+                <span>ダッシュボード</span>
+                <strong>カレンダー</strong>
+                <span>Analyze</span>
+                <span>設定</span>
+            </nav>
+            <span data-ra-next-fixture-candidate>Next candidate / read-only</span>
+        </header>
+        <main data-ra-next-fixture-shell>
+            <section data-ra-next-fixture-toolbar>
+                <div>
+                    <p data-ra-next-fixture-eyebrow>基準日レンズ</p>
+                    <h1>1日を選ぶと、似た日だけが浮きます</h1>
+                    <p>OH・個人・団体・競合位置を分けたまま比較します。常時のクラスタ色分けはしません。</p>
+                </div>
+                <button type="button" data-ra-next-lens-clear>選択を解除</button>
+            </section>
+
+            <div data-ra-next-fixture-workspace>
+                <section data-ra-next-fixture-calendar-region aria-label="3か月カレンダー">
+                    <div
+                        data-ra-next-fixture-calendar-strip
+                        role="group"
+                        aria-label="基準日を選ぶ3か月カレンダー"
+                        aria-describedby="similarity-calendar-help"
+                    ></div>
+                    <div data-ra-next-fixture-calendar-help>
+                        <p id="similarity-calendar-help" data-ra-next-fixture-calendar-note>Tabでカレンダーへ入り、矢印キーで日付を移動できます。表示値は画面確認用の合成データです。</p>
+                        <button type="button" data-ra-next-lens-jump hidden>類似日一覧へ</button>
+                    </div>
+                </section>
+                <aside data-ra-next-lens-panel tabindex="-1" aria-live="polite"></aside>
+            </div>
+
+            <section data-ra-next-lens-comparison aria-live="polite"></section>
+            <footer data-ra-next-fixture-native-footer>Revenue Assistant 標準フッター領域</footer>
+        </main>
+        <script type="module" src="/src/next/dev/similarityLensFixture.ts"></script>
+    </body>
+</html>
