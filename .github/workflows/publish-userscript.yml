@@ -19,7 +19,7 @@ jobs:
 
         steps:
             - name: Checkout publication controls
-              uses: actions/checkout@v6
+              uses: actions/checkout@v7
 
             - name: Verify frozen Classic publication baseline
               run: node scripts/check-classic-publication-boundary.mjs --live
