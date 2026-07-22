@@ -149,7 +149,7 @@
 ### RAU-UX-146 Classicを凍結しNext userscriptの境界を分離する
 
 - 状態:
-  - Now。別 identityのNext candidate、基準日レンズ、最終live QA、Classic公開baseline、verify-only workflow、cutover parity matrix、remote dependency / Actions更新のlocal統合とfull verifyまで完了。最初のremote反映とpost-push proof、実データadapter、Tampermonkey install / switch、publishは未着手。
+  - 完了。別 identityのNext candidate、基準日レンズ、最終live QA、Classic公開baseline、verify-only workflow、cutover parity matrix、remote dependency / Actions更新の統合、push、post-push proofまで完了した。
 - 目的:
   - Classic の公開契約を壊さず、旧実装の負債を引き継がない Next を別 userscript として育て、最終的な UI / UX と機能 parity を確認してから cutover できるようにする。
 - 完了済み:
@@ -162,15 +162,15 @@
   - 公開Classicをfresh確認し、source commit `659d998254c7527ecc40b45a3e22513f049168de`、run 442、version `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB` とmetadataをmachine-readable baselineへ固定した。任意refをbuild / deployするmanual案は独立reviewで棄却し、local workflowはpush trigger、Pages / OIDC書込権限、source build、artifact upload、deployなしのmanual verify-only contractへ変更した。main push用にはPages権限のないClassic / Next / fixture validationを分離した。
   - Classic→Next target matrixを仕様化した。旧9列候補表の表構造 / 行内配置は廃止し、探索をcalendarへ集約する。Classicの青い`団n`表記、Analyze、booking curve、競合価格、価格推移graph、OH / 個人 / 団体、前回変更 / rank history / soft cooldown / 再表示理由、単一候補rank guard、様子見、対応不要は役割を分けて維持または再設計する。
   - 明示承認後にorigin/mainの6 dependency / Actions更新を取り込み、checkout / setup-node v7を保持した。publish workflowはverify-onlyのまま、`npm ci`、production audit 0件、full local verify、Classic公開baseline live照合2回を通した。全依存auditのdev tool high 2件とReact Doctorの既存source診断1件は今回の新規runtime変更ではなく、追加修正を混ぜていない。
-- 残る受け入れ条件:
-  - 統合済みtreeをremoteへ反映し、Classic Publish run / Pages deployment 0件と公開artifactのversion / bytes / SHA不変を確認するまで分離完了としない。
+  - merge commit `57c99837303ed07ca86af924c922fcf783a342eb` のpush後、Validate Main run `29888589509`だけがsuccessし、Publish系run 0件、Pages deployment 0件、公開Classicのversion / bytes / SHA不変を確認した。
+- 後続gate:
   - 完全な画面内 switch は Classic 側にも共通 guard を入れ、Classic / Next の同時実行を双方から防止できるようにした後の別 gate で扱う。
-  - publish、Tampermonkey install / switch、実データ接続、write 操作はそれぞれ別 gate とする。
+  - Classic再公開、Next publish、Tampermonkey install / switch、実データ接続、write 操作はそれぞれ別 gate とする。
 
 ### RAU-UX-147 Next基準日レンズへread-only根拠adapterを接続する
 
 - 状態:
-  - Next。`RAU-UX-146` のremote公開gateを閉じた後に実装する。
+  - Now。`RAU-UX-146` のremote公開gateは完了した。
 - 目的:
   - 基準日と類似候補を、OH / 個人 / 団体 / 競合の直接取得値で比較できるようにし、旧候補表へ戻らず実務判断を成立させる。
 - scope:
@@ -181,7 +181,7 @@
   - API adapter、cache key、view model、UIを分離し、live実データ観測前にfixtureでmissing / zero / partial / staleを確認する。
   - 未調査APIまたは新しいresponse保存が必要ならYellow zoneとして実装前に別decisionを記録する。
 
-Remaining Task Triage は Now `RAU-UX-146`、Next `RAU-UX-147`、After Next `RAU-UX-145` の再採用判断、Later なしとする。remote公開gateを閉じるまで `main` pushを行わない。
+Remaining Task Triage は Now `RAU-UX-147`、Next `RAU-UX-145` の再採用判断、After Next / Later なしとする。
 
 ## 2026-06-29 Docs Governance Profile
 
