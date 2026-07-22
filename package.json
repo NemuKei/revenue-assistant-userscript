@@ -18,6 +18,7 @@
         "build:next:fixture": "vite build --config ./vite.next-fixture.config.mjs",
         "build:compare:vite": "node ./scripts/compare-vite-build.mjs",
         "check:next:artifact": "node ./scripts/check-next-userscript-artifact.mjs",
+        "check:classic-publication": "node ./scripts/check-classic-publication-boundary.mjs",
         "check:next:runtime": "node ./scripts/check-next-runtime-lease.mjs",
         "check:next:live-shell": "node ./scripts/check-next-live-shell.mjs",
         "check:next:similarity": "node ./scripts/check-next-similarity-model.mjs",

@@ -149,7 +149,7 @@
 ### RAU-UX-146 Classicを凍結しNext userscriptの境界を分離する
 
 - 状態:
-  - Now。別 identity の Next candidate、runtime lease、artifact checker、基準日レンズ fixture、実画面カレンダーへ接続する read-only shell、最終 live QAまでlocal完了。公開経路分離、実データadapter、parity matrix、Tampermonkey install / switch、publishは未着手。
+  - Now。別 identityのNext candidate、基準日レンズ、最終live QA、Classic公開baseline、verify-only workflow、cutover parity matrixまでlocal完了。remote dependency / Actions更新の取込、実データadapter、Tampermonkey install / switch、publishは未着手。
 - 目的:
   - Classic の公開契約を壊さず、旧実装の負債を引き継がない Next を別 userscript として育て、最終的な UI / UX と機能 parity を確認してから cutover できるようにする。
 - 完了済み:
@@ -159,13 +159,28 @@
   - 実画面接続 shell は、表示中カレンダーの exact date / room marker と安全な挿入境界を確認してから上部へ描画する。通常の日付 click は既存 Analyze 導線を維持し、明示的な選択モード中の次の1日だけを捕捉する。実データ adapter 未接続時は OH / 個人 / 団体 / 競合を別々に `未接続` とし、値や類似日を推測しない。calendar / body 再描画へ追従し、Classic marker または重複 root を後から検出した場合も追加 DOM / style / accessibility 属性を除去して停止する。
   - sanitized live shell fixture で通常 click、mouse / keyboard 選択、Escape、解除、focus復帰、calendar再描画、375px相当、Classic後発検知を確認した。artifact は `@grant none`、Revenue Assistant限定match、update / download / connect / require / resourceなし、network / storage / submit primitiveなしを固定検査する。
   - Classicを無効化した単一runtimeのログイン済み実画面で最終candidateを一時注入し、通常日付clickのAnalyze遷移、競合価格 / 価格推移 / booking curveの既存導線、明示選択、keyboard / focus、標準表示切替後の再同期、Escape、解除、console、candidate起点network 0、Revenue Assistant write API 0、reload後cleanupを確認した。390 x 844ではRevenue Assistantの固定幅parentによりNext rootが1,184pxになる問題を検出し、Next shellだけを親幅とviewport幅の小さい方へ制限した。修正後は390pxでroot 343px・4指標2列、680 / 681px境界の681pxでroot 602px、いずれもviewport内かつNext自身の横overflow 0だった。固定1,200px hostを任意に再現するfixture modeとviewport capのcontract検査を追加した。
+  - 公開Classicをfresh確認し、source commit `659d998254c7527ecc40b45a3e22513f049168de`、run 442、version `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB` とmetadataをmachine-readable baselineへ固定した。任意refをbuild / deployするmanual案は独立reviewで棄却し、local workflowはpush trigger、Pages / OIDC書込権限、source build、artifact upload、deployなしのmanual verify-only contractへ変更した。main push用にはPages権限のないClassic / Next / fixture validationを分離した。
+  - Classic→Next target matrixを仕様化した。旧9列候補表の表構造 / 行内配置は廃止し、探索をcalendarへ集約する。Classicの青い`団n`表記、Analyze、booking curve、競合価格、価格推移graph、OH / 個人 / 団体、前回変更 / rank history / soft cooldown / 再表示理由、単一候補rank guard、様子見、対応不要は役割を分けて維持または再設計する。
 - 残る受け入れ条件:
-  - Classic の公開 version、artifact hash、source baseline を fresh に記録する。Next の公開先を足すだけではなく、Classic workflow の source input をその baseline へ固定するか、Next-only の source と履歴を Classic workflow から分離し、Classic 公開 artifact hash が byte-for-byte 不変であることを検証する。分離前に current branch を push しない。
+  - 別承認でorigin/mainの6 dependency / Actions更新を取り込み、verify-only workflowと同じ最終treeへ統合してfull verifyする。依存更新だけを先行pushせず、1回のpush後にClassic Publish run / Pages deployment 0件と公開artifactのversion / bytes / SHA不変を確認するまで分離完了としない。
   - 完全な画面内 switch は Classic 側にも共通 guard を入れ、Classic / Next の同時実行を双方から防止できるようにした後の別 gate で扱う。
-  - Analyze、booking curve、競合価格、価格推移 graph、OH / 個人 / 団体、単一行 rank 調整操作と guard、様子見、対応不要の parity matrix を作り、cutover 前に残す / 再設計する / 廃止するを個別判断する。
   - publish、Tampermonkey install / switch、実データ接続、write 操作はそれぞれ別 gate とする。
 
-Remaining Task Triage は Now `RAU-UX-146`、Next `RAU-UX-145` の再採用判断、After Next / Later なしとする。Classic / Next の公開経路を分離するまで `main` pushを行わない。
+### RAU-UX-147 Next基準日レンズへread-only根拠adapterを接続する
+
+- 状態:
+  - Next。`RAU-UX-146` のremote公開gateを閉じた後に実装する。
+- 目的:
+  - 基準日と類似候補を、OH / 個人 / 団体 / 競合の直接取得値で比較できるようにし、旧候補表へ戻らず実務判断を成立させる。
+- scope:
+  - 確認済みの既存read-only adapter / browser-local cacheだけを再利用候補とし、新規endpoint、background prefetch、request pace / concurrency変更を混ぜない。
+  - source、as-of、stay date、room typeが一致する場合だけ値を接続し、0、未取得、未接続を分ける。差し引きで個人 / 団体を推測しない。
+  - Next選択日からAnalyzeのbooking curve、競合価格、価格推移へ到達する入口を作り、既存graph / preview contract testを維持する。graph自体のNextカレンダー常時埋込み、rank write、様子見、対応不要のmutationは含めない。
+- gate:
+  - API adapter、cache key、view model、UIを分離し、live実データ観測前にfixtureでmissing / zero / partial / staleを確認する。
+  - 未調査APIまたは新しいresponse保存が必要ならYellow zoneとして実装前に別decisionを記録する。
+
+Remaining Task Triage は Now `RAU-UX-146`、Next `RAU-UX-147`、After Next `RAU-UX-145` の再採用判断、Later なしとする。remote公開gateを閉じるまで `main` pushを行わない。
 
 ## 2026-06-29 Docs Governance Profile
 

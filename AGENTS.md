@@ -44,7 +44,7 @@ RAU は、Revenue Assistant 上で RM のレート調整判断を軽くする Ta
 
 ## RAU Product Boundary
 
-- 配布物と Tampermonkey への投入物は `dist/*.user.js` を正とする。
+- sourceから生成するClassic検証artifactと、明示承認後にTampermonkeyへ投入するrelease candidateは `dist/*.user.js` を正とする。Classic公開凍結中の現在の公開物は、公開URLのbyte列と `.github/classic-publication-baseline.json` を正とし、local `dist`を現在の公開版とみなさない。
 - `dist/*.user.js` を手編集しない。必要な変更は `src/`、`scripts/build.mjs`、`userscript.config.mjs` 側で行う。
 - userscript metadata は `userscript.config.mjs` に集約し、source へ重複記載しない。
 - Revenue Assistant の画面差分は、API 起点で取れるものと DOM 起点でしか取れないものを分けて設計する。

@@ -1,74 +1,25 @@
-name: Publish Userscript
+name: Verify Frozen Classic Publication
 
 env:
     FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 on:
-    push:
-        branches:
-            - main
-        paths:
-            - ".github/workflows/publish-userscript.yml"
-            - "dev/fixtures/**"
-            - "eslint.config.mjs"
-            - "package-lock.json"
-            - "package.json"
-            - "scripts/**"
-            - "src/**"
-            - "tsconfig.json"
-            - "userscript.config.mjs"
-            - "vite.fixture.config.mjs"
-            - "vite.userscript.config.mjs"
     workflow_dispatch:
 
 permissions:
     contents: read
-    pages: write
-    id-token: write
 
 concurrency:
-    group: github-pages
-    cancel-in-progress: true
+    group: verify-classic-publication
+    cancel-in-progress: false
 
 jobs:
-    build:
+    verify:
         runs-on: ubuntu-latest
 
-        env:
-            GITHUB_PAGES_BASE_URL: https://${{ github.repository_owner }}.github.io/${{ github.event.repository.name }}
-
         steps:
-            - name: Checkout
+            - name: Checkout publication controls
               uses: actions/checkout@v6
 
-            - name: Setup Node.js
-              uses: actions/setup-node@v6
-              with:
-                  node-version: 24
-                  cache: npm
-
-            - name: Install dependencies
-              run: npm ci
-
-            - name: Validate and build
-              run: npm run check
-
-            - name: Configure Pages
-              uses: actions/configure-pages@v6.0.0
-
-            - name: Upload Pages artifact
-              uses: actions/upload-pages-artifact@v5
-              with:
-                  path: dist
-
-    deploy:
-        needs: build
-        runs-on: ubuntu-latest
-        environment:
-            name: github-pages
-            url: ${{ steps.deployment.outputs.page_url }}
-
-        steps:
-            - name: Deploy to GitHub Pages
-              id: deployment
-              uses: actions/deploy-pages@v5
+            - name: Verify frozen Classic publication baseline
+              run: node scripts/check-classic-publication-boundary.mjs --live
