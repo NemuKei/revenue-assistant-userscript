@@ -229,9 +229,9 @@ function textElement(
     return element;
 }
 
-function getLiveSimilarityLensStyles(): string {
+export function getLiveSimilarityLensStyles(): string {
     return `
-        [data-ra-next-similarity-lens-root] { box-sizing: border-box; display: block; margin: 0 24px 12px; border: 1px solid #c9d8e5; border-left: 4px solid #1767a5; border-radius: 8px; background: #fff; color: #263a4d; font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; }
+        [data-ra-next-similarity-lens-root] { box-sizing: border-box; display: block; max-width: calc(100vw - 64px); min-width: 0; margin: 0 24px 12px; border: 1px solid #c9d8e5; border-left: 4px solid #1767a5; border-radius: 8px; background: #fff; color: #263a4d; font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; }
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-header] { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; padding: 10px 14px; }
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-copy] { min-width: 0; }
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-eyebrow] { margin: 0 0 2px; color: #1767a5; font-size: 11px; font-weight: 800; letter-spacing: .06em; text-transform: uppercase; }
@@ -262,7 +262,7 @@ function getLiveSimilarityLensStyles(): string {
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-summary] { grid-template-columns: 1fr; }
         }
         @media (max-width: 680px) {
-            [data-ra-next-similarity-lens-root] { margin: 0 8px 8px; }
+            [data-ra-next-similarity-lens-root] { max-width: calc(100vw - 32px); margin: 0 8px 8px; }
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-header] { align-items: stretch; flex-direction: column; }
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-actions] button { flex: 1 1 150px; }
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-metrics] { grid-template-columns: repeat(2, minmax(0, 1fr)); }

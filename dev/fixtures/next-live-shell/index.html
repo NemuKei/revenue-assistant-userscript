@@ -12,6 +12,7 @@
         [data-mock-header] button { min-height: 36px; border: 1px solid rgba(255,255,255,.7); border-radius: 6px; background: transparent; color: #fff; font: inherit; font-weight: 700; }
         [data-mock-native-status] { min-width: 150px; font-size: 12px; font-weight: 700; }
         [data-mock-ra-shell] { min-height: 760px; }
+        [data-mock-ra-shell][data-mock-fixed-width-host] { min-width: 1200px; }
         [data-testid="segmented-control"] { display: flex; gap: 1px; padding: 12px 24px; }
         [data-testid="segmented-control"] button { min-height: 42px; padding: 8px 22px; border: 1px solid #ced8e1; background: #fff; }
         [data-mock-calendar-strip] { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; padding: 0 24px 24px; }
@@ -50,6 +51,10 @@
         (() => {
             let nativeNavigationCount = 0;
             const months = [[2026, 7, 31], [2026, 8, 31], [2026, 9, 30]];
+            const shell = document.querySelector("[data-mock-ra-shell]");
+            if (new URLSearchParams(window.location.search).get("fixed-host") === "1") {
+                shell.setAttribute("data-mock-fixed-width-host", "");
+            }
             const status = document.querySelector("[data-mock-native-status]");
             const renderCalendar = () => {
                 const strip = document.createElement("div");

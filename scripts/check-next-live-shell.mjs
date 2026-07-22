@@ -4,6 +4,11 @@ import * as ts from "typescript";
 
 const adapter = await importTypeScriptModule("../src/next/live/liveCalendarDomAdapter.ts");
 const state = await importTypeScriptModule("../src/next/live/liveSimilarityLensState.ts");
+const view = await importTypeScriptModule("../src/next/live/liveSimilarityLensView.ts");
+const fixture = await readFile(
+    new URL("../dev/fixtures/next-live-shell/index.html", import.meta.url),
+    "utf8"
+);
 
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-08-12"), "2026-08-12");
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-02-29"), null);
@@ -26,6 +31,22 @@ assert.deepEqual(
     selected
 );
 assert.deepEqual(state.clearLiveSimilarityLensBaseDate(), initial);
+
+const styles = view.getLiveSimilarityLensStyles();
+assert.match(
+    styles,
+    /\[data-ra-next-similarity-lens-root\] \{[^}]*max-width: calc\(100vw - 64px\);[^}]*min-width: 0;/
+);
+assert.match(
+    styles,
+    /@media \(max-width: 680px\) \{[\s\S]*?\[data-ra-next-similarity-lens-root\] \{[^}]*max-width: calc\(100vw - 32px\);[^}]*margin: 0 8px 8px;/
+);
+assert.doesNotMatch(styles, /(?<!max-)width: calc\(100vw - 32px\)/);
+assert.match(fixture, /\[data-mock-ra-shell\]\[data-mock-fixed-width-host\] \{ min-width: 1200px; \}/);
+assert.match(
+    fixture,
+    /URLSearchParams\(window\.location\.search\)\.get\("fixed-host"\) === "1"/
+);
 
 console.log("Next live shell checks passed");
 
