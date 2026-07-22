@@ -134,7 +134,7 @@
 ### RAU-UX-145 stacked実画面hostで判断railのflex shrinkを防ぐ
 
 - 状態:
-  - 保留。`RAU-UX-144` live QAで検出した finding だが、対象の calendar decision workspace は Classic 公開候補ではなく Next 設計証拠へ位置づけ直した。Next が同じ stacked rail を採用する場合に再開する。
+  - 見送り。`RAU-UX-144` live QAで検出した finding だが、Next基準日レンズは同じstacked railを採用せず、`RAU-UX-147` の実画面QAでも該当host構造を使わなかった。同じstacked railを採用する将来変更時だけ再開する。
 - 目的:
   - Revenue Assistantの固定高・overflowありのflex-column hostでも、全幅calendarの後ろに置く`今日の判断` rail、詳細、状態表示、対象月controlを縮退させず、主要flowを開始できるようにする。
 - 受け入れ条件:
@@ -170,7 +170,7 @@
 ### RAU-UX-147 Next基準日レンズへread-only根拠adapterを接続する
 
 - 状態:
-  - local実装とsanitized fixture QAは完了。ログイン済み実画面でのadapter結果確認だけがNowとして残る。`RAU-UX-146` のremote公開gateは完了した。
+  - 完了。local実装、sanitized fixture、ログイン済み実画面のread-only adapter、Analyze SPA fallback、cleanupまで確認した。`RAU-UX-146` のremote公開gateも完了済みである。
 - 目的:
   - 基準日と類似候補を、OH / 個人 / 団体 / 競合の直接取得値で比較できるようにし、旧候補表へ戻らず実務判断を成立させる。
 - scope:
@@ -183,13 +183,36 @@
   - 独立reviewで見つけた施設切替cache混在、calendar一時消失後のstale根拠復帰、画面外keyboard focus、非同期完了時のfocus奪取、root再mount時の開閉状態消失、表示期間全体の競合cache誤表示、IndexedDB履歴の無制限materializeを修正した。API施設名とvisible headerの一致guard、calendar本体差替え / lossのgeneration invalidation、開始セルにfocusが残る場合だけのroom type移動、選択日単位の競合判定、固定record上限、IDB read method allowlist、完全一致primary key readは自動checkへ追加した。
   - 0、未取得、部分欠損、API errorのproduction到達状態に加え、過去as-ofを探索しないためproductionでは到達しない`古い保存値`の防御表示を合成fixtureだけで確認した。同一room group内だけで最大6候補、比較3日までを固定し、OH / 個人 / 団体 / 競合は別表示のまま維持する。
   - desktopは候補を3列へ圧縮し、比較詳細は初期折りたたみとした。900px以下では候補一覧も初期折りたたみにし、カレンダー上の`基準` / `類似` / `比較`を先に見せる。利用者が開いた一覧は再描画後も開状態を維持する。390 x 844 fixtureでNext由来の横overflow 0、候補一覧を閉じたまま類似marker 6件を確認した。
-  - 実画面ではClassic / Next marker 0、calendar 91日、月calendar 3件、as-of表示ありを確認し、candidateの一時注入後にroot / style各1、注入だけでは対象GET 0を確認した。最初の選択操作時に認証sessionがloginへ戻ったため、根拠adapterのGETと実値表示は未実施である。遷移により一時注入は除去され、candidate endpoint GET 0、Revenue Assistant API POST 0だった。
+  - 再ログイン後の実画面ではClassic / Next marker 0、calendar 92日、月calendar 3件、as-of表示ありを確認した。candidateの一時注入後はroot / style各1、idle GET 0、基準日選択ごとにcandidate起点の施設情報 / current settings GET各1・各200だった。施設一致guardを通過し、room typeなしはwarning、確認できるroom typeではOH / 個人 / 団体 / 競合の4軸、類似marker、部分比較を表示した。比較操作は追加GET 0、標準の`料金ランク` / `おすすめ`切替ではcandidate起点GET 0のまま選択とmarkerを維持した。390pxで4指標2列、候補1列、Next rootの自己overflow 0、console warning / error、runtime exception、監視対象write POST 0を確認した。
+  - 実画面の日付要素はhrefを持たず標準SPA clickでAnalyzeへ遷移することを観測した。URLを推測せず、候補内buttonから対応する標準日付clickへ委譲するfallbackを追加し、基準日と対象日を維持したAnalyze遷移をlive確認した。最後はroot URLへ戻し、Next root / style / date decoration / runtime属性0、標準calendar復元を確認した。施設名、room type名、実値、response body、raw trace、screenshotは保存していない。
 - gate:
-  - API adapter、cache key、view model、UIを分離し、live実データ観測前にfixtureでmissing / zero / partial / staleを確認する。
-  - 未調査APIまたは新しいresponse保存が必要ならYellow zoneとして実装前に別decisionを記録する。
-  - 次回はClassic marker / Next root 0のログイン済み単一tabで同じcandidateを一時注入し、API施設名とvisible header施設名の正規化後完全一致、基準日選択後のGET 2件以下、room type選択、OH / 個人 / 団体 / 競合の状態、類似marker、再描画時の追加GET 0、console、write API 0、reload cleanupを確認する。施設名を完全一致で確認できない場合は値を表示しない。Next publish、Tampermonkey install / switch、storage writeは別gateのまま扱う。
+  - API adapter、cache key、view model、UIの分離、fixtureのmissing / zero / partial / stale、liveの施設一致、GET予算、4軸、類似marker、再描画、Analyze遷移、console、write 0、cleanupを確認済みとする。
+  - Next publish、Tampermonkey install / switch、storage write、Revenue Assistant writeは別gateのまま扱う。新規または未調査APIやresponse保存が必要な後続taskはYellow zone判断を先に記録する。
 
-Remaining Task Triage は Now `RAU-UX-147`、Next `RAU-UX-145` の再採用判断、After Next / Later なしとする。
+### RAU-UX-148 Next calendarの団体表記を直接値で再接続する
+
+- 状態:
+  - 未着手。`RAU-UX-147` 完了後のNowとする。
+- 目的:
+  - 標準calendarの黒い値を変更・OHへ読み替えず、利用者が維持を求めた青い`団n`相当の識別を、確認できる団体直接値だけで再構築する。
+- gate:
+  - Classicの`団n`が示すscope、as-of、room type集約、0 / 欠損の意味をsourceとfixtureで先に確認し、旧配置を機械的に複製しない。
+  - 標準DOM、文字、date linkのposition、focus、既存highlightを変更しない。欠損を0や`all - transient`で補わない。
+  - 新規API、background prefetch、storage write、Revenue Assistant writeを追加しない。direct sourceが現行read-only境界で足りなければ実装せず別decisionへ戻す。
+  - desktop / 390px / 標準表示切替 / calendar再描画で、標準値、団体表記、基準日 / 類似marker、keyboard、横overflow、candidate起点GET、write 0をfixtureとliveで確認する。
+
+### RAU-UX-149 NextからAnalyze詳細機能のread-only parityを確認する
+
+- 状態:
+  - 未着手。`RAU-UX-148` のNextとする。
+- 目的:
+  - 好評なbooking curve、競合価格、90日価格推移を旧候補表から切り離して残し、基準日 / 類似日から必要時に深掘りできることをcutover前に確認する。
+- gate:
+  - 対象日維持、全部屋タイプ、booking curve series / tooltip / rank marker、競合価格snapshot / 人数別series / room type注意、価格推移90日 / filter / tooltip / empty / errorを既存contractと実画面で個別に確認する。
+  - graphをNext calendarへ常時埋め込まず、Analyzeを深掘り画面として再利用する。既存graphの仕様変更が必要な場合は同taskへ混ぜず別判断とする。
+  - write-capable controlと最終送信は扱わず、candidate起点request、console、responsive overflow、cleanupを確認する。
+
+Remaining Task Triage は Now `RAU-UX-148`、Next `RAU-UX-149`、After Next / Later なしとする。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

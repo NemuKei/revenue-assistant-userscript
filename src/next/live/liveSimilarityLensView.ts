@@ -14,6 +14,7 @@ export const LIVE_SIMILARITY_LENS_ROOT_ATTRIBUTE = "data-ra-next-similarity-lens
 export const LIVE_SIMILARITY_LENS_STYLE_ID = "revenue-assistant-next-similarity-lens-style";
 export const LIVE_SIMILARITY_LENS_DESCRIPTION_ID = "ra-next-similarity-lens-base-description";
 export const LIVE_SIMILARITY_LENS_INSTRUCTION_ID = "ra-next-similarity-lens-selection-instruction";
+export const LIVE_SIMILARITY_LENS_ANALYZE_TRIGGER_ATTRIBUTE = "data-ra-next-lens-analyze-trigger";
 
 export interface LiveSimilarityLensDisclosureState {
     comparisonExpanded: boolean | null;
@@ -509,17 +510,42 @@ function appendAnalyzeLink(
     stayDate: string,
     label: string
 ): void {
-    const href = getAnalyzeHref(snapshot, stayDate);
-    if (href === null) {
+    const target = resolveLiveSimilarityLensAnalyzeTarget(snapshot, stayDate);
+    if (target === null) {
         const unavailable = textElement(root, "span", "Analyze導線未確認", "data-ra-next-lens-link-unavailable");
         parent.append(unavailable);
         return;
     }
+    if (target.kind === "native-calendar") {
+        const trigger = root.ownerDocument.createElement("button");
+        trigger.type = "button";
+        trigger.setAttribute(LIVE_SIMILARITY_LENS_ANALYZE_TRIGGER_ATTRIBUTE, target.stayDate);
+        trigger.textContent = label;
+        parent.append(trigger);
+        return;
+    }
     const link = root.ownerDocument.createElement("a");
-    link.href = href;
+    link.href = target.href;
     link.setAttribute("data-ra-next-lens-analyze-link", compactDateKey(stayDate) ?? stayDate);
     link.textContent = label;
     parent.append(link);
+}
+
+export type LiveSimilarityLensAnalyzeTarget =
+    | { href: string; kind: "href" }
+    | { kind: "native-calendar"; stayDate: string };
+
+export function resolveLiveSimilarityLensAnalyzeTarget(
+    snapshot: LiveCalendarDomSnapshot | null,
+    stayDate: string
+): LiveSimilarityLensAnalyzeTarget | null {
+    const cell = snapshot?.cells.find((candidate) => datesEqual(candidate.stayDate, stayDate));
+    if (cell === undefined) {
+        return null;
+    }
+    return cell.analyzeHref === null
+        ? { kind: "native-calendar", stayDate: cell.stayDate }
+        : { href: cell.analyzeHref, kind: "href" };
 }
 
 function createInlineNotice(
@@ -565,10 +591,6 @@ function ensureAnnouncer(root: HTMLElement): HTMLElement {
     announcer.setAttribute("aria-atomic", "true");
     root.append(announcer);
     return announcer;
-}
-
-function getAnalyzeHref(snapshot: LiveCalendarDomSnapshot | null, stayDate: string): string | null {
-    return snapshot?.cells.find((cell) => datesEqual(cell.stayDate, stayDate))?.analyzeHref ?? null;
 }
 
 function getHeaderStatus(state: LiveSimilarityLensState): string {
@@ -719,6 +741,8 @@ export function getLiveSimilarityLensStyles(): string {
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-base-bar] span { color: #65778a; font-size: 11px; font-weight: 700; }
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-base-bar] strong { font-size: 13px; font-weight: 800; }
         [data-ra-next-similarity-lens-root] a { color: #1767a5; font-size: 12px; font-weight: 800; text-underline-offset: 2px; }
+        [data-ra-next-similarity-lens-root] [data-ra-next-lens-analyze-trigger] { min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: #1767a5; font-size: 12px; font-weight: 800; text-decoration: underline; text-underline-offset: 2px; }
+        [data-ra-next-similarity-lens-root] [data-ra-next-lens-analyze-trigger]:hover { background: transparent; color: #0f4f7e; }
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-message], [data-ra-next-similarity-lens-root] [data-ra-next-lens-inline-notice] { display: grid; gap: 3px; margin: 12px 14px; padding: 10px 12px; border-left: 3px solid #7fa9c8; background: #f5f8fa; }
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-message="error"], [data-ra-next-similarity-lens-root] [data-ra-next-lens-inline-notice="warning"] { border-left-color: #b37824; background: #fff9ee; }
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-message] strong, [data-ra-next-similarity-lens-root] [data-ra-next-lens-inline-notice] strong { font-size: 12px; }

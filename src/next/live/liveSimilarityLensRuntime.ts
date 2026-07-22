@@ -26,6 +26,7 @@ import type {
 import {
     createLiveSimilarityLensRoot,
     ensureLiveSimilarityLensStyles,
+    LIVE_SIMILARITY_LENS_ANALYZE_TRIGGER_ATTRIBUTE,
     LIVE_SIMILARITY_LENS_INSTRUCTION_ID,
     LIVE_SIMILARITY_LENS_ROOT_ATTRIBUTE,
     removeLiveSimilarityLensArtifacts,
@@ -253,6 +254,28 @@ export function startLiveSimilarityLensRuntime(
             `[${LIVE_SIMILARITY_LENS_ROOT_ATTRIBUTE}]`
         );
         if (currentRoot !== null) {
+            const analyzeTrigger = event.target.closest<HTMLElement>(
+                `[${LIVE_SIMILARITY_LENS_ANALYZE_TRIGGER_ATTRIBUTE}]`
+            );
+            if (analyzeTrigger !== null) {
+                event.preventDefault();
+                event.stopImmediatePropagation();
+                const stayDate = analyzeTrigger.getAttribute(
+                    LIVE_SIMILARITY_LENS_ANALYZE_TRIGGER_ATTRIBUTE
+                );
+                const nativeCell = stayDate === null
+                    ? undefined
+                    : snapshot?.cells.find((cell) => cell.stayDate === stayDate);
+                if (nativeCell === undefined) {
+                    return;
+                }
+                if (state.mode === "armed") {
+                    state = cancelLiveSimilarityLensSelection(state);
+                    renderCurrentState();
+                }
+                nativeCell.anchor.click();
+                return;
+            }
             const armButton = event.target.closest<HTMLElement>("[data-ra-next-lens-arm]");
             if (armButton !== null) {
                 event.preventDefault();

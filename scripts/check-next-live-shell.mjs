@@ -114,6 +114,21 @@ assert.equal(
 );
 
 const styles = view.getLiveSimilarityLensStyles();
+const analyzeSnapshot = {
+    cells: [{ analyzeHref: "/analyze/20260812", stayDate: "2026-08-12" }]
+};
+assert.deepEqual(
+    view.resolveLiveSimilarityLensAnalyzeTarget(analyzeSnapshot, "20260812"),
+    { href: "/analyze/20260812", kind: "href" }
+);
+assert.deepEqual(
+    view.resolveLiveSimilarityLensAnalyzeTarget({
+        cells: [{ analyzeHref: null, stayDate: "2026-08-12" }]
+    }, "20260812"),
+    { kind: "native-calendar", stayDate: "2026-08-12" },
+    "SPA calendar cells without href must delegate to the verified native date action"
+);
+assert.equal(view.resolveLiveSimilarityLensAnalyzeTarget(analyzeSnapshot, "20260813"), null);
 assert.match(
     styles,
     /\[data-ra-next-similarity-lens-root\] \{[^}]*width: calc\(100% - 48px\);[^}]*max-width: calc\(100vw - 48px\);[^}]*min-width: 0;/
@@ -139,5 +154,11 @@ assert.match(fixture, /anchor\.href = `\/analyze\/\$\{stayDate\.replaceAll\("-",
 assert.match(fixture, /src="\/src\/next\/dev\/liveShellEntry\.ts"/);
 assert.match(styles, /data-ra-next-lens-similar-date/);
 assert.match(styles, /content: "類似"/);
+assert.match(styles, /data-ra-next-lens-analyze-trigger/);
+assert.match(
+    await readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
+    /nativeCell\.anchor\.click\(\)/u,
+    "SPA Analyze fallback must delegate to the existing native calendar action"
+);
 
 console.log("Next live shell checks passed");
