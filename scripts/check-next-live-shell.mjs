@@ -64,6 +64,10 @@ const invalidated = runtime.invalidateLiveSimilarityLensRuntimeSelection(7);
 assert.deepEqual(invalidated.state, initial, "calendar loss must clear base, room type, and comparisons");
 assert.deepEqual(invalidated.evidenceState, { status: "idle" });
 assert.equal(invalidated.generation, 8, "calendar loss must invalidate in-flight evidence");
+assert.equal(runtime.isLiveSimilarityLensCalendarRoute("/"), true);
+assert.equal(runtime.isLiveSimilarityLensCalendarRoute(""), true);
+assert.equal(runtime.isLiveSimilarityLensCalendarRoute("/analyze/2026-08-12"), false);
+assert.equal(runtime.isLiveSimilarityLensCalendarRoute("/monthly-progress/2026-08"), false);
 assert.equal(
     adapter.hasLiveFacilityContextLabel(["施設A（mock）", "メニュー"], "施設A（mock）"),
     true
@@ -149,6 +153,10 @@ assert.match(fixture, /data-mock-remount/);
 assert.match(fixture, /replaceChildren\(\);[\s\S]*?window\.setTimeout\(renderCalendar, 120\)/);
 assert.match(fixture, /data-mock-facility-context/);
 assert.match(fixture, /data-mock-root-remount/);
+assert.match(fixture, /data-mock-route-analyze/);
+assert.match(fixture, /data-mock-route-calendar/);
+assert.match(fixture, /moveToRoute\("\/analyze\/2026-08-12"\)/);
+assert.match(fixture, /data-mock-analyze-content hidden/);
 assert.match(fixture, /data-ra-next-similarity-lens-root/);
 assert.match(
     fixture,
@@ -178,6 +186,11 @@ assert.match(
     await readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
     /nativeCell\.anchor\.click\(\)/u,
     "SPA Analyze fallback must delegate to the existing native calendar action"
+);
+assert.match(
+    await readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
+    /windowHost\.addEventListener\("popstate", scheduleReconcile/u,
+    "SPA back and forward navigation must reconcile the route boundary"
 );
 
 console.log("Next live shell checks passed");

@@ -11,7 +11,9 @@ const runtimeResult = startRevenueAssistantRuntime({
     legacyDomDetected: detectLegacyClassicRuntime(document),
     start() {
         startLiveSimilarityLensRuntime(document, window, {
-            dataSource: createLiveSimilarityLensFixtureDataSource(window)
+            dataSource: createLiveSimilarityLensFixtureDataSource(window),
+            isCalendarRoute: (location) => location.pathname === "/"
+                || location.pathname === "/dev/fixtures/next-live-shell/"
         });
     }
 });

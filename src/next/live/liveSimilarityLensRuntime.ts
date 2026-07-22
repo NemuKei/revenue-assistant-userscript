@@ -45,6 +45,11 @@ export interface LiveSimilarityLensRuntimeHandle {
 
 export interface StartLiveSimilarityLensRuntimeOptions {
     dataSource?: LiveSimilarityLensDataSource;
+    isCalendarRoute?: (location: Location) => boolean;
+}
+
+export function isLiveSimilarityLensCalendarRoute(pathname: string): boolean {
+    return pathname.trim() === "" || pathname === "/";
 }
 
 export function invalidateLiveSimilarityLensRuntimeSelection(
@@ -78,6 +83,7 @@ export function startLiveSimilarityLensRuntime(
     let pendingRoomGroupFocus = false;
     let pendingRoomGroupFocusAnchor: HTMLAnchorElement | null = null;
     let activeFacilityLabel: string | null = null;
+    let routeSuspended = false;
     let disclosureState: LiveSimilarityLensDisclosureState = {
         comparisonExpanded: null,
         matchListExpanded: null
@@ -90,6 +96,8 @@ export function startLiveSimilarityLensRuntime(
     }>();
 
     const dataSource = options.dataSource ?? createLiveSimilarityLensDataSource({ documentHost, windowHost });
+    const isCalendarRoute = options.isCalendarRoute
+        ?? ((location: Location) => isLiveSimilarityLensCalendarRoute(location.pathname));
     const abortController = new AbortController();
     const observer = new MutationObserver(scheduleReconcile);
 
@@ -107,6 +115,9 @@ export function startLiveSimilarityLensRuntime(
     });
     documentHost.addEventListener("toggle", handleDocumentToggle, {
         capture: true,
+        signal: abortController.signal
+    });
+    windowHost.addEventListener("popstate", scheduleReconcile, {
         signal: abortController.signal
     });
     observer.observe(documentHost.body, {
@@ -149,6 +160,11 @@ export function startLiveSimilarityLensRuntime(
             stop("suspended-classic-detected");
             return;
         }
+        if (!isCalendarRoute(windowHost.location)) {
+            suspendForInactiveRoute();
+            return;
+        }
+        routeSuspended = false;
 
         const rootCandidates = Array.from(
             documentHost.querySelectorAll<HTMLElement>(`[${LIVE_SIMILARITY_LENS_ROOT_ATTRIBUTE}]`)
@@ -252,6 +268,28 @@ export function startLiveSimilarityLensRuntime(
         }, 0);
     }
 
+    function suspendForInactiveRoute(): void {
+        if (!routeSuspended) {
+            const invalidated = invalidateLiveSimilarityLensRuntimeSelection(evidenceGeneration);
+            state = invalidated.state;
+            evidenceState = invalidated.evidenceState;
+            evidenceGeneration = invalidated.generation;
+            rovingDate = null;
+            readyViewModel = null;
+            pendingRoomGroupFocus = false;
+            pendingRoomGroupFocusAnchor = null;
+            activeFacilityLabel = null;
+            resetDisclosureState();
+            routeSuspended = true;
+        }
+        restoreCalendarTabIndexes();
+        restoreSelectedBaseFocusability();
+        removeLiveSimilarityLensArtifacts(documentHost);
+        root = null;
+        snapshot = null;
+        documentHost.documentElement.setAttribute(NEXT_LIVE_STATE_ATTRIBUTE, "suspended-route");
+    }
+
     function handleDocumentClick(event: MouseEvent): void {
         if (stopped || !(event.target instanceof Element)) {
             return;
@@ -280,6 +318,7 @@ export function startLiveSimilarityLensRuntime(
                     renderCurrentState();
                 }
                 nativeCell.anchor.click();
+                scheduleReconcile();
                 return;
             }
             const armButton = event.target.closest<HTMLElement>("[data-ra-next-lens-arm]");

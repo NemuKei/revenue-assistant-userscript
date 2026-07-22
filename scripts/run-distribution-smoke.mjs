@@ -14,7 +14,13 @@ const DEFAULT_DIST_PATH = "dist/revenue-assistant-userscript.user.js";
 const DEFAULT_PUBLISHED_URL = "https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js";
 const DEFAULT_URL = "https://ra.jalan.net/";
 const DEFAULT_SECONDS = 20;
-const SMOKE_MODES = new Set(["top", "price-trends", "analyze-recommendations", "monthly-progress"]);
+const SMOKE_MODES = new Set([
+    "top",
+    "competitor-prices",
+    "price-trends",
+    "analyze-recommendations",
+    "monthly-progress"
+]);
 const VERSION_POLICIES = new Set(["warn", "fail"]);
 const CDP_CONNECTION_MODES = new Set(["auto", "browser", "page"]);
 const WRITE_ENDPOINTS = [
@@ -572,6 +578,20 @@ function assessModeMetrics(mode, metrics, options) {
             minCountFailure("price trends svg count", metrics["price trends svg count"], 1)
         ].filter((failure) => failure !== null);
     }
+    if (mode === "competitor-prices") {
+        return [
+            yesFailure("competitor price tab", metrics["competitor price tab"]),
+            yesFailure("competitor price native context", metrics["competitor price native context"]),
+            minCountFailure("competitor price overview count", metrics["competitor price overview count"], 1),
+            minCountFailure("competitor price filter group count", metrics["competitor price filter group count"], 2),
+            minCountFailure("competitor price panel count", metrics["competitor price panel count"], 4),
+            minCountFailure("competitor price svg count", metrics["competitor price svg count"], 1),
+            minCountFailure("competitor price keyboard hitbox count", metrics["competitor price keyboard hitbox count"], 1),
+            metrics["competitor price title"] === "競合価格 最安値推移"
+                ? null
+                : `competitor price title must be 競合価格 最安値推移, got ${metrics["competitor price title"] ?? "missing"}`
+        ].filter((failure) => failure !== null);
+    }
     if (mode === "analyze-recommendations") {
         return [
             yesFailure("Analyze page candidate", metrics["Analyze page candidate"]),
@@ -690,6 +710,26 @@ function runSelfTest() {
         "Analyze sales setting booking curve svg count": 0
     }, { allowEmptyPriceTrends: false });
     assert(salesSettingFailures.some((failure) => failure.includes("booking curve svg count")));
+
+    const passingCompetitorPriceMetrics = {
+        "competitor price tab": "yes",
+        "competitor price native context": "yes",
+        "competitor price overview count": 1,
+        "competitor price filter group count": 2,
+        "competitor price panel count": 4,
+        "competitor price svg count": 4,
+        "competitor price keyboard hitbox count": 12,
+        "competitor price title": "競合価格 最安値推移"
+    };
+    assert.deepEqual(
+        assessModeMetrics("competitor-prices", passingCompetitorPriceMetrics, { allowEmptyPriceTrends: false }),
+        []
+    );
+    const competitorPriceFailures = assessModeMetrics("competitor-prices", {
+        ...passingCompetitorPriceMetrics,
+        "competitor price svg count": 0
+    }, { allowEmptyPriceTrends: false });
+    assert(competitorPriceFailures.some((failure) => failure.includes("competitor price svg count")));
 }
 
 function assessVersionRelationship(options) {
@@ -753,7 +793,7 @@ function isExpectedModeUrl(mode, value) {
     if (mode === "top") {
         return url.pathname === "/" || url.pathname === "";
     }
-    if (mode === "price-trends" || mode === "analyze-recommendations") {
+    if (mode === "competitor-prices" || mode === "price-trends" || mode === "analyze-recommendations") {
         return /^\/analyze\/\d{4}-\d{2}-\d{2}$/.test(url.pathname);
     }
     return /^\/monthly-progress\/\d{4}-\d{2}$/.test(url.pathname);
@@ -782,11 +822,16 @@ async function applyViewportViaCdp(client, options) {
 }
 
 async function prepareMode(page, mode) {
-    if (mode !== "price-trends") {
+    const tabSelector = mode === "price-trends"
+        ? "[data-testid=\"tab-priceTrends\"]"
+        : mode === "competitor-prices"
+            ? "[data-testid=\"tab-competitorPrice\"]"
+            : null;
+    if (tabSelector === null) {
         return;
     }
     try {
-        const tab = page.locator("[data-testid=\"tab-priceTrends\"]").first();
+        const tab = page.locator(tabSelector).first();
         await tab.waitFor({ state: "attached", timeout: 15000 });
         await tab.click({ force: true });
     } catch {
@@ -830,14 +875,19 @@ async function exerciseMode(page, options) {
 }
 
 async function prepareModeViaCdp(client, mode) {
-    if (mode !== "price-trends") {
+    const tabSelector = mode === "price-trends"
+        ? "[data-testid=\"tab-priceTrends\"]"
+        : mode === "competitor-prices"
+            ? "[data-testid=\"tab-competitorPrice\"]"
+            : null;
+    if (tabSelector === null) {
         return;
     }
     try {
-        await waitForSelectorViaCdp(client, "[data-testid=\"tab-priceTrends\"]", 15000);
+        await waitForSelectorViaCdp(client, tabSelector, 15000);
         await evaluateViaCdp(client, `
             (() => {
-                const tab = document.querySelector("[data-testid=\\"tab-priceTrends\\"]");
+                const tab = document.querySelector(${JSON.stringify(tabSelector)});
                 if (tab instanceof HTMLElement) {
                     tab.click();
                     return true;
@@ -1052,6 +1102,19 @@ function collectModeMetricsInPage(selectedMode) {
                 "price trends panel count": doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-chart-panel]").length,
                 "price trends svg count": doc.querySelectorAll("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-chart-svg]").length,
                 "price trends background text": textFrom("[data-ra-sales-setting-price-trend-overview] [data-ra-sales-setting-competitor-price-overview-meta]")
+            };
+        }
+        if (selectedMode === "competitor-prices") {
+            return {
+                ...commonPageDiagnostics(),
+                "competitor price tab": doc.querySelector("[data-testid=\"tab-competitorPrice\"]") !== null ? "yes" : "no",
+                "competitor price native context": doc.querySelector("[data-testid=\"competitor-price-tax-included-text\"]") !== null ? "yes" : "no",
+                "competitor price overview count": doc.querySelectorAll("[data-ra-sales-setting-competitor-price-overview]").length,
+                "competitor price filter group count": doc.querySelectorAll("[data-ra-sales-setting-competitor-price-overview] [data-ra-sales-setting-competitor-price-filter-group]").length,
+                "competitor price panel count": doc.querySelectorAll("[data-ra-sales-setting-competitor-price-overview] [data-ra-sales-setting-competitor-price-chart-panel]").length,
+                "competitor price svg count": doc.querySelectorAll("[data-ra-sales-setting-competitor-price-overview] [data-ra-sales-setting-competitor-price-chart-svg]").length,
+                "competitor price keyboard hitbox count": doc.querySelectorAll("[data-ra-sales-setting-competitor-price-overview] [data-ra-sales-setting-competitor-price-chart-svg] rect[tabindex=\"0\"]").length,
+                "competitor price title": textFrom("[data-ra-sales-setting-competitor-price-overview] [data-ra-sales-setting-competitor-price-overview-title]")
             };
         }
         if (selectedMode === "analyze-recommendations") {

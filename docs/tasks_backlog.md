@@ -204,15 +204,29 @@
 ### RAU-UX-149 NextからAnalyze詳細機能のread-only parityを確認する
 
 - 状態:
-  - 未着手。NextのNowとする。
+  - 完了。route isolationとparity auditを実装し、cutover blockerを`RAU-UX-150`へ分離した。
 - 目的:
   - 好評なbooking curve、競合価格、90日価格推移を旧候補表から切り離して残し、基準日 / 類似日から必要時に深掘りできることをcutover前に確認する。
 - gate:
-  - 対象日維持、全部屋タイプ、booking curve series / tooltip / rank marker、競合価格snapshot / 人数別series / room type注意、価格推移90日 / filter / tooltip / empty / errorを既存contractと実画面で個別に確認する。
-  - graphをNext calendarへ常時埋め込まず、Analyzeを深掘り画面として再利用する。既存graphの仕様変更が必要な場合は同taskへ混ぜず別判断とする。
-  - write-capable controlと最終送信は扱わず、candidate起点request、console、responsive overflow、cleanupを確認する。
+  - Nextのcalendar lensをproductionの`/`だけに限定し、Analyzeではin-flight根拠、選択、root、style、badge、marker、追加accessibility属性を除去する。戻った場合は旧選択を復元せずidleから再開する。
+  - fixture / liveで対象日維持、全部屋タイプ、標準booking curve、標準競合価格条件、標準90日価格推移を確認した。candidate起点request 0、Revenue Assistant write API POST 0、candidate / Revenue Assistant由来console warning / error 0、runtime exception 0、reload cleanupを確認した。
+  - Classic固有のbooking curve reference / rank marker、競合snapshot履歴graph、90日価格推移の人数別4 panelは標準画面だけでは残らない。parityを偽って完了扱いにせず、実装blockerを次taskへ切り出す。
 
-Remaining Task Triage は Now `RAU-UX-149`、Next / After Next / Later なしとする。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+### RAU-UX-150 Next Analyze固有graphをclean-roomで再接続する
+
+- 状態:
+  - 未着手。NextのNowとする。
+- 目的:
+  - 標準Analyzeを土台に、実務で価値が確認されているClassic固有の比較機能だけをNextの独立runtimeとして再接続する。`src/main.ts`の画面構造やmonolithを移植しない。
+- 実装順:
+  - 最優先は標準代替がない競合snapshot履歴graph。次にbooking curveのreference / rank marker、最後に90日価格推移の人数別比較UIを扱う。
+  - 90日推移は旧4 panelを無条件複製せず、1〜4名の同時比較が判断速度を上げるかを合成fixtureで比較してから形を決める。
+- gate:
+  - calendar lensとAnalyze runtimeをroute単位で分離し、標準chartを隠さず、追加UIは非干渉領域へ置く。新規実装はadapter / cache read / view model / chartを分離する。
+  - 既存browser-local recordのreadonly利用から始める。新規endpoint、background prefetch、response保存、storage write、freshness policy変更が必要なら、目的、保存範囲、削除方針、負荷、権限をYellow zone判断として実装前に記録する。
+  - snapshot / empty / stale / error、人数 / 食事 / 部屋タイプ、tooltipのmouse / keyboard、screen reader label、390pxで追加root自身の横overflow 0、標準overflow非悪化、candidate request予算、console、write 0、route cleanupをfixture / smoke / liveで確認する。
+
+Remaining Task Triage は Now `RAU-UX-150`、Next / After Next / Later なしとする。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

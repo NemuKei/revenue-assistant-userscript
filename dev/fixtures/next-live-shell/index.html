@@ -11,6 +11,10 @@
         [data-mock-header] strong { margin-right: auto; }
         [data-mock-header] button { min-height: 36px; border: 1px solid rgba(255,255,255,.7); border-radius: 6px; background: transparent; color: #fff; font: inherit; font-weight: 700; }
         [data-mock-native-status] { min-width: 150px; font-size: 12px; font-weight: 700; }
+        [data-mock-analyze-content] { margin: 0 24px 24px; padding: 20px; border: 1px solid #c9d4dd; border-radius: 8px; background: #fff; }
+        [data-mock-analyze-content][hidden] { display: none; }
+        [data-mock-analyze-tabs] { display: flex; flex-wrap: wrap; gap: 8px; }
+        [data-mock-analyze-tabs] button { min-height: 40px; padding: 8px 14px; border: 1px solid #aebdca; border-radius: 6px; background: #f8fafb; color: inherit; font: inherit; }
         [data-mock-ra-shell] { min-height: 760px; }
         [data-mock-ra-shell][data-mock-fixed-width-host] { min-width: 1200px; }
         [data-testid="segmented-control"] { display: flex; gap: 1px; padding: 12px 24px; }
@@ -40,6 +44,8 @@
             <button type="button" data-mock-rerender>カレンダーを再描画</button>
             <button type="button" data-mock-remount>カレンダーを一時再マウント</button>
             <button type="button" data-mock-root-remount>レンズ領域を再マウント</button>
+            <button type="button" data-mock-route-analyze>Analyzeへ</button>
+            <button type="button" data-mock-route-calendar>カレンダーへ</button>
             <button type="button" data-mock-classic>Classic markerを追加</button>
         </header>
         <main>
@@ -51,6 +57,14 @@
                     <button type="button">料金ランク</button>
                 </div>
                 <div data-mock-calendar-host></div>
+                <section data-mock-analyze-content hidden>
+                    <h2>Analyze mock / 標準詳細を維持</h2>
+                    <div data-mock-analyze-tabs role="tablist" aria-label="Analyze mock tabs">
+                        <button type="button" role="tab" data-testid="tab-bookingCurve">予約曲線</button>
+                        <button type="button" role="tab" data-testid="tab-competitorPrice">競合価格</button>
+                        <button type="button" role="tab" data-testid="tab-priceTrends">価格推移</button>
+                    </div>
+                </section>
             </section>
         </main>
     </div>
@@ -63,6 +77,15 @@
                 shell.setAttribute("data-mock-fixed-width-host", "");
             }
             const status = document.querySelector("[data-mock-native-status]");
+            const analyzeContent = document.querySelector("[data-mock-analyze-content]");
+            const syncRouteState = () => {
+                analyzeContent.hidden = !window.location.pathname.startsWith("/analyze/");
+            };
+            const moveToRoute = (pathname) => {
+                window.history.pushState({}, "", pathname);
+                syncRouteState();
+                window.dispatchEvent(new PopStateEvent("popstate"));
+            };
             const renderCalendar = () => {
                 const strip = document.createElement("div");
                 strip.setAttribute("data-mock-calendar-strip", "");
@@ -115,6 +138,14 @@
             document.querySelector("[data-mock-root-remount]").addEventListener("click", () => {
                 document.querySelector("[data-ra-next-similarity-lens-root]")?.remove();
             });
+            document.querySelector("[data-mock-route-analyze]").addEventListener("click", () => {
+                moveToRoute("/analyze/2026-08-12");
+            });
+            document.querySelector("[data-mock-route-calendar]").addEventListener("click", () => {
+                moveToRoute("/");
+            });
+            window.addEventListener("popstate", syncRouteState);
+            syncRouteState();
             document.querySelector("[data-mock-classic]").addEventListener("click", () => {
                 const sentinel = document.createElement("span");
                 sentinel.setAttribute("data-ra-group-room-toggle", "");
