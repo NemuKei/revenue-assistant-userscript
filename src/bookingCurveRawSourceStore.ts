@@ -1,49 +1,29 @@
-import type { BookingCurveApiResponse, CurveScope } from "./curveCore";
+import type { BookingCurveApiResponse } from "./curveCore";
+import {
+    BOOKING_CURVE_RAW_SOURCE_DB_NAME,
+    BOOKING_CURVE_RAW_SOURCE_DB_VERSION,
+    BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION,
+    BOOKING_CURVE_RAW_SOURCE_STORE_NAME,
+    buildBookingCurveRawSourceCacheKey,
+    type BookingCurveRawSourceKeyParts,
+    type BookingCurveRawSourceRecord,
+    type BookingCurveRawSourceStoredRoomGroupStatus,
+    type BookingCurveRawSourceStoredStayDateStatus
+} from "./bookingCurveRawSourceContract";
 
-const BOOKING_CURVE_RAW_SOURCE_DB_NAME = "revenue-assistant-booking-curve-sources";
-const BOOKING_CURVE_RAW_SOURCE_DB_VERSION = 1;
-const BOOKING_CURVE_RAW_SOURCE_STORE_NAME = "booking-curve-raw-sources";
-const BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION = "booking_curve_raw_source:v2";
-
-export interface BookingCurveRawSourceKeyParts {
-    facilityId: string;
-    stayDate: string;
-    asOfDate: string;
-    scope: CurveScope;
-    roomGroupId?: string;
-    endpoint: string;
-    query: string;
-}
-
-export interface BookingCurveRawSourceRecord {
-    cacheKey: string;
-    facilityId: string;
-    stayDate: string;
-    asOfDate: string;
-    scope: CurveScope;
-    roomGroupId: string | null;
-    endpoint: string;
-    query: string;
-    fetchedAt: string;
-    schemaVersion: string;
-    response: BookingCurveApiResponse;
-}
-
-export type BookingCurveRawSourceStoredStayDateStatus = "currentAsOf" | "pastAsOf";
-export type BookingCurveRawSourceStoredRoomGroupStatus = "currentAsOf" | "pastAsOf" | "none";
-
-export function buildBookingCurveRawSourceCacheKey(parts: BookingCurveRawSourceKeyParts): string {
-    return [
-        `facility:${parts.facilityId}`,
-        `stayDate:${parts.stayDate}`,
-        `asOf:${parts.asOfDate}`,
-        `scope:${parts.scope}`,
-        `roomGroup:${parts.roomGroupId ?? "-"}`,
-        `endpoint:${parts.endpoint}`,
-        `query:${parts.query}`,
-        `schema:${BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION}`
-    ].join("|");
-}
+export {
+    BOOKING_CURVE_RAW_SOURCE_DB_NAME,
+    BOOKING_CURVE_RAW_SOURCE_DB_VERSION,
+    BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION,
+    BOOKING_CURVE_RAW_SOURCE_STORE_NAME,
+    buildBookingCurveRawSourceCacheKey
+} from "./bookingCurveRawSourceContract";
+export type {
+    BookingCurveRawSourceKeyParts,
+    BookingCurveRawSourceRecord,
+    BookingCurveRawSourceStoredRoomGroupStatus,
+    BookingCurveRawSourceStoredStayDateStatus
+} from "./bookingCurveRawSourceContract";
 
 export function buildBookingCurveRawSourceRecord(
     parts: BookingCurveRawSourceKeyParts,

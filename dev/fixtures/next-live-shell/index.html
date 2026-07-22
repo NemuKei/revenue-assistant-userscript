@@ -7,7 +7,7 @@
     <style>
         * { box-sizing: border-box; }
         body { margin: 0; background: #f4f6f8; color: #263a4d; font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; }
-        [data-mock-header] { display: flex; align-items: center; gap: 10px; min-height: 50px; padding: 7px 20px; background: #2378b8; color: #fff; }
+        [data-mock-header] { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; min-height: 50px; padding: 7px 20px; background: #2378b8; color: #fff; }
         [data-mock-header] strong { margin-right: auto; }
         [data-mock-header] button { min-height: 36px; border: 1px solid rgba(255,255,255,.7); border-radius: 6px; background: transparent; color: #fff; font: inherit; font-weight: 700; }
         [data-mock-native-status] { min-width: 150px; font-size: 12px; font-weight: 700; }
@@ -31,8 +31,12 @@
     <div id="root">
         <header data-mock-header>
             <strong>Revenue Assistant mock / read-only</strong>
+            <span>最終データ更新: 2026年7月22日</span>
+            <button type="button" data-mock-facility-context>施設A（mock）</button>
             <span data-mock-native-status>通常遷移 0回</span>
             <button type="button" data-mock-rerender>カレンダーを再描画</button>
+            <button type="button" data-mock-remount>カレンダーを一時再マウント</button>
+            <button type="button" data-mock-root-remount>レンズ領域を再マウント</button>
             <button type="button" data-mock-classic>Classic markerを追加</button>
         </header>
         <main>
@@ -75,6 +79,7 @@
                         const stayDate = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
                         const anchor = document.createElement("a");
                         anchor.setAttribute("data-testid", `calendar-date-${stayDate}`);
+                        anchor.href = `/analyze/${stayDate.replaceAll("-", "")}`;
                         const dayLabel = document.createElement("span");
                         dayLabel.setAttribute("data-mock-day", "");
                         dayLabel.textContent = String(day);
@@ -94,7 +99,19 @@
                 document.querySelector("[data-mock-calendar-host]").replaceChildren(strip);
             };
             renderCalendar();
+            document.querySelector("[data-mock-facility-context]").addEventListener("click", (event) => {
+                event.currentTarget.textContent = event.currentTarget.textContent.includes("A")
+                    ? "施設B（mock）"
+                    : "施設A（mock）";
+            });
             document.querySelector("[data-mock-rerender]").addEventListener("click", renderCalendar);
+            document.querySelector("[data-mock-remount]").addEventListener("click", () => {
+                document.querySelector("[data-mock-calendar-host]").replaceChildren();
+                window.setTimeout(renderCalendar, 120);
+            });
+            document.querySelector("[data-mock-root-remount]").addEventListener("click", () => {
+                document.querySelector("[data-ra-next-similarity-lens-root]")?.remove();
+            });
             document.querySelector("[data-mock-classic]").addEventListener("click", () => {
                 const sentinel = document.createElement("span");
                 sentinel.setAttribute("data-ra-group-room-toggle", "");
@@ -102,6 +119,6 @@
             });
         })();
     </script>
-    <script type="module" src="/src/next/entry.ts"></script>
+    <script type="module" src="/src/next/dev/liveShellEntry.ts"></script>
 </body>
 </html>

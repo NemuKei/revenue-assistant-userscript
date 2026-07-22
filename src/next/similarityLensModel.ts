@@ -5,6 +5,7 @@ export interface SimilarityCurvePoint {
 
 export interface SimilarityDayEvidence {
     stayDate: string;
+    roomGroupId: string;
     onHandRooms: number | null;
     transientCurve: readonly SimilarityCurvePoint[] | null;
     groupCurve: readonly SimilarityCurvePoint[] | null;
@@ -22,6 +23,7 @@ export type SimilarityTier = "very_similar" | "similar";
 
 export interface SimilarityMatch {
     stayDate: string;
+    roomGroupId: string;
     score: number;
     tier: SimilarityTier;
     sameWeekday: boolean;
@@ -57,7 +59,12 @@ export function findSimilarDays(
     const maximumResults = Math.max(0, Math.floor(options.maximumResults ?? DEFAULT_MAXIMUM_RESULTS));
 
     return candidates
-        .filter((candidate) => candidate.stayDate !== base.stayDate)
+        .filter((candidate) => (
+            normalizeComparableDate(candidate.stayDate) !== normalizeComparableDate(base.stayDate)
+            && isUsableRoomGroupId(candidate.roomGroupId)
+            && isUsableRoomGroupId(base.roomGroupId)
+            && candidate.roomGroupId === base.roomGroupId
+        ))
         .map((candidate) => compareSimilarityDayEvidence(base, candidate))
         .filter((match): match is SimilarityMatch => match !== null && match.score >= minimumScore)
         .sort((left, right) => right.score - left.score || left.stayDate.localeCompare(right.stayDate))
@@ -68,6 +75,14 @@ export function compareSimilarityDayEvidence(
     base: SimilarityDayEvidence,
     candidate: SimilarityDayEvidence
 ): SimilarityMatch | null {
+    if (
+        !isUsableRoomGroupId(base.roomGroupId)
+        || !isUsableRoomGroupId(candidate.roomGroupId)
+        || base.roomGroupId !== candidate.roomGroupId
+        || normalizeComparableDate(base.stayDate) === normalizeComparableDate(candidate.stayDate)
+    ) {
+        return null;
+    }
     const dimensions: SimilarityDimensionScores = {
         transientPace: compareCurves(base.transientCurve, candidate.transientCurve),
         groupPace: compareCurves(base.groupCurve, candidate.groupCurve),
@@ -107,6 +122,7 @@ export function compareSimilarityDayEvidence(
 
     return {
         stayDate: candidate.stayDate,
+        roomGroupId: candidate.roomGroupId,
         score: roundScore(score),
         tier: score >= VERY_SIMILAR_SCORE && evidenceCoverage === 1 ? "very_similar" : "similar",
         sameWeekday,
@@ -171,14 +187,31 @@ function getReasonLabel(key: keyof SimilarityDimensionScores): string {
 }
 
 function getUtcWeekday(compactDate: string): number | null {
-    if (!/^\d{8}$/u.test(compactDate)) {
+    const normalized = normalizeComparableDate(compactDate);
+    if (!/^\d{8}$/u.test(normalized)) {
         return null;
     }
-    const year = Number(compactDate.slice(0, 4));
-    const month = Number(compactDate.slice(4, 6));
-    const day = Number(compactDate.slice(6, 8));
+    const year = Number(normalized.slice(0, 4));
+    const month = Number(normalized.slice(4, 6));
+    const day = Number(normalized.slice(6, 8));
     const date = new Date(Date.UTC(year, month - 1, day));
-    return Number.isNaN(date.getTime()) ? null : date.getUTCDay();
+    if (
+        Number.isNaN(date.getTime())
+        || date.getUTCFullYear() !== year
+        || date.getUTCMonth() !== month - 1
+        || date.getUTCDate() !== day
+    ) {
+        return null;
+    }
+    return date.getUTCDay();
+}
+
+function normalizeComparableDate(value: string): string {
+    return value.trim().replace(/-/gu, "");
+}
+
+function isUsableRoomGroupId(value: unknown): value is string {
+    return typeof value === "string" && value.trim() !== "";
 }
 
 function roundScore(value: number): number {

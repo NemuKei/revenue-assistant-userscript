@@ -10,6 +10,7 @@ export type LiveCalendarDomFailureReason =
     | "calendar-mount-boundary-missing";
 
 export interface LiveCalendarCell {
+    analyzeHref: string | null;
     anchor: HTMLAnchorElement;
     standardValueElement: HTMLElement;
     stayDate: string;
@@ -19,6 +20,7 @@ export interface LiveCalendarDomSnapshot {
     calendarStrip: HTMLElement;
     cells: readonly LiveCalendarCell[];
     dateFingerprint: string;
+    facilityContextHints: readonly string[];
     mountBoundary: HTMLElement;
     mountParent: HTMLElement;
 }
@@ -52,7 +54,12 @@ export function collectLiveCalendarDom(documentHost: Document): LiveCalendarDomR
             return { ok: false, reason: "calendar-standard-value-missing" };
         }
         seenDates.add(stayDate);
-        cells.push({ anchor, standardValueElement, stayDate });
+        cells.push({
+            analyzeHref: anchor.hasAttribute("href") ? anchor.href : null,
+            anchor,
+            standardValueElement,
+            stayDate
+        });
     }
 
     const calendarStrip = findLowestCommonAncestor(cells.map((cell) => cell.anchor));
@@ -82,10 +89,50 @@ export function collectLiveCalendarDom(documentHost: Document): LiveCalendarDomR
             calendarStrip,
             cells,
             dateFingerprint: cells.map((cell) => cell.stayDate).join(","),
+            facilityContextHints: readLiveFacilityContextHints(documentHost),
             mountBoundary,
             mountParent: main
         }
     };
+}
+
+export function readLiveFacilityContextHints(documentHost: Document): string[] {
+    const selectors = [
+        "header [data-testid*='facility']",
+        "header [data-testid*='yad']",
+        "header button span",
+        "header button",
+        "header h1",
+        "header [role='button'] span",
+        "header [role='button']"
+    ];
+    const hints = new Set<string>();
+    for (const selector of selectors) {
+        for (const element of documentHost.querySelectorAll<HTMLElement>(selector)) {
+            if (!isVisibleElement(element)) {
+                continue;
+            }
+            const text = element.textContent?.replace(/\s+/gu, " ").trim() ?? "";
+            if (text !== "") {
+                hints.add(text);
+            }
+        }
+    }
+    return Array.from(hints);
+}
+
+export function hasLiveFacilityContextLabel(
+    hints: readonly string[],
+    facilityLabel: string
+): boolean {
+    const normalizedLabel = normalizeFacilityContextText(facilityLabel);
+    if (normalizedLabel === "") {
+        return false;
+    }
+    return hints.some((hint) => {
+        const normalizedHint = normalizeFacilityContextText(hint);
+        return normalizedHint === normalizedLabel;
+    });
 }
 
 export function parseStayDateFromCalendarTestId(value: string | null): string | null {
@@ -136,4 +183,8 @@ function isVisibleElement(element: HTMLElement): boolean {
     }
     const rect = element.getBoundingClientRect();
     return rect.width > 0 && rect.height > 0;
+}
+
+function normalizeFacilityContextText(value: string): string {
+    return value.normalize("NFKC").replace(/\s+/gu, "").trim();
 }

@@ -15,9 +15,44 @@ const artifactPath = path.join(
     "vite-next-candidate",
     `${userscript.id}.candidate.user.js`
 );
+const sourceMapPath = `${artifactPath}.map`;
 const relativeArtifactPath = path.relative(projectRoot, artifactPath);
 const artifactText = await readFile(artifactPath, "utf8");
+const sourceMap = JSON.parse(await readFile(sourceMapPath, "utf8"));
 const metadata = parseUserscriptMetadata(artifactText);
+
+const expectedSources = [
+    "src/bookingCurveRawSourceContract.ts",
+    "src/competitorPriceSnapshotContract.ts",
+    "src/curveCore.ts",
+    "src/indexedDbReadOnly.ts",
+    "src/next/entry.ts",
+    "src/next/live/liveCalendarDomAdapter.ts",
+    "src/next/live/liveSimilarityLensDataSource.ts",
+    "src/next/live/liveSimilarityLensEvidence.ts",
+    "src/next/live/liveSimilarityLensRuntime.ts",
+    "src/next/live/liveSimilarityLensState.ts",
+    "src/next/live/liveSimilarityLensTransport.ts",
+    "src/next/live/liveSimilarityLensView.ts",
+    "src/next/live/liveSimilarityLensViewModel.ts",
+    "src/next/runtimeLease.ts",
+    "src/next/runtimeMarker.ts",
+    "src/next/similarityLensModel.ts"
+].sort();
+assert.equal(Array.isArray(sourceMap.sources), true, "Next source map must include sources");
+assert.equal(Array.isArray(sourceMap.sourcesContent), true, "Next source map must include sourcesContent");
+assert.equal(sourceMap.sources.length, sourceMap.sourcesContent.length);
+assert.equal(sourceMap.sourcesContent.every((content) => typeof content === "string"), true);
+const normalizedSources = sourceMap.sources.map(normalizeSourceMapPath).sort();
+assert.deepEqual(
+    normalizedSources,
+    expectedSources,
+    "Next candidate runtime source graph must remain exactly allowlisted"
+);
+assert.equal(normalizedSources.includes("src/main.ts"), false);
+assert.equal(normalizedSources.includes("src/bookingCurveRawSourceStore.ts"), false);
+assert.equal(normalizedSources.includes("src/competitorPriceSnapshotStore.ts"), false);
+assert.equal(normalizedSources.some((source) => source.includes("/dev/")), false);
 
 assert.equal(
     artifactText.startsWith("// ==UserScript==\n"),
@@ -52,10 +87,27 @@ assert.equal(metadata.has("resource"), false, "Next candidate must not load remo
 assert.match(artifactText, /data-ra-next-runtime-state/u);
 assert.match(artifactText, /ready-read-only/u);
 assert.match(artifactText, /data-ra-next-similarity-lens-root/u);
+assert.equal(countMatches(artifactText, /\bfetch\b/gu), 1, "Next candidate must contain one raw fetch");
+assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");
+assert.equal(countMatches(artifactText, /\/api\/v2\/yad\/info/gu), 1);
+assert.equal(countMatches(artifactText, /\/api\/v1\/suggest\/output\/current_settings/gu), 1);
+assert.equal(
+    countMatches(artifactText, /\/api\/v4\/booking_curve/gu) >= 1,
+    true,
+    "booking endpoint contract must remain present for cache validation"
+);
+assert.equal(
+    countMatches(artifactText, /\/api\/v5\/competitor_prices/gu) >= 1,
+    true,
+    "competitor endpoint contract must remain present for cache validation"
+);
+assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 2);
+assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 1);
+assert.match(artifactText, /readonly/u);
+assert.match(artifactText, /GET/u);
 
 for (const forbiddenPattern of [
-    /\bfetch\b/u,
-    /\bXMLHttpRequest\b/u,
+    /\bXMLHttpRequest\s*\(/u,
     /\bsendBeacon\b/u,
     /\bWebSocket\b/u,
     /\bEventSource\b/u,
@@ -63,8 +115,14 @@ for (const forbiddenPattern of [
     /\bWorker\b/u,
     /\blocalStorage\b/u,
     /\bsessionStorage\b/u,
-    /\bindexedDB\b/u,
     /\bdocument\.cookie\b/u,
+    /\breadwrite\b/u,
+    /\bcreateObjectStore\b/u,
+    /\bdeleteObjectStore\b/u,
+    /\bdeleteDatabase\b/u,
+    /\bcreateIndex\b/u,
+    /\bdeleteIndex\b/u,
+    /["'](?:POST|PUT|PATCH|DELETE)["']/u,
     /\.requestSubmit\s*\(/u,
     /\.submit\s*\(/u,
     /\.location\.(?:assign|replace)\s*\(/u
@@ -85,6 +143,14 @@ console.log(JSON.stringify({
     downloadURL: metadata.get("downloadURL")?.[0] ?? null,
     mode: "read-only"
 }, null, 2));
+
+function normalizeSourceMapPath(value) {
+    return value.replaceAll("\\", "/").replace(/^(?:\.\.\/)+/u, "");
+}
+
+function countMatches(content, pattern) {
+    return Array.from(content.matchAll(pattern)).length;
+}
 
 function parseUserscriptMetadata(content) {
     const metadata = new Map();

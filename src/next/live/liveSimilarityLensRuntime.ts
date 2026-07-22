@@ -1,17 +1,28 @@
 import { detectLegacyClassicRuntime } from "../runtimeLease";
 import {
     collectLiveCalendarDom,
+    hasLiveFacilityContextLabel,
     parseStayDateFromCalendarTestId,
     type LiveCalendarDomSnapshot
 } from "./liveCalendarDomAdapter";
+import {
+    createLiveSimilarityLensDataSource,
+    type LiveSimilarityLensDataSource
+} from "./liveSimilarityLensDataSource";
 import {
     armLiveSimilarityLens,
     cancelLiveSimilarityLensSelection,
     clearLiveSimilarityLensBaseDate,
     createInitialLiveSimilarityLensState,
     selectLiveSimilarityLensBaseDate,
+    selectLiveSimilarityLensRoomGroup,
+    toggleLiveSimilarityLensComparisonDate,
     type LiveSimilarityLensState
 } from "./liveSimilarityLensState";
+import type {
+    LiveSimilarityLensEvidenceLoadState,
+    LiveSimilarityLensReadyViewModel
+} from "./liveSimilarityLensViewModel";
 import {
     createLiveSimilarityLensRoot,
     ensureLiveSimilarityLensStyles,
@@ -19,7 +30,8 @@ import {
     LIVE_SIMILARITY_LENS_ROOT_ATTRIBUTE,
     removeLiveSimilarityLensArtifacts,
     renderLiveSimilarityLens,
-    syncLiveCalendarDecorations
+    syncLiveCalendarDecorations,
+    type LiveSimilarityLensDisclosureState
 } from "./liveSimilarityLensView";
 
 const NEXT_LIVE_STATE_ATTRIBUTE = "data-ra-next-live-state";
@@ -30,16 +42,45 @@ export interface LiveSimilarityLensRuntimeHandle {
     stop(): void;
 }
 
+export interface StartLiveSimilarityLensRuntimeOptions {
+    dataSource?: LiveSimilarityLensDataSource;
+}
+
+export function invalidateLiveSimilarityLensRuntimeSelection(
+    currentGeneration: number
+): {
+    evidenceState: LiveSimilarityLensEvidenceLoadState;
+    generation: number;
+    state: LiveSimilarityLensState;
+} {
+    return {
+        evidenceState: { status: "idle" },
+        generation: currentGeneration + 1,
+        state: clearLiveSimilarityLensBaseDate()
+    };
+}
+
 export function startLiveSimilarityLensRuntime(
     documentHost: Document = document,
-    windowHost: Window = window
+    windowHost: Window = window,
+    options: StartLiveSimilarityLensRuntimeOptions = {}
 ): LiveSimilarityLensRuntimeHandle {
     let state = createInitialLiveSimilarityLensState();
+    let evidenceState: LiveSimilarityLensEvidenceLoadState = { status: "idle" };
+    let evidenceGeneration = 0;
+    let readyViewModel: LiveSimilarityLensReadyViewModel | null = null;
     let snapshot: LiveCalendarDomSnapshot | null = null;
     let root: HTMLElement | null = null;
     let stopped = false;
     let scheduledReconcileTimer: number | null = null;
     let rovingDate: string | null = null;
+    let pendingRoomGroupFocus = false;
+    let pendingRoomGroupFocusAnchor: HTMLAnchorElement | null = null;
+    let activeFacilityLabel: string | null = null;
+    let disclosureState: LiveSimilarityLensDisclosureState = {
+        comparisonExpanded: null,
+        matchListExpanded: null
+    };
     let selectedFocusability: { anchor: HTMLAnchorElement; tabIndex: string | null } | null = null;
     const originalAccessibilityByCell = new Map<HTMLAnchorElement, {
         describedBy: string | null;
@@ -47,6 +88,7 @@ export function startLiveSimilarityLensRuntime(
         tabIndex: string | null;
     }>();
 
+    const dataSource = options.dataSource ?? createLiveSimilarityLensDataSource({ documentHost, windowHost });
     const abortController = new AbortController();
     const observer = new MutationObserver(scheduleReconcile);
 
@@ -55,6 +97,14 @@ export function startLiveSimilarityLensRuntime(
         signal: abortController.signal
     });
     documentHost.addEventListener("keydown", handleDocumentKeydown, {
+        capture: true,
+        signal: abortController.signal
+    });
+    documentHost.addEventListener("change", handleDocumentChange, {
+        capture: true,
+        signal: abortController.signal
+    });
+    documentHost.addEventListener("toggle", handleDocumentToggle, {
         capture: true,
         signal: abortController.signal
     });
@@ -75,13 +125,17 @@ export function startLiveSimilarityLensRuntime(
             "style"
         ],
         attributes: true,
+        characterData: true,
         childList: true,
         subtree: true
     });
     reconcile();
 
     return {
-        getState: () => ({ ...state }),
+        getState: () => ({
+            ...state,
+            selectedComparisonDates: [...state.selectedComparisonDates]
+        }),
         reconcile,
         stop
     };
@@ -105,16 +159,22 @@ export function startLiveSimilarityLensRuntime(
 
         const result = collectLiveCalendarDom(documentHost);
         if (!result.ok) {
-            if (state.mode === "armed") {
-                state = cancelLiveSimilarityLensSelection(state);
-            }
+            const invalidated = invalidateLiveSimilarityLensRuntimeSelection(evidenceGeneration);
+            state = invalidated.state;
+            evidenceState = invalidated.evidenceState;
+            evidenceGeneration = invalidated.generation;
             rovingDate = null;
             snapshot = null;
+            readyViewModel = null;
+            pendingRoomGroupFocus = false;
+            pendingRoomGroupFocusAnchor = null;
+            activeFacilityLabel = null;
+            resetDisclosureState();
             root?.remove();
             root = null;
             restoreCalendarTabIndexes();
             restoreSelectedBaseFocusability();
-            syncLiveCalendarDecorations(documentHost, null, state);
+            syncLiveCalendarDecorations(documentHost, null, state, null);
             documentHost.documentElement.setAttribute(
                 NEXT_LIVE_STATE_ATTRIBUTE,
                 `suspended-${result.reason}`
@@ -122,15 +182,34 @@ export function startLiveSimilarityLensRuntime(
             return;
         }
 
-        const previousFingerprint = snapshot?.dateFingerprint ?? null;
+        const previousSnapshot = snapshot;
+        const previousFingerprint = previousSnapshot?.dateFingerprint ?? null;
         snapshot = result.snapshot;
         let stateChanged = false;
+        const facilityContextChanged = previousSnapshot !== null
+            && previousSnapshot.calendarStrip !== snapshot.calendarStrip;
+        const activeFacilityContextMissing = activeFacilityLabel !== null
+            && !hasLiveFacilityContextLabel(snapshot.facilityContextHints, activeFacilityLabel);
         if (
             state.baseDate !== null
-            && !snapshot.cells.some((cell) => cell.stayDate === state.baseDate)
+            && (
+                facilityContextChanged
+                || activeFacilityContextMissing
+                ||
+                !snapshot.cells.some((cell) => cell.stayDate === state.baseDate)
+                || (previousFingerprint !== null && previousFingerprint !== snapshot.dateFingerprint)
+            )
         ) {
-            state = clearLiveSimilarityLensBaseDate();
+            const invalidated = invalidateLiveSimilarityLensRuntimeSelection(evidenceGeneration);
+            state = invalidated.state;
+            evidenceState = invalidated.evidenceState;
+            evidenceGeneration = invalidated.generation;
+            readyViewModel = null;
             rovingDate = null;
+            pendingRoomGroupFocus = false;
+            pendingRoomGroupFocusAnchor = null;
+            activeFacilityLabel = null;
+            resetDisclosureState();
             stateChanged = true;
         }
         ensureLiveSimilarityLensStyles(documentHost);
@@ -144,13 +223,14 @@ export function startLiveSimilarityLensRuntime(
             || previousFingerprint !== snapshot.dateFingerprint
             || stateChanged
         ) {
-            renderLiveSimilarityLens(root, state);
+            readyViewModel = renderLiveSimilarityLens(root, state, evidenceState, snapshot, disclosureState);
+            captureDisclosureState();
             if (focusedAction !== null) {
                 root.querySelector<HTMLElement>(`[${focusedAction}]`)?.focus({ preventScroll: true });
             }
         }
         syncCalendarTabIndexes();
-        syncLiveCalendarDecorations(documentHost, snapshot, state);
+        syncLiveCalendarDecorations(documentHost, snapshot, state, readyViewModel);
         syncSelectedBaseFocusability();
         documentHost.documentElement.setAttribute(NEXT_LIVE_STATE_ATTRIBUTE, "mounted-read-only");
     }
@@ -191,7 +271,14 @@ export function startLiveSimilarityLensRuntime(
             if (clearButton !== null) {
                 event.preventDefault();
                 state = clearLiveSimilarityLensBaseDate();
+                evidenceState = { status: "idle" };
+                evidenceGeneration += 1;
+                readyViewModel = null;
                 rovingDate = null;
+                pendingRoomGroupFocus = false;
+                pendingRoomGroupFocusAnchor = null;
+                activeFacilityLabel = null;
+                resetDisclosureState();
                 renderCurrentState();
                 focusArmButton();
             }
@@ -212,7 +299,7 @@ export function startLiveSimilarityLensRuntime(
         }
         event.preventDefault();
         event.stopImmediatePropagation();
-        selectBaseDate(dateAnchor, stayDate);
+        selectBaseDate(dateAnchor, stayDate, false);
     }
 
     function handleDocumentKeydown(event: KeyboardEvent): void {
@@ -255,7 +342,7 @@ export function startLiveSimilarityLensRuntime(
             }
             event.preventDefault();
             event.stopImmediatePropagation();
-            selectBaseDate(targetDateAnchor, stayDate);
+            selectBaseDate(targetDateAnchor, stayDate, true);
             return;
         }
         const offset = getCalendarKeyboardOffset(event.key);
@@ -271,24 +358,127 @@ export function startLiveSimilarityLensRuntime(
         }
         rovingDate = nextCell.stayDate;
         syncCalendarTabIndexes();
-        nextCell.anchor.focus({ preventScroll: true });
+        nextCell.anchor.focus();
+    }
+
+    function handleDocumentChange(event: Event): void {
+        if (stopped || !(event.target instanceof Element) || root === null || !root.contains(event.target)) {
+            return;
+        }
+        const roomGroupSelect = event.target.closest<HTMLSelectElement>("[data-ra-next-lens-room-group]");
+        if (roomGroupSelect !== null) {
+            state = selectLiveSimilarityLensRoomGroup(state, roomGroupSelect.value);
+            renderCurrentState();
+            root.querySelector<HTMLSelectElement>("[data-ra-next-lens-room-group]")?.focus({ preventScroll: true });
+            return;
+        }
+        const comparisonInput = event.target.closest<HTMLInputElement>("[data-ra-next-lens-compare-date]");
+        const stayDate = comparisonInput?.getAttribute("data-ra-next-lens-compare-date") ?? null;
+        if (comparisonInput === null || stayDate === null) {
+            return;
+        }
+        state = toggleLiveSimilarityLensComparisonDate(state, stayDate);
+        renderCurrentState();
+        root.querySelector<HTMLInputElement>(
+            `[data-ra-next-lens-compare-date="${stayDate}"]`
+        )?.focus({ preventScroll: true });
+    }
+
+    function handleDocumentToggle(event: Event): void {
+        if (!(event.target instanceof HTMLDetailsElement) || root?.contains(event.target) !== true) {
+            return;
+        }
+        if (event.target.matches("[data-ra-next-lens-results]")) {
+            disclosureState.matchListExpanded = event.target.open;
+        } else if (event.target.matches("[data-ra-next-lens-comparison]")) {
+            disclosureState.comparisonExpanded = event.target.open;
+        }
     }
 
     function renderCurrentState(): void {
         if (root !== null) {
-            renderLiveSimilarityLens(root, state);
+            readyViewModel = renderLiveSimilarityLens(root, state, evidenceState, snapshot, disclosureState);
+            captureDisclosureState();
         }
         syncCalendarTabIndexes();
-        syncLiveCalendarDecorations(documentHost, snapshot, state);
+        syncLiveCalendarDecorations(documentHost, snapshot, state, readyViewModel);
         syncSelectedBaseFocusability();
     }
 
-    function selectBaseDate(dateAnchor: HTMLAnchorElement, stayDate: string): void {
+    function selectBaseDate(
+        dateAnchor: HTMLAnchorElement,
+        stayDate: string,
+        focusRoomGroupWhenReady: boolean
+    ): void {
         dateAnchor.focus({ preventScroll: true });
         state = selectLiveSimilarityLensBaseDate(state, stayDate);
+        evidenceState = { status: "loading" };
+        readyViewModel = null;
         rovingDate = stayDate;
+        pendingRoomGroupFocus = focusRoomGroupWhenReady;
+        pendingRoomGroupFocusAnchor = focusRoomGroupWhenReady ? dateAnchor : null;
+        resetDisclosureState();
         renderCurrentState();
         dateAnchor.focus({ preventScroll: true });
+        loadSelectedDateEvidence();
+    }
+
+    function loadSelectedDateEvidence(): void {
+        if (snapshot === null || state.baseDate === null) {
+            return;
+        }
+        const generation = ++evidenceGeneration;
+        const expectedFingerprint = snapshot.dateFingerprint;
+        const visibleStayDates = snapshot.cells.map((cell) => cell.stayDate);
+        void dataSource.load(visibleStayDates).then((result) => {
+            if (
+                stopped
+                || generation !== evidenceGeneration
+                || snapshot?.dateFingerprint !== expectedFingerprint
+                || state.baseDate === null
+            ) {
+                return;
+            }
+            if (
+                result.status === "ready"
+                && !hasLiveFacilityContextLabel(snapshot.facilityContextHints, result.facilityLabel)
+            ) {
+                const invalidated = invalidateLiveSimilarityLensRuntimeSelection(evidenceGeneration);
+                state = invalidated.state;
+                evidenceState = invalidated.evidenceState;
+                evidenceGeneration = invalidated.generation;
+                readyViewModel = null;
+                rovingDate = null;
+                pendingRoomGroupFocus = false;
+                pendingRoomGroupFocusAnchor = null;
+                activeFacilityLabel = null;
+                resetDisclosureState();
+                renderCurrentState();
+                return;
+            }
+            activeFacilityLabel = result.status === "ready" ? result.facilityLabel : null;
+            evidenceState = result.status === "ready"
+                ? { status: "ready", evidence: result.evidence, contextKey: result.contextKey }
+                : { status: "error", reason: result.reason };
+            if (result.status !== "ready") {
+                pendingRoomGroupFocus = false;
+                pendingRoomGroupFocusAnchor = null;
+            }
+            renderCurrentState();
+            if (pendingRoomGroupFocus && evidenceState.status === "ready") {
+                const shouldMoveFocus = shouldFocusRoomGroupAfterLoad(
+                    pendingRoomGroupFocusAnchor,
+                    documentHost.activeElement,
+                    state.mode
+                );
+                pendingRoomGroupFocus = false;
+                pendingRoomGroupFocusAnchor = null;
+                if (shouldMoveFocus) {
+                    root?.querySelector<HTMLSelectElement>("[data-ra-next-lens-room-group]")
+                        ?.focus();
+                }
+            }
+        });
     }
 
     function syncCalendarTabIndexes(): void {
@@ -342,11 +532,29 @@ export function startLiveSimilarityLensRuntime(
             return;
         }
         const cell = snapshot.cells.find((candidate) => candidate.stayDate === rovingDate);
-        cell?.anchor.focus({ preventScroll: true });
+        cell?.anchor.focus();
     }
 
     function focusArmButton(): void {
-        root?.querySelector<HTMLElement>("[data-ra-next-lens-arm]")?.focus({ preventScroll: true });
+        root?.querySelector<HTMLElement>("[data-ra-next-lens-arm]")?.focus();
+    }
+
+    function captureDisclosureState(): void {
+        const matchList = root?.querySelector<HTMLDetailsElement>("[data-ra-next-lens-results]") ?? null;
+        const comparison = root?.querySelector<HTMLDetailsElement>("[data-ra-next-lens-comparison]") ?? null;
+        if (matchList !== null) {
+            disclosureState.matchListExpanded = matchList.open;
+        }
+        if (comparison !== null) {
+            disclosureState.comparisonExpanded = comparison.open;
+        }
+    }
+
+    function resetDisclosureState(): void {
+        disclosureState = {
+            comparisonExpanded: null,
+            matchListExpanded: null
+        };
     }
 
     function syncSelectedBaseFocusability(): void {
@@ -387,6 +595,8 @@ export function startLiveSimilarityLensRuntime(
             return;
         }
         stopped = true;
+        evidenceGeneration += 1;
+        dataSource.stop();
         abortController.abort();
         observer.disconnect();
         if (scheduledReconcileTimer !== null) {
@@ -399,7 +609,21 @@ export function startLiveSimilarityLensRuntime(
         documentHost.documentElement.setAttribute(NEXT_LIVE_STATE_ATTRIBUTE, finalState);
         root = null;
         snapshot = null;
+        readyViewModel = null;
+        pendingRoomGroupFocus = false;
+        pendingRoomGroupFocusAnchor = null;
+        activeFacilityLabel = null;
     }
+}
+
+export function shouldFocusRoomGroupAfterLoad(
+    initiatingAnchor: HTMLAnchorElement | null,
+    activeElement: Element | null,
+    stateMode: LiveSimilarityLensState["mode"]
+): boolean {
+    return stateMode === "selected"
+        && initiatingAnchor !== null
+        && activeElement === initiatingAnchor;
 }
 
 function resolveRovingCalendarCell(

@@ -170,16 +170,24 @@
 ### RAU-UX-147 Next基準日レンズへread-only根拠adapterを接続する
 
 - 状態:
-  - Now。`RAU-UX-146` のremote公開gateは完了した。
+  - local実装とsanitized fixture QAは完了。ログイン済み実画面でのadapter結果確認だけがNowとして残る。`RAU-UX-146` のremote公開gateは完了した。
 - 目的:
   - 基準日と類似候補を、OH / 個人 / 団体 / 競合の直接取得値で比較できるようにし、旧候補表へ戻らず実務判断を成立させる。
 - scope:
   - 確認済みの既存read-only adapter / browser-local cacheだけを再利用候補とし、新規endpoint、background prefetch、request pace / concurrency変更を混ぜない。
   - source、as-of、stay date、room typeが一致する場合だけ値を接続し、0、未取得、未接続を分ける。差し引きで個人 / 団体を推測しない。
   - Next選択日からAnalyzeのbooking curve、競合価格、価格推移へ到達する入口を作り、既存graph / preview contract testを維持する。graph自体のNextカレンダー常時埋込み、rank write、様子見、対応不要のmutationは含めない。
+- 完了済み:
+  - API adapter、IndexedDB reader、evidence、view model、UIを分離した。基準日未選択はGET 0、選択後は施設情報とcurrent settingsの確認済み2 endpointを各1回だけGETする。同一in-flightだけを重複排除し、完了または失敗した結果は保持しない。calendarの同一context再描画はdata sourceを再実行しないため追加GET 0だが、明示的な基準日再選択では施設を再検証する。raw `fetch` はtransport 1か所、IndexedDBは既存database / store / indexへのscoped readonly readだけに固定検査する。
+  - `facilityId` は `yad_no` だけから作り、API施設名が現在のvisible headerに存在する場合だけ結果を表示する。as-ofは画面の`最終データ更新`を厳密に読む。OHは同一stay date / room groupのcurrent settings、個人 / 団体は同一facility / stay date / as-of / room group / endpoint / queryのbooking curve primary keyだけを採用し、差し引き推測や過去as-of探索をしない。競合snapshotはfacility / stay date indexから1日最大1件だけを読み、そのrecordの保存有無と取得時刻だけを示す。最新性は保証せず、部屋タイプ対応未確認のため類似scoreから除外する。
+  - 独立reviewで見つけた施設切替cache混在、calendar一時消失後のstale根拠復帰、画面外keyboard focus、非同期完了時のfocus奪取、root再mount時の開閉状態消失、表示期間全体の競合cache誤表示、IndexedDB履歴の無制限materializeを修正した。API施設名とvisible headerの一致guard、calendar本体差替え / lossのgeneration invalidation、開始セルにfocusが残る場合だけのroom type移動、選択日単位の競合判定、固定record上限、IDB read method allowlist、完全一致primary key readは自動checkへ追加した。
+  - 0、未取得、部分欠損、API errorのproduction到達状態に加え、過去as-ofを探索しないためproductionでは到達しない`古い保存値`の防御表示を合成fixtureだけで確認した。同一room group内だけで最大6候補、比較3日までを固定し、OH / 個人 / 団体 / 競合は別表示のまま維持する。
+  - desktopは候補を3列へ圧縮し、比較詳細は初期折りたたみとした。900px以下では候補一覧も初期折りたたみにし、カレンダー上の`基準` / `類似` / `比較`を先に見せる。利用者が開いた一覧は再描画後も開状態を維持する。390 x 844 fixtureでNext由来の横overflow 0、候補一覧を閉じたまま類似marker 6件を確認した。
+  - 実画面ではClassic / Next marker 0、calendar 91日、月calendar 3件、as-of表示ありを確認し、candidateの一時注入後にroot / style各1、注入だけでは対象GET 0を確認した。最初の選択操作時に認証sessionがloginへ戻ったため、根拠adapterのGETと実値表示は未実施である。遷移により一時注入は除去され、candidate endpoint GET 0、Revenue Assistant API POST 0だった。
 - gate:
   - API adapter、cache key、view model、UIを分離し、live実データ観測前にfixtureでmissing / zero / partial / staleを確認する。
   - 未調査APIまたは新しいresponse保存が必要ならYellow zoneとして実装前に別decisionを記録する。
+  - 次回はClassic marker / Next root 0のログイン済み単一tabで同じcandidateを一時注入し、API施設名とvisible header施設名の正規化後完全一致、基準日選択後のGET 2件以下、room type選択、OH / 個人 / 団体 / 競合の状態、類似marker、再描画時の追加GET 0、console、write API 0、reload cleanupを確認する。施設名を完全一致で確認できない場合は値を表示しない。Next publish、Tampermonkey install / switch、storage writeは別gateのまま扱う。
 
 Remaining Task Triage は Now `RAU-UX-147`、Next `RAU-UX-145` の再採用判断、After Next / Later なしとする。
 

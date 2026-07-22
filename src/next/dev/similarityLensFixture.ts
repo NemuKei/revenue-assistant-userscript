@@ -420,6 +420,7 @@ function buildFixtureEvidence(months: readonly string[]): Map<string, Similarity
             const groupBase = day % 5 === 0 ? 0 : (day + month) % 4;
             records.set(stayDate, {
                 stayDate,
+                roomGroupId: "fixture-room-group",
                 onHandRooms: 3 + ((day * 3 + month + weekday) % 12),
                 transientCurve: curveFromValues([
                     Math.max(0, transientBase - 7),

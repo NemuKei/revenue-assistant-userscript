@@ -114,11 +114,26 @@ const ranked = findSimilarDays(base, [base, transientFarGroupNear, exact, transi
 });
 assert.deepEqual(ranked.map((match) => match.stayDate), [exact.stayDate, transientNearGroupFar.stayDate]);
 assert.equal(ranked.some((match) => match.stayDate === base.stayDate), false);
+assert.equal(
+    compareSimilarityDayEvidence(base, { ...exact, roomGroupId: "room-group-b" }),
+    null,
+    "different room groups must never be compared"
+);
+assert.equal(
+    compareSimilarityDayEvidence(base, { ...exact, roomGroupId: undefined }),
+    null,
+    "missing room-group identity must fail closed"
+);
+assert.equal(
+    compareSimilarityDayEvidence(base, { ...exact, stayDate: "2026-08-12" }),
+    null,
+    "compact and dashed representations of the same day must not self-match"
+);
 
 console.log("Next similarity model checks passed");
 
 function evidence(stayDate, values) {
-    return { stayDate, ...values };
+    return { stayDate, roomGroupId: "room-group-a", ...values };
 }
 
 function curve(values, leadDays = [28, 21, 14, 7, 0]) {
