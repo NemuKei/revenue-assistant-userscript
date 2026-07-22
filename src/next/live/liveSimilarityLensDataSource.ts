@@ -255,6 +255,16 @@ export function buildCurrentBookingCurvePrimaryKeys(options: {
 }): string[] {
     const visibleStayDates = new Set(normalizeVisibleStayDates(options.visibleStayDates));
     const keys = new Set<string>();
+    for (const stayDate of visibleStayDates) {
+        keys.add(buildBookingCurveRawSourceCacheKey({
+            facilityId: options.facilityId,
+            stayDate,
+            asOfDate: options.asOfDate,
+            scope: "hotel",
+            endpoint: BOOKING_CURVE_ENDPOINT,
+            query: `date=${stayDate}`
+        }));
+    }
     for (const setting of options.currentSettings.suggest_output_current_settings ?? []) {
         const stayDate = normalizeVisibleStayDates([setting.stay_date ?? ""])[0];
         if (stayDate === undefined || !visibleStayDates.has(stayDate)) {

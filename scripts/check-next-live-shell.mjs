@@ -141,6 +141,10 @@ assert.doesNotMatch(styles, /(?<!max-)width: calc\(100vw - 32px\)/);
 assert.match(styles, /data-ra-next-lens-match-list[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
 assert.match(fixture, /\[data-mock-header\] \{[^}]*flex-wrap: wrap;/);
 assert.match(fixture, /\[data-mock-ra-shell\]\[data-mock-fixed-width-host\] \{ min-width: 1200px; \}/);
+assert.match(
+    fixture,
+    /@media \(max-width: 900px\) \{[\s\S]*?\[data-mock-ra-shell\]\[data-mock-fixed-width-host\] \[data-mock-calendar-strip\] \{ grid-template-columns: repeat\(3, minmax\(0, 1fr\)\); \}/u
+);
 assert.match(fixture, /data-mock-remount/);
 assert.match(fixture, /replaceChildren\(\);[\s\S]*?window\.setTimeout\(renderCalendar, 120\)/);
 assert.match(fixture, /data-mock-facility-context/);
@@ -155,6 +159,21 @@ assert.match(fixture, /src="\/src\/next\/dev\/liveShellEntry\.ts"/);
 assert.match(styles, /data-ra-next-lens-similar-date/);
 assert.match(styles, /content: "類似"/);
 assert.match(styles, /data-ra-next-lens-analyze-trigger/);
+assert.match(
+    styles,
+    /a\[data-testid\^="calendar-date-"\] > \[data-ra-next-calendar-group-badge\] \{[^}]*position: absolute;[^}]*top: 24px;[^}]*left: 6px;[^}]*color: #1f5fbf;/u,
+    "calendar group badges must use an independent overlay without changing native date-link positioning"
+);
+assert.doesNotMatch(
+    styles,
+    /a\[data-testid\^="calendar-date-"\][^{>]*\{[^}]*position:/u,
+    "calendar group badge styles must not overwrite native date-link positioning"
+);
+assert.match(
+    styles,
+    /@media \(max-width: 680px\) \{[\s\S]*?a\[data-testid\^="calendar-date-"\] > \[data-ra-next-calendar-group-badge\] \{[^}]*left: 0;[^}]*font-size: 9px;/u,
+    "narrow calendar cells must keep the independent group badge clear of the native value"
+);
 assert.match(
     await readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
     /nativeCell\.anchor\.click\(\)/u,

@@ -1,5 +1,8 @@
 import type { LiveCalendarDomSnapshot } from "./liveCalendarDomAdapter";
-import type { LiveSimilarityLensRoomGroupEvidence } from "./liveSimilarityLensEvidence";
+import type {
+    LiveSimilarityLensCalendarGroupEvidence,
+    LiveSimilarityLensRoomGroupEvidence
+} from "./liveSimilarityLensEvidence";
 import type { LiveSimilarityLensState } from "./liveSimilarityLensState";
 import {
     buildLiveSimilarityLensReadyViewModel,
@@ -15,6 +18,7 @@ export const LIVE_SIMILARITY_LENS_STYLE_ID = "revenue-assistant-next-similarity-
 export const LIVE_SIMILARITY_LENS_DESCRIPTION_ID = "ra-next-similarity-lens-base-description";
 export const LIVE_SIMILARITY_LENS_INSTRUCTION_ID = "ra-next-similarity-lens-selection-instruction";
 export const LIVE_SIMILARITY_LENS_ANALYZE_TRIGGER_ATTRIBUTE = "data-ra-next-lens-analyze-trigger";
+export const LIVE_SIMILARITY_LENS_CALENDAR_GROUP_BADGE_ATTRIBUTE = "data-ra-next-calendar-group-badge";
 
 export interface LiveSimilarityLensDisclosureState {
     comparisonExpanded: boolean | null;
@@ -99,13 +103,15 @@ export function syncLiveCalendarDecorations(
     documentHost: Document,
     snapshot: LiveCalendarDomSnapshot | null,
     state: LiveSimilarityLensState,
-    viewModel: LiveSimilarityLensReadyViewModel | null
+    viewModel: LiveSimilarityLensReadyViewModel | null,
+    calendarGroups: readonly LiveSimilarityLensCalendarGroupEvidence[] = []
 ): void {
     if (state.mode === "armed") {
         documentHost.documentElement.setAttribute(SELECTION_MODE_ATTRIBUTE, "armed");
     } else {
         documentHost.documentElement.removeAttribute(SELECTION_MODE_ATTRIBUTE);
     }
+    syncLiveCalendarGroupBadges(documentHost, snapshot, calendarGroups);
 
     documentHost.querySelectorAll<HTMLElement>(
         `[${BASE_DATE_ATTRIBUTE}], [${SIMILAR_DATE_ATTRIBUTE}], [${COMPARISON_DATE_ATTRIBUTE}]`
@@ -140,6 +146,75 @@ export function syncLiveCalendarDecorations(
     }
 }
 
+function syncLiveCalendarGroupBadges(
+    documentHost: Document,
+    snapshot: LiveCalendarDomSnapshot | null,
+    calendarGroups: readonly LiveSimilarityLensCalendarGroupEvidence[]
+): void {
+    const roomsByStayDate = new Map<string, number>();
+    for (const evidence of calendarGroups) {
+        const rooms = getCurveCurrentRooms(evidence.groupCurve);
+        if (rooms !== null && Number.isFinite(rooms) && rooms >= 0) {
+            roomsByStayDate.set(evidence.stayDate, rooms);
+        }
+    }
+    const activeAnchors = new Set(snapshot?.cells.map((cell) => cell.anchor) ?? []);
+    documentHost.querySelectorAll<HTMLElement>(
+        `[${LIVE_SIMILARITY_LENS_CALENDAR_GROUP_BADGE_ATTRIBUTE}]`
+    ).forEach((badge) => {
+        const anchor = badge.parentElement;
+        const stayDate = anchor?.getAttribute("data-testid")?.replace(/^calendar-date-/u, "") ?? null;
+        const compactStayDate = stayDate === null ? null : compactDateKey(stayDate);
+        if (
+            !(anchor instanceof HTMLAnchorElement)
+            || !activeAnchors.has(anchor)
+            || compactStayDate === null
+            || !roomsByStayDate.has(compactStayDate)
+        ) {
+            badge.remove();
+        }
+    });
+    if (snapshot === null) {
+        return;
+    }
+
+    for (const cell of snapshot.cells) {
+        const compactStayDate = compactDateKey(cell.stayDate);
+        const rooms = compactStayDate === null ? undefined : roomsByStayDate.get(compactStayDate);
+        const existingBadge = cell.anchor.querySelector<HTMLElement>(
+            `:scope > [${LIVE_SIMILARITY_LENS_CALENDAR_GROUP_BADGE_ATTRIBUTE}]`
+        );
+        if (rooms === undefined) {
+            existingBadge?.remove();
+            continue;
+        }
+        const label = `団${formatCalendarGroupRooms(rooms)}`;
+        const accessibleLabel = `ホテル全体の団体 ${formatCalendarGroupRooms(rooms)}室`;
+        const badge = existingBadge ?? documentHost.createElement("span");
+        if (!badge.hasAttribute(LIVE_SIMILARITY_LENS_CALENDAR_GROUP_BADGE_ATTRIBUTE)) {
+            badge.setAttribute(LIVE_SIMILARITY_LENS_CALENDAR_GROUP_BADGE_ATTRIBUTE, "");
+        }
+        if (badge.textContent !== label) {
+            badge.textContent = label;
+        }
+        if (badge.getAttribute("aria-label") !== accessibleLabel) {
+            badge.setAttribute("aria-label", accessibleLabel);
+        }
+        if (badge.title !== accessibleLabel) {
+            badge.title = accessibleLabel;
+        }
+        if (existingBadge === null) {
+            cell.anchor.append(badge);
+        }
+    }
+}
+
+function formatCalendarGroupRooms(value: number): string {
+    return Number.isInteger(value)
+        ? String(value)
+        : value.toFixed(1).replace(/\.0$/u, "");
+}
+
 export function removeLiveSimilarityLensArtifacts(documentHost: Document): void {
     documentHost.documentElement.removeAttribute(SELECTION_MODE_ATTRIBUTE);
     documentHost.querySelectorAll<HTMLElement>(
@@ -152,6 +227,9 @@ export function removeLiveSimilarityLensArtifacts(documentHost: Document): void 
         removeDescriptionToken(element, SIMILAR_DESCRIPTION_ID);
         removeDescriptionToken(element, COMPARISON_DESCRIPTION_ID);
     });
+    documentHost.querySelectorAll(`[${LIVE_SIMILARITY_LENS_CALENDAR_GROUP_BADGE_ATTRIBUTE}]`).forEach(
+        (element) => element.remove()
+    );
     documentHost.querySelectorAll(`[${LIVE_SIMILARITY_LENS_ROOT_ATTRIBUTE}]`).forEach(
         (element) => element.remove()
     );
@@ -783,6 +861,7 @@ export function getLiveSimilarityLensStyles(): string {
         html[data-ra-next-lens-selection-mode="armed"] a[data-testid^="calendar-date-"] { cursor: crosshair !important; }
         html[data-ra-next-lens-selection-mode="armed"] a[data-testid^="calendar-date-"]:hover { outline: 3px solid rgba(23,103,165,.45); outline-offset: -3px; }
         html[data-ra-next-lens-selection-mode="armed"] a[data-testid^="calendar-date-"]:focus-visible { outline: 3px solid #d98200 !important; outline-offset: 2px; }
+        a[data-testid^="calendar-date-"] > [data-ra-next-calendar-group-badge] { position: absolute; top: 24px; left: 6px; z-index: 1; color: #1f5fbf; font-size: 10px; font-weight: 800; line-height: 12px; pointer-events: none; text-shadow: 0 0 2px rgba(255,255,255,.95); white-space: nowrap; }
         a[data-ra-next-lens-base-date], a[data-ra-next-lens-similar-date], a[data-ra-next-lens-comparison-date] { z-index: 2; }
         a[data-ra-next-lens-base-date] { box-shadow: inset 0 0 0 3px #1767a5; }
         a[data-ra-next-lens-similar-date] { box-shadow: inset 0 0 0 2px #75a8ca; background-image: linear-gradient(rgba(221,239,250,.45), rgba(221,239,250,.45)); }
@@ -806,6 +885,7 @@ export function getLiveSimilarityLensStyles(): string {
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-match-list] { grid-template-columns: 1fr; }
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-match] { grid-template-columns: 1fr; }
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-match-actions] { justify-content: space-between; }
+            a[data-testid^="calendar-date-"] > [data-ra-next-calendar-group-badge] { left: 0; font-size: 9px; }
         }
     `;
 }

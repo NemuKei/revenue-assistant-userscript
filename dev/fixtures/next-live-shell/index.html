@@ -24,7 +24,10 @@
         a[data-testid^="calendar-date-"]:focus-visible { outline: 3px solid #d98200; outline-offset: -3px; }
         [data-mock-day] { font-size: 12px; }
         [data-testid^="room-num-"] { justify-self: end; font-size: 15px; font-weight: 800; }
-        @media (max-width: 900px) { [data-mock-calendar-strip] { grid-template-columns: 1fr; } }
+        @media (max-width: 900px) {
+            [data-mock-calendar-strip] { grid-template-columns: 1fr; }
+            [data-mock-ra-shell][data-mock-fixed-width-host] [data-mock-calendar-strip] { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+        }
     </style>
 </head>
 <body>

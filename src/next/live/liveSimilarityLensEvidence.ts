@@ -83,6 +83,11 @@ export interface LiveSimilarityLensRoomGroupEvidence {
     groupCurve: LiveSimilarityLensEvidenceValue<LiveSimilarityLensCurveValue>;
 }
 
+export interface LiveSimilarityLensCalendarGroupEvidence {
+    stayDate: string;
+    groupCurve: LiveSimilarityLensEvidenceValue<LiveSimilarityLensCurveValue>;
+}
+
 export interface LiveSimilarityLensCompetitorCacheValue {
     facilityId: string;
     fetchedAtByStayDate: Readonly<Record<string, string>>;
@@ -100,6 +105,7 @@ export interface LiveSimilarityLensEvidenceViewModel {
     facilityId: string;
     asOfDate: string | null;
     visibleStayDates: readonly string[];
+    calendarGroups: readonly LiveSimilarityLensCalendarGroupEvidence[];
     roomGroups: readonly LiveSimilarityLensRoomGroupEvidence[];
     competitorCache: LiveSimilarityLensEvidenceValue<LiveSimilarityLensCompetitorCacheValue>;
 }
@@ -136,6 +142,7 @@ export function buildLiveSimilarityLensEvidence(
             facilityId: options.facilityId,
             asOfDate,
             visibleStayDates,
+            calendarGroups: [],
             roomGroups: [],
             competitorCache: { status: "error", reason: "invalid-context" }
         };
@@ -143,6 +150,21 @@ export function buildLiveSimilarityLensEvidence(
 
     const visibleStayDateSet = new Set(visibleStayDates);
     const bookingReadFailure = convertReadFailure(options.bookingReadStatus);
+    const calendarGroups = visibleStayDates.map((stayDate): LiveSimilarityLensCalendarGroupEvidence => {
+        const bookingRecord = bookingReadFailure ?? resolveBookingRecord({
+            facilityId: options.facilityId,
+            stayDate,
+            asOfDate,
+            scope: "hotel",
+            roomGroupId: null,
+            expectedQuery: `date=${stayDate}`,
+            records: options.bookingRawRecords
+        });
+        return {
+            stayDate,
+            groupCurve: resolveCurveEvidence(bookingRecord, "group", stayDate, asOfDate)
+        };
+    });
     const roomGroups = collectCurrentSettingBuckets(options.currentSettings, visibleStayDateSet)
         .map((bucket): LiveSimilarityLensRoomGroupEvidence => {
             const roomGroupName = resolveRoomGroupName(bucket.roomGroups);
@@ -150,7 +172,9 @@ export function buildLiveSimilarityLensEvidence(
                 facilityId: options.facilityId,
                 stayDate: bucket.stayDate,
                 asOfDate,
+                scope: "roomGroup",
                 roomGroupId: bucket.roomGroupId,
+                expectedQuery: `date=${bucket.stayDate}&rm_room_group_id=${bucket.roomGroupId}`,
                 records: options.bookingRawRecords
             });
             return {
@@ -169,6 +193,7 @@ export function buildLiveSimilarityLensEvidence(
         facilityId: options.facilityId,
         asOfDate,
         visibleStayDates,
+        calendarGroups,
         roomGroups,
         competitorCache: resolveCompetitorCacheEvidence({
             facilityId: options.facilityId,
@@ -295,16 +320,18 @@ function resolveBookingRecord(options: {
     facilityId: string;
     stayDate: string;
     asOfDate: string;
-    roomGroupId: string;
+    scope: "hotel" | "roomGroup";
+    roomGroupId: string | null;
+    expectedQuery: string;
     records: readonly BookingCurveRawSourceRecord[];
 }): ResolvedBookingRecord {
-    const expectedQuery = `date=${options.stayDate}&rm_room_group_id=${options.roomGroupId}`;
     const matchingRecords = options.records.filter((record) => isMatchingBookingRecord(
         record,
         options.facilityId,
         options.stayDate,
+        options.scope,
         options.roomGroupId,
-        expectedQuery
+        options.expectedQuery
     ));
     const exactRecords = matchingRecords.filter((record) => toCompactDateKey(record.asOfDate) === options.asOfDate);
     const exactRecord = selectLatestFetchedRecord(exactRecords);
@@ -337,12 +364,13 @@ function isMatchingBookingRecord(
     record: BookingCurveRawSourceRecord,
     facilityId: string,
     stayDate: string,
-    roomGroupId: string,
+    scope: "hotel" | "roomGroup",
+    roomGroupId: string | null,
     expectedQuery: string
 ): boolean {
     return record.facilityId === facilityId
         && toCompactDateKey(record.stayDate) === stayDate
-        && record.scope === "roomGroup"
+        && record.scope === scope
         && record.roomGroupId === roomGroupId
         && record.schemaVersion === BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION
         && record.endpoint === BOOKING_CURVE_ENDPOINT

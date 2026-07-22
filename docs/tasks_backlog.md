@@ -192,19 +192,19 @@
 ### RAU-UX-148 Next calendarの団体表記を直接値で再接続する
 
 - 状態:
-  - 未着手。`RAU-UX-147` 完了後のNowとする。
+  - 完了。Classic source、合成fixture、ログイン済み実画面で意味と非干渉を確認した。
 - 目的:
   - 標準calendarの黒い値を変更・OHへ読み替えず、利用者が維持を求めた青い`団n`相当の識別を、確認できる団体直接値だけで再構築する。
 - gate:
-  - Classicの`団n`が示すscope、as-of、room type集約、0 / 欠損の意味をsourceとfixtureで先に確認し、旧配置を機械的に複製しない。
-  - 標準DOM、文字、date linkのposition、focus、既存highlightを変更しない。欠損を0や`all - transient`で補わない。
-  - 新規API、background prefetch、storage write、Revenue Assistant writeを追加しない。direct sourceが現行read-only境界で足りなければ実装せず別decisionへ戻す。
-  - desktop / 390px / 標準表示切替 / calendar再描画で、標準値、団体表記、基準日 / 類似marker、keyboard、横overflow、candidate起点GET、write 0をfixtureとliveで確認する。
+  - Classicの`団n`はhotel scopeの`booking_curve.group.this_year_room_sum`直接値であり、room group値の合算ではないことをsourceとfixtureで確認した。Nextはfacility / stay date / current as-of / hotel scope / endpoint / exact queryが一致する既存primary keyだけをreadonlyで読む。
+  - 有限の0以上だけを青い`団n`として表示し、0は`団0`、欠損 / stale / 不一致は非表示にした。標準date linkへ独立した子要素として追加するが、wrap / reparentせず、標準の黒い値要素の文字 / 子構造 / position、date linkのposition / focus / highlightは変更しない。
+  - 新規API、background prefetch、storage write、Revenue Assistant writeを追加していない。基準日未選択はGET 0、選択時だけ既存2 endpointを各1回GETし、標準表示切替では追加GET 0で再利用する。
+  - desktop / 390px / 固定幅host fixture / 標準表示切替 / calendar差替えで、標準値不変、badge、基準日 / 類似marker、重なり0、横overflow 0、write 0、cleanupをfixtureとliveで確認した。
 
 ### RAU-UX-149 NextからAnalyze詳細機能のread-only parityを確認する
 
 - 状態:
-  - 未着手。`RAU-UX-148` のNextとする。
+  - 未着手。NextのNowとする。
 - 目的:
   - 好評なbooking curve、競合価格、90日価格推移を旧候補表から切り離して残し、基準日 / 類似日から必要時に深掘りできることをcutover前に確認する。
 - gate:
@@ -212,7 +212,7 @@
   - graphをNext calendarへ常時埋め込まず、Analyzeを深掘り画面として再利用する。既存graphの仕様変更が必要な場合は同taskへ混ぜず別判断とする。
   - write-capable controlと最終送信は扱わず、candidate起点request、console、responsive overflow、cleanupを確認する。
 
-Remaining Task Triage は Now `RAU-UX-148`、Next `RAU-UX-149`、After Next / Later なしとする。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now `RAU-UX-149`、Next / After Next / Later なしとする。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

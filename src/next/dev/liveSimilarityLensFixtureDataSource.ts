@@ -112,50 +112,79 @@ function buildFixtureBookingRecords(
     stayDates: readonly string[],
     scenario: Exclude<FixtureScenario, "missing" | "error">
 ): BookingCurveRawSourceRecord[] {
-    return stayDates.flatMap((stayDate) => ROOM_GROUPS.map((roomGroup, roomGroupIndex) => {
+    return stayDates.flatMap((stayDate) => {
         const day = Number(stayDate.slice(-2));
         const weekday = new Date(Date.UTC(
             Number(stayDate.slice(0, 4)),
             Number(stayDate.slice(4, 6)) - 1,
             day
         )).getUTCDay();
-        const pattern = scenario === "zero" ? 0 : 4 + weekday + roomGroupIndex * 2;
-        const bookingCurve = [120, 90, 75, 60, 45, 30, 21, 14, 7, 0].flatMap((leadDays, pointIndex) => {
-            const observedDate = shiftCompactDate(stayDate, -leadDays);
-            if (observedDate === null) {
-                return [];
-            }
-            const progress = pointIndex / 9;
-            const transientRooms = scenario === "zero" ? 0 : Math.round(pattern * progress);
-            const groupRooms = scenario === "zero" ? 0 : Math.round(((day + weekday) % 4) * progress);
-            return [{
-                date: observedDate,
-                transient: { this_year_room_sum: transientRooms },
-                ...(scenario === "partial" ? {} : {
-                    group: { this_year_room_sum: groupRooms }
-                })
-            }];
-        });
         const asOfDate = scenario === "stale" ? "20260721" : FIXTURE_AS_OF_DATE;
-        const query = `date=${stayDate}&rm_room_group_id=${roomGroup.id}`;
-        return {
-            cacheKey: `fixture:${scenario}:${stayDate}:${roomGroup.id}:${asOfDate}`,
+        const buildCurve = (transientPattern: number, groupPattern: number) => (
+            [120, 90, 75, 60, 45, 30, 21, 14, 7, 0].flatMap((leadDays, pointIndex) => {
+                const observedDate = shiftCompactDate(stayDate, -leadDays);
+                if (observedDate === null) {
+                    return [];
+                }
+                const progress = pointIndex / 9;
+                return [{
+                    date: observedDate,
+                    transient: {
+                        this_year_room_sum: scenario === "zero"
+                            ? 0
+                            : Math.round(transientPattern * progress)
+                    },
+                    ...(scenario === "partial" ? {} : {
+                        group: {
+                            this_year_room_sum: scenario === "zero"
+                                ? 0
+                                : Math.round(groupPattern * progress)
+                        }
+                    })
+                }];
+            })
+        );
+        const fetchedAt = `${asOfDate.slice(0, 4)}-${asOfDate.slice(4, 6)}-${asOfDate.slice(6, 8)}T05:00:00.000Z`;
+        const hotelGroupPattern = (day + weekday) % 7;
+        const hotelRecord: BookingCurveRawSourceRecord = {
+            cacheKey: `fixture:${scenario}:${stayDate}:hotel:${asOfDate}`,
             facilityId: FIXTURE_FACILITY_ID,
             stayDate,
             asOfDate,
-            scope: "roomGroup",
-            roomGroupId: roomGroup.id,
+            scope: "hotel",
+            roomGroupId: null,
             endpoint: BOOKING_CURVE_ENDPOINT,
-            query,
-            fetchedAt: `${asOfDate.slice(0, 4)}-${asOfDate.slice(4, 6)}-${asOfDate.slice(6, 8)}T05:00:00.000Z`,
+            query: `date=${stayDate}`,
+            fetchedAt,
             schemaVersion: BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION,
             response: {
                 stay_date: stayDate,
-                max_room_count: roomGroup.capacity,
-                booking_curve: bookingCurve
+                max_room_count: ROOM_GROUPS.reduce((sum, roomGroup) => sum + roomGroup.capacity, 0),
+                booking_curve: buildCurve(10 + weekday, hotelGroupPattern)
             }
         };
-    }));
+        const roomGroupRecords = ROOM_GROUPS.map((roomGroup, roomGroupIndex): BookingCurveRawSourceRecord => {
+            const query = `date=${stayDate}&rm_room_group_id=${roomGroup.id}`;
+            return {
+                cacheKey: `fixture:${scenario}:${stayDate}:${roomGroup.id}:${asOfDate}`,
+                facilityId: FIXTURE_FACILITY_ID,
+                stayDate,
+                asOfDate,
+                scope: "roomGroup",
+                roomGroupId: roomGroup.id,
+                endpoint: BOOKING_CURVE_ENDPOINT,
+                query,
+                fetchedAt,
+                schemaVersion: BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION,
+                response: {
+                    stay_date: stayDate,
+                    max_room_count: roomGroup.capacity,
+                    booking_curve: buildCurve(4 + weekday + roomGroupIndex * 2, (day + weekday) % 4)
+                }
+            };
+        });
+        return [hotelRecord, ...roomGroupRecords];
+    });
 }
 
 function buildFixtureCompetitorRecords(stayDates: readonly string[]): CompetitorPriceSnapshotRecord[] {

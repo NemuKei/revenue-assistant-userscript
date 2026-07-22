@@ -70,10 +70,18 @@ assert.deepEqual(requests[1], {
     to: "20260930"
 });
 assert.equal(primaryKeyReads.length, 1);
-assert.equal(primaryKeyReads[0].keys.length, 1);
+assert.equal(primaryKeyReads[0].keys.length, 4);
+const firstHotelKeys = primaryKeyReads[0].keys.filter((key) => key.includes("|scope:hotel|"));
+const firstRoomGroupKeys = primaryKeyReads[0].keys.filter((key) => key.includes("|scope:roomGroup|"));
+assert.equal(firstHotelKeys.length, 3, "every visible date must read its exact hotel-scope cache key");
+assert.equal(firstRoomGroupKeys.length, 1, "room-group evidence must retain exact current-setting keys");
 assert.match(
-    primaryKeyReads[0].keys[0],
+    firstRoomGroupKeys[0],
     /^facility:yad:fixture\|stayDate:20260812\|asOf:20260722\|scope:roomGroup\|roomGroup:room-1\|/u
+);
+assert.match(
+    firstHotelKeys[0],
+    /^facility:yad:fixture\|stayDate:20260812\|asOf:20260722\|scope:hotel\|roomGroup:-\|endpoint:\/api\/v4\/booking_curve\|query:date=20260812\|/u
 );
 assert.equal(indexReads.length, 1);
 assert.deepEqual(indexReads[0].keys[0], ["yad:fixture", "20260812"]);
@@ -87,7 +95,11 @@ assert.equal(second.facilityLabel, "施設B（mock）");
 assert.notEqual(second, first, "a completed load must be revalidated on explicit reselection");
 assert.equal(requests.length, 4, "explicit reselection must revalidate both read endpoints");
 assert.equal(primaryKeyReads.length, 2);
-assert.match(primaryKeyReads[1].keys[0], /^facility:yad:fixture-b\|/u);
+assert.equal(primaryKeyReads[1].keys.length, 4);
+assert.equal(
+    primaryKeyReads[1].keys.every((key) => key.startsWith("facility:yad:fixture-b|")),
+    true
+);
 dataSource.stop();
 const stopped = await dataSource.load(visibleDates);
 assert.equal(stopped.status, "error");

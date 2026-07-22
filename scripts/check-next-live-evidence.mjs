@@ -22,9 +22,16 @@ const exactRecord = bookingRecord({
     transient: 0,
     group: 0
 });
+const exactHotelRecord = bookingRecord({
+    facilityId,
+    stayDate,
+    asOfDate,
+    scope: "hotel",
+    group: 0
+});
 const ready = buildEvidence({
     currentSettings: currentSettings(10, 10),
-    records: [exactRecord]
+    records: [exactRecord, exactHotelRecord]
 });
 const readyRoom = ready.roomGroups[0];
 assert.equal(readyRoom?.onHand.status, "ready");
@@ -33,6 +40,12 @@ assert.equal(readyRoom?.transientCurve.status, "ready");
 assert.equal(readyRoom?.transientCurve.value.points[0]?.value, 0, "transient zero must remain ready");
 assert.equal(readyRoom?.groupCurve.status, "ready");
 assert.equal(readyRoom?.groupCurve.value.points[0]?.value, 0, "group zero must remain ready");
+assert.equal(ready.calendarGroups[0]?.groupCurve.status, "ready");
+assert.equal(
+    ready.calendarGroups[0]?.groupCurve.value.points[0]?.value,
+    0,
+    "hotel-level calendar group zero must remain a direct ready value"
+);
 const projected = projectLiveSimilarityLensEvidenceForRoomGroup(ready, roomGroupId);
 assert.equal(projected[0]?.onHandRooms, 0);
 assert.equal(projected[0]?.competitorPriceIndex, null, "unverified competitor cache must never score");
@@ -45,11 +58,18 @@ const partial = buildEvidence({
         asOfDate,
         roomGroupId,
         transient: 4
+    }), bookingRecord({
+        facilityId,
+        stayDate,
+        asOfDate,
+        scope: "hotel"
     })]
 });
 assert.equal(partial.roomGroups[0]?.transientCurve.status, "ready");
 assert.equal(partial.roomGroups[0]?.groupCurve.status, "missing");
 assert.equal(partial.roomGroups[0]?.groupCurve.reason, "segment-points-missing");
+assert.equal(partial.calendarGroups[0]?.groupCurve.status, "missing");
+assert.equal(partial.calendarGroups[0]?.groupCurve.reason, "segment-points-missing");
 
 const stale = buildEvidence({
     currentSettings: currentSettings(10, 4),
@@ -60,17 +80,42 @@ const stale = buildEvidence({
         roomGroupId,
         transient: 4,
         group: 1
+    }), bookingRecord({
+        facilityId,
+        stayDate,
+        asOfDate: "20260721",
+        scope: "hotel",
+        group: 3
     })]
 });
 assert.equal(stale.roomGroups[0]?.transientCurve.status, "stale");
+assert.equal(stale.calendarGroups[0]?.groupCurve.status, "stale");
 assert.equal(projectLiveSimilarityLensEvidenceForRoomGroup(stale, roomGroupId)[0]?.transientCurve, null);
 
 const wrongQuery = buildEvidence({
     currentSettings: currentSettings(10, 4),
-    records: [{ ...exactRecord, query: `date=${stayDate}` }]
+    records: [
+        { ...exactRecord, query: `date=${stayDate}` },
+        { ...exactHotelRecord, query: `date=${stayDate}&rm_room_group_id=${roomGroupId}` }
+    ]
 });
 assert.equal(wrongQuery.roomGroups[0]?.transientCurve.status, "missing");
 assert.equal(wrongQuery.roomGroups[0]?.transientCurve.reason, "booking-record-missing");
+assert.equal(wrongQuery.calendarGroups[0]?.groupCurve.status, "missing");
+assert.equal(wrongQuery.calendarGroups[0]?.groupCurve.reason, "booking-record-missing");
+
+const hotelScopeDirect = buildEvidence({
+    currentSettings: currentSettings(10, 4),
+    records: [
+        bookingRecord({ facilityId, stayDate, asOfDate, roomGroupId, transient: 4, group: 9 }),
+        bookingRecord({ facilityId, stayDate, asOfDate, scope: "hotel", group: 2 })
+    ]
+});
+assert.equal(
+    hotelScopeDirect.calendarGroups[0]?.groupCurve.value.points[0]?.value,
+    2,
+    "calendar group rooms must use the direct hotel scope instead of summing room groups"
+);
 
 const invalidOh = buildEvidence({
     currentSettings: currentSettings(10, 11),
@@ -91,6 +136,8 @@ const databaseMissing = buildLiveSimilarityLensEvidence({
 });
 assert.equal(databaseMissing.roomGroups[0]?.transientCurve.status, "missing");
 assert.equal(databaseMissing.roomGroups[0]?.transientCurve.reason, "database-missing");
+assert.equal(databaseMissing.calendarGroups[0]?.groupCurve.status, "missing");
+assert.equal(databaseMissing.calendarGroups[0]?.groupCurve.reason, "database-missing");
 assert.equal(databaseMissing.competitorCache.status, "missing");
 
 console.log("Next live evidence checks passed");
@@ -123,14 +170,18 @@ function currentSettings(maxRooms, remainingRooms) {
 }
 
 function bookingRecord(options) {
-    const query = `date=${options.stayDate}&rm_room_group_id=${options.roomGroupId}`;
+    const scope = options.scope ?? "roomGroup";
+    const roomGroupIdForRecord = scope === "hotel" ? null : options.roomGroupId;
+    const query = scope === "hotel"
+        ? `date=${options.stayDate}`
+        : `date=${options.stayDate}&rm_room_group_id=${options.roomGroupId}`;
     return {
-        cacheKey: `test:${options.stayDate}:${options.roomGroupId}:${options.asOfDate}`,
+        cacheKey: `test:${options.stayDate}:${roomGroupIdForRecord ?? "hotel"}:${options.asOfDate}`,
         facilityId: options.facilityId,
         stayDate: options.stayDate,
         asOfDate: options.asOfDate,
-        scope: "roomGroup",
-        roomGroupId: options.roomGroupId,
+        scope,
+        roomGroupId: roomGroupIdForRecord,
         endpoint: "/api/v4/booking_curve",
         query,
         fetchedAt: "2026-07-22T05:00:00.000Z",

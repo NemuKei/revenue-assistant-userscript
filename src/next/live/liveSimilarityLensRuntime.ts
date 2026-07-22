@@ -231,7 +231,13 @@ export function startLiveSimilarityLensRuntime(
             }
         }
         syncCalendarTabIndexes();
-        syncLiveCalendarDecorations(documentHost, snapshot, state, readyViewModel);
+        syncLiveCalendarDecorations(
+            documentHost,
+            snapshot,
+            state,
+            readyViewModel,
+            evidenceState.status === "ready" ? evidenceState.evidence.calendarGroups : []
+        );
         syncSelectedBaseFocusability();
         documentHost.documentElement.setAttribute(NEXT_LIVE_STATE_ATTRIBUTE, "mounted-read-only");
     }
@@ -424,7 +430,13 @@ export function startLiveSimilarityLensRuntime(
             captureDisclosureState();
         }
         syncCalendarTabIndexes();
-        syncLiveCalendarDecorations(documentHost, snapshot, state, readyViewModel);
+        syncLiveCalendarDecorations(
+            documentHost,
+            snapshot,
+            state,
+            readyViewModel,
+            evidenceState.status === "ready" ? evidenceState.evidence.calendarGroups : []
+        );
         syncSelectedBaseFocusability();
     }
 
