@@ -236,7 +236,7 @@ Remaining Task Triage は Now `RAU-UX-150`、Next / After Next / Later なしと
 
 RAU docs governance を AGENTS-first + optional PROJECT_CONTEXT profile として整理した。対象は docs governance のみで、runtime、`dist/**`、Tampermonkey、browser state、live hook/config、automation、write API behavior は範囲外である。
 
-RAU は Profile B+ / C-light として扱う。`docs/context/PROJECT_CONTEXT.md` は purpose、background intent、non-goals、safety boundary、source-of-truth role の optional upper premise layer であり、progress、task queue、verification log、単発 decision の置き場にはしない。
+2026-06-29 時点では RAU を Profile B+ / C-light として扱った。`docs/context/PROJECT_CONTEXT.md` は purpose、background intent、non-goals、safety boundary、source-of-truth role の optional upper premise layer であり、progress、task queue、verification log、単発 decision の置き場にはしない。現行 Profile C への移行は `D-20260723-001` を正とする。
 
 Remaining Task Triage は空のまま維持する。既存の未追跡 `docs/ai/` は、明示 task がない限り user-owned / unrelated として触らない。
 
@@ -4707,7 +4707,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
   - rank ladder と rank の上下関係の取得可否を確認する。
   - rank 別、日付別、部屋タイプ別 price table の取得可否を確認する。
   - Revenue Assistant への rank 反映 API の有無、request shape、安全制約を確認する。
-  - browser-trace / browser-to-api を使う場合は、raw trace、HAR、request body、response body、credential、個人情報、予約情報、価格・在庫の非公開データを commit しない。
+  - browser / API discovery capability を使う場合は、raw trace、HAR、request body、response body、credential、個人情報、予約情報、価格・在庫の非公開データを commit しない。
 - 非目標:
   - rank 反映 API を実行しない。
   - 自動反映や bulk apply を実装しない。
@@ -11226,7 +11226,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-145`: stacked実画面hostで判断railのflex shrinkを防ぎ、固定高host fixtureと単一runtime live再QAで主要flowを確認する。
+- `RAU-UX-150`: 標準Analyzeを土台に、競合snapshot履歴graphを最優先としてClassic固有の比較機能をclean-roomの独立runtimeで再接続する。
 
 Next:
 
