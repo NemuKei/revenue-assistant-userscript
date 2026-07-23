@@ -232,7 +232,7 @@ Remaining Task Triage は Now `RAU-UX-150`、Next / After Next / Later なしと
 
 RAU docs governance を AGENTS-first + optional PROJECT_CONTEXT profile として整理した。対象は docs governance のみで、runtime、`dist/**`、Tampermonkey、browser state、live hook/config、automation、write API behavior は範囲外である。
 
-RAU は Profile C として扱う。`docs/context/PROJECT_CONTEXT.md` は purpose、background intent、non-goals、safety boundary、source-of-truth role の optional upper premise layer であり、progress、task queue、verification log、単発 decision の置き場にはしない。
+2026-06-29 時点では RAU を Profile B+ / C-light として扱った。`docs/context/PROJECT_CONTEXT.md` は purpose、background intent、non-goals、safety boundary、source-of-truth role の optional upper premise layer であり、progress、task queue、verification log、単発 decision の置き場にはしない。現行 Profile C への移行は `D-20260723-001` を正とする。
 
 Remaining Task Triage は空のまま維持する。既存の未追跡 `docs/ai/` は、明示 task がない限り user-owned / unrelated として触らない。
 
