@@ -18,9 +18,10 @@ const expectedApiPaths = [
     "/api/v1/suggest/output/current_settings",
     "/api/v2/competitors",
     "/api/v2/yad/info",
+    "/api/v3/lincoln/suggest/status",
     "/api/v5/competitor_prices"
 ];
-const expectedRequestKinds = ["competitor-prices", "competitors", "current-settings", "facility"];
+const expectedRequestKinds = ["competitor-prices", "competitors", "current-settings", "facility", "rank-status"];
 const expectedFetchOptionKeys = ["credentials", "headers", "method", "signal"];
 const expectedHeaderEntries = [["X-Requested-With", "XMLHttpRequest"]];
 const forbiddenTransportIdentifiers = new Set([
@@ -222,7 +223,7 @@ function checkTransportBoundary(sources, source) {
     assert.deepEqual(
         collectNextReadRequestKinds(source).sort(),
         expectedRequestKinds,
-        "NextReadRequest kinds must remain the four reviewed GET scopes"
+        "NextReadRequest kinds must remain the five reviewed GET scopes"
     );
 
     const urlConstructions = collectNodes(source, (node) => (
@@ -230,16 +231,17 @@ function checkTransportBoundary(sources, source) {
         && ts.isIdentifier(node.expression)
         && node.expression.text === "URL"
     ));
-    assert.equal(urlConstructions.length, 4, "Next transport must construct exactly four allowlisted URLs");
+    assert.equal(urlConstructions.length, 5, "Next transport must construct exactly five allowlisted URLs");
     assert.deepEqual(
         urlConstructions.map((node) => node.arguments?.[0]?.getText(source) ?? "").sort(),
         [
             "NEXT_COMPETITORS_ENDPOINT",
             "NEXT_COMPETITOR_PRICES_ENDPOINT",
             "NEXT_CURRENT_SETTINGS_ENDPOINT",
-            "NEXT_FACILITY_ENDPOINT"
+            "NEXT_FACILITY_ENDPOINT",
+            "NEXT_RANK_STATUS_ENDPOINT"
         ],
-        "Next transport URL constructors must use the four closed endpoint constants"
+        "Next transport URL constructors must use the five closed endpoint constants"
     );
     for (const construction of urlConstructions) {
         assert.equal(
@@ -269,10 +271,13 @@ function checkTransportBoundary(sources, source) {
         ]).sort(([left], [right]) => left.localeCompare(right)),
         [
             ["date", "request.stayDate"],
+            ["filter_type", "\"stay_date\""],
             ["from", "request.from"],
+            ["from", "request.stayDate"],
             ["max_num_guests", "String(request.maxNumGuests)"],
             ["min_num_guests", "String(request.minNumGuests)"],
-            ["to", "request.to"]
+            ["to", "request.to"],
+            ["to", "request.stayDate"]
         ],
         "Next query parameters must remain the reviewed exact values"
     );

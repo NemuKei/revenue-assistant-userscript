@@ -215,11 +215,11 @@
 ### RAU-UX-150 Next Analyze固有graphをclean-roomで再接続する
 
 - 状態:
-  - 進行中。第一段階の競合snapshot履歴graph、明示承認済みの第二段階browser-local bounded writer、第三段階Aのbooking curve referenceは、clean-room source、合成fixture、ログイン済み実画面QAまで完了した。Next cutover blockerとしては、booking curve rank markerと90日価格推移の比較UIが残る。
+  - 進行中。第一段階の競合snapshot履歴graph、明示承認済みの第二段階browser-local bounded writer、第三段階Aのbooking curve reference、第三段階Bのrank変更履歴は、clean-room source、合成fixture、ログイン済み実画面QAまで完了した。Next cutover blockerとしては、90日価格推移の比較UIが残る。
 - 目的:
   - 標準Analyzeを土台に、実務で価値が確認されているClassic固有の比較機能だけをNextの独立runtimeとして再接続する。`src/main.ts`の画面構造やmonolithを移植しない。
 - 実装順:
-  - 標準代替がない競合snapshot履歴graph、booking curve referenceの順で完了した。次は別Yellow gateのbooking curve rank marker、最後に90日価格推移の人数別比較UIを扱う。
+  - 標準代替がない競合snapshot履歴graph、booking curve reference、別Yellow gateを通したbooking curve rank markerの順で完了した。次は90日価格推移の人数別比較UIを扱う。
   - 90日推移は旧4 panelを無条件複製せず、1〜4名の同時比較が判断速度を上げるかを合成fixtureで比較してから形を決める。
 - 第一段階完了:
   - `/analyze/YYYY-MM-DD` の可視な標準競合価格本文末尾へ、既存保存履歴だけを読む独立runtimeを追加した。desktop 2 x 2、390pxは1人数toggle、部屋 / 食事filter、取得日tooltip、最新値 / 前回差分の常時表示、日別table、empty / 1日 / errorを実装した。
@@ -234,8 +234,11 @@
   - 可視な標準booking curveのnative 2 chart直後へ、current / 直近型 / 季節型を比較する独立runtimeを追加した。初期ホテルscopeと確認済みroom-group toggle、全体と個人 / 団体の2 panel、reference toggle、mouse / keyboard tooltip、全値table、0 / ACT / 欠損の分離を実装した。
   - 既存`GET /api/v2/yad/info`と`GET /api/v1/suggest/output/current_settings`を各最大1回使い、選択scopeの既存`booking_curve_raw_source:v2` exact primary keyだけを1 readonly transactionで読む。`GET /api/v4/booking_curve`、他scopeの先読み、background prefetch、derived cache write、storage writeを追加せず、referenceは既存pure coreでメモリ上算出する。
   - 合成fixtureでready / 0 / missing / stale / error、desktop / 390px、scope / 個人・団体 / reference切替、keyboard tooltip、route cleanup、標準chart非干渉を確認した。ログイン済み実画面は対象日のexact as-of cache不足を推測で補わずemptyとし、scope toggleを残した。facility / current settings GET各1、scope切替 / tab再表示の追加GET 0、booking curve GET 0、Revenue Assistant write 0、cleanupを確認した。
-- 第三段階B gate:
-  - rank markerはbrowser-local sourceを持たない。既存`GET /api/v3/lincoln/suggest/status`をNextへ追加する前に、表示中stay dateだけ最大1 GET、response非保存、route / tab非表示時abortのYellow zone判断と利用者の明示承認を別途通す。第三段階Aのreference data sourceやcompetitor writerへ責務を混ぜない。
+- 第三段階B完了:
+  - 2026-07-23の利用者明示承認と`D-20260723-006`に基づき、可視な標準booking curve、facility label guard、確認済みroom scopeが揃った場合だけ、表示中stay dateを既存`GET /api/v3/lincoln/suggest/status`へ最大1回問い合わせる独立adapterを追加した。ホテルscopeはrequest 0、同じ表示contextのroom / tab切替は結果または失敗をmemory再利用し、自動retryしない。route / stay date変更はreset、tab / document非表示は未完了取得をabortする。
+  - response rootとeventをruntime validationし、stay date、room-group id、timestamp、変更前後rank、LT 0〜360を確認する。同一room / JST反映日は最新1件だけを使い、response / eventを保存せず、room名fallback、ホテル集約、`reflector_name`、隣接日 / 月取得、background prefetch、rank writeを追加していない。
+  - current curveの直接値があるeventだけを色に依存しない◆markerと補助線へ置き、欠損eventもhover不要の履歴表に残す。markerはmouse、keyboard focus、tapでLT、反映日、変更前後rank、該当室数を確認できる。合成fixtureではGET予算、ready / empty / error / abort、marker / table、390px、標準chart非干渉を確認した。
+  - ログイン済み実画面ではホテルscopeのrank GET 0、最初のroom scopeで1、別room / 価格推移tab往復後の追加0、Revenue Assistant originのwrite method 0、標準chart 2枚維持、runtime exception / console warning / error 0を確認した。対象日のexact raw cache不足時はvalid履歴を表へ出し、marker位置を推測しなかった。一時candidateはreloadで除去し、標準booking curveへ戻した。
 - gate:
   - calendar lensとAnalyze runtimeをroute単位で分離し、標準chartを隠さず、追加UIは非干渉領域へ置く。新規実装はadapter / cache read / view model / chartを分離する。
   - 既存browser-local recordのreadonly利用から始める。新規endpoint、background prefetch、response保存、storage write、freshness policy変更が必要なら、目的、保存範囲、削除方針、負荷、権限をYellow zone判断として実装前に記録する。

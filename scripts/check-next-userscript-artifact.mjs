@@ -31,6 +31,8 @@ const expectedSources = [
     "src/next/analyze/bookingCurveReferenceModel.ts",
     "src/next/analyze/bookingCurveReferenceRuntime.ts",
     "src/next/analyze/bookingCurveReferenceView.ts",
+    "src/next/analyze/bookingCurveRankMarkerModel.ts",
+    "src/next/analyze/bookingCurveRankStatusDataSource.ts",
     "src/next/analyze/competitorHistoryDataSource.ts",
     "src/next/analyze/competitorHistoryModel.ts",
     "src/next/analyze/competitorHistoryRuntime.ts",
@@ -101,6 +103,7 @@ assert.match(artifactText, /ready-read-only/u);
 assert.match(artifactText, /data-ra-next-similarity-lens-root/u);
 assert.match(artifactText, /data-ra-next-competitor-history-root/u);
 assert.match(artifactText, /data-ra-next-booking-curve-reference-root/u);
+assert.match(artifactText, /data-ra-next-booking-curve-rank-marker/u);
 assert.match(artifactText, /data-ra-next-analyze-state/u);
 assert.match(artifactText, /data-ra-next-booking-curve-state/u);
 assert.match(artifactText, /server-read-only\/local-bounded-history/u);
@@ -109,6 +112,7 @@ assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must ha
 assert.equal(countMatches(artifactText, /\/api\/v2\/yad\/info/gu), 1);
 assert.equal(countMatches(artifactText, /\/api\/v2\/competitors/gu), 1);
 assert.equal(countMatches(artifactText, /\/api\/v1\/suggest\/output\/current_settings/gu), 1);
+assert.equal(countMatches(artifactText, /\/api\/v3\/lincoln\/suggest\/status/gu), 1);
 assert.equal(
     countMatches(artifactText, /\/api\/v4\/booking_curve/gu) >= 1,
     true,

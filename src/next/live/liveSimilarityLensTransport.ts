@@ -2,11 +2,13 @@ const NEXT_FACILITY_ENDPOINT = "/api/v2/yad/info";
 const NEXT_CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const NEXT_COMPETITORS_ENDPOINT = "/api/v2/competitors";
 const NEXT_COMPETITOR_PRICES_ENDPOINT = "/api/v5/competitor_prices";
+const NEXT_RANK_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 
 export type NextReadRequest =
     | { kind: "facility" }
     | { kind: "current-settings"; from: string; to: string }
     | { kind: "competitors" }
+    | { kind: "rank-status"; stayDate: string }
     | {
         kind: "competitor-prices";
         competitorYadNos: readonly string[];
@@ -76,6 +78,13 @@ export function buildNextReadUrl(request: NextReadRequest, origin: string): URL 
     }
     if (request.kind === "competitors") {
         return new URL(NEXT_COMPETITORS_ENDPOINT, origin);
+    }
+    if (request.kind === "rank-status") {
+        const url = new URL(NEXT_RANK_STATUS_ENDPOINT, origin);
+        url.searchParams.set("filter_type", "stay_date");
+        url.searchParams.set("from", request.stayDate);
+        url.searchParams.set("to", request.stayDate);
+        return url;
     }
     const url = new URL(NEXT_COMPETITOR_PRICES_ENDPOINT, origin);
     url.searchParams.set("date", request.stayDate);

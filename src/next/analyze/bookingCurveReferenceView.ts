@@ -1,10 +1,12 @@
 import { LEAD_TIME_BUCKET_VISIBLE_TICKS } from "../../leadTimeBuckets";
 import type {
     BookingCurveReferencePanel,
+    BookingCurveReferenceRankMarker,
     BookingCurveReferenceSeries,
     BookingCurveReferenceSeriesPoint,
     BookingCurveReferenceViewModel
 } from "./bookingCurveReferenceModel";
+import type { BookingCurveRankHistoryViewState } from "./bookingCurveRankMarkerModel";
 
 export const BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE = "data-ra-next-booking-curve-reference-root";
 export const BOOKING_CURVE_REFERENCE_STYLE_ATTRIBUTE = "data-ra-next-booking-curve-reference-style";
@@ -14,17 +16,24 @@ export const BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE = "data-ra-next-bookin
 export const BOOKING_CURVE_REFERENCE_PANEL_ATTRIBUTE = "data-ra-next-booking-curve-reference-panel";
 export const BOOKING_CURVE_REFERENCE_SVG_ATTRIBUTE = "data-ra-next-booking-curve-reference-svg";
 export const BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-reference-hitbox";
+export const BOOKING_CURVE_RANK_MARKER_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker";
+export const BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker-hitbox";
 
 export type BookingCurveReferenceRenderState =
     | { status: "loading"; stayDate: string }
     | {
         status: "empty";
         controls?: Pick<BookingCurveReferenceViewModel, "scope" | "scopes">;
+        rankHistory?: BookingCurveRankHistoryViewState;
         reason: string;
         stayDate: string;
     }
     | { status: "error"; reason: string; stayDate: string }
-    | { status: "ready"; viewModel: BookingCurveReferenceViewModel };
+    | {
+        status: "ready";
+        rankHistory: BookingCurveRankHistoryViewState;
+        viewModel: BookingCurveReferenceViewModel;
+    };
 
 const DISPLAY_TICKS = new Set([...LEAD_TIME_BUCKET_VISIBLE_TICKS, 0]);
 const SERIES_STYLE = {
@@ -88,6 +97,13 @@ export function renderBookingCurveReference(
         if (state.controls !== undefined) {
             children.push(createScopeControls(root.ownerDocument, state.controls));
         }
+        if (state.rankHistory !== undefined && state.controls !== undefined) {
+            children.push(createRankHistorySummary(
+                root.ownerDocument,
+                state.rankHistory,
+                state.controls.scope.label
+            ));
+        }
         children.push(createMessage(root.ownerDocument, formatEmptyReason(state.reason), "empty"));
         root.replaceChildren(...children);
         return;
@@ -110,14 +126,19 @@ export function renderBookingCurveReference(
     const note = root.ownerDocument.createElement("p");
     note.setAttribute("data-ra-next-booking-curve-reference-note", "");
     note.textContent =
-        "上の標準グラフはそのままです。ここでは現在と2つの基準線を同じLT軸で比較します。欠損は線で補わず、0日前の表示補間だけを明記します。";
+        "上の標準グラフはそのままです。ここでは現在と2つの基準線を同じLT軸で比較します。rank変更は確認済みroom scopeだけに表示し、欠損位置は推測しません。";
+    const rankHistory = createRankHistorySummary(
+        root.ownerDocument,
+        state.rankHistory,
+        viewModel.scope.label
+    );
     const grid = root.ownerDocument.createElement("div");
     grid.setAttribute("data-ra-next-booking-curve-reference-grid", "");
     const domain = resolveSharedDomain(viewModel);
     for (const panel of viewModel.panels) {
         grid.append(createPanel(root.ownerDocument, panel, viewModel, domain, options.narrow));
     }
-    root.replaceChildren(header, controls, meta, legend, note, grid);
+    root.replaceChildren(header, controls, meta, legend, note, rankHistory, grid);
 }
 
 function createHeader(documentHost: Document): HTMLElement {
@@ -230,6 +251,14 @@ function createLegend(documentHost: Document, viewModel: BookingCurveReferenceVi
         swatch.style.backgroundColor = SERIES_STYLE[series.id].color;
         item.append(swatch, documentHost.createTextNode(series.visible ? series.label : `${series.label}（非表示）`));
         legend.append(item);
+    }
+    if (viewModel.scope.kind === "roomGroup") {
+        const rankItem = documentHost.createElement("span");
+        rankItem.setAttribute("data-ra-next-booking-curve-reference-legend-item", "rank");
+        rankItem.setAttribute("data-series-visible", "true");
+        rankItem.setAttribute("data-ra-next-booking-curve-rank-legend", "");
+        rankItem.textContent = "◆ ランク変更";
+        legend.append(rankItem);
     }
     return legend;
 }
@@ -379,8 +408,131 @@ function createChart(
         hitbox.addEventListener("blur", hide);
         svg.append(hitbox);
     }
+    for (const marker of panel.rankMarkers) {
+        const x = scaleRankMarkerX(
+            marker.daysBeforeStay,
+            panel.current.points,
+            padding.left,
+            plotWidth
+        );
+        if (x === null) {
+            continue;
+        }
+        const y = scaleY(marker.value, domain, padding.top, plotHeight);
+        const guide = documentHost.createElementNS("http://www.w3.org/2000/svg", "line");
+        guide.setAttribute("x1", x.toFixed(2));
+        guide.setAttribute("x2", x.toFixed(2));
+        guide.setAttribute("y1", String(padding.top));
+        guide.setAttribute("y2", String(padding.top + plotHeight));
+        guide.setAttribute("data-ra-next-booking-curve-rank-guide", "");
+        const point = documentHost.createElementNS("http://www.w3.org/2000/svg", "polygon");
+        point.setAttribute(BOOKING_CURVE_RANK_MARKER_ATTRIBUTE, marker.signature);
+        point.setAttribute("points", [
+            `${x.toFixed(2)},${(y - 5).toFixed(2)}`,
+            `${(x + 5).toFixed(2)},${y.toFixed(2)}`,
+            `${x.toFixed(2)},${(y + 5).toFixed(2)}`,
+            `${(x - 5).toFixed(2)},${y.toFixed(2)}`
+        ].join(" "));
+        const hitbox = documentHost.createElementNS("http://www.w3.org/2000/svg", "circle");
+        hitbox.setAttribute(BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE, marker.signature);
+        hitbox.setAttribute("cx", x.toFixed(2));
+        hitbox.setAttribute("cy", y.toFixed(2));
+        hitbox.setAttribute("r", "22");
+        hitbox.setAttribute("tabindex", "0");
+        hitbox.setAttribute("role", "img");
+        hitbox.setAttribute("aria-label", buildRankMarkerAriaLabel(marker));
+        const show = (): void => showRankMarkerTooltip(tooltip, marker);
+        const hide = (): void => { tooltip.hidden = true; };
+        hitbox.addEventListener("mouseenter", show);
+        hitbox.addEventListener("focus", show);
+        hitbox.addEventListener("click", () => {
+            (hitbox as SVGCircleElement & { focus: () => void }).focus();
+            show();
+        });
+        hitbox.addEventListener("mouseleave", hide);
+        hitbox.addEventListener("blur", hide);
+        svg.append(guide, point, hitbox);
+    }
     wrapper.append(svg, tooltip);
     return wrapper;
+}
+
+function createRankHistorySummary(
+    documentHost: Document,
+    state: BookingCurveRankHistoryViewState,
+    scopeLabel: string
+): HTMLElement {
+    const section = documentHost.createElement("section");
+    section.setAttribute("data-ra-next-booking-curve-rank-history", state.status);
+    const message = documentHost.createElement("p");
+    message.setAttribute("data-ra-next-booking-curve-rank-history-message", "");
+    if (state.status === "scope-required") {
+        message.textContent = "部屋タイプを選ぶと、そのroom IDに一致するランク変更履歴を確認できます。ホテル全体へは集約しません。";
+        section.append(message);
+        return section;
+    }
+    if (state.status === "loading") {
+        message.setAttribute("role", "status");
+        message.textContent = `${scopeLabel}のランク変更履歴を、この宿泊日だけ確認しています。`;
+        section.append(message);
+        return section;
+    }
+    if (state.status === "error") {
+        message.setAttribute("role", "status");
+        message.textContent = state.reason === "aborted"
+            ? "表示切替でランク履歴の取得を中断しました。同じ表示contextでは自動再取得しません。"
+            : state.reason === "response-invalid"
+                ? "ランク履歴のresponse契約を確認できないため、markerを表示しません。"
+                : "ランク変更履歴を取得できませんでした。current / reference表示には影響しません。";
+        section.append(message);
+        return section;
+    }
+    if (state.status === "empty") {
+        message.textContent = `${scopeLabel}に一致するランク変更履歴はありません。`;
+        if (state.invalidEventCount > 0) {
+            message.textContent += ` 契約不一致 ${state.invalidEventCount}件は除外しました。`;
+        }
+        section.append(message);
+        return section;
+    }
+
+    message.textContent = `${scopeLabel}のランク変更 ${state.events.length}件。marker位置が欠損するeventも履歴表には残します。`;
+    if (state.invalidEventCount > 0) {
+        message.textContent += ` 契約不一致 ${state.invalidEventCount}件は除外しました。`;
+    }
+    const details = documentHost.createElement("details");
+    details.setAttribute("data-ra-next-booking-curve-rank-history-details", "");
+    const summary = documentHost.createElement("summary");
+    summary.textContent = "ランク変更履歴を表で確認";
+    const table = documentHost.createElement("table");
+    const thead = documentHost.createElement("thead");
+    const header = documentHost.createElement("tr");
+    for (const label of ["反映日", "LT", "変更前", "変更後"]) {
+        const cell = documentHost.createElement("th");
+        cell.scope = "col";
+        cell.textContent = label;
+        header.append(cell);
+    }
+    thead.append(header);
+    const tbody = documentHost.createElement("tbody");
+    for (const event of state.events) {
+        const row = documentHost.createElement("tr");
+        for (const value of [
+            formatDate(event.reflectedDate),
+            `${event.daysBeforeStay}日前`,
+            event.beforeRankName ?? "-",
+            event.afterRankName ?? "-"
+        ]) {
+            const cell = documentHost.createElement("td");
+            cell.textContent = value;
+            row.append(cell);
+        }
+        tbody.append(row);
+    }
+    table.append(thead, tbody);
+    details.append(summary, table);
+    section.append(message, details);
+    return section;
 }
 
 function createAccessibleTable(
@@ -448,7 +600,8 @@ function resolveVisibleSeries(
 function resolveSharedDomain(viewModel: BookingCurveReferenceViewModel): { max: number; min: number } {
     const values = viewModel.panels.flatMap((panel) => resolveVisibleSeries(panel, viewModel)
         .flatMap((series) => series.points.map((point) => point.value))
-        .filter((value): value is number => value !== null));
+        .filter((value): value is number => value !== null)
+        .concat(panel.rankMarkers.map((marker) => marker.value)));
     if (viewModel.capacityRooms !== null) {
         values.push(viewModel.capacityRooms);
     }
@@ -501,6 +654,36 @@ function showTooltip(
     tooltip.hidden = false;
 }
 
+function showRankMarkerTooltip(
+    tooltip: HTMLElement,
+    marker: BookingCurveReferenceRankMarker
+): void {
+    tooltip.replaceChildren();
+    const strong = tooltip.ownerDocument.createElement("strong");
+    strong.textContent = `${marker.daysBeforeStay}日前 ランク変更`;
+    const list = tooltip.ownerDocument.createElement("ul");
+    for (const text of [
+        `ランク: ${formatRankTransition(marker.beforeRankName, marker.afterRankName)}`,
+        `反映日: ${formatDate(marker.reflectedDate)}`,
+        `該当時点: ${formatRooms(marker.value)}室`
+    ]) {
+        const row = tooltip.ownerDocument.createElement("li");
+        row.textContent = text;
+        list.append(row);
+    }
+    tooltip.append(strong, list);
+    tooltip.hidden = false;
+}
+
+function buildRankMarkerAriaLabel(marker: BookingCurveReferenceRankMarker): string {
+    return [
+        `${marker.daysBeforeStay}日前 ランク変更`,
+        formatRankTransition(marker.beforeRankName, marker.afterRankName),
+        `反映日 ${formatDate(marker.reflectedDate)}`,
+        `${formatRooms(marker.value)}室`
+    ].join("、");
+}
+
 function buildTickAriaLabel(
     tick: BookingCurveReferenceSeriesPoint["tick"],
     series: readonly BookingCurveReferenceSeries[],
@@ -515,6 +698,39 @@ function buildTickAriaLabel(
                 : `${formatRooms(point.value)}室${point.interpolated ? " 表示補間" : ""}`}`;
         })
     ].join("、");
+}
+
+function scaleRankMarkerX(
+    daysBeforeStay: number,
+    points: readonly BookingCurveReferenceSeriesPoint[],
+    left: number,
+    width: number
+): number | null {
+    const numericTicks = points.flatMap((point, index) => (
+        typeof point.tick === "number" ? [{ index, tick: point.tick }] : []
+    ));
+    for (let index = 0; index < numericTicks.length; index += 1) {
+        const current = numericTicks[index];
+        if (current === undefined) {
+            continue;
+        }
+        if (current.tick === daysBeforeStay) {
+            return scaleX(current.index, points.length, left, width);
+        }
+        const next = numericTicks[index + 1];
+        if (
+            next === undefined
+            || current.tick < daysBeforeStay
+            || next.tick > daysBeforeStay
+        ) {
+            continue;
+        }
+        const tickSpan = current.tick - next.tick;
+        const ratio = tickSpan === 0 ? 0 : (current.tick - daysBeforeStay) / tickSpan;
+        const interpolatedIndex = current.index + ((next.index - current.index) * ratio);
+        return left + (interpolatedIndex / Math.max(1, points.length - 1)) * width;
+    }
+    return null;
 }
 
 function scaleX(index: number, count: number, left: number, width: number): number {
@@ -532,6 +748,19 @@ function scaleY(
 
 function buildYTicks(maximum: number, count: number): number[] {
     return Array.from({ length: count + 1 }, (_, index) => (maximum * index) / count);
+}
+
+function formatRankTransition(beforeRankName: string | null, afterRankName: string | null): string {
+    if (beforeRankName === null && afterRankName === null) {
+        return "-";
+    }
+    if (beforeRankName === null) {
+        return afterRankName ?? "-";
+    }
+    if (afterRankName === null || beforeRankName === afterRankName) {
+        return beforeRankName;
+    }
+    return `${beforeRankName}→${afterRankName}`;
 }
 
 function formatSeriesDiagnostic(series: BookingCurveReferenceSeries): string {
@@ -657,7 +886,8 @@ export function getBookingCurveReferenceStyles(): string {
     border-color: #1268a6; background: #1268a6; color: #fff;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] button:focus-visible,
-[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE}]:focus-visible {
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE}]:focus-visible,
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE}]:focus-visible {
     outline: 3px solid #d98200; outline-offset: 2px;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-meta],
@@ -673,7 +903,20 @@ export function getBookingCurveReferenceStyles(): string {
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-legend-item] span {
     width: 18px; height: 3px; border-radius: 2px;
 }
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-legend] {
+    color: #8b2f6d; font-weight: 800;
+}
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-series-visible="false"] { opacity: .48; }
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-history] {
+    margin-top: 11px; padding: 10px 12px; border: 1px solid #d8e1e8; border-radius: 7px;
+    background: #f8fafb; color: #496174;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-history-message] {
+    margin: 0; font-size: 12px; line-height: 1.55;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-history="error"] {
+    border-color: #e6c7be; background: #fff7f4; color: #82452f;
+}
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-grid] {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; margin-top: 14px;
 }
@@ -696,6 +939,15 @@ export function getBookingCurveReferenceStyles(): string {
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-capacity] {
     stroke: #7b8791; stroke-width: 1.2; stroke-dasharray: 2 4;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-guide] {
+    stroke: #8b2f6d; stroke-width: 1.2; stroke-dasharray: 3 4; opacity: .52;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_RANK_MARKER_ATTRIBUTE}] {
+    fill: #8b2f6d; stroke: #fff; stroke-width: 1.6;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE}] {
+    fill: transparent; cursor: pointer;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-tooltip] {
     position: absolute; z-index: 2; top: 8px; left: 8px; width: min(300px, calc(100% - 16px));

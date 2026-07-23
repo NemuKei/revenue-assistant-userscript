@@ -14,6 +14,14 @@ const model = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveReferenceModel.ts",
     import.meta.url
 );
+const rankModel = await importBundledTypeScript(
+    "../src/next/analyze/bookingCurveRankMarkerModel.ts",
+    import.meta.url
+);
+const rankDataSourceModule = await importBundledTypeScript(
+    "../src/next/analyze/bookingCurveRankStatusDataSource.ts",
+    import.meta.url
+);
 const runtime = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveReferenceRuntime.ts",
     import.meta.url
@@ -22,12 +30,26 @@ const view = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveReferenceView.ts",
     import.meta.url
 );
-const [entrySource, fixture, fixtureEntry, runtimeSource, dataSourceSource] = await Promise.all([
+const transport = await importBundledTypeScript(
+    "../src/next/live/liveSimilarityLensTransport.ts",
+    import.meta.url
+);
+const [
+    entrySource,
+    fixture,
+    fixtureEntry,
+    runtimeSource,
+    dataSourceSource,
+    rankDataSourceSource,
+    rankModelSource
+] = await Promise.all([
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../dev/fixtures/next-analyze-booking-curve/index.html", import.meta.url), "utf8"),
     readFile(new URL("../src/next/dev/analyzeBookingCurveReferenceFixtureEntry.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceRuntime.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8")
+    readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveRankStatusDataSource.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveRankMarkerModel.ts", import.meta.url), "utf8")
 ]);
 
 assert.equal(runtime.parseBookingCurveReferenceAnalyzeStayDate("/analyze/2026-08-12"), "20260812");
@@ -52,6 +74,77 @@ assert.equal(dataSourceModule.parseBookingCurveReferenceScopes({}, "20260812"), 
 
 const roomScope = scopes[1];
 const hotelScope = scopes[0];
+const parsedRankSnapshot = rankModel.parseBookingCurveRankStatusResponse({
+    suggest_statuses: [
+        {
+            date: "2026-08-12",
+            rm_room_group_id: "single",
+            accepted_at: "2026-07-20T08:00:00+09:00",
+            before_price_rank_name: "12",
+            after_price_rank_name: "11",
+            reflector_name: "fixture-person-must-not-be-retained"
+        },
+        {
+            date: "2026-08-12",
+            rm_room_group_id: "single",
+            accepted_at: "2026-07-20T12:00:00+09:00",
+            before_price_rank_name: "11",
+            after_price_rank_name: "10"
+        },
+        {
+            date: "2026-08-12",
+            rm_room_group_id: "twin",
+            completed_at: "2026-07-29T11:00:00+09:00",
+            before_price_rank_name: "10",
+            after_price_rank_name: "9"
+        },
+        {
+            date: "2026-08-11",
+            rm_room_group_id: "single",
+            accepted_at: "2026-07-20T12:00:00+09:00",
+            before_price_rank_name: "11",
+            after_price_rank_name: "10"
+        },
+        {
+            date: "2026-08-12",
+            rm_room_group_id: 123,
+            accepted_at: "2026-07-20T12:00:00+09:00",
+            before_price_rank_name: "11",
+            after_price_rank_name: "10"
+        },
+        {
+            date: "2026-08-12",
+            rm_room_group_id: "single",
+            accepted_at: "invalid",
+            before_price_rank_name: "11",
+            after_price_rank_name: "10"
+        }
+    ]
+}, "20260812");
+assert.notEqual(parsedRankSnapshot, null);
+assert.equal(parsedRankSnapshot.events.length, 2);
+assert.equal(parsedRankSnapshot.invalidEventCount, 3);
+assert.equal(parsedRankSnapshot.events[0].roomGroupId, "single");
+assert.equal(parsedRankSnapshot.events[0].beforeRankName, "11", "same room/day keeps the latest event");
+assert.equal("reflectorName" in parsedRankSnapshot.events[0], false);
+const singleRankHistory = rankModel.buildBookingCurveRankHistoryViewState(parsedRankSnapshot, roomScope);
+assert.equal(singleRankHistory.status, "ready");
+assert.equal(singleRankHistory.events.length, 1);
+assert.deepEqual(
+    rankModel.buildBookingCurveRankHistoryViewState(parsedRankSnapshot, hotelScope),
+    { status: "scope-required" }
+);
+assert.equal(rankModel.parseBookingCurveRankStatusResponse({}, "20260812"), null);
+
+const rankUrl = transport.buildNextReadUrl(
+    { kind: "rank-status", stayDate: "20260812" },
+    "https://ra.jalan.net"
+);
+assert.equal(rankUrl.pathname, "/api/v3/lincoln/suggest/status");
+assert.equal(rankUrl.searchParams.get("filter_type"), "stay_date");
+assert.equal(rankUrl.searchParams.get("from"), "20260812");
+assert.equal(rankUrl.searchParams.get("to"), "20260812");
+
 const roomKeys = dataSourceModule.buildBookingCurveReferencePrimaryKeys({
     asOfDate: "20260723",
     facilityId: "yad:fixture",
@@ -113,6 +206,30 @@ assert.equal(
     null,
     "individual curve must not infer transient as all minus group"
 );
+
+const roomRankRecord = createRecord({
+    scope: roomScope,
+    stayDate: "20260812",
+    points: [
+        ["2026-07-19", 4, 3, 1],
+        ["2026-07-23", 8, 7, 1]
+    ]
+});
+const roomRankBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: { status: "ready", records: [roomRankRecord] },
+    records: [roomRankRecord],
+    rankEvents: singleRankHistory.events,
+    scope: roomScope,
+    scopes,
+    stayDate: "20260812"
+});
+assert.equal(roomRankBuilt.status, "ready");
+assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers.length, 1);
+assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers[0].value, 4);
+assert.equal(roomRankBuilt.viewModel.panels[1].rankMarkers[0].value, 3);
+assert.equal(built.viewModel.panels.every((panel) => panel.rankMarkers.length === 0), true);
 
 const zeroRecord = createRecord({
     scope: hotelScope,
@@ -198,21 +315,72 @@ assert.equal(primaryReads[1].keys.every((key) => key.includes("scope:roomGroup")
 dataSource.stop();
 assert.equal((await dataSource.load("20260812", "20260723", "hotel")).reason, "aborted");
 
+const rankRequests = [];
+const rankDataSource = rankDataSourceModule.createBookingCurveRankStatusDataSource({
+    transport: {
+        async read(request) {
+            rankRequests.push(request);
+            return {
+                suggest_statuses: [{
+                    date: "2026-08-12",
+                    rm_room_group_id: "single",
+                    accepted_at: "2026-07-20T12:00:00+09:00",
+                    before_price_rank_name: "11",
+                    after_price_rank_name: "10"
+                }]
+            };
+        }
+    },
+    windowHost: {}
+});
+const firstRankLoad = await rankDataSource.load("yad:fixture", "20260812");
+const reusedRankLoad = await rankDataSource.load("yad:fixture", "20260812");
+assert.equal(firstRankLoad.status, "ready");
+assert.equal(reusedRankLoad.status, "ready");
+assert.deepEqual(rankRequests, [{ kind: "rank-status", stayDate: "20260812" }]);
+rankDataSource.stop();
+
+let abortRequestCount = 0;
+const abortingRankDataSource = rankDataSourceModule.createBookingCurveRankStatusDataSource({
+    transport: {
+        async read(_request, signal) {
+            abortRequestCount += 1;
+            return new Promise((_resolve, reject) => {
+                signal.addEventListener("abort", () => {
+                    reject(new DOMException("aborted", "AbortError"));
+                }, { once: true });
+            });
+        }
+    },
+    windowHost: {}
+});
+const abortedLoadPromise = abortingRankDataSource.load("yad:fixture", "20260812");
+abortingRankDataSource.cancel();
+assert.equal((await abortedLoadPromise).reason, "aborted");
+assert.equal((await abortingRankDataSource.load("yad:fixture", "20260812")).reason, "aborted");
+assert.equal(abortRequestCount, 1, "aborted context must not retry automatically");
+abortingRankDataSource.stop();
+
 const styles = view.getBookingCurveReferenceStyles();
 assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/u);
 assert.match(styles, /@media \(max-width: 680px\)/u);
 assert.match(styles, /max-width: calc\(100vw - 48px\)/u);
 assert.match(styles, /min-height: 44px/u);
+assert.match(styles, /data-ra-next-booking-curve-rank-marker-hitbox/u);
 assert.match(entrySource, /startBookingCurveReferenceRuntime\(document, window\)/u);
 assert.match(runtimeSource, /booking-curve-main-chart-header/u);
 assert.match(runtimeSource, /booking-curve-sub-chart-header/u);
 assert.match(dataSourceSource, /readExistingIndexedDbRecordsByPrimaryKeys/u);
 assert.doesNotMatch(dataSourceSource, /rank|lincoln\/suggest\/status|booking_curve\?date/u);
+assert.match(rankDataSourceSource, /kind: "rank-status"/u);
+assert.doesNotMatch(rankDataSourceSource, /indexedDB|localStorage|sessionStorage|fetch\s*\(/u);
+assert.doesNotMatch(rankModelSource, /reflector_name|reflectorName/u);
 assert.match(fixture, /booking-curve-main-chart-header/u);
 assert.match(fixture, /booking-curve-sub-chart-header/u);
 assert.match(fixture, /data-mock-route-away/u);
 assert.match(fixtureEntry, /state=|fixtureMode/u);
 assert.match(fixtureEntry, /state.*stale|"stale"/u);
+assert.match(fixtureEntry, /rankFixtureMode/u);
 
 console.log("Next Analyze booking curve reference checks passed");
 

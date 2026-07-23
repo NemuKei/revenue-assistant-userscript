@@ -23,6 +23,7 @@ import {
 import type { ExistingIndexedDbReadResult } from "../../indexedDbReadOnly";
 import { LEAD_TIME_BUCKET_TICKS } from "../../leadTimeBuckets";
 import type { BookingCurveReferenceScope } from "./bookingCurveReferenceDataSource";
+import type { BookingCurveRankStatusEvent } from "./bookingCurveRankMarkerModel";
 
 export type BookingCurveReferenceSecondarySegment = "transient" | "group";
 
@@ -47,10 +48,20 @@ export interface BookingCurveReferenceSeries {
 
 export interface BookingCurveReferencePanel {
     current: BookingCurveReferenceSeries;
+    rankMarkers: readonly BookingCurveReferenceRankMarker[];
     recent: BookingCurveReferenceSeries;
     seasonal: BookingCurveReferenceSeries;
     segment: CurveSegment;
     title: string;
+}
+
+export interface BookingCurveReferenceRankMarker {
+    afterRankName: string | null;
+    beforeRankName: string | null;
+    daysBeforeStay: number;
+    reflectedDate: string;
+    signature: string;
+    value: number;
 }
 
 export interface BookingCurveReferenceViewModel {
@@ -86,6 +97,7 @@ export function buildBookingCurveReferenceViewModel(options: {
     facilityId: string;
     readStatus: ExistingIndexedDbReadResult<BookingCurveRawSourceRecord>;
     records: readonly unknown[];
+    rankEvents?: readonly BookingCurveRankStatusEvent[];
     scope: BookingCurveReferenceScope;
     scopes: readonly BookingCurveReferenceScope[];
     secondarySegment?: BookingCurveReferenceSecondarySegment;
@@ -207,6 +219,11 @@ export function buildBookingCurveReferenceViewModel(options: {
         });
         return {
             current,
+            rankMarkers: buildBookingCurveRankMarkers(
+                currentRecord?.response ?? null,
+                options.scope.kind === "roomGroup" ? options.rankEvents ?? [] : [],
+                segment
+            ),
             recent: buildReferenceSeries(recentResult, "recent", "直近型"),
             seasonal: buildReferenceSeries(seasonalResult, "seasonal", "季節型"),
             segment,
@@ -234,6 +251,29 @@ export function buildBookingCurveReferenceViewModel(options: {
             visibility
         }
     };
+}
+
+function buildBookingCurveRankMarkers(
+    response: BookingCurveApiResponse | null,
+    events: readonly BookingCurveRankStatusEvent[],
+    segment: CurveSegment
+): BookingCurveReferenceRankMarker[] {
+    if (response === null) {
+        return [];
+    }
+    return events.flatMap((event) => {
+        const value = resolveMetricAtDate(response, event.reflectedDate, segment, false);
+        return value === null
+            ? []
+            : [{
+                afterRankName: event.afterRankName,
+                beforeRankName: event.beforeRankName,
+                daysBeforeStay: event.daysBeforeStay,
+                reflectedDate: event.reflectedDate,
+                signature: event.signature,
+                value
+            }];
+    });
 }
 
 function buildCurrentSeries(

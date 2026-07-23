@@ -19,6 +19,10 @@ import type {
     BookingCurveReferenceDataSource,
     BookingCurveReferenceScope
 } from "../analyze/bookingCurveReferenceDataSource";
+import type {
+    BookingCurveRankStatusDataSource,
+    BookingCurveRankStatusLoadResult
+} from "../analyze/bookingCurveRankStatusDataSource";
 import { startBookingCurveReferenceRuntime } from "../analyze/bookingCurveReferenceRuntime";
 
 const FACILITY_ID = "yad:fixture";
@@ -30,7 +34,10 @@ const SCOPES: readonly BookingCurveReferenceScope[] = [
     { key: "room:single", kind: "roomGroup", label: "シングル（mock）", roomGroupId: "single" },
     { key: "room:twin", kind: "roomGroup", label: "ツイン（mock）", roomGroupId: "twin" }
 ];
-const fixtureMode = new URLSearchParams(window.location.search).get("state") ?? "ready";
+const fixtureParams = new URLSearchParams(window.location.search);
+const fixtureMode = fixtureParams.get("state") ?? "ready";
+const rankFixtureMode = fixtureParams.get("rank") ?? "ready";
+let rankLoadCount = 0;
 
 const dataSource: BookingCurveReferenceDataSource = {
     cancel() {},
@@ -59,8 +66,61 @@ const dataSource: BookingCurveReferenceDataSource = {
     stop() {}
 };
 
+const rankStatusDataSource: BookingCurveRankStatusDataSource = {
+    cancel() {},
+    async load(facilityId, stayDate): Promise<BookingCurveRankStatusLoadResult> {
+        rankLoadCount += 1;
+        document.documentElement.setAttribute("data-mock-rank-load-count", String(rankLoadCount));
+        const contextKey = `${facilityId}|${stayDate}`;
+        if (rankFixtureMode === "error" || rankFixtureMode === "aborted") {
+            return {
+                status: "error",
+                contextKey,
+                reason: rankFixtureMode === "aborted" ? "aborted" : "request-failed"
+            };
+        }
+        return {
+            status: "ready",
+            contextKey,
+            facilityId,
+            stayDate,
+            snapshot: {
+                stayDate,
+                invalidEventCount: 0,
+                events: rankFixtureMode === "empty"
+                    ? []
+                    : [
+                        {
+                            afterRankName: "11",
+                            beforeRankName: "12",
+                            daysBeforeStay: 23,
+                            reflectedAt: "2026-07-20T03:30:00.000Z",
+                            reflectedDate: "2026-07-20",
+                            roomGroupId: "single",
+                            signature: "2026-07-20:12:11",
+                            stayDate
+                        },
+                        {
+                            afterRankName: "9",
+                            beforeRankName: "10",
+                            daysBeforeStay: 14,
+                            reflectedAt: "2026-07-29T02:00:00.000Z",
+                            reflectedDate: "2026-07-29",
+                            roomGroupId: "twin",
+                            signature: "2026-07-29:10:9",
+                            stayDate
+                        }
+                    ]
+            }
+        };
+    },
+    reset() {},
+    stop() {}
+};
+
 startBookingCurveReferenceRuntime(document, window, {
     dataSource,
+    rankStatusDataSource,
     resolveAsOfDate: () => AS_OF_DATE,
     resolveStayDate: (location) => location.pathname.includes("/dev/fixtures/next-analyze-booking-curve/")
         ? STAY_DATE

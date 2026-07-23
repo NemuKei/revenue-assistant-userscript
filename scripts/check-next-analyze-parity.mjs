@@ -6,12 +6,23 @@ const runtime = await importBundledTypeScript(
     "../src/next/live/liveSimilarityLensRuntime.ts",
     import.meta.url
 );
-const [classicSource, nextEntrySource, nextRuntimeSource, analyzeRuntimeSource, bookingRuntimeSource, smokeSource] = await Promise.all([
+const [
+    classicSource,
+    nextEntrySource,
+    nextRuntimeSource,
+    analyzeRuntimeSource,
+    bookingRuntimeSource,
+    bookingRankSource,
+    bookingReferenceDataSourceSource,
+    smokeSource
+] = await Promise.all([
     readFile(new URL("../src/main.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/competitorHistoryRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceRuntime.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveRankStatusDataSource.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("./run-distribution-smoke.mjs", import.meta.url), "utf8")
 ]);
 
@@ -36,6 +47,13 @@ assert.doesNotMatch(
 );
 assert.match(bookingRuntimeSource, /booking-curve-main-chart-header/u);
 assert.match(bookingRuntimeSource, /buildBookingCurveReferenceViewModel/u);
+assert.match(bookingRuntimeSource, /createBookingCurveRankStatusDataSource/u);
+assert.match(bookingRankSource, /kind: "rank-status"/u);
+assert.doesNotMatch(
+    bookingReferenceDataSourceSource,
+    /rank-status|lincoln\/suggest\/status/u,
+    "rank status must stay separate from the reference cache reader"
+);
 assert.doesNotMatch(
     bookingRuntimeSource,
     /(?:from\s+["'][^"']*main|import\(["'][^"']*main)/u,
@@ -44,7 +62,7 @@ assert.doesNotMatch(
 assert.doesNotMatch(
     bookingRuntimeSource,
     /lincoln\/suggest\/status/u,
-    "rank status stays behind the recorded Yellow-zone gate"
+    "rank endpoint construction must stay in the shared closed transport"
 );
 
 const classicAnalyzeContracts = [

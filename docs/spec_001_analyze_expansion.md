@@ -435,7 +435,14 @@ Next booking curve clean-room contract (`RAU-UX-150` 第三段階A):
 - 初期scopeはホテル全体とし、room-groupは確認済みidを持つtoggleで利用者が選んだ場合だけ遅延読込する。同一stay date内で読み終えたscopeはmemory cacheしてよいが、route / stay date離脱後へ持ち越さない。room-group名だけからidを推測せず、全room-groupのreferenceを先読みしない。
 - 選択中scopeは `全体` と `個人` の2 panelを標準表示し、second panelだけを `個人 / 団体` toggleで切り替える。個人は`transient`、団体は`group`の直接値だけを使い、`all - group`で欠損を推測しない。current、`直近型`、`季節型` は同じ `360日前 ... 0日前 / ACT` 軸と共通の室数目盛を使い、reference系列は個別toggleで表示を切り替える。`0` は有効値、`null` は欠損として線を分断し、未着地stay dateの `ACT` は空のまま扱う。referenceの0日前を表示上補間した場合はtooltipで補間値と明示し、core inputやcacheへ書き戻さない。
 - SVG pointはmouseとkeyboard focusの双方で `何日前 / current / 直近型 / 季節型` を確認できる。凡例、最終データ更新日、reference source日数、欠損理由はhoverに依存させず表示し、current cacheなし、reference source不足、as-of不一致、IndexedDB unavailable / errorを同じ空表示へ潰さない。680px以下では2 panelを縦積みにし、toggleは44px以上、Next root自身の横overflowは0とする。
-- この第三段階Aはrank-change markerのlive取得を含めない。既存browser-local sourceがない `/api/v3/lincoln/suggest/status` をNextへ追加する場合は、表示中stay dateだけを各最大1 GET、response非保存、route / tab非表示時abortとするrequest予算をYellow zone判断として利用者の明示承認後に別記録し、reference data sourceと責務を分けて実装する。
+- この第三段階Aだけではrank-change markerのlive取得を行わず、rank historyの有無はreference cacheのready / empty判定へ混ぜない。
+
+Next booking curve rank-change contract (`RAU-UX-150` 第三段階B):
+
+- 2026-07-23の利用者明示承認と`D-20260723-006`に基づき、可視な標準booking curve、facility label guard、`current_settings`で確認済みのroom-group scopeが揃った場合だけ、表示中stay dateに対して `GET /api/v3/lincoln/suggest/status?filter_type=stay_date&from=YYYYMMDD&to=YYYYMMDD` を最大1回使う。ホテル全体scopeではroom固有rankを集約せずrequestを開始しない。同じstay dateの表示contextではroom切替とtab再表示で結果または失敗をmemory再利用し、自動retryしない。route、stay date、tab、document visibilityの離脱時は未完了取得をabortする。
+- rank取得はreference raw-cache reader、competitor writer、rank writeから分離した専用adapterが所有する。response rootの`suggest_statuses`と各eventをruntime validationし、stay date完全一致、非空`rm_room_group_id`、parse可能な`accepted_at -> completed_at -> suggest_calc_datetime`の優先timestamp、stringまたはnullの変更前後rankを満たすeventだけを採用する。選択scopeとは`rm_room_group_id`で完全一致させ、room名fallbackを使わない。同一room-group・JST反映日では最新1件、stay dateまで0〜360日のeventだけを残す。
+- response、正規化event、request / response body、HAR、Cookie、token、credentialをstorageへ保存しない。`reflector_name`はmarker判断に不要で個人名になり得るためNextのmodelと表示へ取り込まない。月・隣接日・他stay dateの取得、background prefetch、Revenue AssistantのPOST / PUT / PATCH / DELETE、自動反映、一括反映を追加しない。
+- room-group scopeのcurrent booking curveに反映日以前の直接取得値があるeventだけを、LT bucket間を線形配置したrank markerとして全体panelと選択中の個人 / 団体panelへ描く。個人値は`transient`だけを使い、`all - group`で補わない。値がないeventはchart上へ推測配置せず、テキスト履歴には残す。markerは色だけに依存しない形と補助線を持ち、mouse、keyboard focus、tapでLT、反映日、変更前後rankを確認できる。全有効eventはhover不要のdetails / tableでも確認でき、empty / invalid response / request errorをcurrent / reference不足と区別する。
 
 公式 `価格推移` タブへの RAU 追加表示:
 
