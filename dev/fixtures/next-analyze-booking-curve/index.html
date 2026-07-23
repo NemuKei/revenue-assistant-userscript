@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAU Next booking curve reference fixture</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #f3f5f7; color: #263a4d; font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; }
+        header { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; min-height: 50px; padding: 8px 18px; background: #2478b5; color: #fff; }
+        header strong { margin-right: auto; }
+        header button { min-height: 38px; border: 1px solid rgba(255,255,255,.7); border-radius: 6px; background: transparent; color: #fff; font: inherit; }
+        main { padding: 20px 24px 60px; }
+        [data-mock-tabs] { display: flex; gap: 2px; margin-bottom: 16px; }
+        [data-mock-tabs] button { min-height: 42px; padding: 8px 18px; border: 1px solid #c5d0d9; background: #fff; color: inherit; font: inherit; }
+        [data-mock-booking-content] { min-width: 0; padding: 18px; border: 1px solid #d2dce4; border-radius: 8px; background: #fff; }
+        [data-mock-filters] { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
+        [data-mock-filter] { height: 54px; border: 1px solid #d3dce4; border-radius: 6px; background: #f8fafb; }
+        [data-testid="booking-curve-rm-room-group-list"] { display: flex; gap: 8px; margin: 16px 0; }
+        [data-testid="booking-curve-rm-room-group-list"] span { padding: 8px 12px; border-radius: 999px; background: #e8f1f7; }
+        [data-testid="booking-curve-main-chart-header"], [data-testid="booking-curve-sub-chart-header"] { margin: 18px 0 8px; font-weight: 800; }
+        [data-mock-native-chart] { height: 230px; border: 1px solid #cbd7e2; border-radius: 7px; background: linear-gradient(#fff, #f7fafc); }
+        [data-mock-native-chart] svg { width: 100%; height: 100%; }
+        [data-mock-away] { padding: 26px; border: 1px solid #d2dce4; border-radius: 8px; background: #fff; }
+        [hidden] { display: none !important; }
+        @media (max-width: 680px) {
+            main { min-width: 810px; padding: 14px 16px 40px; }
+            [data-mock-booking-content] { width: 810px; }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <strong>Revenue Assistant Analyze mock</strong>
+        <button type="button">施設A（mock）</button>
+        <span>最終データ更新: 2026年7月23日</span>
+        <button type="button" data-mock-show>booking curveを表示</button>
+        <button type="button" data-mock-hide>他タブへ</button>
+        <button type="button" data-mock-route-away>別画面へ</button>
+        <button type="button" data-mock-route-back>Analyzeへ戻る</button>
+    </header>
+    <main>
+        <div data-mock-tabs role="tablist" aria-label="Analyze tabs">
+            <button type="button" role="tab">販売設定</button>
+            <button type="button" role="tab" data-testid="tab-bookingCurve" aria-selected="true">ブッキングカーブ</button>
+            <button type="button" role="tab" data-testid="tab-competitorPrice">競合価格</button>
+            <button type="button" role="tab" data-testid="tab-priceTrends">価格推移</button>
+        </div>
+        <section data-mock-booking-content>
+            <div data-mock-filters aria-label="標準のbooking curve filter">
+                <div data-mock-filter></div><div data-mock-filter></div><div data-mock-filter></div><div data-mock-filter></div>
+            </div>
+            <div data-testid="booking-curve-rm-room-group-list"><span>全室</span><span>シングル</span><span>ツイン</span></div>
+            <div data-testid="booking-curve-main-chart-header">標準 ブッキングカーブ（全体）</div>
+            <div data-mock-native-chart aria-label="標準booking curve chart 1">
+                <svg viewBox="0 0 900 230" role="img"><path d="M30 185 C180 178 330 150 500 112 S760 60 870 38" fill="none" stroke="#2879b4" stroke-width="4"/></svg>
+            </div>
+            <div data-testid="booking-curve-sub-chart-header">標準 ブッキングカーブ（個人）</div>
+            <div data-mock-native-chart aria-label="標準booking curve chart 2">
+                <svg viewBox="0 0 900 230" role="img"><path d="M30 195 C210 188 350 166 510 130 S760 82 870 56" fill="none" stroke="#4b9b79" stroke-width="4"/></svg>
+            </div>
+        </section>
+        <section data-mock-away hidden>別画面の合成表示</section>
+    </main>
+    <script>
+        (() => {
+            const content = document.querySelector("[data-mock-booking-content]");
+            const away = document.querySelector("[data-mock-away]");
+            document.querySelector("[data-mock-show]").addEventListener("click", () => { content.hidden = false; });
+            document.querySelector("[data-mock-hide]").addEventListener("click", () => { content.hidden = true; });
+            document.querySelector("[data-mock-route-away]").addEventListener("click", () => {
+                history.pushState({}, "", "/monthly-progress/2026-08");
+                content.hidden = true;
+                away.hidden = false;
+                dispatchEvent(new PopStateEvent("popstate"));
+            });
+            document.querySelector("[data-mock-route-back]").addEventListener("click", () => {
+                history.pushState({}, "", "/dev/fixtures/next-analyze-booking-curve/");
+                away.hidden = true;
+                content.hidden = false;
+                dispatchEvent(new PopStateEvent("popstate"));
+            });
+        })();
+    </script>
+    <script type="module" src="/src/next/dev/analyzeBookingCurveReferenceFixtureEntry.ts"></script>
+</body>
+</html>

@@ -17,7 +17,8 @@ export default defineConfig({
             input: [
                 path.join(__dirname, "dev", "fixtures", "similarity-lens", "index.html"),
                 path.join(__dirname, "dev", "fixtures", "next-live-shell", "index.html"),
-                path.join(__dirname, "dev", "fixtures", "next-analyze-competitor", "index.html")
+                path.join(__dirname, "dev", "fixtures", "next-analyze-competitor", "index.html"),
+                path.join(__dirname, "dev", "fixtures", "next-analyze-booking-curve", "index.html")
             ]
         }
     }

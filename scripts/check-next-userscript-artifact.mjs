@@ -26,6 +26,11 @@ const expectedSources = [
     "src/competitorPriceSnapshotContract.ts",
     "src/curveCore.ts",
     "src/indexedDbReadOnly.ts",
+    "src/leadTimeBuckets.ts",
+    "src/next/analyze/bookingCurveReferenceDataSource.ts",
+    "src/next/analyze/bookingCurveReferenceModel.ts",
+    "src/next/analyze/bookingCurveReferenceRuntime.ts",
+    "src/next/analyze/bookingCurveReferenceView.ts",
     "src/next/analyze/competitorHistoryDataSource.ts",
     "src/next/analyze/competitorHistoryModel.ts",
     "src/next/analyze/competitorHistoryRuntime.ts",
@@ -95,7 +100,9 @@ assert.match(artifactText, /data-ra-next-runtime-state/u);
 assert.match(artifactText, /ready-read-only/u);
 assert.match(artifactText, /data-ra-next-similarity-lens-root/u);
 assert.match(artifactText, /data-ra-next-competitor-history-root/u);
+assert.match(artifactText, /data-ra-next-booking-curve-reference-root/u);
 assert.match(artifactText, /data-ra-next-analyze-state/u);
+assert.match(artifactText, /data-ra-next-booking-curve-state/u);
 assert.match(artifactText, /server-read-only\/local-bounded-history/u);
 assert.equal(countMatches(artifactText, /\bfetch\b/gu), 1, "Next candidate must contain one raw fetch");
 assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");

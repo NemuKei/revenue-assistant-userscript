@@ -4,9 +4,9 @@
 
 ## Current Task Bundle
 
-- `RAU-UX-150` は進行中である。第一段階の競合 snapshot 履歴 graph と、利用者が明示承認した第二段階の browser-local bounded writer は、clean-room 実装、合成 fixture、ログイン済み実画面 QA まで完了した。
+- `RAU-UX-150` は進行中である。第一段階の競合 snapshot 履歴 graph、利用者が明示承認した第二段階の browser-local bounded writer、第三段階Aの booking curve reference比較は、clean-room 実装、合成 fixture、ログイン済み実画面 QA まで完了した。
 - Next は `/analyze/YYYY-MM-DD` の可視な標準競合価格本文だけを所有し、標準表の末尾に追加表示する。desktop は4人数を 2 x 2、680px 以下は選択中1人数とし、部屋 / 食事 / 人数 filter、mouse / keyboard tooltip、最新値 / 前回差分、日別表を持つ。
-- 既存の競合一覧 / 競合価格 GET だけを、可視な標準競合価格本文で未保存日の現在 stay date に各最大1回使う。週・月・周辺日程の background prefetch、raw response 保存、Revenue Assistant write API は追加していない。booking curve reference / rank marker と90日価格推移の比較 UI が Next cutover blockerとして残る。
+- 既存の競合一覧 / 競合価格 GET だけを、可視な標準競合価格本文で未保存日の現在 stay date に各最大1回使う。booking curve referenceは既存raw cacheのexact primary keyだけを選択scopeごとにreadonlyで読み、メモリ上で算出する。週・月・周辺日程のbackground prefetch、raw response保存、booking curve GET、Revenue Assistant write APIは追加していない。rank markerと90日価格推移の比較UIがNext cutover blockerとして残る。
 - `src/main.ts` の monolith、Classic view / store、標準 chart は Next へ import または複製しない。
 
 ## Current State
@@ -17,12 +17,13 @@
 - `RAU-UX-149` では Analyze route isolation、標準3 tab、対象日維持、candidate request 0、Revenue Assistant write API POST 0、route cleanup を fixture / live QA で確認した。標準 Analyze 自体の 390px overflow は Next 起因ではない。
 - `RAU-UX-150` 第一段階は、schema validation、view model、bounded IndexedDB read adapter、data-bound SVG view、route-scoped runtime、合成 fixture を分離した。最新の同一 condition signature 群と同じ JST 取得日の最終 record だけを採用し、4 panel は共通価格目盛を使う。保存時刻は表示するが鮮度を推測せず `最新性は未判定` とする。
 - `RAU-UX-150` 第二段階は、可視な標準競合価格本文と facility label guard が一致する間だけ、部屋 / 食事指定なし・1〜6名の現在 stay date を `facility x stay date x JST取得日` ごとに1件保存する。Next 専用 IndexedDB、exclusive browser lock、deterministic key、`add` constraint、120観測 retention を writer / store 境界へ隔離し、Classic DB は変更しない。plan name / URL / price diff は保存せず、Classic / Next の有効履歴を表示時だけ統合する。
+- `RAU-UX-150` 第三段階Aは、可視な標準booking curveの2 chartを残し、そのnative content末尾へ独立rootを追加する。初期scopeはホテル全体、room groupは確認済みidを利用者が選んだ場合だけ遅延読込し、`全体`と`個人 / 団体`の2 panelでcurrent / 直近型 / 季節型を同じLT軸へ重ねる。facility / current settings GETは各最大1回、raw cacheは選択scopeのexact primary keyだけを1 readonly transactionで読み、referenceはメモリ上で算出して保存しない。
 - `RAU-UX-145` は、Next が旧 stacked rail を採用していないため見送りである。同じ host 構造を将来採用する場合だけ再開する。
 - RAU は Profile C とし、root `AGENTS.md` を入口に、`PROJECT_CONTEXT.md`、`INTENT.md`、`DECISIONS.md`、この file、backlog を責務が一致するときだけ読む。
 
 ## Next Re-entry
 
-1. 次は booking curve reference / rank marker を clean-room の独立 runtime として再接続する。標準 booking curve を置換せず、現在の bounded writer と保存責務を混ぜない。
+1. 次は booking curve rank marker をreference runtimeと責務分離したまま再接続する。browser-local sourceがない既存 `/api/v3/lincoln/suggest/status` をNextへ追加するため、表示中stay dateだけ最大1 GET、response非保存、非表示時abortのYellow zone判断を利用者が明示承認してから実装する。
 2. 最後に90日価格推移の人数別比較 UI を扱う。旧4 panel は無条件に複製せず、標準 UI と合成 fixture を比較して判断速度が上がる形を選ぶ。
 3. 週・月・周辺日程の競合価格 prefetch、保存削除 UI、retention 変更が必要になった場合は、今回の明示承認へ含めず別の Yellow zone 判断とする。
 
@@ -32,15 +33,17 @@
 - Tampermonkey 無効・ログイン済み実画面へ candidate を一時注入し、標準競合価格本文を維持したまま Next rootを末尾へ1件追加した。初回は `GET /api/v2/competitors` と `GET /api/v5/competitor_prices` を各1回だけ使い、Next 専用 DB の record は0件から1件になった。POST / PUT / PATCH / DELETE は0件だった。
 - reload後の再注入と、booking curve tabから競合価格tabへの再表示では `本日分は保存済み` を表示し、candidate の競合一覧 / 1〜6名価格 GET は0件、Next record は1件のままだった。保存 record はschema / source / deterministic keyを満たし、plan name / URL / price diff は全件 `null`、禁止top-level fieldは0件だった。
 - 標準表は1件のまま、Next rootも1件、標準表の後への非干渉配置、candidate console warning / error 0を確認した。最後はdevice overrideを解除してreloadし、Next root / runtime marker 0、標準競合価格tabと本文を復元した。実価格、施設名、room type名、response body、raw trace、実画面screenshotは保存していない。明示承認に基づく当日snapshot 1件だけはNext専用browser-local DBへ残した。
-- `npm run check:next`、`npm run check`、`npm run check:classic-publication`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:fixture`、`git diff --check` が通過した。Next runtime graphは23 files、raw fetch 1か所、許可API path 4件である。既存履歴 owner `src/indexedDbReadOnly.ts` は `readonly` のまま、Next専用 writer owner `src/next/analyze/competitorHistorySnapshotStore.ts` だけが `readonly` / `readwrite` transactionと120件retentionを持つ。
-- Next candidate は110,940 bytes、SHA-256 `403FE83EFA50E1DF46D29257DB35432E1345E2ED34FE89F8EBF1E8E326D4C6B5`、Classic と別 identity、updateURL / downloadURL なし、`server-read-only/local-bounded-history` である。Next publish、Tampermonkey install / switch、Classic 再公開、Revenue Assistant writeは未実施の別 gate である。
+- booking curve referenceの合成fixtureでは、desktop 2 panel、390px縦積み、room scope、個人 / 団体、直近型 / 季節型、mouse / keyboard tooltip、0 / missing / stale / error、route cleanup、Next root自己overflow 0、標準chart 2枚維持、console warning / error 0を確認した。標準fixture由来の横overflowをNext rootは拡大しなかった。
+- ログイン済み実画面へcandidateを一時注入し、可視な標準booking curve 2 chartを維持したままnative content末尾へNext root 1件を追加した。対象日のexact as-of raw cacheはホテル / 確認したroom scopeとも不足していたため、古いcacheを探索せずemptyを表示し、7つの確認済みscope toggleを残した。facility / current settings GETは各1回、scope切替とtab再表示で追加0、booking curve GET 0、Revenue Assistant write 0、candidate runtime exception / console warning / error 0だった。reload後はNext root / style 0、標準booking curve 2 chartへ戻した。
+- `npm run check:next`、`npm run check`、`npm run check:classic-publication`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:fixture`、`git diff --check` が通過した。Next runtime graphは28 files、raw fetch 1か所、許可API path 4件である。既存cache reader `src/indexedDbReadOnly.ts` は `readonly` のまま、Next専用 writer owner `src/next/analyze/competitorHistorySnapshotStore.ts` だけが `readonly` / `readwrite` transactionと120件retentionを持つ。
+- Next candidate は150,842 bytes、SHA-256 `1CE498A9BA09C258BE53D73D471EF2BC6170D9BB23F73CADB3622AAFE28E4DC8`、Classic と別 identity、updateURL / downloadURL なし、`server-read-only/local-bounded-history` である。Next publish、Tampermonkey install / switch、Classic 再公開、Revenue Assistant write、rank履歴GETは未実施の別 gate である。
 
 ## Open Questions / Risks
 
 - 競合履歴は利用者が標準競合価格本文を表示した stay date だけ厚くなる。観測頻度を網羅性や鮮度保証と誤読せず、background prefetchを必要とする場合は別判断にする。
 - Next専用DBの削除UIはまだ持たない。当日QAで保存した1件を含め、同一施設・stay dateの古いNext recordは保存成功時に120件超過分だけ自動削除する。
 - 競合 snapshot の room type 対応と freshness は断定しない。保存済み record の存在と取得時刻を、価格判断の十分条件として扱わない。
-- booking curve reference / rank marker と90日価格推移の人数別比較は未接続であり、Next cutover は未達である。
+- booking curve referenceは接続したが、実画面の対象日ではexact raw cache不足のためready時の実値系列は未確認である。ready / source不足 / 0 / stale / errorの表示契約は合成fixtureで確認した。rank markerと90日価格推移の人数別比較は未接続であり、Next cutoverは未達である。
 - rank write API、server-side validation、権限差、error / partial failure、rollback は現行の確認済み範囲を超える。推奨レート金額、自動反映、一括反映は非目的である。
 - 実画面 screenshot、raw trace、request / response body、施設名、room type名、価格、在庫、予約、顧客情報は repo へ保存しない。
 - 完了履歴と詳細 verify は `docs/tasks_backlog.md`、`docs/context/DECISIONS.md`、spec、Git history を owner とし、この file へ再蓄積しない。

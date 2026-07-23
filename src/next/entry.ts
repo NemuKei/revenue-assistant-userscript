@@ -5,6 +5,7 @@ import {
 import { resolveNextRuntimeMarker } from "./runtimeMarker";
 import { startLiveSimilarityLensRuntime } from "./live/liveSimilarityLensRuntime";
 import { startCompetitorHistoryRuntime } from "./analyze/competitorHistoryRuntime";
+import { startBookingCurveReferenceRuntime } from "./analyze/bookingCurveReferenceRuntime";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -36,6 +37,7 @@ function startNextCandidateRuntime(): void {
     document.documentElement.setAttribute(NEXT_RUNTIME_VERSION_ATTRIBUTE, SCRIPT_VERSION);
     startLiveSimilarityLensRuntime(document, window);
     startCompetitorHistoryRuntime(document, window);
+    startBookingCurveReferenceRuntime(document, window);
     console.info(`[${SCRIPT_NAME}] candidate runtime ready`, {
         href: window.location.href,
         mode: "server-read-only/local-bounded-history",

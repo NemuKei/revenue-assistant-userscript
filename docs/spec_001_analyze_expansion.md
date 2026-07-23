@@ -427,6 +427,16 @@ Next bounded snapshot writer contract (`RAU-UX-150` 第二段階):
 - Next 専用 store は同一 `facilityId x stayDate` ごとに直近120観測を保持し、保存成功時に超過した古い Next record だけを削除する。Classic database と Classic record は削除、移動、上書きしない。利用者が明示した削除 UI や database 全削除はこの段階に含めない。
 - 表示 read path は Classic database と Next 専用 database をそれぞれ固定上限付き `readonly` で読み、schema / facility / stay date を検証した record を snapshot key で重複排除して統合する。一方が missing / unavailable / error でも他方の有効 record があれば表示を継続し、保存状態は `確認中`、`本日分を保存`、`本日分は保存済み`、`競合設定なし`、`保存失敗` を標準表を妨げない短い badge で区別する。
 
+Next booking curve clean-room contract (`RAU-UX-150` 第三段階A):
+
+- Next の booking curve 補助表示は `/analyze/YYYY-MM-DD` の標準 booking curve 本文が実際に可視である場合だけ、標準の2 chartを含む native content の直後へ sibling root を1つ追加する。標準chart、room-group list、filter、tabを隠す、移動する、置換する処理は持たず、他tab、別route、document hidden、後発Classic、重複rootを検知した場合は未完了処理とroot / styleを除去してfail closedとする。
+- facility identity は既存の `GET /api/v2/yad/info`、room-group mapping は既存の `GET /api/v1/suggest/output/current_settings` を、表示中stay dateに対して各最大1回だけ使う。画面の最終データ更新日を読めない、facility labelが一致しない、stay dateまたはroom-group idが一致しない場合は推測や名称fallbackで補わない。
+- current / reference の入力は既存 `revenue-assistant-booking-curve-sources` database、`booking-curve-raw-sources` storeの `booking_curve_raw_source:v2` recordに限定する。選択中scopeの current stay date、直近型候補日、季節型候補日のdeterministic primary keyだけを1回の `readonly` transactionで読み、database upgrade、cursor scan、`GET /api/v4/booking_curve`、隣接日や他room-groupのbackground prefetch、derived cache write、storage writeを追加しない。
+- 初期scopeはホテル全体とし、room-groupは確認済みidを持つtoggleで利用者が選んだ場合だけ遅延読込する。同一stay date内で読み終えたscopeはmemory cacheしてよいが、route / stay date離脱後へ持ち越さない。room-group名だけからidを推測せず、全room-groupのreferenceを先読みしない。
+- 選択中scopeは `全体` と `個人` の2 panelを標準表示し、second panelだけを `個人 / 団体` toggleで切り替える。個人は`transient`、団体は`group`の直接値だけを使い、`all - group`で欠損を推測しない。current、`直近型`、`季節型` は同じ `360日前 ... 0日前 / ACT` 軸と共通の室数目盛を使い、reference系列は個別toggleで表示を切り替える。`0` は有効値、`null` は欠損として線を分断し、未着地stay dateの `ACT` は空のまま扱う。referenceの0日前を表示上補間した場合はtooltipで補間値と明示し、core inputやcacheへ書き戻さない。
+- SVG pointはmouseとkeyboard focusの双方で `何日前 / current / 直近型 / 季節型` を確認できる。凡例、最終データ更新日、reference source日数、欠損理由はhoverに依存させず表示し、current cacheなし、reference source不足、as-of不一致、IndexedDB unavailable / errorを同じ空表示へ潰さない。680px以下では2 panelを縦積みにし、toggleは44px以上、Next root自身の横overflowは0とする。
+- この第三段階Aはrank-change markerのlive取得を含めない。既存browser-local sourceがない `/api/v3/lincoln/suggest/status` をNextへ追加する場合は、表示中stay dateだけを各最大1 GET、response非保存、route / tab非表示時abortとするrequest予算をYellow zone判断として利用者の明示承認後に別記録し、reference data sourceと責務を分けて実装する。
+
 公式 `価格推移` タブへの RAU 追加表示:
 
 - `RAU-CP-11` の 2026-05-29 read-only 調査では、Analyze 画面に `data-testid="tab-priceTrends"` の公式 `価格推移` タブがあり、本文には `data-testid="price-trends-content"`、`price-trends-filter-item`、`price-trends-filter-button`、`price-trends-chart-header`、`price-trends-chart-header-yad-list-item`、`price-trends-content-updated-at` が存在することを確認した。chart は Recharts の wrapper と `svg` として描画されている。調査中に保存したのは DOM 挿入位置、test id、通信 endpoint の発生有無、response shape の field 名や型の範囲に限定し、HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データは repo に保存しない。

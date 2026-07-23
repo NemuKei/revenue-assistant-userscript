@@ -70,6 +70,7 @@ const allowedSharedRuntimeSources = new Set([
     "src/competitorPriceSnapshotContract.ts",
     "src/curveCore.ts",
     "src/indexedDbReadOnly.ts",
+    "src/leadTimeBuckets.ts",
     "src/rankRecommendation.ts"
 ]);
 const forbiddenRuntimeSources = new Set([

@@ -6,11 +6,12 @@ const runtime = await importBundledTypeScript(
     "../src/next/live/liveSimilarityLensRuntime.ts",
     import.meta.url
 );
-const [classicSource, nextEntrySource, nextRuntimeSource, analyzeRuntimeSource, smokeSource] = await Promise.all([
+const [classicSource, nextEntrySource, nextRuntimeSource, analyzeRuntimeSource, bookingRuntimeSource, smokeSource] = await Promise.all([
     readFile(new URL("../src/main.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/competitorHistoryRuntime.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveReferenceRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("./run-distribution-smoke.mjs", import.meta.url), "utf8")
 ]);
 
@@ -25,12 +26,25 @@ assert.doesNotMatch(
     "Next must not recover Analyze parity by importing the Classic monolith"
 );
 assert.match(nextEntrySource, /startCompetitorHistoryRuntime/u);
+assert.match(nextEntrySource, /startBookingCurveReferenceRuntime/u);
 assert.match(analyzeRuntimeSource, /competitor-price-tax-included-text/u);
 assert.match(analyzeRuntimeSource, /buildCompetitorHistoryViewModel/u);
 assert.doesNotMatch(
     analyzeRuntimeSource,
     /(?:from\s+["'][^"']*main|import\(["'][^"']*main)/u,
     "Next Analyze runtime must not import the Classic monolith"
+);
+assert.match(bookingRuntimeSource, /booking-curve-main-chart-header/u);
+assert.match(bookingRuntimeSource, /buildBookingCurveReferenceViewModel/u);
+assert.doesNotMatch(
+    bookingRuntimeSource,
+    /(?:from\s+["'][^"']*main|import\(["'][^"']*main)/u,
+    "Next booking curve runtime must not import the Classic monolith"
+);
+assert.doesNotMatch(
+    bookingRuntimeSource,
+    /lincoln\/suggest\/status/u,
+    "rank status stays behind the recorded Yellow-zone gate"
 );
 
 const classicAnalyzeContracts = [
