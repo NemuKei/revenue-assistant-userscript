@@ -79,6 +79,7 @@ export function startLiveSimilarityLensRuntime(
     let root: HTMLElement | null = null;
     let stopped = false;
     let scheduledReconcileTimer: number | null = null;
+    let scheduledEvidenceRefreshTimer: number | null = null;
     let rovingDate: string | null = null;
     let pendingRoomGroupFocus = false;
     let pendingRoomGroupFocusAnchor: HTMLAnchorElement | null = null;
@@ -100,6 +101,8 @@ export function startLiveSimilarityLensRuntime(
         ?? ((location: Location) => isLiveSimilarityLensCalendarRoute(location.pathname));
     const abortController = new AbortController();
     const observer = new MutationObserver(scheduleReconcile);
+    const unsubscribeDataSource = dataSource.subscribe?.(scheduleEvidenceRefresh)
+        ?? (() => undefined);
 
     documentHost.addEventListener("click", handleDocumentClick, {
         capture: true,
@@ -504,7 +507,7 @@ export function startLiveSimilarityLensRuntime(
         const generation = ++evidenceGeneration;
         const expectedFingerprint = snapshot.dateFingerprint;
         const visibleStayDates = snapshot.cells.map((cell) => cell.stayDate);
-        void dataSource.load(visibleStayDates).then((result) => {
+        void dataSource.load(visibleStayDates, state.baseDate).then((result) => {
             if (
                 stopped
                 || generation !== evidenceGeneration
@@ -553,6 +556,52 @@ export function startLiveSimilarityLensRuntime(
                 }
             }
         });
+    }
+
+    function scheduleEvidenceRefresh(): void {
+        if (
+            stopped
+            || state.baseDate === null
+            || snapshot === null
+            || dataSource.refresh === undefined
+            || scheduledEvidenceRefreshTimer !== null
+        ) {
+            return;
+        }
+        scheduledEvidenceRefreshTimer = windowHost.setTimeout(() => {
+            scheduledEvidenceRefreshTimer = null;
+            if (
+                stopped
+                || state.baseDate === null
+                || snapshot === null
+                || dataSource.refresh === undefined
+            ) {
+                return;
+            }
+            const generation = ++evidenceGeneration;
+            const expectedFingerprint = snapshot.dateFingerprint;
+            void dataSource.refresh().then((result) => {
+                if (
+                    stopped
+                    || generation !== evidenceGeneration
+                    || snapshot?.dateFingerprint !== expectedFingerprint
+                    || state.baseDate === null
+                    || result.status !== "ready"
+                ) {
+                    return;
+                }
+                if (!hasLiveFacilityContextLabel(snapshot.facilityContextHints, result.facilityLabel)) {
+                    return;
+                }
+                activeFacilityLabel = result.facilityLabel;
+                evidenceState = {
+                    status: "ready",
+                    evidence: result.evidence,
+                    contextKey: result.contextKey
+                };
+                renderCurrentState();
+            });
+        }, 1_500);
     }
 
     function syncCalendarTabIndexes(): void {
@@ -670,12 +719,17 @@ export function startLiveSimilarityLensRuntime(
         }
         stopped = true;
         evidenceGeneration += 1;
+        unsubscribeDataSource();
         dataSource.stop();
         abortController.abort();
         observer.disconnect();
         if (scheduledReconcileTimer !== null) {
             windowHost.clearTimeout(scheduledReconcileTimer);
             scheduledReconcileTimer = null;
+        }
+        if (scheduledEvidenceRefreshTimer !== null) {
+            windowHost.clearTimeout(scheduledEvidenceRefreshTimer);
+            scheduledEvidenceRefreshTimer = null;
         }
         restoreCalendarTabIndexes();
         restoreSelectedBaseFocusability();

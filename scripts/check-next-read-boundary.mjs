@@ -14,6 +14,11 @@ const transportPath = path.join(nextSourceRoot, "live", "liveSimilarityLensTrans
 const indexedDbPath = path.join(projectRoot, "src", "indexedDbReadOnly.ts");
 const snapshotStorePath = path.join(nextSourceRoot, "analyze", "competitorHistorySnapshotStore.ts");
 const priceTrendStorePath = path.join(nextSourceRoot, "analyze", "priceTrendCaptureStore.ts");
+const bookingCurveStorePath = path.join(
+    nextSourceRoot,
+    "bookingCurve",
+    "bookingCurveSourceStore.ts"
+);
 
 const expectedApiPaths = [
     "/api/v1/price_trends",
@@ -21,9 +26,11 @@ const expectedApiPaths = [
     "/api/v2/competitors",
     "/api/v2/yad/info",
     "/api/v3/lincoln/suggest/status",
+    "/api/v4/booking_curve",
     "/api/v5/competitor_prices"
 ];
 const expectedRequestKinds = [
+    "booking-curve",
     "competitor-prices",
     "competitors",
     "current-settings",
@@ -64,6 +71,7 @@ const allowedReadonlyIndexedDbMethods = new Set([
 const allowedBoundedStoreIndexedDbMethods = new Set([
     "abort",
     "add",
+    "count",
     "close",
     "createIndex",
     "createObjectStore",
@@ -74,6 +82,11 @@ const allowedBoundedStoreIndexedDbMethods = new Set([
     "objectStore",
     "open",
     "transaction"
+]);
+const allowedBookingCurveStoreIndexedDbMethods = new Set([
+    ...allowedBoundedStoreIndexedDbMethods,
+    "continue",
+    "openCursor"
 ]);
 const allowedSharedRuntimeSources = new Set([
     "src/bookingCurveRawSourceContract.ts",
@@ -97,6 +110,7 @@ assert.equal(existsSync(transportPath), true, "Next read transport source is req
 assert.equal(existsSync(indexedDbPath), true, "strict readonly IndexedDB source is required");
 assert.equal(existsSync(snapshotStorePath), true, "bounded Next snapshot store source is required");
 assert.equal(existsSync(priceTrendStorePath), true, "bounded Next price trend store source is required");
+assert.equal(existsSync(bookingCurveStorePath), true, "bounded Next booking curve store source is required");
 
 const tsconfigPath = ts.findConfigFile(projectRoot, ts.sys.fileExists, "tsconfig.json");
 assert.notEqual(tsconfigPath, undefined, "tsconfig.json is required for type-aware boundary checks");
@@ -141,7 +155,10 @@ console.log(JSON.stringify({
     snapshotRetentionLimit: 120,
     priceTrendStoreOwner: toProjectPath(priceTrendStorePath),
     priceTrendStoreModes: ["readonly", "readwrite"],
-    priceTrendRetentionLimit: 1_440
+    priceTrendRetentionLimit: 1_440,
+    bookingCurveStoreOwner: toProjectPath(bookingCurveStorePath),
+    bookingCurveStoreModes: ["readonly", "readwrite"],
+    bookingCurveRetentionLimit: 4_096
 }, null, 2));
 
 function checkTransportBoundary(sources, source) {
@@ -236,7 +253,7 @@ function checkTransportBoundary(sources, source) {
     assert.deepEqual(
         collectNextReadRequestKinds(source).sort(),
         expectedRequestKinds,
-        "NextReadRequest kinds must remain the six reviewed GET scopes"
+        "NextReadRequest kinds must remain the seven reviewed GET scopes"
     );
 
     const urlConstructions = collectNodes(source, (node) => (
@@ -244,10 +261,11 @@ function checkTransportBoundary(sources, source) {
         && ts.isIdentifier(node.expression)
         && node.expression.text === "URL"
     ));
-    assert.equal(urlConstructions.length, 6, "Next transport must construct exactly six allowlisted URLs");
+    assert.equal(urlConstructions.length, 7, "Next transport must construct exactly seven allowlisted URLs");
     assert.deepEqual(
         urlConstructions.map((node) => node.arguments?.[0]?.getText(source) ?? "").sort(),
         [
+            "NEXT_BOOKING_CURVE_ENDPOINT",
             "NEXT_COMPETITORS_ENDPOINT",
             "NEXT_COMPETITOR_PRICES_ENDPOINT",
             "NEXT_CURRENT_SETTINGS_ENDPOINT",
@@ -255,7 +273,7 @@ function checkTransportBoundary(sources, source) {
             "NEXT_PRICE_TRENDS_ENDPOINT",
             "NEXT_RANK_STATUS_ENDPOINT"
         ],
-        "Next transport URL constructors must use the six closed endpoint constants"
+        "Next transport URL constructors must use the seven closed endpoint constants"
     );
     for (const construction of urlConstructions) {
         assert.equal(
@@ -285,6 +303,7 @@ function checkTransportBoundary(sources, source) {
         ]).sort(([left], [right]) => left.localeCompare(right)),
         [
             ["date", "request.stayDate"],
+            ["date", "request.stayDate"],
             ["filter_type", "\"stay_date\""],
             ["from", "request.from"],
             ["from", "request.stayDate"],
@@ -292,6 +311,7 @@ function checkTransportBoundary(sources, source) {
             ["meal_type", "request.mealType"],
             ["min_num_guests", "String(request.minNumGuests)"],
             ["num_guests", "String(request.numGuests)"],
+            ["rm_room_group_id", "request.roomGroupId"],
             ["stay_date", "request.stayDate"],
             ["to", "request.to"],
             ["to", "request.stayDate"]
@@ -326,7 +346,12 @@ function checkIndexedDbBoundary(sources) {
     const readonlyOwner = normalizePath(indexedDbPath);
     const snapshotStoreOwner = normalizePath(snapshotStorePath);
     const priceTrendStoreOwner = normalizePath(priceTrendStorePath);
-    const boundedStoreOwners = new Set([snapshotStoreOwner, priceTrendStoreOwner]);
+    const bookingCurveStoreOwner = normalizePath(bookingCurveStorePath);
+    const boundedStoreOwners = new Set([
+        snapshotStoreOwner,
+        priceTrendStoreOwner,
+        bookingCurveStoreOwner
+    ]);
     const allowedOwners = new Set([readonlyOwner, ...boundedStoreOwners]);
 
     for (const source of sources) {
@@ -363,7 +388,9 @@ function checkIndexedDbBoundary(sources) {
             }
             const allowedMethods = sourcePath === readonlyOwner
                 ? allowedReadonlyIndexedDbMethods
-                : allowedBoundedStoreIndexedDbMethods;
+                : sourcePath === bookingCurveStoreOwner
+                    ? allowedBookingCurveStoreIndexedDbMethods
+                    : allowedBoundedStoreIndexedDbMethods;
             if (!allowedMethods.has(member.name) || alwaysForbiddenIndexedDbMethods.has(member.name)) {
                 forbiddenCalls.push({ source, node, reason: `${member.name} outside owner allowlist` });
                 return;
@@ -390,18 +417,23 @@ function checkIndexedDbBoundary(sources) {
         [
             toProjectPath(indexedDbPath),
             toProjectPath(snapshotStorePath),
-            toProjectPath(priceTrendStorePath)
+            toProjectPath(priceTrendStorePath),
+            toProjectPath(bookingCurveStorePath)
         ].sort(),
-        "readonly and both bounded store owners must have direct IndexedDB access"
+        "readonly and all bounded store owners must have direct IndexedDB access"
     );
-    assert.equal(readwriteLiterals.length, 2, "Next runtime must contain two reviewed readwrite modes");
+    assert.equal(readwriteLiterals.length, 3, "Next runtime must contain three reviewed readwrite modes");
     assert.deepEqual(
         readwriteLiterals.map((entry) => toProjectPath(entry.source.fileName)).sort(),
-        [toProjectPath(snapshotStorePath), toProjectPath(priceTrendStorePath)].sort(),
-        "readwrite mode is restricted to the two bounded Next stores"
+        [
+            toProjectPath(snapshotStorePath),
+            toProjectPath(priceTrendStorePath),
+            toProjectPath(bookingCurveStorePath)
+        ].sort(),
+        "readwrite mode is restricted to the three bounded Next stores"
     );
     assert.equal(forbiddenCalls.length, 0, formatReasonNodeList("forbidden IndexedDB mutation", forbiddenCalls));
-    assert.equal(transactionCalls.length, 7, "reviewed IndexedDB owners must retain seven explicit transactions");
+    assert.equal(transactionCalls.length, 9, "reviewed IndexedDB owners must retain nine explicit transactions");
     for (const transaction of transactionCalls) {
         assert.equal(transaction.node.arguments.length, 2, "IndexedDB transaction must use an explicit two-argument call");
         const mode = getStringLiteralText(transaction.node.arguments[1]);
@@ -468,6 +500,27 @@ function checkIndexedDbBoundary(sources) {
             "NEXT_PRICE_TREND_SERIES_READ_LIMIT"
         ].sort()
     );
+    const bookingCurveStoreSource = getProgramSourceFile(bookingCurveStorePath);
+    const bookingCurveReadHelperCalls = collectNodes(
+        bookingCurveStoreSource,
+        (node) => (
+            ts.isCallExpression(node)
+            && ts.isIdentifier(node.expression)
+            && node.expression.text === "readRecordsByIndex"
+        )
+    );
+    assert.deepEqual(
+        bookingCurveReadHelperCalls.map((call) => [
+            call.arguments[2]?.getText(bookingCurveStoreSource),
+            call.arguments[3]?.getText(bookingCurveStoreSource) ?? null
+        ]).sort(([leftLimit], [rightLimit]) => leftLimit.localeCompare(rightLimit)),
+        [
+            ["1", "\"prev\""],
+            ["2", "\"prev\""],
+            ["NEXT_BOOKING_CURVE_FACILITY_READ_LIMIT", null]
+        ],
+        "booking curve cursor reads must retain explicit bounded limits and reverse latest reads"
+    );
     const primaryKeyGetCalls = collectNodes(getProgramSourceFile(indexedDbPath), (node) => {
         if (!ts.isCallExpression(node)) {
             return false;
@@ -510,6 +563,24 @@ function checkIndexedDbBoundary(sources) {
     assert.equal(priceTrendMethodCounts.get("getAll"), 1, "price trend store must use one bounded getAll helper");
     assert.equal(priceTrendMethodCounts.get("createObjectStore"), 1, "price trend store must create one owned store");
     assert.equal(priceTrendMethodCounts.get("createIndex"), 2, "price trend store must create two owned indexes");
+    const bookingCurveStoreCalls = indexedDbCalls.filter(
+        (call) => normalizePath(call.source.fileName) === bookingCurveStoreOwner
+    );
+    const bookingCurveMethodCounts = new Map();
+    for (const call of bookingCurveStoreCalls) {
+        bookingCurveMethodCounts.set(
+            call.member.name,
+            (bookingCurveMethodCounts.get(call.member.name) ?? 0) + 1
+        );
+    }
+    assert.equal(bookingCurveMethodCounts.get("add"), 1, "booking curve store must use one constraint-backed add");
+    assert.equal(bookingCurveMethodCounts.get("delete"), 1, "booking curve store may delete only through one prune site");
+    assert.equal(bookingCurveMethodCounts.get("count"), 1, "booking curve store must use one bounded count guard");
+    assert.equal(bookingCurveMethodCounts.get("getAll") ?? 0, 0, "booking curve store must not materialize an unbounded getAll result");
+    assert.equal(bookingCurveMethodCounts.get("openCursor"), 1, "booking curve store must use one bounded cursor helper");
+    assert.equal(bookingCurveMethodCounts.get("continue"), 1, "booking curve cursor may advance through one reviewed site");
+    assert.equal(bookingCurveMethodCounts.get("createObjectStore"), 1, "booking curve store must create one owned store");
+    assert.equal(bookingCurveMethodCounts.get("createIndex"), 2, "booking curve store must create two owned indexes");
     const recordLimitDeclarations = collectNodes(getProgramSourceFile(indexedDbPath), (node) => (
         ts.isVariableDeclaration(node)
         && ts.isIdentifier(node.name)
@@ -554,6 +625,25 @@ function checkIndexedDbBoundary(sources) {
         ["NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT", 16],
         ["NEXT_PRICE_TREND_SERIES_READ_LIMIT", 512]
     ]), "price trend store limits must remain fixed and bounded");
+    const bookingCurveLimitDeclarations = collectNodes(
+        getProgramSourceFile(bookingCurveStorePath),
+        (node) => (
+            ts.isVariableDeclaration(node)
+            && ts.isIdentifier(node.name)
+            && (
+                node.name.text === "NEXT_BOOKING_CURVE_SOURCE_RETENTION_LIMIT"
+                || node.name.text === "NEXT_BOOKING_CURVE_SOURCE_BATCH_LIMIT"
+            )
+        )
+    );
+    const bookingCurveLimits = new Map(bookingCurveLimitDeclarations.map((declaration) => [
+        declaration.name.text,
+        getNumericLiteralValue(declaration.initializer)
+    ]));
+    assert.deepEqual(bookingCurveLimits, new Map([
+        ["NEXT_BOOKING_CURVE_SOURCE_RETENTION_LIMIT", 4_096],
+        ["NEXT_BOOKING_CURVE_SOURCE_BATCH_LIMIT", 32]
+    ]), "booking curve store limits must remain fixed and bounded");
 }
 
 function checkRuntimeImportBoundary(reviewedPaths) {

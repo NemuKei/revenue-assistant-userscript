@@ -106,17 +106,20 @@ export function startBookingCurveReferenceRuntime(
     let rankLoading = false;
     let selectedScopeKey = "hotel";
     let secondarySegment: BookingCurveReferenceSecondarySegment = "transient";
-    let visibility: BookingCurveReferenceVisibility = { recent: true, seasonal: true };
+    let visibility: BookingCurveReferenceVisibility = { recent: true, seasonal: false };
     let root: HTMLElement | null = null;
     let mountTarget: HTMLElement | null = null;
     let contextBlocked = false;
     let loadGeneration = 0;
     let rankLoadGeneration = 0;
     let scheduledReconcileTimer: number | null = null;
+    let scheduledDataRefreshTimer: number | null = null;
     let narrow = windowHost.innerWidth <= 680;
     let stopped = false;
     const abortController = new AbortController();
     const observer = new MutationObserver(scheduleReconcile);
+    const unsubscribeDataSource = dataSource.subscribe?.(scheduleDataRefresh)
+        ?? (() => undefined);
 
     documentHost.addEventListener("click", handleDocumentClick, {
         capture: true,
@@ -192,7 +195,7 @@ export function startBookingCurveReferenceRuntime(
         contextBlocked = false;
         selectedScopeKey = "hotel";
         secondarySegment = "transient";
-        visibility = { recent: true, seasonal: true };
+        visibility = { recent: true, seasonal: false };
         state = { status: "idle" };
         removeMountedRoot();
     }
@@ -432,6 +435,38 @@ export function startBookingCurveReferenceRuntime(
         }, 0);
     }
 
+    function scheduleDataRefresh(): void {
+        if (
+            stopped
+            || activeStayDate === null
+            || activeAsOfDate === null
+            || scheduledDataRefreshTimer !== null
+        ) {
+            return;
+        }
+        scheduledDataRefreshTimer = windowHost.setTimeout(() => {
+            scheduledDataRefreshTimer = null;
+            if (stopped || activeStayDate === null || activeAsOfDate === null) {
+                return;
+            }
+            const stayDate = activeStayDate;
+            const asOfDate = activeAsOfDate;
+            const generation = ++loadGeneration;
+            void dataSource.load(stayDate, asOfDate, selectedScopeKey).then((result) => {
+                if (
+                    stopped
+                    || generation !== loadGeneration
+                    || activeStayDate !== stayDate
+                    || activeAsOfDate !== asOfDate
+                    || result.status !== "ready"
+                ) {
+                    return;
+                }
+                applyLoadResult(result, stayDate);
+            });
+        }, 1_500);
+    }
+
     function suspendForInactiveRoute(): void {
         loadGeneration += 1;
         rankLoadGeneration += 1;
@@ -446,7 +481,7 @@ export function startBookingCurveReferenceRuntime(
         activeAsOfDate = null;
         selectedScopeKey = "hotel";
         secondarySegment = "transient";
-        visibility = { recent: true, seasonal: true };
+        visibility = { recent: true, seasonal: false };
         state = { status: "idle" };
         removeBookingCurveReferenceArtifacts(documentHost);
         root = null;
@@ -482,6 +517,7 @@ export function startBookingCurveReferenceRuntime(
         stopped = true;
         loadGeneration += 1;
         rankLoadGeneration += 1;
+        unsubscribeDataSource();
         dataSource.stop();
         rankStatusDataSource.stop();
         abortController.abort();
@@ -489,6 +525,10 @@ export function startBookingCurveReferenceRuntime(
         if (scheduledReconcileTimer !== null) {
             windowHost.clearTimeout(scheduledReconcileTimer);
             scheduledReconcileTimer = null;
+        }
+        if (scheduledDataRefreshTimer !== null) {
+            windowHost.clearTimeout(scheduledDataRefreshTimer);
+            scheduledDataRefreshTimer = null;
         }
         removeBookingCurveReferenceArtifacts(documentHost);
         root = null;

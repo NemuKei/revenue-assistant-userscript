@@ -45,6 +45,10 @@ const expectedSources = [
     "src/next/analyze/priceTrendComparisonView.ts",
     "src/next/analyze/priceTrendCaptureStore.ts",
     "src/next/analyze/priceTrendCaptureWriter.ts",
+    "src/next/bookingCurve/bookingCurveAcquisitionCoordinator.ts",
+    "src/next/bookingCurve/bookingCurveAcquisitionModel.ts",
+    "src/next/bookingCurve/bookingCurveAcquisitionRuntime.ts",
+    "src/next/bookingCurve/bookingCurveSourceStore.ts",
     "src/next/entry.ts",
     "src/next/facilityContext.ts",
     "src/next/live/liveCalendarDomAdapter.ts",
@@ -112,6 +116,7 @@ assert.match(artifactText, /data-ra-next-booking-curve-reference-root/u);
 assert.match(artifactText, /data-ra-next-booking-curve-rank-marker/u);
 assert.match(artifactText, /data-ra-next-price-trend-comparison-root/u);
 assert.match(artifactText, /data-ra-next-price-trend-capture/u);
+assert.match(artifactText, /data-ra-next-booking-curve-acquisition-root/u);
 assert.match(artifactText, /data-ra-next-analyze-state/u);
 assert.match(artifactText, /data-ra-next-booking-curve-state/u);
 assert.match(artifactText, /data-ra-next-price-trend-state/u);
@@ -133,14 +138,16 @@ assert.equal(
     true,
     "competitor endpoint contract must remain present for cache validation"
 );
-assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 7);
+assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 9);
 assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 4);
+assert.equal(countMatches(artifactText, /\.openCursor\s*\(/gu), 1);
 assert.match(artifactText, /readonly/u);
 assert.match(artifactText, /readwrite/u);
-assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 2);
-assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 3);
+assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 3);
+assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 5);
 assert.match(artifactText, /revenue-assistant-next-competitor-price-snapshots/u);
 assert.match(artifactText, /revenue-assistant-next-price-trends/u);
+assert.match(artifactText, /revenue-assistant-next-booking-curve-sources/u);
 assert.match(artifactText, /GET/u);
 
 for (const forbiddenPattern of [

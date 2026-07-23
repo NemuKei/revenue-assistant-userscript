@@ -340,11 +340,14 @@ function createReadyEvidence(
         createSourceNote(root, viewModel, viewModel.baseEvidence.stayDate)
     );
     if (viewModel.matches.length === 0) {
+        const coverageIncomplete = viewModel.comparableDayCount < viewModel.totalDayCount;
         region.append(createInlineNotice(
             root,
-            "表示できる類似日はありません",
-            "個人ペースを含む3軸が揃い、十分に近い日だけを候補にしています。欠損値は0として扱いません。",
-            "neutral"
+            coverageIncomplete ? "比較準備中" : "表示できる類似日はありません",
+            coverageIncomplete
+                ? `比較可能 ${viewModel.comparableDayCount}/${viewModel.totalDayCount}日。保存が進むと、選択を維持したまま再計算します。`
+                : "個人ペースを含む3軸が揃い、十分に近い日だけを候補にしています。欠損値は0として扱いません。",
+            coverageIncomplete ? "warning" : "neutral"
         ));
     } else {
         region.append(createMatchList(
@@ -438,7 +441,22 @@ function createSourceNote(
     const competitor = competitorFetchedAt !== null
         ? `対象日の競合は保存値あり（${formatFetchedAt(competitorFetchedAt)}取得）・部屋タイプ未確認のため類似判定には未使用`
         : "対象日の競合は未取得または未接続のため類似判定には未使用";
-    note.textContent = `データ基準日 ${asOf} / ${competitor}`;
+    const evidence = viewModel.baseEvidence?.stayDate === compactStayDate
+        ? viewModel.baseEvidence
+        : null;
+    const curves = evidence === null
+        ? []
+        : [evidence.transientCurve, evidence.groupCurve];
+    const exactCurveCount = curves.filter((curve) => curve.status === "ready").length;
+    const observedThroughDates = curves.flatMap((curve) => (
+        curve.status === "tail-pending" ? [curve.sourceAsOfDate] : []
+    )).sort();
+    const bookingCurve = exactCurveCount === curves.length && curves.length > 0
+        ? "booking curveは本日まで観測済み"
+        : observedThroughDates.length > 0
+            ? `booking curveは${formatJapaneseDate(observedThroughDates.at(-1) ?? "")}まで観測済み・不足分を補充中`
+            : "booking curveは未取得";
+    note.textContent = `データ基準日 ${asOf} / ${bookingCurve} / ${competitor}`;
     return note;
 }
 

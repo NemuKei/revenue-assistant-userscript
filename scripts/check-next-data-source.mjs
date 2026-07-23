@@ -250,4 +250,51 @@ assert.equal(invalidFacility.status, "error");
 assert.equal(invalidFacility.reason, "facility-response-invalid");
 invalidFacilityDataSource.stop();
 
+let guardedAcquisitionStartCount = 0;
+const guardedDataSource = dataSourceModule.createLiveSimilarityLensDataSource({
+    acquisition: {
+        async ensureCurrent() {
+            guardedAcquisitionStartCount += 1;
+        },
+        async readLatest() {
+            return [];
+        },
+        async startBackground() {
+            guardedAcquisitionStartCount += 1;
+        },
+        async startReference() {
+            guardedAcquisitionStartCount += 1;
+        },
+        subscribe() {
+            return () => undefined;
+        },
+        suspend() {},
+        stop() {}
+    },
+    documentHost,
+    indexReader: async () => {
+        throw new Error("facility mismatch must not reach IndexedDB");
+    },
+    primaryKeyReader: async () => {
+        throw new Error("facility mismatch must not reach IndexedDB");
+    },
+    transport: {
+        async read(request) {
+            return request.kind === "facility"
+                ? { yad_no: "fixture", name: "施設A（mock）" }
+                : settingsPayload;
+        }
+    },
+    windowHost: {}
+});
+const guardedLoad = await guardedDataSource.load(["2026-08-12"], "20260812");
+assert.equal(guardedLoad.status, "error");
+assert.equal(guardedLoad.reason, "facility-context-mismatch");
+assert.equal(
+    guardedAcquisitionStartCount,
+    0,
+    "booking curve acquisition must not start before the visible facility label guard passes"
+);
+guardedDataSource.stop();
+
 console.log("Next data source checks passed");

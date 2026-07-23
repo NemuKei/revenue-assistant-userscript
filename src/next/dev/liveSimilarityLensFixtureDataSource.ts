@@ -15,7 +15,14 @@ import type {
     LiveSimilarityLensDataSource
 } from "../live/liveSimilarityLensDataSource";
 
-type FixtureScenario = "ready" | "zero" | "partial" | "stale" | "missing" | "error";
+type FixtureScenario =
+    | "ready"
+    | "zero"
+    | "partial"
+    | "tail-pending"
+    | "historical-prefix"
+    | "missing"
+    | "error";
 
 const FIXTURE_FACILITY_ID = "yad:fixture-next";
 const FIXTURE_AS_OF_DATE = "20260722";
@@ -119,7 +126,11 @@ function buildFixtureBookingRecords(
             Number(stayDate.slice(4, 6)) - 1,
             day
         )).getUTCDay();
-        const asOfDate = scenario === "stale" ? "20260721" : FIXTURE_AS_OF_DATE;
+        const asOfDate = scenario === "historical-prefix"
+            ? "20260707"
+            : scenario === "tail-pending"
+                ? "20260721"
+                : FIXTURE_AS_OF_DATE;
         const buildCurve = (transientPattern: number, groupPattern: number) => (
             [120, 90, 75, 60, 45, 30, 21, 14, 7, 0].flatMap((leadDays, pointIndex) => {
                 const observedDate = shiftCompactDate(stayDate, -leadDays);
@@ -218,7 +229,12 @@ function buildFixtureCompetitorRecords(stayDates: readonly string[]): Competitor
 
 function parseFixtureScenario(search: string): FixtureScenario {
     const value = new URLSearchParams(search).get("scenario");
-    return value === "zero" || value === "partial" || value === "stale" || value === "missing" || value === "error"
+    return value === "zero"
+        || value === "partial"
+        || value === "tail-pending"
+        || value === "historical-prefix"
+        || value === "missing"
+        || value === "error"
         ? value
         : "ready";
 }

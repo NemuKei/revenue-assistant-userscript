@@ -55,7 +55,11 @@ const dataSource: BookingCurveReferenceDataSource = {
                 reason: "database-missing"
             }, []);
         }
-        const recordAsOfDate = fixtureMode === "stale" ? "20260722" : AS_OF_DATE;
+        const recordAsOfDate = fixtureMode === "future"
+            ? "20260724"
+            : fixtureMode === "history"
+                ? "20260708"
+                : AS_OF_DATE;
         const allRecords = buildFixtureRecords(scope, recordAsOfDate);
         const records = fixtureMode === "sparse"
             ? allRecords.filter((record) => record.stayDate === STAY_DATE)

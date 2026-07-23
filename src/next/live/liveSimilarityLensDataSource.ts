@@ -26,10 +26,21 @@ import type {
 } from "../../rankRecommendation";
 import { parseNextFacilityContext } from "../facilityContext";
 import {
+    createNextBookingCurveScopes,
+    type NextBookingCurveAcquisitionContext
+} from "../bookingCurve/bookingCurveAcquisitionModel";
+import type {
+    NextBookingCurveAcquisitionCoordinator
+} from "../bookingCurve/bookingCurveAcquisitionCoordinator";
+import { buildNextBookingCurveSourceKey } from "../bookingCurve/bookingCurveSourceStore";
+import {
     buildLiveSimilarityLensEvidence,
     type LiveSimilarityLensEvidenceViewModel
 } from "./liveSimilarityLensEvidence";
-import { readLiveFacilityContextHints } from "./liveCalendarDomAdapter";
+import {
+    hasLiveFacilityContextLabel,
+    readLiveFacilityContextHints
+} from "./liveCalendarDomAdapter";
 import {
     createBrowserNextReadTransport,
     createNextReadSession,
@@ -40,6 +51,7 @@ export type LiveSimilarityLensDataLoadErrorReason =
     | "as-of-missing"
     | "visible-dates-invalid"
     | "facility-response-invalid"
+    | "facility-context-mismatch"
     | "current-settings-response-invalid"
     | "read-failed"
     | "aborted";
@@ -54,7 +66,12 @@ export type LiveSimilarityLensDataLoadResult =
     | { status: "error"; reason: LiveSimilarityLensDataLoadErrorReason; contextKey: string | null };
 
 export interface LiveSimilarityLensDataSource {
-    load(visibleStayDates: readonly string[]): Promise<LiveSimilarityLensDataLoadResult>;
+    load(
+        visibleStayDates: readonly string[],
+        selectedStayDate?: string
+    ): Promise<LiveSimilarityLensDataLoadResult>;
+    refresh?(): Promise<LiveSimilarityLensDataLoadResult>;
+    subscribe?(listener: () => void): () => void;
     stop(): void;
 }
 
@@ -70,6 +87,7 @@ export interface CreateLiveSimilarityLensDataSourceOptions {
     documentHost?: Document;
     indexReader?: ExistingIndexedDbIndexReader;
     primaryKeyReader?: ExistingIndexedDbPrimaryKeyReader;
+    acquisition?: NextBookingCurveAcquisitionCoordinator;
     transport?: NextReadTransport;
     windowHost?: Window;
 }
@@ -85,10 +103,11 @@ export function createLiveSimilarityLensDataSource(
     let activeController: AbortController | null = null;
     let activeRequestKey: string | null = null;
     let activeLoad: Promise<LiveSimilarityLensDataLoadResult> | null = null;
+    let resolvedContext: LiveSimilarityLensResolvedContext | null = null;
     let stopped = false;
 
     return {
-        load(visibleStayDates) {
+        load(visibleStayDates, selectedStayDate) {
             if (stopped) {
                 return Promise.resolve({ status: "error", reason: "aborted", contextKey: null });
             }
@@ -101,7 +120,8 @@ export function createLiveSimilarityLensDataSource(
                 return Promise.resolve({ status: "error", reason: "visible-dates-invalid", contextKey: null });
             }
             const contextKey = `${asOfDate}|${compactDates.join(",")}`;
-            const facilityContextFingerprint = readLiveFacilityContextHints(documentHost).join("\u001f")
+            const facilityContextHints = readLiveFacilityContextHints(documentHost);
+            const facilityContextFingerprint = facilityContextHints.join("\u001f")
                 || "unverified-facility";
             const requestKey = `${facilityContextFingerprint}|${contextKey}`;
             if (activeRequestKey === requestKey && activeLoad !== null) {
@@ -116,8 +136,14 @@ export function createLiveSimilarityLensDataSource(
                 asOfDate,
                 compactDates,
                 contextKey,
+                facilityContextHints,
+                ...(options.acquisition === undefined ? {} : { acquisition: options.acquisition }),
                 indexReader,
                 primaryKeyReader,
+                ...(selectedStayDate === undefined ? {} : { selectedStayDate }),
+                onResolvedContext(context) {
+                    resolvedContext = context;
+                },
                 signal: controller.signal,
                 transport
             });
@@ -132,12 +158,52 @@ export function createLiveSimilarityLensDataSource(
             });
             return load;
         },
+        refresh() {
+            if (stopped || resolvedContext === null) {
+                return Promise.resolve({ status: "error", reason: "aborted", contextKey: null });
+            }
+            activeController?.abort();
+            const controller = new AbortController();
+            activeController = controller;
+            const load = readLiveSimilarityLensStoredData({
+                context: resolvedContext,
+                indexReader,
+                primaryKeyReader,
+                signal: controller.signal,
+                ...(options.acquisition === undefined ? {} : { acquisition: options.acquisition })
+            });
+            activeLoad = load;
+            void load.finally(() => {
+                if (activeLoad === load) {
+                    activeController = null;
+                    activeLoad = null;
+                }
+            });
+            return load;
+        },
+        subscribe(listener) {
+            if (options.acquisition === undefined) {
+                return () => undefined;
+            }
+            let storedCount = -1;
+            return options.acquisition.subscribe((nextState) => {
+                if (storedCount < 0) {
+                    storedCount = nextState.storedCount;
+                    return;
+                }
+                if (nextState.storedCount !== storedCount) {
+                    storedCount = nextState.storedCount;
+                    listener();
+                }
+            });
+        },
         stop() {
             stopped = true;
             activeController?.abort();
             activeController = null;
             activeLoad = null;
             activeRequestKey = null;
+            resolvedContext = null;
         }
     };
 }
@@ -163,11 +229,15 @@ export function parseLiveSimilarityLensAsOfDate(documentHost: Document): string 
 }
 
 async function loadLiveSimilarityLensData(options: {
+    acquisition?: NextBookingCurveAcquisitionCoordinator;
     asOfDate: string;
     compactDates: readonly string[];
     contextKey: string;
+    facilityContextHints: readonly string[];
     indexReader: ExistingIndexedDbIndexReader;
+    onResolvedContext?: (context: LiveSimilarityLensResolvedContext) => void;
     primaryKeyReader: ExistingIndexedDbPrimaryKeyReader;
+    selectedStayDate?: string;
     signal: AbortSignal;
     transport: NextReadTransport;
 }): Promise<LiveSimilarityLensDataLoadResult> {
@@ -190,55 +260,57 @@ async function loadLiveSimilarityLensData(options: {
             return { status: "error", reason: "facility-response-invalid", contextKey: options.contextKey };
         }
         const { facilityId, facilityLabel } = facilityContext;
-        const currentSettings = parseCurrentSettings(currentSettingsPayload);
+        if (
+            options.acquisition !== undefined
+            && !hasLiveFacilityContextLabel(options.facilityContextHints, facilityLabel)
+        ) {
+            return {
+                status: "error",
+                reason: "facility-context-mismatch",
+                contextKey: options.contextKey
+            };
+        }
+        const currentSettings = parseLiveSimilarityLensCurrentSettings(currentSettingsPayload);
         if (currentSettings === null) {
             return { status: "error", reason: "current-settings-response-invalid", contextKey: options.contextKey };
         }
-
-        const bookingPrimaryKeys = buildCurrentBookingCurvePrimaryKeys({
+        const acquisitionContext: NextBookingCurveAcquisitionContext = {
             asOfDate: options.asOfDate,
+            facilityId,
+            roomScopes: createNextBookingCurveScopes(currentSettings),
+            visibleStayDates: options.compactDates
+        };
+        const resolvedContext: LiveSimilarityLensResolvedContext = {
+            acquisitionContext,
+            asOfDate: options.asOfDate,
+            compactDates: options.compactDates,
+            contextKey: options.contextKey,
             currentSettings,
             facilityId,
-            visibleStayDates: options.compactDates
-        });
-        const [bookingReadStatus, competitorReadStatus] = await Promise.all([
-            bookingPrimaryKeys.length === 0
-                ? Promise.resolve<ExistingIndexedDbReadResult<BookingCurveRawSourceRecord>>({
-                    status: "ready",
-                    records: []
-                })
-                : options.primaryKeyReader<BookingCurveRawSourceRecord>({
-                databaseName: BOOKING_CURVE_RAW_SOURCE_DB_NAME,
-                databaseVersion: BOOKING_CURVE_RAW_SOURCE_DB_VERSION,
-                storeName: BOOKING_CURVE_RAW_SOURCE_STORE_NAME,
-                    keys: bookingPrimaryKeys
-                }),
-            options.indexReader<CompetitorPriceSnapshotRecord>({
-                databaseName: COMPETITOR_PRICE_SNAPSHOT_DB_NAME,
-                databaseVersion: COMPETITOR_PRICE_SNAPSHOT_DB_VERSION,
-                storeName: COMPETITOR_PRICE_SNAPSHOT_STORE_NAME,
-                indexName: "facility-stay-date",
-                keys: options.compactDates.map((stayDate) => [facilityId, stayDate])
-            })
-        ]);
-        if (options.signal.aborted) {
-            return { status: "error", reason: "aborted", contextKey: options.contextKey };
-        }
-        return {
-            status: "ready",
-            contextKey: `${facilityId}|${options.contextKey}`,
-            facilityLabel,
-            evidence: buildLiveSimilarityLensEvidence({
-                facilityId,
-                asOfDate: options.asOfDate,
-                visibleStayDates: options.compactDates,
-                currentSettings,
-                bookingRawRecords: bookingReadStatus.status === "ready" ? bookingReadStatus.records : [],
-                bookingReadStatus,
-                competitorRecords: competitorReadStatus.status === "ready" ? competitorReadStatus.records : [],
-                competitorReadStatus
-            })
+            facilityLabel
         };
+        options.onResolvedContext?.(resolvedContext);
+        if (options.acquisition !== undefined) {
+            await options.acquisition.startBackground(acquisitionContext);
+            const selectedStayDate = options.selectedStayDate === undefined
+                ? null
+                : normalizeVisibleStayDates([options.selectedStayDate])[0] ?? null;
+            if (selectedStayDate !== null && options.compactDates.includes(selectedStayDate)) {
+                await options.acquisition.ensureCurrent({
+                    context: acquisitionContext,
+                    signal: options.signal,
+                    stayDate: selectedStayDate
+                });
+            }
+        }
+
+        return readLiveSimilarityLensStoredData({
+            ...(options.acquisition === undefined ? {} : { acquisition: options.acquisition }),
+            context: resolvedContext,
+            indexReader: options.indexReader,
+            primaryKeyReader: options.primaryKeyReader,
+            signal: options.signal
+        });
     } catch (error: unknown) {
         return {
             status: "error",
@@ -246,6 +318,139 @@ async function loadLiveSimilarityLensData(options: {
             contextKey: options.contextKey
         };
     }
+}
+
+interface LiveSimilarityLensResolvedContext {
+    acquisitionContext: NextBookingCurveAcquisitionContext;
+    asOfDate: string;
+    compactDates: readonly string[];
+    contextKey: string;
+    currentSettings: RankRecommendationCurrentSettingsResponse;
+    facilityId: string;
+    facilityLabel: string;
+}
+
+async function readLiveSimilarityLensStoredData(options: {
+    acquisition?: NextBookingCurveAcquisitionCoordinator;
+    context: LiveSimilarityLensResolvedContext;
+    indexReader: ExistingIndexedDbIndexReader;
+    primaryKeyReader: ExistingIndexedDbPrimaryKeyReader;
+    signal: AbortSignal;
+}): Promise<LiveSimilarityLensDataLoadResult> {
+    try {
+        const {
+            asOfDate,
+            compactDates,
+            contextKey,
+            currentSettings,
+            facilityId,
+            facilityLabel
+        } = options.context;
+        const bookingPrimaryKeys = buildCurrentBookingCurvePrimaryKeys({
+            asOfDate,
+            currentSettings,
+            facilityId,
+            visibleStayDates: compactDates
+        });
+        const bookingSourceKeys = buildCurrentBookingCurveSourceKeys({
+            currentSettings,
+            facilityId,
+            visibleStayDates: compactDates
+        });
+        const [classicBookingReadStatus, nextBookingRecords, competitorReadStatus] = await Promise.all([
+            bookingPrimaryKeys.length === 0
+                ? Promise.resolve<ExistingIndexedDbReadResult<BookingCurveRawSourceRecord>>({
+                    status: "ready",
+                    records: []
+                })
+                : options.primaryKeyReader<BookingCurveRawSourceRecord>({
+                    databaseName: BOOKING_CURVE_RAW_SOURCE_DB_NAME,
+                    databaseVersion: BOOKING_CURVE_RAW_SOURCE_DB_VERSION,
+                    storeName: BOOKING_CURVE_RAW_SOURCE_STORE_NAME,
+                    keys: bookingPrimaryKeys
+                }),
+            options.acquisition?.readLatest(bookingSourceKeys) ?? Promise.resolve([]),
+            options.indexReader<CompetitorPriceSnapshotRecord>({
+                databaseName: COMPETITOR_PRICE_SNAPSHOT_DB_NAME,
+                databaseVersion: COMPETITOR_PRICE_SNAPSHOT_DB_VERSION,
+                storeName: COMPETITOR_PRICE_SNAPSHOT_STORE_NAME,
+                indexName: "facility-stay-date",
+                keys: compactDates.map((stayDate) => [facilityId, stayDate])
+            })
+        ]);
+        if (options.signal.aborted) {
+            return { status: "error", reason: "aborted", contextKey };
+        }
+        const bookingRecords = [
+            ...(classicBookingReadStatus.status === "ready"
+                ? classicBookingReadStatus.records
+                : []),
+            ...nextBookingRecords
+        ];
+        const bookingReadStatus: ExistingIndexedDbReadResult<BookingCurveRawSourceRecord> =
+            bookingRecords.length > 0
+                ? { status: "ready", records: bookingRecords }
+                : classicBookingReadStatus;
+        return {
+            status: "ready",
+            contextKey: `${facilityId}|${contextKey}`,
+            facilityLabel,
+            evidence: buildLiveSimilarityLensEvidence({
+                facilityId,
+                asOfDate,
+                visibleStayDates: compactDates,
+                currentSettings,
+                bookingRawRecords: bookingRecords,
+                bookingReadStatus,
+                competitorRecords: competitorReadStatus.status === "ready"
+                    ? competitorReadStatus.records
+                    : [],
+                competitorReadStatus
+            })
+        };
+    } catch (error: unknown) {
+        return {
+            status: "error",
+            reason: options.signal.aborted || isAbortError(error) ? "aborted" : "read-failed",
+            contextKey: options.context.contextKey
+        };
+    }
+}
+
+export function buildCurrentBookingCurveSourceKeys(options: {
+    currentSettings: RankRecommendationCurrentSettingsResponse;
+    facilityId: string;
+    visibleStayDates: readonly string[];
+}): string[] {
+    const visibleStayDates = new Set(normalizeVisibleStayDates(options.visibleStayDates));
+    const keys = new Set<string>();
+    for (const stayDate of visibleStayDates) {
+        keys.add(buildNextBookingCurveSourceKey({
+            facilityId: options.facilityId,
+            roomGroupId: null,
+            scope: "hotel",
+            stayDate
+        }));
+    }
+    for (const setting of options.currentSettings.suggest_output_current_settings ?? []) {
+        const stayDate = normalizeVisibleStayDates([setting.stay_date ?? ""])[0];
+        if (stayDate === undefined || !visibleStayDates.has(stayDate)) {
+            continue;
+        }
+        for (const roomGroup of setting.rm_room_groups ?? []) {
+            const roomGroupId = roomGroup.rm_room_group_id?.trim() ?? "";
+            if (roomGroupId === "") {
+                continue;
+            }
+            keys.add(buildNextBookingCurveSourceKey({
+                facilityId: options.facilityId,
+                roomGroupId,
+                scope: "roomGroup",
+                stayDate
+            }));
+        }
+    }
+    return Array.from(keys).sort();
 }
 
 export function buildCurrentBookingCurvePrimaryKeys(options: {
@@ -290,7 +495,9 @@ export function buildCurrentBookingCurvePrimaryKeys(options: {
     return Array.from(keys).sort();
 }
 
-function parseCurrentSettings(payload: unknown): RankRecommendationCurrentSettingsResponse | null {
+export function parseLiveSimilarityLensCurrentSettings(
+    payload: unknown
+): RankRecommendationCurrentSettingsResponse | null {
     if (!isRecord(payload) || !Array.isArray(payload.suggest_output_current_settings)) {
         return null;
     }

@@ -21,6 +21,20 @@ import {
 import { LEAD_TIME_BUCKET_TICKS } from "../../leadTimeBuckets";
 import { parseNextFacilityContext } from "../facilityContext";
 import {
+    hasLiveFacilityContextLabel,
+    readLiveFacilityContextHints
+} from "../live/liveCalendarDomAdapter";
+import type {
+    NextBookingCurveAcquisitionContext
+} from "../bookingCurve/bookingCurveAcquisitionModel";
+import {
+    buildNextBookingCurveCurrentTasks,
+    buildNextBookingCurveReferenceTasks
+} from "../bookingCurve/bookingCurveAcquisitionModel";
+import type {
+    NextBookingCurveAcquisitionCoordinator
+} from "../bookingCurve/bookingCurveAcquisitionCoordinator";
+import {
     createBrowserNextReadTransport,
     createNextReadSession,
     type NextReadTransport
@@ -53,6 +67,7 @@ export type BookingCurveReferenceDataLoadResult =
             | "aborted"
             | "as-of-invalid"
             | "current-settings-response-invalid"
+            | "facility-context-mismatch"
             | "facility-response-invalid"
             | "read-failed"
             | "scope-invalid"
@@ -63,6 +78,7 @@ export interface BookingCurveReferenceDataSource {
     cancel(): void;
     load(stayDate: string, asOfDate: string, scopeKey: string): Promise<BookingCurveReferenceDataLoadResult>;
     reset(): void;
+    subscribe?(listener: () => void): () => void;
     stop(): void;
 }
 
@@ -71,6 +87,8 @@ export type ExistingIndexedDbPrimaryKeyReader = <T>(
 ) => Promise<ExistingIndexedDbReadResult<T>>;
 
 export interface CreateBookingCurveReferenceDataSourceOptions {
+    acquisition?: NextBookingCurveAcquisitionCoordinator;
+    documentHost?: Document;
     primaryKeyReader?: ExistingIndexedDbPrimaryKeyReader;
     transport?: NextReadTransport;
     windowHost?: Window;
@@ -133,7 +151,13 @@ export function createBookingCurveReferenceDataSource(
             activeLoadKey = loadKey;
             const load = loadBookingCurveReferenceData({
                 asOfDate: compactAsOfDate,
+                ...(options.acquisition === undefined ? {} : { acquisition: options.acquisition }),
                 context,
+                facilityContextHints: options.acquisition === undefined
+                    ? null
+                    : options.documentHost === undefined
+                        ? []
+                        : readLiveFacilityContextHints(options.documentHost),
                 primaryKeyReader,
                 scopeKey,
                 signal: controller.signal,
@@ -164,6 +188,22 @@ export function createBookingCurveReferenceDataSource(
             return load;
         },
         reset,
+        subscribe(listener) {
+            if (options.acquisition === undefined) {
+                return () => undefined;
+            }
+            let storedCount = -1;
+            return options.acquisition.subscribe((nextState) => {
+                if (storedCount < 0) {
+                    storedCount = nextState.storedCount;
+                    return;
+                }
+                if (nextState.storedCount !== storedCount) {
+                    storedCount = nextState.storedCount;
+                    listener();
+                }
+            });
+        },
         stop() {
             stopped = true;
             reset();
@@ -172,8 +212,10 @@ export function createBookingCurveReferenceDataSource(
 }
 
 async function loadBookingCurveReferenceData(options: {
+    acquisition?: NextBookingCurveAcquisitionCoordinator;
     asOfDate: string;
     context: BookingCurveReferenceContext | null;
+    facilityContextHints: readonly string[] | null;
     primaryKeyReader: ExistingIndexedDbPrimaryKeyReader;
     scopeKey: string;
     signal: AbortSignal;
@@ -192,6 +234,18 @@ async function loadBookingCurveReferenceData(options: {
         if ("reason" in resolvedContext) {
             return resolvedContext;
         }
+        if (
+            options.acquisition !== undefined
+            && (
+                options.facilityContextHints === null
+                || !hasLiveFacilityContextLabel(
+                    options.facilityContextHints,
+                    resolvedContext.facilityLabel
+                )
+            )
+        ) {
+            return { status: "error", contextKey, reason: "facility-context-mismatch" };
+        }
         const scope = resolvedContext.scopes.find((item) => item.key === options.scopeKey) ?? null;
         if (scope === null) {
             return { status: "error", contextKey, reason: "scope-invalid" };
@@ -202,15 +256,49 @@ async function loadBookingCurveReferenceData(options: {
             scope,
             stayDate: options.stayDate
         });
-        const readStatus = await options.primaryKeyReader<BookingCurveRawSourceRecord>({
-            databaseName: BOOKING_CURVE_RAW_SOURCE_DB_NAME,
-            databaseVersion: BOOKING_CURVE_RAW_SOURCE_DB_VERSION,
-            storeName: BOOKING_CURVE_RAW_SOURCE_STORE_NAME,
-            keys
+        const acquisition = options.acquisition;
+        const acquisitionContext = buildAcquisitionContext(
+            resolvedContext,
+            options.asOfDate,
+            options.stayDate
+        );
+        if (acquisition !== undefined) {
+            await acquisition.startBackground(acquisitionContext);
+            await acquisition.ensureCurrent({
+                context: acquisitionContext,
+                scopeKeys: [scope.key],
+                signal: options.signal,
+                stayDate: options.stayDate
+            });
+            await acquisition.startReference({
+                context: acquisitionContext,
+                scopeKey: scope.key,
+                targetStayDate: options.stayDate
+            });
+        }
+        const nextSourceKeys = buildBookingCurveReferenceSourceKeys({
+            context: acquisitionContext,
+            scopeKey: scope.key,
+            stayDate: options.stayDate
         });
+        const [classicReadStatus, nextRecords] = await Promise.all([
+            options.primaryKeyReader<BookingCurveRawSourceRecord>({
+                databaseName: BOOKING_CURVE_RAW_SOURCE_DB_NAME,
+                databaseVersion: BOOKING_CURVE_RAW_SOURCE_DB_VERSION,
+                storeName: BOOKING_CURVE_RAW_SOURCE_STORE_NAME,
+                keys
+            }),
+            acquisition?.readLatest(nextSourceKeys) ?? Promise.resolve([])
+        ]);
         if (options.signal.aborted) {
             return { status: "error", contextKey, reason: "aborted" };
         }
+        const records = [
+            ...(classicReadStatus.status === "ready" ? classicReadStatus.records : []),
+            ...nextRecords
+        ];
+        const readStatus: ExistingIndexedDbReadResult<BookingCurveRawSourceRecord> =
+            records.length > 0 ? { status: "ready", records } : classicReadStatus;
         return {
             status: "ready",
             asOfDate: options.asOfDate,
@@ -218,7 +306,7 @@ async function loadBookingCurveReferenceData(options: {
             facilityId: resolvedContext.facilityId,
             facilityLabel: resolvedContext.facilityLabel,
             readStatus,
-            records: readStatus.status === "ready" ? readStatus.records : [],
+            records,
             scope,
             scopes: resolvedContext.scopes,
             stayDate: options.stayDate
@@ -230,6 +318,43 @@ async function loadBookingCurveReferenceData(options: {
             reason: options.signal.aborted || isAbortError(error) ? "aborted" : "read-failed"
         };
     }
+}
+
+function buildAcquisitionContext(
+    context: BookingCurveReferenceContext,
+    asOfDate: string,
+    stayDate: string
+): NextBookingCurveAcquisitionContext {
+    return {
+        asOfDate,
+        facilityId: context.facilityId,
+        roomScopes: context.scopes.map((scope) => ({
+            key: scope.key,
+            kind: scope.kind,
+            roomGroupId: scope.roomGroupId
+        })),
+        visibleStayDates: [stayDate]
+    };
+}
+
+export function buildBookingCurveReferenceSourceKeys(options: {
+    context: NextBookingCurveAcquisitionContext;
+    scopeKey: string;
+    stayDate: string;
+}): string[] {
+    const tasks = [
+        ...buildNextBookingCurveCurrentTasks({
+            context: options.context,
+            scopeKeys: [options.scopeKey],
+            stayDate: options.stayDate
+        }),
+        ...buildNextBookingCurveReferenceTasks({
+            context: options.context,
+            scopeKey: options.scopeKey,
+            targetStayDate: options.stayDate
+        })
+    ];
+    return Array.from(new Set(tasks.map((task) => task.sourceKey))).sort();
 }
 
 async function loadBookingCurveReferenceContext(options: {

@@ -118,7 +118,8 @@ export function renderBookingCurveReference(
         `データ更新 ${formatDate(viewModel.asOfDate)}`,
         `選択 ${viewModel.scope.label}`,
         `利用cache ${viewModel.sourceRecordCount}日分`,
-        viewModel.staleRecordCount > 0 ? `as-of不一致 ${viewModel.staleRecordCount}件は除外` : null,
+        viewModel.reusedRecordCount > 0 ? `保存済み履歴点を再利用 ${viewModel.reusedRecordCount}件` : null,
+        viewModel.futureRecordCount > 0 ? `未来as-of ${viewModel.futureRecordCount}件は除外` : null,
         viewModel.invalidRecordCount > 0 ? `契約不一致 ${viewModel.invalidRecordCount}件は除外` : null
     ].filter((item): item is string => item !== null).join(" / ");
 
@@ -792,8 +793,8 @@ function formatEmptyReason(reason: string): string {
             return "booking curve cacheのversionが一致しないため読みませんでした。";
         case "indexeddb-unavailable":
             return "browser内のbooking curve cacheを利用できません。";
-        case "stale-records-only":
-            return "画面の最終データ更新日と一致するcacheがありません。古いcacheは混ぜていません。";
+        case "future-records-only":
+            return "画面の最終データ更新日より未来のcacheだけだったため読みませんでした。";
         case "read-failed":
             return "booking curve cacheの読み込みに失敗しました。標準グラフには影響しません。";
         default:

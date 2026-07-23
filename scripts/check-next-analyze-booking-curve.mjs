@@ -184,6 +184,68 @@ assert.equal(built.viewModel.panels[0].current.points.find((point) => point.tick
 assert.equal(built.viewModel.panels[0].current.points.find((point) => point.tick === "ACT").value, null);
 assert.equal(built.viewModel.panels[0].recent.sourceStayDateCount >= 1, true);
 assert.equal(built.viewModel.panels[0].seasonal.sourceStayDateCount >= 1, true);
+assert.equal(
+    built.viewModel.panels[0].seasonal.points.find((point) => point.tick === 0).value,
+    null,
+    "a post-stay seasonal source must not reconstruct zero-day from an earlier point"
+);
+assert.equal(
+    built.viewModel.panels[0].seasonal.points.find((point) => point.tick === "ACT").value,
+    20,
+    "seasonal ACT uses the distinct post-stay landing"
+);
+
+const sameWeekdayLandingOnlyReference = createRecord({
+    asOfDate: "20260723",
+    scope: hotelScope,
+    stayDate: "20260722",
+    points: [
+        ["2026-07-21", 5, 4, 1],
+        ["2026-07-22", 8, 7, 1]
+    ]
+});
+const differentWeekdayLandingReference = createRecord({
+    asOfDate: "20260723",
+    scope: hotelScope,
+    stayDate: "20260721",
+    points: [
+        ["2026-07-20", 50, 40, 10],
+        ["2026-07-21", 100, 80, 20]
+    ]
+});
+const landingReferenceBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: {
+        status: "ready",
+        records: [
+            records[0],
+            sameWeekdayLandingOnlyReference,
+            differentWeekdayLandingReference
+        ]
+    },
+    records: [
+        records[0],
+        sameWeekdayLandingOnlyReference,
+        differentWeekdayLandingReference
+    ],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260812"
+});
+assert.equal(landingReferenceBuilt.status, "ready");
+assert.equal(
+    landingReferenceBuilt.viewModel.panels[0].recent.points
+        .find((point) => point.tick === 0).value,
+    null,
+    "recent zero-day remains missing without an exact day-zero observation"
+);
+assert.equal(
+    landingReferenceBuilt.viewModel.panels[0].recent.points
+        .find((point) => point.tick === "ACT").value,
+    8,
+    "recent ACT uses only same-weekday landing evidence"
+);
 
 const directSegmentRecord = createRecord({
     scope: hotelScope,
@@ -248,19 +310,169 @@ const zeroBuilt = model.buildBookingCurveReferenceViewModel({
 assert.equal(zeroBuilt.status, "ready", "zero is data and must not collapse into empty");
 assert.equal(zeroBuilt.viewModel.panels[0].current.points.find((point) => point.tick === 360).value, 0);
 
-const staleRecord = { ...records[0], asOfDate: "20260722" };
-assert.deepEqual(
-    model.buildBookingCurveReferenceViewModel({
-        asOfDate: "20260723",
-        facilityId: "yad:fixture",
-        readStatus: { status: "ready", records: [staleRecord] },
-        records: [staleRecord],
-        scope: hotelScope,
-        scopes,
-        stayDate: "20260812"
-    }),
-    { status: "empty", reason: "stale-records-only" }
+const reusedRecord = createRecord({
+    asOfDate: "20260722",
+    scope: hotelScope,
+    stayDate: "20260805",
+    points: [["2026-07-22", 6, 5, 1]]
+});
+const reusedBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: { status: "ready", records: [reusedRecord] },
+    records: [reusedRecord],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260812"
+});
+assert.equal(reusedBuilt.status, "ready");
+assert.equal(reusedBuilt.viewModel.reusedRecordCount, 1);
+assert.equal(
+    reusedBuilt.viewModel.panels[0].current.points.every((point) => point.value === null),
+    true,
+    "a reused source may inform references but must not masquerade as the selected day's exact current curve"
 );
+
+const olderHistoricalRecord = createRecord({
+    asOfDate: "20260708",
+    scope: hotelScope,
+    stayDate: "20260805",
+    points: [["2026-07-08", 4, 3, 1]]
+});
+const olderHistoricalBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: { status: "ready", records: [olderHistoricalRecord] },
+    records: [olderHistoricalRecord],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260812"
+});
+assert.equal(olderHistoricalBuilt.status, "ready");
+assert.equal(olderHistoricalBuilt.viewModel.reusedRecordCount, 1);
+assert.equal(
+    olderHistoricalBuilt.viewModel.panels[0].recent.points
+        .some((point) => point.value !== null),
+    true,
+    "immutable historical points never expire from a reference curve"
+);
+
+const completedRecord = createRecord({
+    asOfDate: "20260722",
+    scope: hotelScope,
+    stayDate: "20260722",
+    points: [
+        ["2026-07-20", 4, 3, 1],
+        ["2026-07-22", 6, 5, 1]
+    ]
+});
+const completedBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: { status: "ready", records: [completedRecord] },
+    records: [completedRecord],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260812"
+});
+assert.equal(completedBuilt.status, "ready");
+assert.equal(completedBuilt.viewModel.reusedRecordCount, 1);
+
+const separatedCurrentRecord = {
+    ...createRecord({
+        asOfDate: "20260723",
+        scope: hotelScope,
+        stayDate: "20260722",
+        points: [
+            ["2026-07-21", 5, 4, 1],
+            ["2026-07-22", 6, 5, 1]
+        ]
+    }),
+    firstObservedAsOfDate: "20260722",
+    landing: {
+        all: 8,
+        transient: 7,
+        group: 1,
+        observedAsOfDate: "20260723"
+    },
+    source: "next-bounded-booking-curve"
+};
+const separatedCurrentBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: { status: "ready", records: [separatedCurrentRecord] },
+    records: [separatedCurrentRecord],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260722"
+});
+assert.equal(separatedCurrentBuilt.status, "ready");
+assert.equal(
+    separatedCurrentBuilt.viewModel.panels[0].current.points
+        .find((point) => point.tick === 0).value,
+    6
+);
+assert.equal(
+    separatedCurrentBuilt.viewModel.panels[0].current.points
+        .find((point) => point.tick === "ACT").value,
+    8,
+    "zero-day and the first post-stay landing remain distinct"
+);
+const separatedReferenceBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: { status: "ready", records: [records[0], separatedCurrentRecord] },
+    records: [records[0], separatedCurrentRecord],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260812"
+});
+assert.equal(separatedReferenceBuilt.status, "ready");
+assert.equal(
+    separatedReferenceBuilt.viewModel.panels[0].recent.points
+        .find((point) => point.tick === 0).value,
+    6,
+    "recent zero-day uses the exact preserved day-zero observation"
+);
+assert.equal(
+    separatedReferenceBuilt.viewModel.panels[0].recent.points
+        .find((point) => point.tick === "ACT").value,
+    8,
+    "recent ACT remains distinct from preserved zero-day"
+);
+
+const landingOnlyRecord = createRecord({
+    asOfDate: "20260723",
+    scope: hotelScope,
+    stayDate: "20260722",
+    points: [
+        ["2026-07-21", 5, 4, 1],
+        ["2026-07-22", 8, 7, 1]
+    ]
+});
+const landingOnlyBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: { status: "ready", records: [landingOnlyRecord] },
+    records: [landingOnlyRecord],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260722"
+});
+assert.equal(landingOnlyBuilt.status, "ready");
+assert.equal(
+    landingOnlyBuilt.viewModel.panels[0].current.points
+        .find((point) => point.tick === 0).value,
+    null,
+    "a source first observed after stay must not backfill zero-day"
+);
+assert.equal(
+    landingOnlyBuilt.viewModel.panels[0].current.points
+        .find((point) => point.tick === "ACT").value,
+    8,
+    "a post-stay source contributes landing only"
+);
+
 assert.deepEqual(
     model.buildBookingCurveReferenceViewModel({
         asOfDate: "20260723",
@@ -315,6 +527,60 @@ assert.equal(primaryReads[1].keys.every((key) => key.includes("scope:roomGroup")
 dataSource.stop();
 assert.equal((await dataSource.load("20260812", "20260723", "hotel")).reason, "aborted");
 
+let guardedAcquisitionStartCount = 0;
+const guardedDataSource = dataSourceModule.createBookingCurveReferenceDataSource({
+    acquisition: {
+        async ensureCurrent() {
+            guardedAcquisitionStartCount += 1;
+        },
+        async readLatest() {
+            return [];
+        },
+        async startBackground() {
+            guardedAcquisitionStartCount += 1;
+        },
+        async startReference() {
+            guardedAcquisitionStartCount += 1;
+        },
+        subscribe() {
+            return () => undefined;
+        },
+        suspend() {},
+        stop() {}
+    },
+    documentHost: {
+        querySelectorAll() {
+            return [];
+        }
+    },
+    primaryKeyReader: async () => {
+        throw new Error("facility mismatch must not reach IndexedDB");
+    },
+    transport: {
+        async read(request) {
+            if (request.kind === "facility") {
+                return { yad_no: "fixture", name: "施設A（mock）" };
+            }
+            return {
+                suggest_output_current_settings: [{
+                    stay_date: "20260812",
+                    rm_room_groups: []
+                }]
+            };
+        }
+    },
+    windowHost: {}
+});
+const guardedLoad = await guardedDataSource.load("20260812", "20260723", "hotel");
+assert.equal(guardedLoad.status, "error");
+assert.equal(guardedLoad.reason, "facility-context-mismatch");
+assert.equal(
+    guardedAcquisitionStartCount,
+    0,
+    "Analyze acquisition must not start before the visible facility label guard passes"
+);
+guardedDataSource.stop();
+
 const rankRequests = [];
 const rankDataSource = rankDataSourceModule.createBookingCurveRankStatusDataSource({
     transport: {
@@ -367,7 +633,8 @@ assert.match(styles, /@media \(max-width: 680px\)/u);
 assert.match(styles, /max-width: calc\(100vw - 48px\)/u);
 assert.match(styles, /min-height: 44px/u);
 assert.match(styles, /data-ra-next-booking-curve-rank-marker-hitbox/u);
-assert.match(entrySource, /startBookingCurveReferenceRuntime\(document, window\)/u);
+assert.match(entrySource, /startBookingCurveReferenceRuntime\(document, window, \{/u);
+assert.match(entrySource, /createBookingCurveReferenceDataSource\(\{[\s\S]*acquisition: bookingCurveAcquisition/u);
 assert.match(runtimeSource, /booking-curve-main-chart-header/u);
 assert.match(runtimeSource, /booking-curve-sub-chart-header/u);
 assert.match(dataSourceSource, /readExistingIndexedDbRecordsByPrimaryKeys/u);
@@ -379,7 +646,8 @@ assert.match(fixture, /booking-curve-main-chart-header/u);
 assert.match(fixture, /booking-curve-sub-chart-header/u);
 assert.match(fixture, /data-mock-route-away/u);
 assert.match(fixtureEntry, /state=|fixtureMode/u);
-assert.match(fixtureEntry, /state.*stale|"stale"/u);
+assert.match(fixtureEntry, /fixtureMode === "future"/u);
+assert.match(fixtureEntry, /fixtureMode === "history"/u);
 assert.match(fixtureEntry, /rankFixtureMode/u);
 
 console.log("Next Analyze booking curve reference checks passed");

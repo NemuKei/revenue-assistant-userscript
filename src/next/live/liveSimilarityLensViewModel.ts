@@ -27,10 +27,12 @@ export interface LiveSimilarityLensMatchViewModel {
 export interface LiveSimilarityLensReadyViewModel {
     asOfDate: string;
     baseEvidence: LiveSimilarityLensRoomGroupEvidence | null;
+    comparableDayCount: number;
     comparisonEvidence: readonly LiveSimilarityLensRoomGroupEvidence[];
     competitorCache: LiveSimilarityLensEvidenceViewModel["competitorCache"];
     matches: readonly LiveSimilarityLensMatchViewModel[];
     roomGroups: readonly LiveSimilarityLensRoomGroupOption[];
+    totalDayCount: number;
 }
 
 export function buildLiveSimilarityLensReadyViewModel(
@@ -71,14 +73,17 @@ export function buildLiveSimilarityLensReadyViewModel(
         const item = roomGroupEvidence.find((candidate) => candidate.stayDate === stayDate);
         return item === undefined ? [] : [item];
     });
+    const comparableDayCount = roomGroupEvidence.filter(isComparableEvidence).length;
 
     return {
         asOfDate: evidence.asOfDate ?? "",
         baseEvidence,
+        comparableDayCount,
         comparisonEvidence,
         competitorCache: evidence.competitorCache,
         matches,
-        roomGroups
+        roomGroups,
+        totalDayCount: roomGroupEvidence.length
     };
 }
 
@@ -89,8 +94,8 @@ export function formatEvidenceMetric(
     if (evidence.status === "ready") {
         return { label: readyValue, tone: "ready" };
     }
-    if (evidence.status === "stale") {
-        return { label: "古い保存値", tone: "warning" };
+    if (evidence.status === "tail-pending") {
+        return { label: "差分補充中", tone: "warning" };
     }
     if (evidence.status === "error") {
         return { label: "読取失敗", tone: "warning" };
@@ -127,6 +132,12 @@ function getNamedRoomGroupsForDate(
     return Array.from(roomGroupsById.values()).sort(
         (left, right) => left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
     );
+}
+
+function isComparableEvidence(evidence: LiveSimilarityLensRoomGroupEvidence): boolean {
+    return evidence.onHand.status === "ready"
+        && evidence.transientCurve.status === "ready"
+        && evidence.groupCurve.status === "ready";
 }
 
 function normalizeCompactDate(value: string | null): string | null {

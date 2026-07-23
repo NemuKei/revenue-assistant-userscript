@@ -71,7 +71,7 @@ assert.equal(partial.roomGroups[0]?.groupCurve.reason, "segment-points-missing")
 assert.equal(partial.calendarGroups[0]?.groupCurve.status, "missing");
 assert.equal(partial.calendarGroups[0]?.groupCurve.reason, "segment-points-missing");
 
-const stale = buildEvidence({
+const pendingTail = buildEvidence({
     currentSettings: currentSettings(10, 4),
     records: [bookingRecord({
         facilityId,
@@ -88,9 +88,38 @@ const stale = buildEvidence({
         group: 3
     })]
 });
-assert.equal(stale.roomGroups[0]?.transientCurve.status, "stale");
-assert.equal(stale.calendarGroups[0]?.groupCurve.status, "stale");
-assert.equal(projectLiveSimilarityLensEvidenceForRoomGroup(stale, roomGroupId)[0]?.transientCurve, null);
+assert.equal(pendingTail.roomGroups[0]?.transientCurve.status, "tail-pending");
+assert.equal(pendingTail.roomGroups[0]?.transientCurve.sourceAsOfDate, "20260721");
+assert.equal(pendingTail.calendarGroups[0]?.groupCurve.status, "tail-pending");
+assert.equal(
+    projectLiveSimilarityLensEvidenceForRoomGroup(pendingTail, roomGroupId)[0]?.transientCurve,
+    null,
+    "a preserved historical prefix must not masquerade as today's completed tail"
+);
+
+const olderPendingTail = buildEvidence({
+    currentSettings: currentSettings(10, 4),
+    records: [bookingRecord({
+        facilityId,
+        stayDate,
+        asOfDate: "20260707",
+        roomGroupId,
+        transient: 4,
+        group: 1
+    }), bookingRecord({
+        facilityId,
+        stayDate,
+        asOfDate: "20260707",
+        scope: "hotel",
+        group: 3
+    })]
+});
+assert.equal(olderPendingTail.roomGroups[0]?.transientCurve.status, "tail-pending");
+assert.equal(olderPendingTail.calendarGroups[0]?.groupCurve.status, "tail-pending");
+assert.equal(
+    projectLiveSimilarityLensEvidenceForRoomGroup(olderPendingTail, roomGroupId)[0]?.transientCurve,
+    null
+);
 
 const wrongQuery = buildEvidence({
     currentSettings: currentSettings(10, 4),

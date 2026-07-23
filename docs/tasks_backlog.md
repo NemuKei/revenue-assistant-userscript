@@ -253,6 +253,27 @@
   - 既存browser-local recordのreadonly利用から始める。新規endpoint、background prefetch、response保存、storage write、freshness policy変更が必要なら、目的、保存範囲、削除方針、負荷、権限をYellow zone判断として実装前に記録する。
   - snapshot / empty / stale / error、人数 / 食事 / 部屋タイプ、tooltipのmouse / keyboard、screen reader label、390pxで追加root自身の横overflow 0、標準overflow非悪化、candidate request予算、console、write 0、route cleanupをfixture / smoke / liveで確認する。
 
+### RAU-UX-151 Next booking curveを初回bootstrap + 日々の差分補充へ移す
+
+- 状態:
+  - 実装とローカルQAは完了、単一runtimeでの実画面QA待ち。利用者は2026-07-23に、read-only booking curve取得、Next専用bounded store、初回bootstrap、daily deltaを明示承認した。Yellow-zone契約は`D-20260723-009`と対象specへ実装前に記録した。
+- 目的:
+  - Next単独運用でbooking curve sourceが増えず、基準日レンズに類似日が出ない、Analyzeのcurrent / 直近型referenceがemptyになる状態を解消する。
+  - 初回だけ必要範囲を段階準備し、2回目以降は新規・欠損と最後に保存したbooking curve pointより後の不足tailだけを補うことで、毎回の全件cold fetchと保存済みpointの再取得を避ける。
+- 実装境界:
+  - `src/main.ts`、Classic store / queue / UIをimportまたは変更しない。Next transport、planner、rooms-only compactor、専用IndexedDB store、coordinator、status viewを分離する。
+  - 初回は表示中stay date x hotel / 全room currentとhotel recent referenceを最大800件、daily deltaは最大200件、250ms以上 / concurrency 2とする。選択中currentは最優先、room referenceは選択scopeだけ段階取得する。
+  - 過去point不変、後続responseの同日値を無視したtail append、currentの当日差分、referenceの次tick到達時差分、past sourceのlanding後再取得なし、source最新1件、施設最大4,096件、401 / 403 / 429即停止、同一run retryなし、連続3 error停止を直接testする。
+  - `0日前`は宿泊日当日までの観測だけ、宿泊日後の初回値は別landingとして扱う。bootstrap前のpast sourceは真の`0日前`を推測せず着地だけを使い、`0日前`と`ACT`を同じpointから複製しない。current / 直近型 / 季節型のいずれも、欠損した`0日前`を`1日前`とACTから表示補間しない。
+  - 基準日レンズはcoverage不足時に`類似日なし`と断定せず、比較準備中と比較可能日数を表示し、source追加で選択を維持したまま再計算する。Analyzeはcurrentを先に描画し、直近型を段階更新する。
+- ローカル確認:
+  - 後続responseが過去pointへ別値を返しても保存済み値を維持し、最後に保存したpointより後だけをappendすること、source as-ofよりpoint終端が遅れていても次回responseの遅延tailを取り込むこと、完了済みpast sourceを年齢で再取得しないこと、referenceは次のlead-time tick到達時だけdueになることをfocused checkで確認した。
+  - `0日前`とlanding / ACTの分離、post-stay-only sourceの`0日前`欠損、参考線での表示補間なし、直近型ACTへの別曜日landing混入なし、current tail未補充時の`比較準備中`を直接testした。
+  - `npm run check:next`、`npm run check`、Classic公開baseline、distribution / booking-curve smoke fixture、Classic fixture buildは通過した。最新candidateは240,364 bytes、SHA-256 `E099F7B2189063554188D3215926B532F0D278041E76004EE8EBFE4FC814B275`、updateURL / downloadURLなしである。
+- gate:
+  - Next publish、release、Classic再公開、Tampermonkey reinstall / switch、Revenue Assistant write、delete UI、retention変更、季節型 / 同曜日補助線の追加取得は含めない。
+  - ログイン済み通常Chromeは旧Next 0.1.0が単独稼働中で、今回追加したbooking curve acquisition rootを持たない。二重runtimeを避けるため最新candidateは注入していない。live QAはTampermonkey実行版を一時停止し、検証candidateを単一runtimeとして実行できる場合だけ行う。実施設名、room type名、rooms値、raw response、trace、screenshotを保存またはcommitしない。
+
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile

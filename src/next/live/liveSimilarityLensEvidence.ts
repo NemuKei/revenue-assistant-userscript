@@ -28,6 +28,10 @@ type ExistingReadErrorReason = Extract<
     ExistingIndexedDbReadResult<unknown>,
     { status: "error" }
 >["reason"];
+type LiveSimilarityLensReadFailure = Exclude<
+    LiveSimilarityLensEvidenceValue<never>,
+    { status: "ready" } | { status: "tail-pending" }
+>;
 
 export type LiveSimilarityLensEvidenceMissingReason =
     | ExistingReadMissingReason
@@ -49,8 +53,8 @@ export type LiveSimilarityLensEvidenceValue<T> =
     | { status: "ready"; value: T }
     | { status: "missing"; reason: LiveSimilarityLensEvidenceMissingReason }
     | {
-        status: "stale";
-        reason: "past-as-of-only";
+        status: "tail-pending";
+        reason: "past-as-of-prefix";
         sourceAsOfDate: string;
         fetchedAt: string;
     }
@@ -71,6 +75,7 @@ export interface LiveSimilarityLensCurveValue {
         query: string;
         asOfDate: string;
         fetchedAt: string;
+        freshnessDays: number;
     };
 }
 
@@ -129,7 +134,17 @@ interface CurrentSettingBucket {
 
 type ResolvedBookingRecord =
     | { status: "ready"; record: BookingCurveRawSourceRecord }
-    | Exclude<LiveSimilarityLensEvidenceValue<never>, { status: "ready" }>;
+    | {
+        status: "tail-pending";
+        reason: "past-as-of-prefix";
+        sourceAsOfDate: string;
+        fetchedAt: string;
+        record: BookingCurveRawSourceRecord;
+    }
+    | Exclude<
+        LiveSimilarityLensEvidenceValue<never>,
+        { status: "ready" } | { status: "tail-pending" }
+    >;
 
 export function buildLiveSimilarityLensEvidence(
     options: BuildLiveSimilarityLensEvidenceOptions
@@ -350,10 +365,11 @@ function resolveBookingRecord(options: {
         const sourceAsOfDate = toCompactDateKey(pastRecord.asOfDate);
         if (sourceAsOfDate !== null) {
             return {
-                status: "stale",
-                reason: "past-as-of-only",
+                status: "tail-pending",
+                reason: "past-as-of-prefix",
                 sourceAsOfDate,
-                fetchedAt: pastRecord.fetchedAt
+                fetchedAt: pastRecord.fetchedAt,
+                record: pastRecord
             };
         }
     }
@@ -408,8 +424,26 @@ function resolveCurveEvidence(
     stayDate: string,
     asOfDate: string
 ): LiveSimilarityLensEvidenceValue<LiveSimilarityLensCurveValue> {
-    if (bookingRecord.status !== "ready") {
+    if (
+        bookingRecord.status !== "ready"
+        && bookingRecord.status !== "tail-pending"
+    ) {
         return bookingRecord;
+    }
+    const sourceAsOfDate = bookingRecord.status === "ready"
+        ? asOfDate
+        : bookingRecord.sourceAsOfDate;
+    const freshnessDays = getDaysBetweenDateKeys(asOfDate, sourceAsOfDate);
+    if (bookingRecord.status === "tail-pending") {
+        return {
+            status: "tail-pending",
+            reason: bookingRecord.reason,
+            sourceAsOfDate: bookingRecord.sourceAsOfDate,
+            fetchedAt: bookingRecord.fetchedAt
+        };
+    }
+    if (freshnessDays !== 0) {
+        return { status: "missing", reason: "booking-record-missing" };
     }
     const pointsByLeadDays = new Map<number, SimilarityCurvePoint>();
     for (const point of bookingRecord.record.response.booking_curve ?? []) {
@@ -441,8 +475,9 @@ function resolveCurveEvidence(
             source: {
                 endpoint: bookingRecord.record.endpoint,
                 query: bookingRecord.record.query,
-                asOfDate,
-                fetchedAt: bookingRecord.record.fetchedAt
+                asOfDate: sourceAsOfDate,
+                fetchedAt: bookingRecord.record.fetchedAt,
+                freshnessDays
             }
         }
     };
@@ -511,7 +546,7 @@ function resolveCompetitorCacheEvidence(options: {
 
 function convertReadFailure<T>(
     readStatus: ExistingIndexedDbReadResult<T>
-): Exclude<LiveSimilarityLensEvidenceValue<never>, { status: "ready" }> | null {
+): LiveSimilarityLensReadFailure | null {
     if (readStatus.status === "ready") {
         return null;
     }

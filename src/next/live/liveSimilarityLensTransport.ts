@@ -4,12 +4,18 @@ const NEXT_COMPETITORS_ENDPOINT = "/api/v2/competitors";
 const NEXT_COMPETITOR_PRICES_ENDPOINT = "/api/v5/competitor_prices";
 const NEXT_PRICE_TRENDS_ENDPOINT = "/api/v1/price_trends";
 const NEXT_RANK_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
+const NEXT_BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 
 export type NextReadRequest =
     | { kind: "facility" }
     | { kind: "current-settings"; from: string; to: string }
     | { kind: "competitors" }
     | { kind: "rank-status"; stayDate: string }
+    | {
+        kind: "booking-curve";
+        roomGroupId: string | null;
+        stayDate: string;
+    }
     | {
         kind: "price-trends";
         mealType: string;
@@ -34,6 +40,16 @@ export interface NextReadSession {
     usedRequestCount(): number;
 }
 
+export class NextReadHttpError extends Error {
+    readonly status: number;
+
+    constructor(kind: NextReadRequest["kind"], status: number) {
+        super(`Next read request failed: ${kind} (${status})`);
+        this.name = "NextReadHttpError";
+        this.status = status;
+    }
+}
+
 export function createBrowserNextReadTransport(windowHost: Window = window): NextReadTransport {
     return {
         async read(request, signal) {
@@ -47,7 +63,7 @@ export function createBrowserNextReadTransport(windowHost: Window = window): Nex
                 signal
             });
             if (!response.ok) {
-                throw new Error(`Next read request failed: ${request.kind} (${response.status})`);
+                throw new NextReadHttpError(request.kind, response.status);
             }
             return response.json() as Promise<unknown>;
         }
@@ -92,6 +108,14 @@ export function buildNextReadUrl(request: NextReadRequest, origin: string): URL 
         url.searchParams.set("filter_type", "stay_date");
         url.searchParams.set("from", request.stayDate);
         url.searchParams.set("to", request.stayDate);
+        return url;
+    }
+    if (request.kind === "booking-curve") {
+        const url = new URL(NEXT_BOOKING_CURVE_ENDPOINT, origin);
+        url.searchParams.set("date", request.stayDate);
+        if (request.roomGroupId !== null) {
+            url.searchParams.set("rm_room_group_id", request.roomGroupId);
+        }
         return url;
     }
     if (request.kind === "price-trends") {

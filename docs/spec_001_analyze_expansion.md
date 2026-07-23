@@ -208,6 +208,50 @@ BCL-tuned first wave の定義:
 - `直近同曜日カーブ` は既定 OFF とし、OFF の間は追加の `/api/v4/booking_curve` 取得を行わない。toggle ON のときだけ、ホテル全体 block と開いている室タイプ card に必要な同曜日 stay_date を取得する。
 - `直近同曜日カーブ` の取得は raw source IndexedDB と既存 request cache を経由し、不足分だけ API から補う。ON にした直後の表示では、取得済みの線から順に描画し、取得できない stay_date は空表示として扱う。
 
+## Next Booking Curve Bootstrap / Daily Delta
+
+このsectionはClassicのhigh-throughput warm cacheを延命するものではなく、Next単独運用でcurrent、直近型reference、基準日レンズに必要なrooms-only sourceを再取得できるようにする独立契約である。Classicの35ms開始間隔、最大30並列、同曜日 / 季節型 / 全room reference一括queueはNextへ移植しない。
+
+### 取得対象と優先順
+
+- 取得を開始できるのは、可視なcalendarまたは`/analyze/YYYY-MM-DD`、document visible、現在の`as_of_date`、`/api/v2/yad/info`とvisible headerのfacility label一致、`current_settings`で確認できたroom groupが揃う場合だけとする。
+- 初回bootstrapは、表示中stay dateのホテル全体と全room groupのcurrent source、およびホテル全体の直近型reference coreが各lead-time目盛りに必要とするsourceを対象にする。現在の360〜0日前目盛りでは`as_of_date - 90日`から最大`as_of_date + 360日`のうちcoreが返すtarget weekdayだけであり、任意の連続日prefetchではない。同じsourceは1 taskへdedupeする。
+- 選択中Analyze stay date、または基準日レンズの選択stay dateのcurrent sourceを最優先にする。currentはホテル全体と確認済みroom groupを対象にし、当日`as_of_date`と一致するrecordを優先する。
+- room groupの直近型reference sourceは、そのroom groupをAnalyzeで選択したときに不足分だけ段階取得し、選択中currentの次にbackground backlogより優先する。全部屋タイプ分のreference sourceを初回bootstrapで一括取得しない。
+- 独立した`-14日 / -7日 / +7日 / +14日`同曜日補助線、季節型reference用source、表示範囲外の週 / 月 / 隣接日prefetchは対象外とする。直近型coreがtarget weekdayと同じsourceを選ぶ既存算出意味は維持するが、別の同曜日線や別queueは作らない。
+- current lineは選択日のcurrent sourceが保存できた時点で先に描画し、直近型referenceはsource coverageの増加に合わせて段階更新する。reference完了をcurrent描画のbarrierにしない。
+
+### 初回bootstrapと日々の差分
+
+- 初めて開く施設ではNext専用storeに有効sourceがないためbootstrap modeとする。最大800 request / sessionで止め、未完了分は保存済みsourceを再利用して次の可視sessionで再開する。
+- 2回目以降はdaily delta modeとし、新しく表示範囲へ入ったstay date、未保存source、前回取得後にcurrent tailが新しく観測可能になったsource、または直近型で次のlead-time目盛りが観測可能になったsourceだけを最大200 request / sessionで補う。APIがcumulative responseだけを返す場合もrequest自体を部分responseへ変えたとはみなさず、local mergeでは最後に保存したbooking curve pointの日付より後のpointだけを追加する。前回source as-ofよりpoint終端が遅れていた場合も、次のresponseでその遅延tailを取り込む。
+- 保存済みpointには取得後の日数による期限を設けない。後続responseが同じ`booking_curve[].date`へ異なるroomsを返しても、先に保存したpointを置き換えず、差分補充の対象をその観測日より後へ限定する。
+- current taskは、future / 当日stay dateなら現在の`as_of_date`までのtailが未観測の場合にdueとする。past stay dateは、分離したlandingを1回保存できた時点で完了し、その後は年齢を理由に再取得しない。
+- 直近型reference taskは、そのsourceが新しいlead-time目盛りへ到達した場合、またはpast stay dateのlandingが未保存の場合だけdueとする。固定7〜13日refreshや14日expiryを設けず、まだ必要な目盛りが増えていないfuture sourceを毎日再取得しない。
+- 類似比較のcurrent根拠は当日`as_of_date`まで揃ったsourceだけをreadyとする。過去prefixは破棄せず差分補充の起点として保持するが、本日のtailに見せない。直近型referenceは必要な観測点が保存済みならsource取得日の古さにかかわらず再利用できる。
+
+### `0日前`と`ACT`の分離
+
+- `0日前`は宿泊日当日までに保存できたpointだけを使う。宿泊日後に初めてsourceを取得した場合、そのresponse内のstay date pointを過去の`0日前`として採用しない。
+- `ACT`は宿泊日後の初回観測時に、`all` / `transient` / `group`の着地roomsを`landing`としてbooking curve pointとは別に保存し、この着地証拠だけから表示する。保存済み`0日前`をlandingで上書きせず、同じ数値でも別概念として維持する。
+- bootstrap時点ですでにpastのstay dateは、LT 1以上の履歴pointと着地を利用できるが、真の`0日前`を復元できない場合は`0日前`を欠損にする。着地値を`0日前`へ複製せず、`1日前`とACTから作った補間値も表示またはcore inputへ入れない。
+- currentだけでなく直近型 / 季節型referenceも、`0日前`は宿泊日当日に保存したexact pointだけ、ACTは分離したlandingだけから集計する。直近型ACTの対象sourceは直近型coreが比較する対象日集合と揃え、別曜日のlandingを混ぜない。
+
+### 負荷、停止、再開
+
+- `/api/v4/booking_curve`のrequest開始間隔は250ms以上、同時実行数は2以下とする。Revenue Assistant本体の標準requestはこのcountへ含めない。
+- 初回bootstrapは最大800 request / session、daily deltaは最大200 request / sessionとする。選択中currentはqueue先頭へ上げるが、同時実行数と開始間隔を迂回しない。
+- HTTP 401はログイン確認、403は権限 / 施設確認、429はrate limitとしてqueueを即停止する。同一run内の自動retryは行わない。その他のrequest / validation / storage errorは記録して次taskへ進められるが、連続3 errorで停止する。
+- document hidden、calendar / Analyze以外へのroute変更、facility label不一致、facility / as-of変更、runtime停止では未完了requestをabortし、次の安全な可視contextで保存済みsourceから再計画する。
+- fixtureではwriterとnetwork acquisitionを完全に無効化する。
+
+### Next専用保存契約
+
+- 保存先はNext専用IndexedDB `revenue-assistant-next-booking-curve-sources`、store `booking-curve-sources`、version 1とし、Classic `revenue-assistant-booking-curve-sources`を変更しない。
+- 保存payloadはfacility、stay date、scope、room group、endpoint、query、最初と最新のsource as-of、取得時刻、`max_room_count`、`booking_curve[].date`と`all` / `transient` / `group`の`this_year_room_sum`、分離したlandingへ限定する。sales、ADR、過去年値、raw response、request / response body、HAR、Cookie、token、credential、予約・顧客情報は保存しない。
+- record keyはsource keyと最新source as-ofから決定し、Web Locksが利用可能な場合はfacility単位exclusive lock、IndexedDBは`add` constraintで重複を防ぐ。保存成功後は、それ以前のpointと最初のsource as-ofを内包した同じsourceの最新1件、および施設単位最大4,096件だけを残す。過去pointを含まない状態で旧recordだけを削除せず、削除対象はNext store内の超過recordに限定する。
+- 進捗は`初回準備`または`本日差分`、処理件数、保存、skip、error、停止理由だけを画面内の非干渉領域へ表示する。施設名、stay date、room group名、rooms値、response内容は進捗表示やconsoleへ出さない。
+
 ## キャッシュと同期のルール
 
 ### キャッシュ範囲
