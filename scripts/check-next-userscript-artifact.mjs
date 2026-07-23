@@ -29,7 +29,9 @@ const expectedSources = [
     "src/next/analyze/competitorHistoryDataSource.ts",
     "src/next/analyze/competitorHistoryModel.ts",
     "src/next/analyze/competitorHistoryRuntime.ts",
+    "src/next/analyze/competitorHistorySnapshotStore.ts",
     "src/next/analyze/competitorHistoryView.ts",
+    "src/next/analyze/competitorHistoryWriter.ts",
     "src/next/entry.ts",
     "src/next/facilityContext.ts",
     "src/next/live/liveCalendarDomAdapter.ts",
@@ -82,7 +84,7 @@ assert.deepEqual(metadata.get("run-at"), ["document-idle"]);
 assert.deepEqual(
     Array.from(metadata.keys()).sort(),
     ["author", "description", "grant", "match", "name", "namespace", "run-at", "version"],
-    "Next read-only candidate metadata keys must stay allowlisted"
+    "Next candidate metadata keys must stay allowlisted"
 );
 assert.equal(metadata.has("updateURL"), false, "Next candidate must not self-update");
 assert.equal(metadata.has("downloadURL"), false, "Next candidate must not publish a download URL");
@@ -94,9 +96,11 @@ assert.match(artifactText, /ready-read-only/u);
 assert.match(artifactText, /data-ra-next-similarity-lens-root/u);
 assert.match(artifactText, /data-ra-next-competitor-history-root/u);
 assert.match(artifactText, /data-ra-next-analyze-state/u);
+assert.match(artifactText, /server-read-only\/local-bounded-history/u);
 assert.equal(countMatches(artifactText, /\bfetch\b/gu), 1, "Next candidate must contain one raw fetch");
 assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");
 assert.equal(countMatches(artifactText, /\/api\/v2\/yad\/info/gu), 1);
+assert.equal(countMatches(artifactText, /\/api\/v2\/competitors/gu), 1);
 assert.equal(countMatches(artifactText, /\/api\/v1\/suggest\/output\/current_settings/gu), 1);
 assert.equal(
     countMatches(artifactText, /\/api\/v4\/booking_curve/gu) >= 1,
@@ -108,9 +112,13 @@ assert.equal(
     true,
     "competitor endpoint contract must remain present for cache validation"
 );
-assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 3);
-assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 2);
+assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 5);
+assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 3);
 assert.match(artifactText, /readonly/u);
+assert.match(artifactText, /readwrite/u);
+assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 1);
+assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 1);
+assert.match(artifactText, /revenue-assistant-next-competitor-price-snapshots/u);
 assert.match(artifactText, /GET/u);
 
 for (const forbiddenPattern of [
@@ -123,12 +131,10 @@ for (const forbiddenPattern of [
     /\blocalStorage\b/u,
     /\bsessionStorage\b/u,
     /\bdocument\.cookie\b/u,
-    /\breadwrite\b/u,
-    /\bcreateObjectStore\b/u,
     /\bdeleteObjectStore\b/u,
     /\bdeleteDatabase\b/u,
-    /\bcreateIndex\b/u,
     /\bdeleteIndex\b/u,
+    /\.put\s*\(/u,
     /["'](?:POST|PUT|PATCH|DELETE)["']/u,
     /\.requestSubmit\s*\(/u,
     /\.submit\s*\(/u,
@@ -137,7 +143,7 @@ for (const forbiddenPattern of [
     assert.equal(
         forbiddenPattern.test(artifactText),
         false,
-        `Next read-only shell must not include ${forbiddenPattern}`
+        `Next candidate shell must not include ${forbiddenPattern}`
     );
 }
 
@@ -148,7 +154,7 @@ console.log(JSON.stringify({
     version: metadata.get("version")?.[0] ?? null,
     updateURL: metadata.get("updateURL")?.[0] ?? null,
     downloadURL: metadata.get("downloadURL")?.[0] ?? null,
-    mode: "read-only"
+    mode: "server-read-only/local-bounded-history"
 }, null, 2));
 
 function normalizeSourceMapPath(value) {

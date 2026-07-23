@@ -15,7 +15,9 @@
 - `Classic`: 現在公開中の userscript。既存の name / namespace / filename / updateURL / downloadURL / 公開 URL を維持し、Next への cutover までは凍結する。
 - `Next`: 別 identity の未公開 candidate。`userscript.next.config.mjs` と `src/next/entry.ts` を入口にし、`.tmp/vite-next-candidate/revenue-assistant-next.candidate.user.js` へだけ生成する。自己更新 URL と `dist/` 出力を持たない。
 - Classic と Next を同じ Revenue Assistant tab で同時に実行しない。初期 Next QA は Tampermonkey で Classic を無効化してから reload する。Next は既に描画済みの Classic DOM を検出すると停止するが、現公開 Classic が後から起動する競合までは防げない。
-- Next の現在の entry は、Revenue Assistant の表示中カレンダーだけへ接続する read-only な基準日レンズである。通常の日付クリックは変更せず、利用者が `基準日を選ぶ` を押した直後の1回だけ選択として扱う。基準日選択後だけ確認済み2 endpointを各1回GETし、OHはcurrent settings、個人 / 団体は既存booking curve raw cache、競合は既存snapshot cacheから読む。`facilityId` は施設APIの `yad_no` だけから作り、同APIの施設名が現在のvisible headerに存在することも確認できた場合だけ結果を表示する。部屋タイプとsource / current as-of / stay dateが一致しない値を採用せず、productionでは0と未取得を分ける。`古い保存値`は過去as-of探索を戻さないためproductionでは到達せず、合成fixtureだけの防御表示である。競合のroom type対応は未確認のため、1日最大1件の保存有無とそのrecordの取得時刻だけを示し、最新性を保証せず類似判定にも使わない。Tampermonkey install / switch、publish、storage write、Revenue Assistant write操作は未実施である。
+- Next のcalendar entryは、表示中カレンダーだけへ接続するread-onlyな基準日レンズである。利用者が`基準日を選ぶ`を押した後だけ確認済み2 endpointを各1回GETし、OHはcurrent settings、個人 / 団体は既存booking curve raw cache、競合は既存snapshot cacheから読む。facility、room type、source、current as-of、stay dateのguardを満たさない値を採用せず、競合snapshotの取得時刻を最新性保証や類似判定に使わない。
+- Next のAnalyze entryは、可視な標準競合価格本文の末尾へClassic / Nextのbrowser-local履歴を統合表示する。facility labelが一致する未保存日の現在stay dateだけ、既存の競合一覧 / 競合価格GETを各最大1回使い、部屋 / 食事指定なし・1〜6名のsnapshotをJST日単位でNext専用IndexedDBへ最大1件保存する。週・月・周辺日程のbackground prefetch、raw response保存、Classic DB変更、Revenue Assistant write操作は行わない。
+- Tampermonkey install / switch、Next publish、Classic再公開は未実施であり、別gateのままである。
 
 ## 前提
 
@@ -40,9 +42,9 @@ npm run check
 - `npm run build:vite:fixture`: Vite fixture preview を build
 - `npm run build:vite:candidate`: 正規 `dist` を上書きしない Vite candidate userscript build を `.tmp/vite-candidate/` に生成
 - `npm run build:next:candidate`: Next の独立 userscript candidate を `.tmp/vite-next-candidate/` に生成
-- `npm run dev:next:fixture`: Next の類似度モデル fixture を `http://127.0.0.1:5173/dev/fixtures/similarity-lens/`、実画面接続 shell fixture を `http://127.0.0.1:5173/dev/fixtures/next-live-shell/` で preview
-- `npm run build:next:fixture`: Next の基準日レンズ合成 fixture を `.tmp/vite-next-fixture/` に生成
-- `npm run check:next`: Next の型、lint、runtime lease、live shell、類似度model、live evidence、data source、read-only API / IndexedDB境界、artifact metadata、candidate / fixture buildをまとめて確認。DOM interactionとログイン済み実画面の取得結果はBrowser QAで別途確認する
+- `npm run dev:next:fixture`: Next の類似度モデル、実画面接続shell、Analyze競合履歴の合成fixtureを `http://127.0.0.1:5173/dev/fixtures/` 以下でpreview
+- `npm run build:next:fixture`: Next の基準日レンズ / Analyze競合履歴fixtureを `.tmp/vite-next-fixture/` に生成
+- `npm run check:next`: Next の型、lint、runtime lease、live shell、Analyze parity / 競合履歴、類似度model、live evidence、data source、GET allowlist、readonly owner / bounded writer owner、artifact metadata、candidate / fixture buildをまとめて確認。DOM interactionとログイン済み実画面の取得結果はBrowser QAで別途確認する
 - `npm run check:classic-publication`: Classicの公開baseline manifest、workflow allowlist、公開権限もdeploy処理も持たないverify-only workflowの完全一致をoffline検査。`-- --live` を付けると公開URLのmetadata、bytes、SHA-256とGitHub Actions run provenanceも照合する
 - `npm run build:compare:vite`: 正規 `dist` と Vite candidate の userscript metadata、size、entry line を比較
 - `npm run check:fixture-markers`: Revenue Assistant 認証、Tampermonkey、通常 Chrome profile を使わず、fixture の合成 data だけで top のカレンダー連携型判断 workspace の主要 UI marker を確認

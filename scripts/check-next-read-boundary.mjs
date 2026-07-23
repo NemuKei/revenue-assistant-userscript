@@ -12,12 +12,15 @@ const nextSourceRoot = path.join(projectRoot, "src", "next");
 const entryPath = path.join(nextSourceRoot, "entry.ts");
 const transportPath = path.join(nextSourceRoot, "live", "liveSimilarityLensTransport.ts");
 const indexedDbPath = path.join(projectRoot, "src", "indexedDbReadOnly.ts");
+const snapshotStorePath = path.join(nextSourceRoot, "analyze", "competitorHistorySnapshotStore.ts");
 
 const expectedApiPaths = [
     "/api/v1/suggest/output/current_settings",
-    "/api/v2/yad/info"
+    "/api/v2/competitors",
+    "/api/v2/yad/info",
+    "/api/v5/competitor_prices"
 ];
-const expectedRequestKinds = ["current-settings", "facility"];
+const expectedRequestKinds = ["competitor-prices", "competitors", "current-settings", "facility"];
 const expectedFetchOptionKeys = ["credentials", "headers", "method", "signal"];
 const expectedHeaderEntries = [["X-Requested-With", "XMLHttpRequest"]];
 const forbiddenTransportIdentifiers = new Set([
@@ -29,22 +32,32 @@ const forbiddenTransportIdentifiers = new Set([
     "XMLHttpRequest",
     "sendBeacon"
 ]);
-const forbiddenIndexedDbMethods = new Set([
-    "add",
+const alwaysForbiddenIndexedDbMethods = new Set([
     "clear",
-    "createIndex",
-    "createObjectStore",
-    "delete",
     "deleteDatabase",
     "deleteIndex",
     "deleteObjectStore",
     "put",
     "update"
 ]);
-const allowedIndexedDbMethods = new Set([
+const allowedReadonlyIndexedDbMethods = new Set([
     "abort",
     "close",
     "databases",
+    "get",
+    "getAll",
+    "index",
+    "objectStore",
+    "open",
+    "transaction"
+]);
+const allowedSnapshotStoreIndexedDbMethods = new Set([
+    "abort",
+    "add",
+    "close",
+    "createIndex",
+    "createObjectStore",
+    "delete",
     "get",
     "getAll",
     "index",
@@ -71,6 +84,7 @@ const forbiddenRuntimeSources = new Set([
 assert.equal(existsSync(entryPath), true, "Next entry source is required");
 assert.equal(existsSync(transportPath), true, "Next read transport source is required");
 assert.equal(existsSync(indexedDbPath), true, "strict readonly IndexedDB source is required");
+assert.equal(existsSync(snapshotStorePath), true, "bounded Next snapshot store source is required");
 
 const tsconfigPath = ts.findConfigFile(projectRoot, ts.sys.fileExists, "tsconfig.json");
 assert.notEqual(tsconfigPath, undefined, "tsconfig.json is required for type-aware boundary checks");
@@ -109,7 +123,10 @@ console.log(JSON.stringify({
     rawFetchCount: 1,
     allowedApiPaths: expectedApiPaths,
     indexedDbOwner: toProjectPath(indexedDbPath),
-    indexedDbMode: "readonly"
+    indexedDbMode: "readonly",
+    snapshotStoreOwner: toProjectPath(snapshotStorePath),
+    snapshotStoreModes: ["readonly", "readwrite"],
+    snapshotRetentionLimit: 120
 }, null, 2));
 
 function checkTransportBoundary(sources, source) {
@@ -204,7 +221,7 @@ function checkTransportBoundary(sources, source) {
     assert.deepEqual(
         collectNextReadRequestKinds(source).sort(),
         expectedRequestKinds,
-        "NextReadRequest kinds must remain facility and current-settings only"
+        "NextReadRequest kinds must remain the four reviewed GET scopes"
     );
 
     const urlConstructions = collectNodes(source, (node) => (
@@ -212,11 +229,16 @@ function checkTransportBoundary(sources, source) {
         && ts.isIdentifier(node.expression)
         && node.expression.text === "URL"
     ));
-    assert.equal(urlConstructions.length, 2, "Next transport must construct exactly two allowlisted URLs");
+    assert.equal(urlConstructions.length, 4, "Next transport must construct exactly four allowlisted URLs");
     assert.deepEqual(
         urlConstructions.map((node) => node.arguments?.[0]?.getText(source) ?? "").sort(),
-        ["NEXT_CURRENT_SETTINGS_ENDPOINT", "NEXT_FACILITY_ENDPOINT"],
-        "Next transport URL constructors must use the two closed endpoint constants"
+        [
+            "NEXT_COMPETITORS_ENDPOINT",
+            "NEXT_COMPETITOR_PRICES_ENDPOINT",
+            "NEXT_CURRENT_SETTINGS_ENDPOINT",
+            "NEXT_FACILITY_ENDPOINT"
+        ],
+        "Next transport URL constructors must use the four closed endpoint constants"
     );
     for (const construction of urlConstructions) {
         assert.equal(
@@ -244,9 +266,19 @@ function checkTransportBoundary(sources, source) {
             getStringLiteralText(call.arguments[0]),
             call.arguments[1]?.getText(source) ?? ""
         ]).sort(([left], [right]) => left.localeCompare(right)),
-        [["from", "request.from"], ["to", "request.to"]],
-        "current-settings query parameters must remain exact from/to values"
+        [
+            ["date", "request.stayDate"],
+            ["from", "request.from"],
+            ["max_num_guests", "String(request.maxNumGuests)"],
+            ["min_num_guests", "String(request.minNumGuests)"],
+            ["to", "request.to"]
+        ],
+        "Next query parameters must remain the reviewed exact values"
     );
+    const searchParameterAppendCalls = collectNodes(source, isSearchParameterAppendCall);
+    assert.equal(searchParameterAppendCalls.length, 1, "competitor prices must have one repeated query append site");
+    assert.equal(getStringLiteralText(searchParameterAppendCalls[0].arguments[0]), "yad_nos[]");
+    assert.equal(searchParameterAppendCalls[0].arguments[1]?.getText(source), "yadNo");
 }
 
 function checkIndexedDbBoundary(sources) {
@@ -255,8 +287,13 @@ function checkIndexedDbBoundary(sources) {
     const getAllCalls = [];
     const forbiddenCalls = [];
     const readwriteLiterals = [];
+    const indexedDbCalls = [];
+    const readonlyOwner = normalizePath(indexedDbPath);
+    const snapshotStoreOwner = normalizePath(snapshotStorePath);
+    const allowedOwners = new Set([readonlyOwner, snapshotStoreOwner]);
 
     for (const source of sources) {
+        const sourcePath = normalizePath(source.fileName);
         walk(source, (node) => {
             if (isIndexedDbReference(node)) {
                 directReferences.push({ source, node });
@@ -274,20 +311,24 @@ function checkIndexedDbBoundary(sources) {
             const receiverType = checker.getTypeAtLocation(member.receiver);
             if (!isIndexedDbType(receiverType)) {
                 if (
-                    forbiddenIndexedDbMethods.has(member.name)
+                    alwaysForbiddenIndexedDbMethods.has(member.name)
                     && isAnyOrUnknownType(receiverType)
-                    && normalizePath(source.fileName) === normalizePath(indexedDbPath)
+                    && allowedOwners.has(sourcePath)
                 ) {
                     forbiddenCalls.push({ source, node, reason: `${member.name} on untyped receiver` });
                 }
                 return;
             }
-            if (normalizePath(source.fileName) !== normalizePath(indexedDbPath)) {
-                forbiddenCalls.push({ source, node, reason: `${member.name} outside readonly helper` });
+            indexedDbCalls.push({ source, node, member });
+            if (!allowedOwners.has(sourcePath)) {
+                forbiddenCalls.push({ source, node, reason: `${member.name} outside IndexedDB owners` });
                 return;
             }
-            if (!allowedIndexedDbMethods.has(member.name)) {
-                forbiddenCalls.push({ source, node, reason: `${member.name} outside read allowlist` });
+            const allowedMethods = sourcePath === readonlyOwner
+                ? allowedReadonlyIndexedDbMethods
+                : allowedSnapshotStoreIndexedDbMethods;
+            if (!allowedMethods.has(member.name) || alwaysForbiddenIndexedDbMethods.has(member.name)) {
+                forbiddenCalls.push({ source, node, reason: `${member.name} outside owner allowlist` });
                 return;
             }
             if (member.name === "transaction") {
@@ -296,37 +337,43 @@ function checkIndexedDbBoundary(sources) {
             if (member.name === "getAll") {
                 getAllCalls.push({ source, node });
             }
-            if (forbiddenIndexedDbMethods.has(member.name)) {
-                forbiddenCalls.push({ source, node, reason: member.name });
-            }
         });
     }
 
-    assert.equal(directReferences.length > 0, true, "readonly IndexedDB helper must own the direct IndexedDB access");
+    assert.equal(directReferences.length > 0, true, "reviewed IndexedDB owners must contain direct access");
     for (const reference of directReferences) {
         assert.equal(
-            normalizePath(reference.source.fileName),
-            normalizePath(indexedDbPath),
-            `direct indexedDB access is restricted to ${toProjectPath(indexedDbPath)}; found ${formatNode(reference)}`
+            allowedOwners.has(normalizePath(reference.source.fileName)),
+            true,
+            `direct indexedDB access is restricted to reviewed owners; found ${formatNode(reference)}`
         );
     }
-    assert.equal(readwriteLiterals.length, 0, formatNodeList("readwrite IndexedDB mode", readwriteLiterals));
+    assert.deepEqual(
+        Array.from(new Set(directReferences.map((reference) => toProjectPath(reference.source.fileName)))).sort(),
+        [toProjectPath(indexedDbPath), toProjectPath(snapshotStorePath)].sort(),
+        "both readonly and bounded snapshot owners must have direct IndexedDB access"
+    );
+    assert.equal(readwriteLiterals.length, 1, "Next runtime must contain one reviewed readwrite mode");
+    assert.equal(
+        normalizePath(readwriteLiterals[0].source.fileName),
+        snapshotStoreOwner,
+        `readwrite mode is restricted to ${toProjectPath(snapshotStorePath)}`
+    );
     assert.equal(forbiddenCalls.length, 0, formatReasonNodeList("forbidden IndexedDB mutation", forbiddenCalls));
-    assert.equal(transactionCalls.length > 0, true, "readonly helper must contain an explicit IndexedDB transaction");
+    assert.equal(transactionCalls.length, 5, "reviewed IndexedDB owners must retain five explicit transactions");
     for (const transaction of transactionCalls) {
+        assert.equal(transaction.node.arguments.length, 2, "IndexedDB transaction must use an explicit two-argument call");
+        const mode = getStringLiteralText(transaction.node.arguments[1]);
+        const owner = normalizePath(transaction.source.fileName);
         assert.equal(
-            normalizePath(transaction.source.fileName),
-            normalizePath(indexedDbPath),
-            `IndexedDB transactions are restricted to ${toProjectPath(indexedDbPath)}`
-        );
-        assert.equal(transaction.node.arguments.length, 2, "IndexedDB transaction must use an explicit two-argument readonly call");
-        assert.equal(
-            getStringLiteralText(transaction.node.arguments[1]),
-            "readonly",
-            "IndexedDB transaction mode must be the readonly literal"
+            owner === readonlyOwner ? mode === "readonly" : mode === "readonly" || mode === "readwrite",
+            true,
+            `IndexedDB transaction mode is outside the reviewed owner contract: ${formatNode(transaction)}`
         );
     }
-    for (const getAll of getAllCalls) {
+    const readonlyGetAllCalls = getAllCalls.filter((call) => normalizePath(call.source.fileName) === readonlyOwner);
+    assert.equal(readonlyGetAllCalls.length, 2, "readonly helper must retain two bounded getAll calls");
+    for (const getAll of readonlyGetAllCalls) {
         assert.equal(
             getAll.node.arguments.length,
             2,
@@ -341,6 +388,13 @@ function checkIndexedDbBoundary(sources) {
             `IndexedDB getAll must use the reviewed fixed count limit: ${formatNode(getAll)}`
         );
     }
+    const storeGetAllCalls = getAllCalls.filter((call) => normalizePath(call.source.fileName) === snapshotStoreOwner);
+    assert.equal(storeGetAllCalls.length, 1, "snapshot store must have one bounded retention read");
+    assert.equal(storeGetAllCalls[0].node.arguments.length, 2);
+    assert.equal(
+        storeGetAllCalls[0].node.arguments[1]?.getText(storeGetAllCalls[0].source),
+        "NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT + 1"
+    );
     const primaryKeyGetCalls = collectNodes(getProgramSourceFile(indexedDbPath), (node) => {
         if (!ts.isCallExpression(node)) {
             return false;
@@ -356,6 +410,18 @@ function checkIndexedDbBoundary(sources) {
         1,
         "IndexedDB primary-key get must receive exactly one explicit key"
     );
+    const snapshotStoreCalls = indexedDbCalls.filter(
+        (call) => normalizePath(call.source.fileName) === snapshotStoreOwner
+    );
+    const snapshotMethodCounts = new Map();
+    for (const call of snapshotStoreCalls) {
+        snapshotMethodCounts.set(call.member.name, (snapshotMethodCounts.get(call.member.name) ?? 0) + 1);
+    }
+    assert.equal(snapshotMethodCounts.get("add"), 1, "snapshot store must use one constraint-backed add");
+    assert.equal(snapshotMethodCounts.get("delete"), 1, "snapshot store may delete only through one prune site");
+    assert.equal(snapshotMethodCounts.get("get"), 1, "snapshot store must use one exact primary-key read");
+    assert.equal(snapshotMethodCounts.get("createObjectStore"), 1, "snapshot store must create one owned store");
+    assert.equal(snapshotMethodCounts.get("createIndex"), 1, "snapshot store must create one owned index");
     const recordLimitDeclarations = collectNodes(getProgramSourceFile(indexedDbPath), (node) => (
         ts.isVariableDeclaration(node)
         && ts.isIdentifier(node.name)
@@ -372,6 +438,13 @@ function checkIndexedDbBoundary(sources) {
         ["EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT", 1],
         ["EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT", 512]
     ]), "readonly IndexedDB reads must retain reviewed fixed materialization limits");
+    const retentionDeclaration = collectNodes(getProgramSourceFile(snapshotStorePath), (node) => (
+        ts.isVariableDeclaration(node)
+        && ts.isIdentifier(node.name)
+        && node.name.text === "NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT"
+    ));
+    assert.equal(retentionDeclaration.length, 1, "snapshot retention limit must have one declaration");
+    assert.equal(getNumericLiteralValue(retentionDeclaration[0].initializer), 120);
 }
 
 function checkRuntimeImportBoundary(reviewedPaths) {
@@ -562,6 +635,16 @@ function isSearchParameterSetCall(node) {
     }
     const method = node.expression;
     return method.name.text === "set"
+        && ts.isPropertyAccessExpression(method.expression)
+        && method.expression.name.text === "searchParams";
+}
+
+function isSearchParameterAppendCall(node) {
+    if (!ts.isCallExpression(node) || !ts.isPropertyAccessExpression(node.expression)) {
+        return false;
+    }
+    const method = node.expression;
+    return method.name.text === "append"
         && ts.isPropertyAccessExpression(method.expression)
         && method.expression.name.text === "searchParams";
 }

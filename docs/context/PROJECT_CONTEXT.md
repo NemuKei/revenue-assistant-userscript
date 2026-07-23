@@ -50,7 +50,7 @@ RAU は次を目的にしない。
 - レートの自動反映
 - レートの一括反映
 - credential、token、Cookie、session の保存
-- raw trace、HAR、request / response body、価格、在庫、予約、顧客情報など非公開データの保存
+- raw trace、HAR、request / response body、予約・顧客情報、価格・在庫など非公開データの網羅的・外部・無期限保存。判断補助に必要な最小化browser-local snapshotは、Yellow zoneで保存範囲、削除方針、負荷、権限を別途仕様化し、明示承認した場合だけ例外とする
 - OTA、競合サイト、第三者サイトの hidden API 収集
 
 ## Safety Boundary

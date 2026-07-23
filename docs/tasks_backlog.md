@@ -215,7 +215,7 @@
 ### RAU-UX-150 Next Analyze固有graphをclean-roomで再接続する
 
 - 状態:
-  - 進行中。第一段階の競合snapshot履歴graphは、clean-room source、合成fixture、ログイン済み実画面のread-only QAまで完了した。Next cutover blockerとしては、履歴を更新するbounded writer、booking curve reference / rank marker、90日価格推移の比較UIが残る。
+  - 進行中。第一段階の競合snapshot履歴graphと、明示承認済みの第二段階browser-local bounded writerは、clean-room source、合成fixture、ログイン済み実画面QAまで完了した。Next cutover blockerとしては、booking curve reference / rank markerと90日価格推移の比較UIが残る。
 - 目的:
   - 標準Analyzeを土台に、実務で価値が確認されているClassic固有の比較機能だけをNextの独立runtimeとして再接続する。`src/main.ts`の画面構造やmonolithを移植しない。
 - 実装順:
@@ -224,7 +224,12 @@
 - 第一段階完了:
   - `/analyze/YYYY-MM-DD` の可視な標準競合価格本文末尾へ、既存保存履歴だけを読む独立runtimeを追加した。desktop 2 x 2、390pxは1人数toggle、部屋 / 食事filter、取得日tooltip、最新値 / 前回差分の常時表示、日別table、empty / 1日 / errorを実装した。
   - 既存 `GET /api/v2/yad/info` 1回と、完全一致`facility-stay-date` indexのbounded readonly readだけを使う。新規endpoint、background prefetch、response保存、storage write、Revenue Assistant writeは追加していない。
-  - 保存履歴の新規蓄積は未実装である。Classic無効後も推移を更新するには実データ保存が必要なため、次の実装gateはbounded writerのYellow zone判断と明示承認とする。承認前にbooking curveのread-only再接続を進める場合も、この欠落をcutover blockerとして残す。
+  - 第一段階は既存履歴のbounded readonly表示だけを所有し、writerのstorage / network責務をviewへ混ぜない。
+- 第二段階完了:
+  - 2026-07-23の利用者明示承認と`D-20260723-005`に基づき、可視な標準競合価格本文、facility label一致、document visibleの間だけ、現在stay dateの部屋 / 食事指定なし・1〜6名snapshotをJST日単位で最大1件保存するwriterを追加した。
+  - 未保存日だけ既存`GET /api/v2/competitors`と`GET /api/v5/competitor_prices`を各最大1回使う。Classic / Nextに同日有効recordがあれば両GETを省略し、週・月・周辺日程のbackground prefetch、Revenue Assistant write API、raw response保存は追加しない。
+  - Next専用DB、deterministic key、browser exclusive lock、`add` constraint、120観測retentionを独立store ownerへ隔離した。Classic DBを変更せず、表示時だけ両DBをbounded readonlyで統合する。plan name / URL / price diffは保存しない。
+  - 合成fixtureのdesktop / 390px表示とfilter、ログイン済み実画面の初回保存0→1件、競合GET各1、再注入 / tab再表示の競合GET 0・件数1維持、write method 0、標準表非干渉、cleanupを確認した。QA後は一時candidateを解除し、標準競合価格tabへ戻した。
 - gate:
   - calendar lensとAnalyze runtimeをroute単位で分離し、標準chartを隠さず、追加UIは非干渉領域へ置く。新規実装はadapter / cache read / view model / chartを分離する。
   - 既存browser-local recordのreadonly利用から始める。新規endpoint、background prefetch、response保存、storage write、freshness policy変更が必要なら、目的、保存範囲、削除方針、負荷、権限をYellow zone判断として実装前に記録する。

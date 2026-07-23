@@ -15,6 +15,11 @@ import {
     type CompetitorHistoryViewModel
 } from "./competitorHistoryModel";
 import {
+    createCompetitorHistoryWriter,
+    type CompetitorHistoryCaptureResult,
+    type CompetitorHistoryWriter
+} from "./competitorHistoryWriter";
+import {
     COMPETITOR_HISTORY_FILTER_KIND_ATTRIBUTE,
     COMPETITOR_HISTORY_FILTER_VALUE_ATTRIBUTE,
     COMPETITOR_HISTORY_GUEST_ATTRIBUTE,
@@ -23,6 +28,7 @@ import {
     ensureCompetitorHistoryStyles,
     removeCompetitorHistoryArtifacts,
     renderCompetitorHistory,
+    type CompetitorHistoryCaptureStatus,
     type CompetitorHistoryRenderState
 } from "./competitorHistoryView";
 
@@ -51,6 +57,14 @@ export interface CompetitorHistoryRuntimeHandle {
 export interface StartCompetitorHistoryRuntimeOptions {
     dataSource?: CompetitorHistoryDataSource;
     resolveStayDate?: (location: Location) => string | null;
+    writer?: CompetitorHistoryWriter | null;
+}
+
+interface CompetitorHistoryRuntimeContext {
+    facilityId: string;
+    facilityLabel: string;
+    records: unknown[];
+    stayDate: string;
 }
 
 export function parseCompetitorHistoryAnalyzeStayDate(pathname: string): string | null {
@@ -76,7 +90,11 @@ export function startCompetitorHistoryRuntime(
     let filters: CompetitorHistoryFilters = { mealType: null, roomType: null };
     let selectedGuestCount: CompetitorHistoryGuestCount = 2;
     let activeStayDate: string | null = null;
+    let activeContext: CompetitorHistoryRuntimeContext | null = null;
     let loadGeneration = 0;
+    let captureGeneration = 0;
+    let captureAttemptKey: string | null = null;
+    let captureStatus: CompetitorHistoryCaptureStatus = "idle";
     let root: HTMLElement | null = null;
     let mountSection: HTMLElement | null = null;
     let scheduledReconcileTimer: number | null = null;
@@ -84,6 +102,9 @@ export function startCompetitorHistoryRuntime(
     let stopped = false;
 
     const dataSource = options.dataSource ?? createCompetitorHistoryDataSource({ windowHost });
+    const writer = options.writer === null
+        ? null
+        : options.writer ?? createCompetitorHistoryWriter({ windowHost });
     const resolveStayDate = options.resolveStayDate
         ?? ((location: Location) => parseCompetitorHistoryAnalyzeStayDate(location.pathname));
     const abortController = new AbortController();
@@ -97,6 +118,9 @@ export function startCompetitorHistoryRuntime(
         signal: abortController.signal
     });
     windowHost.addEventListener("resize", handleResize, {
+        signal: abortController.signal
+    });
+    documentHost.addEventListener("visibilitychange", scheduleReconcile, {
         signal: abortController.signal
     });
     observer.observe(documentHost.body, {
@@ -125,8 +149,14 @@ export function startCompetitorHistoryRuntime(
         if (activeStayDate !== stayDate) {
             resetForStayDate(stayDate);
         }
+        if (documentHost.visibilityState === "hidden") {
+            suspendCaptureForInactiveSurface();
+            documentHost.documentElement.setAttribute(NEXT_ANALYZE_STATE_ATTRIBUTE, "suspended-hidden");
+            return;
+        }
         const target = resolveCompetitorHistoryMountTarget(documentHost);
         if (target === null) {
+            suspendCaptureForInactiveSurface();
             removeMountedRoot();
             documentHost.documentElement.setAttribute(NEXT_ANALYZE_STATE_ATTRIBUTE, "waiting-native-competitor-tab");
             return;
@@ -137,12 +167,18 @@ export function startCompetitorHistoryRuntime(
         } else if (mounted) {
             renderCurrentState();
         }
+        maybeStartCapture();
     }
 
     function resetForStayDate(stayDate: string): void {
         loadGeneration += 1;
         dataSource.cancel();
+        captureGeneration += 1;
+        writer?.cancel();
         activeStayDate = stayDate;
+        activeContext = null;
+        captureAttemptKey = null;
+        captureStatus = "idle";
         state = { status: "idle" };
         filters = { mealType: null, roomType: null };
         selectedGuestCount = 2;
@@ -166,12 +202,14 @@ export function startCompetitorHistoryRuntime(
             if (result.reason === "aborted") {
                 return;
             }
+            activeContext = null;
             state = { status: "error", stayDate, reason: result.reason };
             renderCurrentState();
             return;
         }
         const facilityHints = readLiveFacilityContextHints(documentHost);
         if (!hasLiveFacilityContextLabel(facilityHints, result.facilityLabel)) {
+            activeContext = null;
             state = { status: "error", stayDate, reason: "facility-context-mismatch" };
             removeMountedRoot();
             documentHost.documentElement.setAttribute(
@@ -180,50 +218,137 @@ export function startCompetitorHistoryRuntime(
             );
             return;
         }
+        activeContext = {
+            facilityId: result.facilityId,
+            facilityLabel: result.facilityLabel,
+            records: result.status === "ready" ? result.records.slice() : [],
+            stayDate
+        };
         if (result.status === "missing" || result.status === "unavailable") {
             state = { status: "empty", stayDate, reason: result.reason };
             renderCurrentState();
+            maybeStartCapture();
+            return;
+        }
+        rebuildStateFromActiveContext();
+        maybeStartCapture();
+    }
+
+    function rebuildStateFromActiveContext(): void {
+        if (activeContext === null) {
             return;
         }
         const model = buildCompetitorHistoryViewModel({
-            facilityId: result.facilityId,
+            facilityId: activeContext.facilityId,
             filters,
-            records: result.records,
-            stayDate
+            records: activeContext.records,
+            stayDate: activeContext.stayDate
         });
         if (model.status === "empty") {
-            state = { status: "empty", stayDate, reason: model.reason };
-            renderCurrentState();
-            return;
+            state = { status: "empty", stayDate: activeContext.stayDate, reason: model.reason };
+        } else {
+            filters = model.viewModel.filters;
+            state = {
+                status: "ready",
+                facilityId: activeContext.facilityId,
+                facilityLabel: activeContext.facilityLabel,
+                records: activeContext.records,
+                stayDate: activeContext.stayDate,
+                viewModel: model.viewModel
+            };
         }
-        state = {
-            status: "ready",
-            facilityId: result.facilityId,
-            facilityLabel: result.facilityLabel,
-            records: result.records,
-            stayDate,
-            viewModel: model.viewModel
-        };
         renderCurrentState();
     }
 
     function rebuildReadyViewModel(): void {
-        if (state.status !== "ready") {
+        if (state.status !== "ready" || activeContext === null) {
             return;
         }
-        const model = buildCompetitorHistoryViewModel({
-            facilityId: state.facilityId,
-            filters,
-            records: state.records,
-            stayDate: state.stayDate
-        });
-        if (model.status === "empty") {
-            state = { status: "empty", stayDate: state.stayDate, reason: model.reason };
-        } else {
-            filters = model.viewModel.filters;
-            state = { ...state, viewModel: model.viewModel };
+        rebuildStateFromActiveContext();
+    }
+
+    function maybeStartCapture(): void {
+        if (
+            writer === null
+            || activeContext === null
+            || root?.isConnected !== true
+            || mountSection === null
+            || documentHost.visibilityState === "hidden"
+            || resolveCompetitorHistoryMountTarget(documentHost) !== mountSection
+        ) {
+            return;
         }
+        const attemptKey = `${activeContext.facilityId}|${activeContext.stayDate}`;
+        if (captureAttemptKey === attemptKey) {
+            return;
+        }
+
+        const generation = ++captureGeneration;
+        const captureContext = activeContext;
+        captureAttemptKey = attemptKey;
+        captureStatus = "checking";
         renderCurrentState();
+        void writer.capture({
+            existingRecords: captureContext.records,
+            facilityId: captureContext.facilityId,
+            stayDate: captureContext.stayDate
+        }).then((result) => {
+            if (
+                stopped
+                || generation !== captureGeneration
+                || activeContext === null
+                || activeContext.facilityId !== captureContext.facilityId
+                || activeContext.stayDate !== captureContext.stayDate
+            ) {
+                return;
+            }
+            applyCaptureResult(result);
+        });
+    }
+
+    function applyCaptureResult(result: CompetitorHistoryCaptureResult): void {
+        if (result.status === "stored") {
+            captureStatus = "stored";
+            appendCapturedRecord(result.record);
+            return;
+        }
+        if (result.status === "skipped") {
+            captureStatus = result.reason === "already-stored" ? "already-stored" : "no-competitors";
+            if (result.record !== null) {
+                appendCapturedRecord(result.record);
+            } else {
+                renderCurrentState();
+            }
+            return;
+        }
+        if (result.status === "unavailable") {
+            captureStatus = "unavailable";
+            renderCurrentState();
+            return;
+        }
+        if (result.reason === "aborted") {
+            return;
+        }
+        captureStatus = "error";
+        renderCurrentState();
+    }
+
+    function appendCapturedRecord(record: unknown): void {
+        if (activeContext === null) {
+            return;
+        }
+        const snapshotKey = isRecord(record) && typeof record.snapshotKey === "string"
+            ? record.snapshotKey
+            : null;
+        activeContext.records = [
+            ...activeContext.records.filter((item) => (
+                snapshotKey === null
+                || !isRecord(item)
+                || item.snapshotKey !== snapshotKey
+            )),
+            record
+        ];
+        rebuildStateFromActiveContext();
     }
 
     function ensureMountedRoot(target: HTMLElement): boolean {
@@ -260,10 +385,10 @@ export function startCompetitorHistoryRuntime(
             : state.status === "idle"
                 ? { status: "loading", stayDate: activeStayDate ?? "" }
                 : state;
-        renderCompetitorHistory(root, renderState, { narrow });
+        renderCompetitorHistory(root, renderState, { captureStatus, narrow });
         documentHost.documentElement.setAttribute(
             NEXT_ANALYZE_STATE_ATTRIBUTE,
-            state.status === "ready" ? "mounted-read-only" : state.status
+            state.status === "ready" ? "mounted-local-history" : state.status
         );
     }
 
@@ -323,7 +448,12 @@ export function startCompetitorHistoryRuntime(
         if (activeStayDate !== null || state.status !== "idle") {
             loadGeneration += 1;
             dataSource.cancel();
+            captureGeneration += 1;
+            writer?.cancel();
             activeStayDate = null;
+            activeContext = null;
+            captureAttemptKey = null;
+            captureStatus = "idle";
             state = { status: "idle" };
             filters = { mealType: null, roomType: null };
             selectedGuestCount = 2;
@@ -334,19 +464,30 @@ export function startCompetitorHistoryRuntime(
         documentHost.documentElement.setAttribute(NEXT_ANALYZE_STATE_ATTRIBUTE, "suspended-route");
     }
 
+    function suspendCaptureForInactiveSurface(): void {
+        captureGeneration += 1;
+        writer?.cancel();
+        captureAttemptKey = null;
+        if (captureStatus !== "stored" && captureStatus !== "already-stored") {
+            captureStatus = "idle";
+        }
+    }
+
     function removeMountedRoot(): void {
         root?.remove();
         root = null;
         mountSection = null;
     }
 
-    function stop(finalState = "stopped-read-only"): void {
+    function stop(finalState = "stopped-local-history"): void {
         if (stopped) {
             return;
         }
         stopped = true;
         loadGeneration += 1;
+        captureGeneration += 1;
         dataSource.stop();
+        writer?.stop();
         abortController.abort();
         observer.disconnect();
         if (scheduledReconcileTimer !== null) {
@@ -385,4 +526,8 @@ function isVisiblyRendered(element: HTMLElement): boolean {
 
 function escapeAttributeValue(value: string): string {
     return value.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === "object" && value !== null && !Array.isArray(value);
 }

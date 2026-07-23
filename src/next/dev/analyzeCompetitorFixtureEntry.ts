@@ -41,7 +41,8 @@ startCompetitorHistoryRuntime(document, window, {
     dataSource,
     resolveStayDate: (location) => location.pathname.includes("/dev/fixtures/next-analyze-competitor/")
         ? STAY_DATE
-        : null
+        : null,
+    writer: null
 });
 
 function buildFixtureRecords(dayCount: number): CompetitorPriceSnapshotRecord[] {

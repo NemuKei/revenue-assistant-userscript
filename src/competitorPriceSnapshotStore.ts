@@ -4,6 +4,7 @@ import {
     COMPETITOR_PRICE_SNAPSHOT_DB_VERSION,
     COMPETITOR_PRICE_SNAPSHOT_SCHEMA_VERSION,
     COMPETITOR_PRICE_SNAPSHOT_STORE_NAME,
+    buildCompetitorPriceConditionSignature,
     type CompetitorPriceRequestContextBase,
     type CompetitorPriceSnapshotCompetitor,
     type CompetitorPriceSnapshotHotel,
@@ -22,7 +23,8 @@ export {
     COMPETITOR_PRICE_SNAPSHOT_DB_NAME,
     COMPETITOR_PRICE_SNAPSHOT_DB_VERSION,
     COMPETITOR_PRICE_SNAPSHOT_SCHEMA_VERSION,
-    COMPETITOR_PRICE_SNAPSHOT_STORE_NAME
+    COMPETITOR_PRICE_SNAPSHOT_STORE_NAME,
+    buildCompetitorPriceConditionSignature
 } from "./competitorPriceSnapshotContract";
 export type {
     CompetitorPriceRequestContextBase,
@@ -76,22 +78,6 @@ interface CompetitorPriceRequestContext {
 }
 
 const pendingCompetitorPriceSnapshotWrites = new Map<string, Promise<PersistCompetitorPriceSnapshotResult>>();
-
-export function buildCompetitorPriceConditionSignature(condition: CompetitorPriceSnapshotSearchCondition): string {
-    const signatureSource: Record<string, unknown> = {
-        stayDate: condition.stayDate,
-        minNumGuests: condition.minNumGuests,
-        maxNumGuests: condition.maxNumGuests,
-        competitorYadNos: condition.competitorYadNos.slice().sort(),
-        mealTypes: condition.mealTypes === null ? null : condition.mealTypes.slice().sort(),
-        planNameWords: condition.planNameWords === null ? null : condition.planNameWords.slice().sort(),
-        planNameContains: condition.planNameContains
-    };
-    if (condition.jalanRoomTypes !== null && condition.jalanRoomTypes !== undefined) {
-        signatureSource.jalanRoomTypes = condition.jalanRoomTypes.slice().sort();
-    }
-    return stableStringify(signatureSource);
-}
 
 export async function persistCompetitorPriceSnapshot(
     options: PersistCompetitorPriceSnapshotOptions
@@ -535,21 +521,6 @@ function normalizeString(value: string | null | undefined): string | null {
 
     const trimmed = value.trim();
     return trimmed === "" ? null : trimmed;
-}
-
-function stableStringify(value: unknown): string {
-    if (Array.isArray(value)) {
-        return `[${value.map(stableStringify).join(",")}]`;
-    }
-
-    if (value !== null && typeof value === "object") {
-        return `{${Object.entries(value)
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`)
-            .join(",")}}`;
-    }
-
-    return JSON.stringify(value);
 }
 
 function isIndexedDbAvailable(): boolean {

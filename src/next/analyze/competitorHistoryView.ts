@@ -17,6 +17,15 @@ export const COMPETITOR_HISTORY_PANEL_ATTRIBUTE = "data-ra-next-competitor-histo
 export const COMPETITOR_HISTORY_SVG_ATTRIBUTE = "data-ra-next-competitor-history-svg";
 export const COMPETITOR_HISTORY_HITBOX_ATTRIBUTE = "data-ra-next-competitor-history-hitbox";
 
+export type CompetitorHistoryCaptureStatus =
+    | "idle"
+    | "checking"
+    | "stored"
+    | "already-stored"
+    | "no-competitors"
+    | "unavailable"
+    | "error";
+
 export type CompetitorHistoryRenderState =
     | { status: "loading"; stayDate: string }
     | { status: "empty"; stayDate: string; reason: string }
@@ -55,10 +64,10 @@ export function removeCompetitorHistoryArtifacts(documentHost: Document): void {
 export function renderCompetitorHistory(
     root: HTMLElement,
     state: CompetitorHistoryRenderState,
-    options: { narrow: boolean }
+    options: { captureStatus: CompetitorHistoryCaptureStatus; narrow: boolean }
 ): void {
     root.setAttribute("data-ra-next-competitor-history-state", state.status);
-    const header = createHeader(root.ownerDocument);
+    const header = createHeader(root.ownerDocument, options.captureStatus);
     if (state.status === "loading") {
         root.replaceChildren(
             header,
@@ -71,7 +80,9 @@ export function renderCompetitorHistory(
             header,
             createMessage(
                 root.ownerDocument,
-                state.reason === "database-missing" || state.reason === "no-records"
+                options.captureStatus === "checking"
+                    ? "本日分の競合価格を確認しています。標準表はそのまま利用できます。"
+                    : state.reason === "database-missing" || state.reason === "no-records"
                     ? "この宿泊日の保存済み履歴はまだありません。標準表で現在値を確認できます。"
                     : "保存済み履歴を確認できませんでした。標準表はそのまま利用できます。",
                 "empty"
@@ -184,6 +195,11 @@ export function getCompetitorHistoryStyles(): string {
     color: #0d5f98;
     font-size: 12px;
     font-weight: 700;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-badge="error"],
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-badge="unavailable"] {
+    background: #fff2ef;
+    color: #8c3c25;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-meta] {
     margin: 12px 0 0;
@@ -433,7 +449,10 @@ export function getCompetitorHistoryStyles(): string {
 `;
 }
 
-function createHeader(documentHost: Document): HTMLElement {
+function createHeader(
+    documentHost: Document,
+    captureStatus: CompetitorHistoryCaptureStatus
+): HTMLElement {
     const header = documentHost.createElement("div");
     header.setAttribute("data-ra-next-competitor-history-header", "");
     const titleWrap = documentHost.createElement("div");
@@ -445,10 +464,34 @@ function createHeader(documentHost: Document): HTMLElement {
     kicker.textContent = "現在値は上の標準表、ここでは取得日ごとの変化を確認します。";
     titleWrap.append(title, kicker);
     const badge = documentHost.createElement("span");
-    badge.setAttribute("data-ra-next-competitor-history-badge", "");
-    badge.textContent = "保存済み・read-only";
+    badge.setAttribute("data-ra-next-competitor-history-badge", captureStatus);
+    badge.textContent = formatCaptureStatus(captureStatus);
     header.append(titleWrap, badge);
     return header;
+}
+
+export function formatCompetitorHistoryCaptureStatus(
+    captureStatus: CompetitorHistoryCaptureStatus
+): string {
+    return formatCaptureStatus(captureStatus);
+}
+
+function formatCaptureStatus(captureStatus: CompetitorHistoryCaptureStatus): string {
+    switch (captureStatus) {
+        case "checking":
+            return "本日分を確認中";
+        case "stored":
+            return "本日分を保存";
+        case "already-stored":
+            return "本日分は保存済み";
+        case "no-competitors":
+            return "競合設定なし";
+        case "unavailable":
+        case "error":
+            return "保存失敗";
+        default:
+            return "保存履歴";
+    }
 }
 
 function createMessage(documentHost: Document, text: string, tone: string): HTMLElement {

@@ -38,7 +38,7 @@ function startNextCandidateRuntime(): void {
     startCompetitorHistoryRuntime(document, window);
     console.info(`[${SCRIPT_NAME}] candidate runtime ready`, {
         href: window.location.href,
-        mode: "read-only",
+        mode: "server-read-only/local-bounded-history",
         version: SCRIPT_VERSION
     });
 }

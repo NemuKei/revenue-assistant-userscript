@@ -1,9 +1,19 @@
 const NEXT_FACILITY_ENDPOINT = "/api/v2/yad/info";
 const NEXT_CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
+const NEXT_COMPETITORS_ENDPOINT = "/api/v2/competitors";
+const NEXT_COMPETITOR_PRICES_ENDPOINT = "/api/v5/competitor_prices";
 
 export type NextReadRequest =
     | { kind: "facility" }
-    | { kind: "current-settings"; from: string; to: string };
+    | { kind: "current-settings"; from: string; to: string }
+    | { kind: "competitors" }
+    | {
+        kind: "competitor-prices";
+        competitorYadNos: readonly string[];
+        maxNumGuests: number;
+        minNumGuests: number;
+        stayDate: string;
+    };
 
 export interface NextReadTransport {
     read(request: NextReadRequest, signal: AbortSignal): Promise<unknown>;
@@ -54,12 +64,25 @@ export function createNextReadSession(
     };
 }
 
-function buildNextReadUrl(request: NextReadRequest, origin: string): URL {
+export function buildNextReadUrl(request: NextReadRequest, origin: string): URL {
     if (request.kind === "facility") {
         return new URL(NEXT_FACILITY_ENDPOINT, origin);
     }
-    const url = new URL(NEXT_CURRENT_SETTINGS_ENDPOINT, origin);
-    url.searchParams.set("from", request.from);
-    url.searchParams.set("to", request.to);
+    if (request.kind === "current-settings") {
+        const url = new URL(NEXT_CURRENT_SETTINGS_ENDPOINT, origin);
+        url.searchParams.set("from", request.from);
+        url.searchParams.set("to", request.to);
+        return url;
+    }
+    if (request.kind === "competitors") {
+        return new URL(NEXT_COMPETITORS_ENDPOINT, origin);
+    }
+    const url = new URL(NEXT_COMPETITOR_PRICES_ENDPOINT, origin);
+    url.searchParams.set("date", request.stayDate);
+    url.searchParams.set("min_num_guests", String(request.minNumGuests));
+    url.searchParams.set("max_num_guests", String(request.maxNumGuests));
+    for (const yadNo of request.competitorYadNos) {
+        url.searchParams.append("yad_nos[]", yadNo);
+    }
     return url;
 }

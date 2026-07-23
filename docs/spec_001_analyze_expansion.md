@@ -417,6 +417,16 @@ Next clean-room read-only contract (`RAU-UX-150` 第一段階):
 - 4 panel は同じ取得日集合と共通価格目盛を使う。各 panel は施設別最安値、最新値、前回差分、採用部屋タイプを示し、全日別値は初期折りたたみ表でも確認できる。snapshot が 1 日だけなら点として表示し、0 件、IndexedDB 不在、read error は標準表を残したまま区別して表示する。保存時刻は表示するが、現在時刻との鮮度判定は行わず `最新性は未判定` と明示する。
 - この第一段階は既存保存履歴の表示だけを再接続する。Classic を無効化した後も新しい観測を蓄積する writer は含まれない。Next cutover 前に、保存対象、保存期間、削除方針、request 負荷、権限を Yellow zone 判断として固定し、利用者の明示承認後に別実装する。
 
+Next bounded snapshot writer contract (`RAU-UX-150` 第二段階):
+
+- 2026-07-23 の利用者明示承認に基づき、Next は `/analyze/YYYY-MM-DD` の標準競合価格本文が実際に可視で、`GET /api/v2/yad/info` の facility label が表示中 context と一致する場合だけ、表示中 stay date の競合価格 snapshot 保存を開始してよい。販売設定 tab、価格推移 tab、別 route、document hidden、facility mismatch では開始せず、開始後に対象 context が外れた場合は未完了 request を abort する。
+- 保存 scope は部屋タイプ指定なし、食事指定なし、1〜6名の 1 snapshot に限定する。`facilityId x stayDate x JST取得日` が同じ有効 record が Classic または Next の履歴に 1 件以上あれば、その日は保存済みとして `/api/v2/competitors` と `/api/v5/competitor_prices` を発行しない。保存失敗は成功扱いにせず、次に標準競合価格本文を明示表示したときだけ再試行してよい。
+- 未保存日の取得は、同一 session、自施設、自分の権限内で既存の `GET /api/v2/competitors` と `GET /api/v5/competitor_prices` を各最大1回使う。週、月、前後日、他 stay date の background queue / prefetch はこの段階に含めない。Revenue Assistant の POST / PUT / PATCH / DELETE、自動再ログイン、認証回避、rate limit 回避は行わない。
+- Next は Classic の `revenue-assistant-competitor-price-snapshots` database を変更しない。Next 専用 database `revenue-assistant-next-competitor-price-snapshots`、store `competitor-price-snapshots` を version 1 で所有し、deterministic primary key により同一日保存を重複させない。複数 tab の同時取得は browser の exclusive lock を利用できる場合は同じ日次 key で直列化し、storage 側の `add` constraint を最終重複 guard とする。
+- 保存 payload は graph の再構築に必要な facility / stay date / condition signature / query / fetchedAt / competitor set と、施設、人数、食事、部屋タイプ、価格に限定する。plan name、URL、price diff は保存せず `null` とし、raw response、request / response body dump、HAR、Cookie、token、credential、API key、予約・顧客情報は保存しない。
+- Next 専用 store は同一 `facilityId x stayDate` ごとに直近120観測を保持し、保存成功時に超過した古い Next record だけを削除する。Classic database と Classic record は削除、移動、上書きしない。利用者が明示した削除 UI や database 全削除はこの段階に含めない。
+- 表示 read path は Classic database と Next 専用 database をそれぞれ固定上限付き `readonly` で読み、schema / facility / stay date を検証した record を snapshot key で重複排除して統合する。一方が missing / unavailable / error でも他方の有効 record があれば表示を継続し、保存状態は `確認中`、`本日分を保存`、`本日分は保存済み`、`競合設定なし`、`保存失敗` を標準表を妨げない短い badge で区別する。
+
 公式 `価格推移` タブへの RAU 追加表示:
 
 - `RAU-CP-11` の 2026-05-29 read-only 調査では、Analyze 画面に `data-testid="tab-priceTrends"` の公式 `価格推移` タブがあり、本文には `data-testid="price-trends-content"`、`price-trends-filter-item`、`price-trends-filter-button`、`price-trends-chart-header`、`price-trends-chart-header-yad-list-item`、`price-trends-content-updated-at` が存在することを確認した。chart は Recharts の wrapper と `svg` として描画されている。調査中に保存したのは DOM 挿入位置、test id、通信 endpoint の発生有無、response shape の field 名や型の範囲に限定し、HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データは repo に保存しない。
