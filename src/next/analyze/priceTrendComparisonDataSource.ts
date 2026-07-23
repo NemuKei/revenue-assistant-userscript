@@ -9,10 +9,15 @@ import {
     createNextReadSession,
     type NextReadTransport
 } from "../live/liveSimilarityLensTransport";
+import {
+    NEXT_PRICE_TREND_DB_NAME,
+    NEXT_PRICE_TREND_DB_VERSION,
+    NEXT_PRICE_TREND_STORE_NAME
+} from "./priceTrendCaptureStore";
 
-const PRICE_TREND_DB_NAME = "revenue-assistant-price-trends";
-const PRICE_TREND_DB_VERSION = 1;
-const PRICE_TREND_STORE_NAME = "price-trend-records";
+const CLASSIC_PRICE_TREND_DB_NAME = "revenue-assistant-price-trends";
+const CLASSIC_PRICE_TREND_DB_VERSION = 1;
+const CLASSIC_PRICE_TREND_STORE_NAME = "price-trend-records";
 const PRICE_TREND_INDEX_NAME = "facility-stayDate";
 
 export type PriceTrendComparisonDataLoadResult =
@@ -145,32 +150,76 @@ async function loadPriceTrendComparisonData(options: {
         if (facility === null) {
             return { status: "error", contextKey, reason: "facility-response-invalid" };
         }
-        const readResult = await options.seriesReader<unknown>({
-            databaseName: PRICE_TREND_DB_NAME,
-            databaseVersion: PRICE_TREND_DB_VERSION,
-            storeName: PRICE_TREND_STORE_NAME,
-            indexName: PRICE_TREND_INDEX_NAME,
-            key: [facility.facilityId, options.stayDate]
-        });
+        const [classicReadResult, nextReadResult] = await Promise.all([
+            options.seriesReader<unknown>({
+                databaseName: CLASSIC_PRICE_TREND_DB_NAME,
+                databaseVersion: CLASSIC_PRICE_TREND_DB_VERSION,
+                storeName: CLASSIC_PRICE_TREND_STORE_NAME,
+                indexName: PRICE_TREND_INDEX_NAME,
+                key: [facility.facilityId, options.stayDate]
+            }),
+            options.seriesReader<unknown>({
+                databaseName: NEXT_PRICE_TREND_DB_NAME,
+                databaseVersion: NEXT_PRICE_TREND_DB_VERSION,
+                storeName: NEXT_PRICE_TREND_STORE_NAME,
+                indexName: PRICE_TREND_INDEX_NAME,
+                key: [facility.facilityId, options.stayDate]
+            })
+        ]);
         if (options.signal.aborted) {
             return { status: "error", contextKey, reason: "aborted" };
         }
-        if (readResult.status === "ready") {
+        const records = [classicReadResult, nextReadResult].flatMap((result) => (
+            result.status === "ready" ? result.records : []
+        ));
+        if (
+            records.length > 0
+            || classicReadResult.status === "ready"
+            || nextReadResult.status === "ready"
+        ) {
             return {
                 status: "ready",
                 contextKey: `${facility.facilityId}|${contextKey}`,
                 facilityId: facility.facilityId,
                 facilityLabel: facility.facilityLabel,
-                records: readResult.records
+                records
             };
         }
-        if (readResult.status === "missing" || readResult.status === "unavailable") {
+        if (classicReadResult.status === "error" || nextReadResult.status === "error") {
             return {
-                status: readResult.status,
+                status: "error",
+                contextKey: `${facility.facilityId}|${contextKey}`,
+                reason: "read-failed"
+            };
+        }
+        const unavailable = [classicReadResult, nextReadResult].find(
+            (result): result is Extract<
+                ExistingIndexedDbReadResult<unknown>,
+                { status: "unavailable" }
+            > => result.status === "unavailable"
+        );
+        if (unavailable !== undefined) {
+            return {
+                status: "unavailable",
                 contextKey: `${facility.facilityId}|${contextKey}`,
                 facilityId: facility.facilityId,
                 facilityLabel: facility.facilityLabel,
-                reason: readResult.reason
+                reason: unavailable.reason
+            };
+        }
+        const missing = [classicReadResult, nextReadResult].find(
+            (result): result is Extract<
+                ExistingIndexedDbReadResult<unknown>,
+                { status: "missing" }
+            > => result.status === "missing"
+        );
+        if (missing !== undefined) {
+            return {
+                status: "missing",
+                contextKey: `${facility.facilityId}|${contextKey}`,
+                facilityId: facility.facilityId,
+                facilityLabel: facility.facilityLabel,
+                reason: missing.reason
             };
         }
         return {

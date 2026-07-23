@@ -12,7 +12,8 @@ const fixtureDataSource = createFixtureDataSource(fixtureState);
 
 startPriceTrendComparisonRuntime(document, window, {
     dataSource: fixtureDataSource,
-    resolveStayDate: (location) => location.pathname === "/away" ? null : "20260812"
+    resolveStayDate: (location) => location.pathname === "/away" ? null : "20260812",
+    writer: null
 });
 
 function createFixtureDataSource(state: string): PriceTrendComparisonDataSource {

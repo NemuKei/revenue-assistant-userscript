@@ -43,6 +43,8 @@ const expectedSources = [
     "src/next/analyze/priceTrendComparisonModel.ts",
     "src/next/analyze/priceTrendComparisonRuntime.ts",
     "src/next/analyze/priceTrendComparisonView.ts",
+    "src/next/analyze/priceTrendCaptureStore.ts",
+    "src/next/analyze/priceTrendCaptureWriter.ts",
     "src/next/entry.ts",
     "src/next/facilityContext.ts",
     "src/next/live/liveCalendarDomAdapter.ts",
@@ -109,6 +111,7 @@ assert.match(artifactText, /data-ra-next-competitor-history-root/u);
 assert.match(artifactText, /data-ra-next-booking-curve-reference-root/u);
 assert.match(artifactText, /data-ra-next-booking-curve-rank-marker/u);
 assert.match(artifactText, /data-ra-next-price-trend-comparison-root/u);
+assert.match(artifactText, /data-ra-next-price-trend-capture/u);
 assert.match(artifactText, /data-ra-next-analyze-state/u);
 assert.match(artifactText, /data-ra-next-booking-curve-state/u);
 assert.match(artifactText, /data-ra-next-price-trend-state/u);
@@ -117,6 +120,7 @@ assert.equal(countMatches(artifactText, /\bfetch\b/gu), 1, "Next candidate must 
 assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");
 assert.equal(countMatches(artifactText, /\/api\/v2\/yad\/info/gu), 1);
 assert.equal(countMatches(artifactText, /\/api\/v2\/competitors/gu), 1);
+assert.equal(countMatches(artifactText, /\/api\/v1\/price_trends/gu) >= 1, true);
 assert.equal(countMatches(artifactText, /\/api\/v1\/suggest\/output\/current_settings/gu), 1);
 assert.equal(countMatches(artifactText, /\/api\/v3\/lincoln\/suggest\/status/gu), 1);
 assert.equal(
@@ -129,13 +133,14 @@ assert.equal(
     true,
     "competitor endpoint contract must remain present for cache validation"
 );
-assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 5);
-assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 3);
+assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 7);
+assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 4);
 assert.match(artifactText, /readonly/u);
 assert.match(artifactText, /readwrite/u);
-assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 1);
-assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 1);
+assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 2);
+assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 3);
 assert.match(artifactText, /revenue-assistant-next-competitor-price-snapshots/u);
+assert.match(artifactText, /revenue-assistant-next-price-trends/u);
 assert.match(artifactText, /GET/u);
 
 for (const forbiddenPattern of [

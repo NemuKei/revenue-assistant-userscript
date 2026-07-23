@@ -215,12 +215,12 @@
 ### RAU-UX-150 Next Analyze固有graphをclean-roomで再接続する
 
 - 状態:
-  - 進行中。第一段階の競合snapshot履歴graph、明示承認済みの第二段階browser-local bounded writer、第三段階Aのbooking curve reference、第三段階Bのrank変更履歴、第四段階の90日価格推移read-only比較UIは、clean-room source、合成fixture、ログイン済み実画面QAまで完了した。Next cutover blockerとしては、価格推移のNext自前取得・保存契約が残る。
+  - 完了。第一段階の競合snapshot履歴graph、明示承認済みの第二段階browser-local bounded writer、第三段階Aのbooking curve reference、第三段階Bのrank変更履歴、第四段階の90日価格推移read-only比較UI、第五段階の90日価格推移bounded acquisition / storeを、clean-room source、合成fixture、ログイン済み実画面QAまで完了した。
 - 目的:
   - 標準Analyzeを土台に、実務で価値が確認されているClassic固有の比較機能だけをNextの独立runtimeとして再接続する。`src/main.ts`の画面構造やmonolithを移植しない。
 - 実装順:
-  - 標準代替がない競合snapshot履歴graph、booking curve reference、別Yellow gateを通したbooking curve rank marker、90日価格推移read-only比較UIの順で完了した。
-  - 90日推移は旧4大panelを複製せず、1〜4名を4 summary cardで同時比較し、選択中1人数だけを1 detail chartで深掘りする形を合成fixture比較後に採用した。次はNext自前の取得・保存を別Yellow gateとして判断する。
+  - 標準代替がない競合snapshot履歴graph、booking curve reference、別Yellow gateを通したbooking curve rank marker、90日価格推移read-only比較UI、別Yellow gateを通した価格推移bounded acquisition / storeの順で完了した。
+  - 90日推移は旧4大panelを複製せず、1〜4名を4 summary cardで同時比較し、選択中1人数だけを1 detail chartで深掘りする形を合成fixture比較後に採用した。Next自前の取得は部屋指定なし・4食事 x 4人数に限定し、specific-roomのbackground取得は追加していない。
 - 第一段階完了:
   - `/analyze/YYYY-MM-DD` の可視な標準競合価格本文末尾へ、既存保存履歴だけを読む独立runtimeを追加した。desktop 2 x 2、390pxは1人数toggle、部屋 / 食事filter、取得日tooltip、最新値 / 前回差分の常時表示、日別table、empty / 1日 / errorを実装した。
   - 既存 `GET /api/v2/yad/info` 1回と、完全一致`facility-stay-date` indexのbounded readonly readだけを使う。新規endpoint、background prefetch、response保存、storage write、Revenue Assistant writeは追加していない。
@@ -244,12 +244,16 @@
   - 既存Classic IndexedDB `revenue-assistant-price-trends`の同一facility / stay date recordを最大512件readonlyで読む。`price_trend:v1`をruntime validationし、同一scopeの最新recordだけを採用する。7部屋タイプ x 4食事 x 4人数が完全な場合だけ指定なしをspecific-room集約へ切り替え、不完全な途中状態は指定なしrecordを使う。
   - 合成fixtureではdesktop / 390px、4名 / 部屋filter、keyboard tooltip、empty / read error、route / tab / facility mismatch cleanup、標準chart非干渉、Next root自己overflow 0を確認した。ログイン済み実画面では保存済み履歴表示、4名切替、標準chart維持、facility GET 1、価格推移GET 0、Revenue Assistant originのwrite method 0、runtime exception / console warning / error 0、reload cleanupを確認した。
   - この段階は保存済み履歴の比較表示だけを所有する。Next単独運用後の価格推移取得・保存は、request範囲 / 頻度、保存scope、retention、削除、freshness、負荷と権限を先に固定する別Yellow zone承認gateである。
+- 第五段階完了:
+  - 2026-07-23の利用者明示承認と`D-20260723-008`に基づき、可視な標準価格推移本文、facility guard、JST当日〜89日先のstay dateだけで、部屋指定なし・4食事 x 4人数の不足scopeを最大16 GET / concurrency 2で取得する。Classic / Nextに同日scopeがあればskipし、周辺日・部屋別background prefetchは行わない。
+  - Next専用DBへruntime validation済み最小recordだけを保存し、deterministic key、Web Locks、IDB add constraintで重複防止する。scopeごとの最新1件、施設単位の当日〜89日先、最大1,440件へ自動pruneし、Classic DBは変更しない。
+  - focused checkで同日full skip、partial scope補完、90日範囲外、不正保存recordの再取得、invalid response、request / storage error、request abort、公式側データなし、retention prune、fixture writer完全無効を確認した。ログイン済み実画面では標準chartを維持し、初回facility 1 / 競合一覧1 / 価格推移16 GETでNext DBを0→16件、再注入で競合一覧0 / 価格推移0・16件維持、write method 0、console warning / error 0、reload cleanupを確認した。
 - gate:
   - calendar lensとAnalyze runtimeをroute単位で分離し、標準chartを隠さず、追加UIは非干渉領域へ置く。新規実装はadapter / cache read / view model / chartを分離する。
   - 既存browser-local recordのreadonly利用から始める。新規endpoint、background prefetch、response保存、storage write、freshness policy変更が必要なら、目的、保存範囲、削除方針、負荷、権限をYellow zone判断として実装前に記録する。
   - snapshot / empty / stale / error、人数 / 食事 / 部屋タイプ、tooltipのmouse / keyboard、screen reader label、390pxで追加root自身の横overflow 0、標準overflow非悪化、candidate request予算、console、write 0、route cleanupをfixture / smoke / liveで確認する。
 
-Remaining Task Triage は Now `RAU-UX-150`（価格推移のNext自前取得・保存を別Yellow gateとして判断）、Next / After Next / Later なしとする。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
@@ -11245,7 +11249,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-150`: Classic固有の比較UIのclean-room再接続は完了。Next単独運用に必要な90日価格推移の取得・保存契約を別Yellow gateとして判断する。
+- なし
 
 Next:
 

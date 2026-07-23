@@ -13,15 +13,24 @@ const entryPath = path.join(nextSourceRoot, "entry.ts");
 const transportPath = path.join(nextSourceRoot, "live", "liveSimilarityLensTransport.ts");
 const indexedDbPath = path.join(projectRoot, "src", "indexedDbReadOnly.ts");
 const snapshotStorePath = path.join(nextSourceRoot, "analyze", "competitorHistorySnapshotStore.ts");
+const priceTrendStorePath = path.join(nextSourceRoot, "analyze", "priceTrendCaptureStore.ts");
 
 const expectedApiPaths = [
+    "/api/v1/price_trends",
     "/api/v1/suggest/output/current_settings",
     "/api/v2/competitors",
     "/api/v2/yad/info",
     "/api/v3/lincoln/suggest/status",
     "/api/v5/competitor_prices"
 ];
-const expectedRequestKinds = ["competitor-prices", "competitors", "current-settings", "facility", "rank-status"];
+const expectedRequestKinds = [
+    "competitor-prices",
+    "competitors",
+    "current-settings",
+    "facility",
+    "price-trends",
+    "rank-status"
+];
 const expectedFetchOptionKeys = ["credentials", "headers", "method", "signal"];
 const expectedHeaderEntries = [["X-Requested-With", "XMLHttpRequest"]];
 const forbiddenTransportIdentifiers = new Set([
@@ -52,7 +61,7 @@ const allowedReadonlyIndexedDbMethods = new Set([
     "open",
     "transaction"
 ]);
-const allowedSnapshotStoreIndexedDbMethods = new Set([
+const allowedBoundedStoreIndexedDbMethods = new Set([
     "abort",
     "add",
     "close",
@@ -87,6 +96,7 @@ assert.equal(existsSync(entryPath), true, "Next entry source is required");
 assert.equal(existsSync(transportPath), true, "Next read transport source is required");
 assert.equal(existsSync(indexedDbPath), true, "strict readonly IndexedDB source is required");
 assert.equal(existsSync(snapshotStorePath), true, "bounded Next snapshot store source is required");
+assert.equal(existsSync(priceTrendStorePath), true, "bounded Next price trend store source is required");
 
 const tsconfigPath = ts.findConfigFile(projectRoot, ts.sys.fileExists, "tsconfig.json");
 assert.notEqual(tsconfigPath, undefined, "tsconfig.json is required for type-aware boundary checks");
@@ -128,7 +138,10 @@ console.log(JSON.stringify({
     indexedDbMode: "readonly",
     snapshotStoreOwner: toProjectPath(snapshotStorePath),
     snapshotStoreModes: ["readonly", "readwrite"],
-    snapshotRetentionLimit: 120
+    snapshotRetentionLimit: 120,
+    priceTrendStoreOwner: toProjectPath(priceTrendStorePath),
+    priceTrendStoreModes: ["readonly", "readwrite"],
+    priceTrendRetentionLimit: 1_440
 }, null, 2));
 
 function checkTransportBoundary(sources, source) {
@@ -223,7 +236,7 @@ function checkTransportBoundary(sources, source) {
     assert.deepEqual(
         collectNextReadRequestKinds(source).sort(),
         expectedRequestKinds,
-        "NextReadRequest kinds must remain the five reviewed GET scopes"
+        "NextReadRequest kinds must remain the six reviewed GET scopes"
     );
 
     const urlConstructions = collectNodes(source, (node) => (
@@ -231,7 +244,7 @@ function checkTransportBoundary(sources, source) {
         && ts.isIdentifier(node.expression)
         && node.expression.text === "URL"
     ));
-    assert.equal(urlConstructions.length, 5, "Next transport must construct exactly five allowlisted URLs");
+    assert.equal(urlConstructions.length, 6, "Next transport must construct exactly six allowlisted URLs");
     assert.deepEqual(
         urlConstructions.map((node) => node.arguments?.[0]?.getText(source) ?? "").sort(),
         [
@@ -239,9 +252,10 @@ function checkTransportBoundary(sources, source) {
             "NEXT_COMPETITOR_PRICES_ENDPOINT",
             "NEXT_CURRENT_SETTINGS_ENDPOINT",
             "NEXT_FACILITY_ENDPOINT",
+            "NEXT_PRICE_TRENDS_ENDPOINT",
             "NEXT_RANK_STATUS_ENDPOINT"
         ],
-        "Next transport URL constructors must use the five closed endpoint constants"
+        "Next transport URL constructors must use the six closed endpoint constants"
     );
     for (const construction of urlConstructions) {
         assert.equal(
@@ -275,16 +289,31 @@ function checkTransportBoundary(sources, source) {
             ["from", "request.from"],
             ["from", "request.stayDate"],
             ["max_num_guests", "String(request.maxNumGuests)"],
+            ["meal_type", "request.mealType"],
             ["min_num_guests", "String(request.minNumGuests)"],
+            ["num_guests", "String(request.numGuests)"],
+            ["stay_date", "request.stayDate"],
             ["to", "request.to"],
             ["to", "request.stayDate"]
         ],
         "Next query parameters must remain the reviewed exact values"
     );
     const searchParameterAppendCalls = collectNodes(source, isSearchParameterAppendCall);
-    assert.equal(searchParameterAppendCalls.length, 1, "competitor prices must have one repeated query append site");
-    assert.equal(getStringLiteralText(searchParameterAppendCalls[0].arguments[0]), "yad_nos[]");
-    assert.equal(searchParameterAppendCalls[0].arguments[1]?.getText(source), "yadNo");
+    assert.equal(
+        searchParameterAppendCalls.length,
+        2,
+        "competitor prices and price trends must each have one repeated query append site"
+    );
+    assert.deepEqual(
+        searchParameterAppendCalls.map((call) => [
+            getStringLiteralText(call.arguments[0]),
+            call.arguments[1]?.getText(source)
+        ]),
+        [
+            ["yad_nos[]", "yadNo"],
+            ["yad_nos[]", "yadNo"]
+        ]
+    );
 }
 
 function checkIndexedDbBoundary(sources) {
@@ -296,7 +325,9 @@ function checkIndexedDbBoundary(sources) {
     const indexedDbCalls = [];
     const readonlyOwner = normalizePath(indexedDbPath);
     const snapshotStoreOwner = normalizePath(snapshotStorePath);
-    const allowedOwners = new Set([readonlyOwner, snapshotStoreOwner]);
+    const priceTrendStoreOwner = normalizePath(priceTrendStorePath);
+    const boundedStoreOwners = new Set([snapshotStoreOwner, priceTrendStoreOwner]);
+    const allowedOwners = new Set([readonlyOwner, ...boundedStoreOwners]);
 
     for (const source of sources) {
         const sourcePath = normalizePath(source.fileName);
@@ -332,7 +363,7 @@ function checkIndexedDbBoundary(sources) {
             }
             const allowedMethods = sourcePath === readonlyOwner
                 ? allowedReadonlyIndexedDbMethods
-                : allowedSnapshotStoreIndexedDbMethods;
+                : allowedBoundedStoreIndexedDbMethods;
             if (!allowedMethods.has(member.name) || alwaysForbiddenIndexedDbMethods.has(member.name)) {
                 forbiddenCalls.push({ source, node, reason: `${member.name} outside owner allowlist` });
                 return;
@@ -356,17 +387,21 @@ function checkIndexedDbBoundary(sources) {
     }
     assert.deepEqual(
         Array.from(new Set(directReferences.map((reference) => toProjectPath(reference.source.fileName)))).sort(),
-        [toProjectPath(indexedDbPath), toProjectPath(snapshotStorePath)].sort(),
-        "both readonly and bounded snapshot owners must have direct IndexedDB access"
+        [
+            toProjectPath(indexedDbPath),
+            toProjectPath(snapshotStorePath),
+            toProjectPath(priceTrendStorePath)
+        ].sort(),
+        "readonly and both bounded store owners must have direct IndexedDB access"
     );
-    assert.equal(readwriteLiterals.length, 1, "Next runtime must contain one reviewed readwrite mode");
-    assert.equal(
-        normalizePath(readwriteLiterals[0].source.fileName),
-        snapshotStoreOwner,
-        `readwrite mode is restricted to ${toProjectPath(snapshotStorePath)}`
+    assert.equal(readwriteLiterals.length, 2, "Next runtime must contain two reviewed readwrite modes");
+    assert.deepEqual(
+        readwriteLiterals.map((entry) => toProjectPath(entry.source.fileName)).sort(),
+        [toProjectPath(snapshotStorePath), toProjectPath(priceTrendStorePath)].sort(),
+        "readwrite mode is restricted to the two bounded Next stores"
     );
     assert.equal(forbiddenCalls.length, 0, formatReasonNodeList("forbidden IndexedDB mutation", forbiddenCalls));
-    assert.equal(transactionCalls.length, 5, "reviewed IndexedDB owners must retain five explicit transactions");
+    assert.equal(transactionCalls.length, 7, "reviewed IndexedDB owners must retain seven explicit transactions");
     for (const transaction of transactionCalls) {
         assert.equal(transaction.node.arguments.length, 2, "IndexedDB transaction must use an explicit two-argument call");
         const mode = getStringLiteralText(transaction.node.arguments[1]);
@@ -401,6 +436,38 @@ function checkIndexedDbBoundary(sources) {
         storeGetAllCalls[0].node.arguments[1]?.getText(storeGetAllCalls[0].source),
         "NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT + 1"
     );
+    const priceTrendStoreGetAllCalls = getAllCalls.filter(
+        (call) => normalizePath(call.source.fileName) === priceTrendStoreOwner
+    );
+    assert.equal(
+        priceTrendStoreGetAllCalls.length,
+        1,
+        "price trend store must have one shared bounded getAll site"
+    );
+    assert.equal(priceTrendStoreGetAllCalls[0].node.arguments.length, 2);
+    assert.equal(
+        priceTrendStoreGetAllCalls[0].node.arguments[1]?.getText(
+            priceTrendStoreGetAllCalls[0].source
+        ),
+        "limit"
+    );
+    const priceTrendReadHelperCalls = collectNodes(
+        getProgramSourceFile(priceTrendStorePath),
+        (node) => (
+            ts.isCallExpression(node)
+            && ts.isIdentifier(node.expression)
+            && node.expression.text === "readRecordsByIndex"
+        )
+    );
+    assert.deepEqual(
+        priceTrendReadHelperCalls.map((call) => (
+            call.arguments[2]?.getText(getProgramSourceFile(priceTrendStorePath))
+        )).sort(),
+        [
+            "NEXT_PRICE_TREND_RETENTION_LIMIT + NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT + 1",
+            "NEXT_PRICE_TREND_SERIES_READ_LIMIT"
+        ].sort()
+    );
     const primaryKeyGetCalls = collectNodes(getProgramSourceFile(indexedDbPath), (node) => {
         if (!ts.isCallExpression(node)) {
             return false;
@@ -428,6 +495,21 @@ function checkIndexedDbBoundary(sources) {
     assert.equal(snapshotMethodCounts.get("get"), 1, "snapshot store must use one exact primary-key read");
     assert.equal(snapshotMethodCounts.get("createObjectStore"), 1, "snapshot store must create one owned store");
     assert.equal(snapshotMethodCounts.get("createIndex"), 1, "snapshot store must create one owned index");
+    const priceTrendStoreCalls = indexedDbCalls.filter(
+        (call) => normalizePath(call.source.fileName) === priceTrendStoreOwner
+    );
+    const priceTrendMethodCounts = new Map();
+    for (const call of priceTrendStoreCalls) {
+        priceTrendMethodCounts.set(
+            call.member.name,
+            (priceTrendMethodCounts.get(call.member.name) ?? 0) + 1
+        );
+    }
+    assert.equal(priceTrendMethodCounts.get("add"), 1, "price trend store must use one constraint-backed add");
+    assert.equal(priceTrendMethodCounts.get("delete"), 1, "price trend store may delete only through one prune site");
+    assert.equal(priceTrendMethodCounts.get("getAll"), 1, "price trend store must use one bounded getAll helper");
+    assert.equal(priceTrendMethodCounts.get("createObjectStore"), 1, "price trend store must create one owned store");
+    assert.equal(priceTrendMethodCounts.get("createIndex"), 2, "price trend store must create two owned indexes");
     const recordLimitDeclarations = collectNodes(getProgramSourceFile(indexedDbPath), (node) => (
         ts.isVariableDeclaration(node)
         && ts.isIdentifier(node.name)
@@ -451,6 +533,27 @@ function checkIndexedDbBoundary(sources) {
     ));
     assert.equal(retentionDeclaration.length, 1, "snapshot retention limit must have one declaration");
     assert.equal(getNumericLiteralValue(retentionDeclaration[0].initializer), 120);
+    const priceTrendLimitDeclarations = collectNodes(
+        getProgramSourceFile(priceTrendStorePath),
+        (node) => (
+            ts.isVariableDeclaration(node)
+            && ts.isIdentifier(node.name)
+            && (
+                node.name.text === "NEXT_PRICE_TREND_RETENTION_LIMIT"
+                || node.name.text === "NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT"
+                || node.name.text === "NEXT_PRICE_TREND_SERIES_READ_LIMIT"
+            )
+        )
+    );
+    const priceTrendLimits = new Map(priceTrendLimitDeclarations.map((declaration) => [
+        declaration.name.text,
+        getNumericLiteralValue(declaration.initializer)
+    ]));
+    assert.deepEqual(priceTrendLimits, new Map([
+        ["NEXT_PRICE_TREND_RETENTION_LIMIT", 1_440],
+        ["NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT", 16],
+        ["NEXT_PRICE_TREND_SERIES_READ_LIMIT", 512]
+    ]), "price trend store limits must remain fixed and bounded");
 }
 
 function checkRuntimeImportBoundary(reviewedPaths) {

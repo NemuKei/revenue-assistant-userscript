@@ -15,6 +15,11 @@ import {
     type PriceTrendComparisonViewModel
 } from "./priceTrendComparisonModel";
 import {
+    createPriceTrendCaptureWriter,
+    type PriceTrendCaptureResult,
+    type PriceTrendCaptureWriter
+} from "./priceTrendCaptureWriter";
+import {
     PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE,
     PRICE_TREND_COMPARISON_FILTER_VALUE_ATTRIBUTE,
     PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE,
@@ -23,6 +28,7 @@ import {
     ensurePriceTrendComparisonStyles,
     removePriceTrendComparisonArtifacts,
     renderPriceTrendComparison,
+    type PriceTrendCaptureStatus,
     type PriceTrendComparisonRenderState
 } from "./priceTrendComparisonView";
 
@@ -51,6 +57,7 @@ export interface PriceTrendComparisonRuntimeHandle {
 export interface StartPriceTrendComparisonRuntimeOptions {
     dataSource?: PriceTrendComparisonDataSource;
     resolveStayDate?: (location: Location) => string | null;
+    writer?: PriceTrendCaptureWriter | null;
 }
 
 export function parsePriceTrendComparisonAnalyzeStayDate(pathname: string): string | null {
@@ -75,6 +82,9 @@ export function startPriceTrendComparisonRuntime(
     options: StartPriceTrendComparisonRuntimeOptions = {}
 ): PriceTrendComparisonRuntimeHandle {
     const dataSource = options.dataSource ?? createPriceTrendComparisonDataSource({ windowHost });
+    const writer = options.writer === undefined
+        ? createPriceTrendCaptureWriter({ windowHost })
+        : options.writer;
     const resolveStayDate = options.resolveStayDate
         ?? ((location: Location) => parsePriceTrendComparisonAnalyzeStayDate(location.pathname));
     let state: PriceTrendComparisonRuntimeState = { status: "idle" };
@@ -85,6 +95,8 @@ export function startPriceTrendComparisonRuntime(
     let root: HTMLElement | null = null;
     let mountTarget: HTMLElement | null = null;
     let blockedFacilityLabel: string | null = null;
+    let captureAttempted = false;
+    let captureStatus: PriceTrendCaptureStatus = writer === null ? "disabled" : "checking";
     let loadGeneration = 0;
     let scheduledReconcileTimer: number | null = null;
     let narrow = windowHost.innerWidth <= 680;
@@ -168,14 +180,20 @@ export function startPriceTrendComparisonRuntime(
         } else if (mounted) {
             renderCurrentState();
         }
+        if (activeContext !== null && !captureAttempted) {
+            startCapture();
+        }
     }
 
     function resetContext(stayDate: string): void {
         loadGeneration += 1;
         dataSource.reset();
+        writer?.cancel();
         activeStayDate = stayDate;
         activeContext = null;
         blockedFacilityLabel = null;
+        captureAttempted = false;
+        captureStatus = writer === null ? "disabled" : "checking";
         filters = { mealType: null, roomType: null };
         selectedGuestCount = 2;
         state = { status: "idle" };
@@ -228,9 +246,69 @@ export function startPriceTrendComparisonRuntime(
         if (result.status === "missing" || result.status === "unavailable") {
             state = { status: "empty", reason: result.reason, stayDate };
             renderCurrentState();
+            startCapture();
             return;
         }
         rebuildState();
+        startCapture();
+    }
+
+    function startCapture(): void {
+        if (writer === null || activeContext === null || captureAttempted) {
+            return;
+        }
+        captureAttempted = true;
+        captureStatus = "capturing";
+        renderCurrentState();
+        const generation = loadGeneration;
+        const context = activeContext;
+        void writer.capture({
+            existingRecords: context.records,
+            facilityId: context.facilityId,
+            facilityLabel: context.facilityLabel,
+            stayDate: context.stayDate
+        }).then((result) => {
+            if (
+                stopped
+                || generation !== loadGeneration
+                || activeContext !== context
+            ) {
+                return;
+            }
+            applyCaptureResult(result);
+        });
+    }
+
+    function applyCaptureResult(result: PriceTrendCaptureResult): void {
+        if (activeContext === null) {
+            return;
+        }
+        if (result.status === "stored") {
+            activeContext.records = mergeRecordValues(activeContext.records, result.records);
+            captureStatus = result.hasPriceData ? "stored" : "no-price-data";
+            rebuildState();
+            return;
+        }
+        if (result.status === "skipped") {
+            activeContext.records = mergeRecordValues(activeContext.records, result.records);
+            captureStatus = result.reason === "already-stored"
+                ? result.hasPriceData
+                    ? "already-stored"
+                    : "no-price-data"
+                : "out-of-range";
+            rebuildState();
+            return;
+        }
+        if (result.status === "unavailable") {
+            captureStatus = "unavailable";
+            renderCurrentState();
+            return;
+        }
+        if (result.reason === "aborted") {
+            return;
+        }
+        captureStatus = "error";
+        renderCurrentState();
     }
 
     function rebuildState(): void {
@@ -290,7 +368,7 @@ export function startPriceTrendComparisonRuntime(
         const renderState: PriceTrendComparisonRenderState = state.status === "idle"
             ? { status: "loading", stayDate: activeStayDate ?? "" }
             : state;
-        renderPriceTrendComparison(root, renderState, { narrow });
+        renderPriceTrendComparison(root, renderState, { captureStatus, narrow });
         documentHost.documentElement.setAttribute(
             NEXT_PRICE_TREND_STATE_ATTRIBUTE,
             state.status === "ready" ? "mounted-local-comparison" : state.status
@@ -356,6 +434,9 @@ export function startPriceTrendComparisonRuntime(
     }
 
     function suspendForInactiveSurface(finalState: string): void {
+        writer?.cancel();
+        captureAttempted = false;
+        captureStatus = writer === null ? "disabled" : "checking";
         if (state.status === "loading") {
             loadGeneration += 1;
             dataSource.cancel();
@@ -368,9 +449,12 @@ export function startPriceTrendComparisonRuntime(
     function suspendForInactiveRoute(): void {
         loadGeneration += 1;
         dataSource.reset();
+        writer?.cancel();
         activeContext = null;
         activeStayDate = null;
         blockedFacilityLabel = null;
+        captureAttempted = false;
+        captureStatus = writer === null ? "disabled" : "checking";
         filters = { mealType: null, roomType: null };
         selectedGuestCount = 2;
         state = { status: "idle" };
@@ -393,6 +477,7 @@ export function startPriceTrendComparisonRuntime(
         stopped = true;
         loadGeneration += 1;
         dataSource.stop();
+        writer?.stop();
         abortController.abort();
         observer.disconnect();
         if (scheduledReconcileTimer !== null) {
@@ -404,6 +489,27 @@ export function startPriceTrendComparisonRuntime(
         mountTarget = null;
         documentHost.documentElement.setAttribute(NEXT_PRICE_TREND_STATE_ATTRIBUTE, finalState);
     }
+}
+
+function mergeRecordValues(
+    current: readonly unknown[],
+    incoming: readonly unknown[]
+): unknown[] {
+    const values = new Map<string, unknown>();
+    const withoutKey: unknown[] = [];
+    for (const value of [...current, ...incoming]) {
+        if (
+            typeof value === "object"
+            && value !== null
+            && !Array.isArray(value)
+            && typeof (value as { recordKey?: unknown }).recordKey === "string"
+        ) {
+            values.set((value as { recordKey: string }).recordKey, value);
+        } else {
+            withoutKey.push(value);
+        }
+    }
+    return [...values.values(), ...withoutKey];
 }
 
 export function resolvePriceTrendComparisonMountTarget(

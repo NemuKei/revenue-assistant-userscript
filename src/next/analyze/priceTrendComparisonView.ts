@@ -23,6 +23,17 @@ export type PriceTrendComparisonRenderState =
     | { status: "error"; reason: string; stayDate: string }
     | { status: "ready"; viewModel: PriceTrendComparisonViewModel };
 
+export type PriceTrendCaptureStatus =
+    | "already-stored"
+    | "capturing"
+    | "checking"
+    | "disabled"
+    | "error"
+    | "no-price-data"
+    | "out-of-range"
+    | "stored"
+    | "unavailable";
+
 export function createPriceTrendComparisonRoot(documentHost: Document): HTMLElement {
     const root = documentHost.createElement("section");
     root.setAttribute(PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE, "");
@@ -52,14 +63,21 @@ export function removePriceTrendComparisonArtifacts(documentHost: Document): voi
 export function renderPriceTrendComparison(
     root: HTMLElement,
     state: PriceTrendComparisonRenderState,
-    options: { narrow: boolean }
+    options: {
+        captureStatus: PriceTrendCaptureStatus;
+        narrow: boolean;
+    }
 ): void {
     const documentHost = root.ownerDocument;
-    const header = createHeader(documentHost, state);
+    const header = createHeader(documentHost, state, options.captureStatus);
     if (state.status !== "ready") {
         root.replaceChildren(
             header,
-            createMessage(documentHost, formatStateMessage(state), state.status)
+            createMessage(
+                documentHost,
+                formatStateMessage(state, options.captureStatus),
+                state.status
+            )
         );
         return;
     }
@@ -134,6 +152,34 @@ export function getPriceTrendComparisonStyles(): string {
 }
 [data-ra-next-price-trend-header] h3 { font-size: 20px; line-height: 1.35; }
 [data-ra-next-price-trend-meta] { color: var(--ra-next-price-muted); font-size: 12px; line-height: 1.55; }
+[data-ra-next-price-trend-capture] {
+    justify-self: start;
+    padding: 4px 9px;
+    border: 1px solid #bfd0dd;
+    border-radius: 999px;
+    background: #f3f7fa;
+    color: #455e72;
+    font-size: 12px;
+    font-weight: 800;
+}
+[data-ra-next-price-trend-capture="capturing"],
+[data-ra-next-price-trend-capture="checking"] {
+    border-color: #9fc7e0;
+    background: #edf7fd;
+    color: #125f90;
+}
+[data-ra-next-price-trend-capture="stored"],
+[data-ra-next-price-trend-capture="already-stored"] {
+    border-color: #a9cdb8;
+    background: #edf8f1;
+    color: #286842;
+}
+[data-ra-next-price-trend-capture="error"],
+[data-ra-next-price-trend-capture="unavailable"] {
+    border-color: #e5b9b1;
+    background: #fff1ef;
+    color: #8d3428;
+}
 [data-ra-next-price-trend-message] {
     padding: 18px;
     border-radius: 8px;
@@ -337,7 +383,8 @@ export function getPriceTrendComparisonStyles(): string {
 
 function createHeader(
     documentHost: Document,
-    state: PriceTrendComparisonRenderState
+    state: PriceTrendComparisonRenderState,
+    captureStatus: PriceTrendCaptureStatus
 ): HTMLElement {
     const header = documentHost.createElement("header");
     header.setAttribute("data-ra-next-price-trend-header", "");
@@ -351,7 +398,11 @@ function createHeader(
     meta.textContent = state.status === "ready"
         ? formatMeta(state.viewModel)
         : `対象宿泊日 ${formatStayDate(state.stayDate)} / 保存済み履歴を確認`;
-    header.append(eyebrow, title, meta);
+    const capture = documentHost.createElement("span");
+    capture.setAttribute("data-ra-next-price-trend-capture", captureStatus);
+    capture.setAttribute("role", captureStatus === "error" ? "alert" : "status");
+    capture.textContent = formatCaptureStatus(captureStatus);
+    header.append(eyebrow, title, meta, capture);
     return header;
 }
 
@@ -374,13 +425,20 @@ function formatMeta(viewModel: PriceTrendComparisonViewModel): string {
         viewModel.latestSourceUpdatedAt === null
             ? "公式更新 不明"
             : `公式更新 ${formatDateTime(viewModel.latestSourceUpdatedAt)}`,
-        "保存済み履歴（自動更新なし）"
+        "保存済み履歴 / 最新性は未保証"
     ].join(" / ");
 }
 
 function formatStateMessage(
-    state: Exclude<PriceTrendComparisonRenderState, { status: "ready" }>
+    state: Exclude<PriceTrendComparisonRenderState, { status: "ready" }>,
+    captureStatus: PriceTrendCaptureStatus
 ): string {
+    if (captureStatus === "capturing") {
+        return "本日分の90日価格推移を取得しています。標準の価格推移はそのまま利用できます。";
+    }
+    if (captureStatus === "no-price-data") {
+        return "本日の取得では公式側に表示できる価格点がありませんでした。標準の価格推移はそのまま利用できます。";
+    }
     if (state.status === "loading") {
         return "保存済みの90日価格推移を確認しています。";
     }
@@ -400,6 +458,29 @@ function formatStateMessage(
         return "表示中施設と保存履歴の施設が一致しないため、人数比較を停止しました。";
     }
     return "保存済み90日価格推移の読み取りに失敗しました。標準の価格推移はそのまま利用できます。";
+}
+
+function formatCaptureStatus(status: PriceTrendCaptureStatus): string {
+    switch (status) {
+        case "checking":
+            return "保存状況を確認中";
+        case "capturing":
+            return "本日分を取得中（最大16件）";
+        case "stored":
+            return "本日分を保存";
+        case "already-stored":
+            return "本日分は保存済み";
+        case "out-of-range":
+            return "90日範囲外";
+        case "no-price-data":
+            return "公式側データなし";
+        case "unavailable":
+            return "保存不可";
+        case "error":
+            return "取得失敗";
+        case "disabled":
+            return "合成fixture・取得なし";
+    }
 }
 
 function createMessage(

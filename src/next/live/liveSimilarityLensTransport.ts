@@ -2,6 +2,7 @@ const NEXT_FACILITY_ENDPOINT = "/api/v2/yad/info";
 const NEXT_CURRENT_SETTINGS_ENDPOINT = "/api/v1/suggest/output/current_settings";
 const NEXT_COMPETITORS_ENDPOINT = "/api/v2/competitors";
 const NEXT_COMPETITOR_PRICES_ENDPOINT = "/api/v5/competitor_prices";
+const NEXT_PRICE_TRENDS_ENDPOINT = "/api/v1/price_trends";
 const NEXT_RANK_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 
 export type NextReadRequest =
@@ -9,6 +10,13 @@ export type NextReadRequest =
     | { kind: "current-settings"; from: string; to: string }
     | { kind: "competitors" }
     | { kind: "rank-status"; stayDate: string }
+    | {
+        kind: "price-trends";
+        mealType: string;
+        numGuests: 1 | 2 | 3 | 4;
+        stayDate: string;
+        yadNos: readonly string[];
+    }
     | {
         kind: "competitor-prices";
         competitorYadNos: readonly string[];
@@ -84,6 +92,16 @@ export function buildNextReadUrl(request: NextReadRequest, origin: string): URL 
         url.searchParams.set("filter_type", "stay_date");
         url.searchParams.set("from", request.stayDate);
         url.searchParams.set("to", request.stayDate);
+        return url;
+    }
+    if (request.kind === "price-trends") {
+        const url = new URL(NEXT_PRICE_TRENDS_ENDPOINT, origin);
+        url.searchParams.set("stay_date", request.stayDate);
+        url.searchParams.set("num_guests", String(request.numGuests));
+        url.searchParams.set("meal_type", request.mealType);
+        for (const yadNo of request.yadNos) {
+            url.searchParams.append("yad_nos[]", yadNo);
+        }
         return url;
     }
     const url = new URL(NEXT_COMPETITOR_PRICES_ENDPOINT, origin);
