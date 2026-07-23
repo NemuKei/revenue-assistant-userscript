@@ -42,9 +42,9 @@ npm run check
 - `npm run build:vite:fixture`: Vite fixture preview を build
 - `npm run build:vite:candidate`: 正規 `dist` を上書きしない Vite candidate userscript build を `.tmp/vite-candidate/` に生成
 - `npm run build:next:candidate`: Next の独立 userscript candidate を `.tmp/vite-next-candidate/` に生成
-- `npm run dev:next:fixture`: Next の類似度モデル、実画面接続shell、Analyze競合履歴の合成fixtureを `http://127.0.0.1:5173/dev/fixtures/` 以下でpreview
-- `npm run build:next:fixture`: Next の基準日レンズ / Analyze競合履歴fixtureを `.tmp/vite-next-fixture/` に生成
-- `npm run check:next`: Next の型、lint、runtime lease、live shell、Analyze parity / 競合履歴、類似度model、live evidence、data source、GET allowlist、readonly owner / bounded writer owner、artifact metadata、candidate / fixture buildをまとめて確認。DOM interactionとログイン済み実画面の取得結果はBrowser QAで別途確認する
+- `npm run dev:next:fixture`: Next の類似度モデル、実画面接続shell、Analyze競合履歴 / booking curve / 価格推移の合成fixtureを `http://127.0.0.1:5173/dev/fixtures/` 以下でpreview
+- `npm run build:next:fixture`: Next の基準日レンズ / Analyze競合履歴 / booking curve / 価格推移fixtureを `.tmp/vite-next-fixture/` に生成
+- `npm run check:next`: Next の型、lint、runtime lease、live shell、Analyze parity / 競合履歴 / booking curve / 価格推移、類似度model、live evidence、data source、GET allowlist、readonly owner / bounded writer owner、artifact metadata、candidate / fixture buildをまとめて確認。DOM interactionとログイン済み実画面の取得結果はBrowser QAで別途確認する
 - `npm run check:classic-publication`: Classicの公開baseline manifest、workflow allowlist、公開権限もdeploy処理も持たないverify-only workflowの完全一致をoffline検査。`-- --live` を付けると公開URLのmetadata、bytes、SHA-256とGitHub Actions run provenanceも照合する
 - `npm run build:compare:vite`: 正規 `dist` と Vite candidate の userscript metadata、size、entry line を比較
 - `npm run check:fixture-markers`: Revenue Assistant 認証、Tampermonkey、通常 Chrome profile を使わず、fixture の合成 data だけで top のカレンダー連携型判断 workspace の主要 UI marker を確認

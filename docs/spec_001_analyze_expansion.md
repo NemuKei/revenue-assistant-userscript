@@ -444,6 +444,15 @@ Next booking curve rank-change contract (`RAU-UX-150` 第三段階B):
 - response、正規化event、request / response body、HAR、Cookie、token、credentialをstorageへ保存しない。`reflector_name`はmarker判断に不要で個人名になり得るためNextのmodelと表示へ取り込まない。月・隣接日・他stay dateの取得、background prefetch、Revenue AssistantのPOST / PUT / PATCH / DELETE、自動反映、一括反映を追加しない。
 - room-group scopeのcurrent booking curveに反映日以前の直接取得値があるeventだけを、LT bucket間を線形配置したrank markerとして全体panelと選択中の個人 / 団体panelへ描く。個人値は`transient`だけを使い、`all - group`で補わない。値がないeventはchart上へ推測配置せず、テキスト履歴には残す。markerは色だけに依存しない形と補助線を持ち、mouse、keyboard focus、tapでLT、反映日、変更前後rankを確認できる。全有効eventはhover不要のdetails / tableでも確認でき、empty / invalid response / request errorをcurrent / reference不足と区別する。
 
+Next 90-day price trend read-only comparison contract (`RAU-UX-150` 第四段階):
+
+- Nextの価格推移補助表示は `/analyze/YYYY-MM-DD` の標準価格推移本文が実際に可視で、`GET /api/v2/yad/info` のfacility labelが表示中contextと一致する場合だけ、native content末尾へsibling rootを1つ追加する。標準chart、filter、tabを隠す、移動する、置換する処理は持たず、他tab、別route、document hidden、facility mismatch、後発Classic、重複rootではroot / styleを除去またはfail closedとする。
+- data sourceは既存Classic IndexedDB database `revenue-assistant-price-trends`、store `price-trend-records`、index `facility-stayDate`から同一facility / stay dateのrecordを固定上限512件で1回だけ`readonly`読込する。`price_trend:v1` schema、facility、stay date、人数、食事、部屋、取得時刻、facility別pointをruntime validationし、同じ人数 / 食事 / 部屋scopeでは最新recordだけを使う。Classic DBを変更せず、`GET /api/v1/price_trends`、background prefetch、response保存、storage write、Revenue Assistant writeを追加しない。
+- `部屋タイプ=指定なし`は7部屋タイプ x 4食事 x 4人数のspecific-room recordがすべて揃った場合だけspecific-room全体の最安へ切り替え、不完全な途中状態では`roomType=null` recordを使う。`食事=指定なし`は選択したroom scope内の保存済み食事タイプをfacility x lead timeごとの最安へ集約する。欠損scopeを0や別facilityで補わない。
+- 初期表示は1〜4名のsummary cardを同時に並べ、自社価格、競合最安、差額、stay dateに最も近い保存済みlead timeをhover不要で示す。詳細は選択中1人数だけを自社 / 競合施設別seriesで1 chartに描き、人数、部屋、食事の切替を持つ。旧4大panelを複製せず、4人数の横比較と1人数の詳細確認を分ける。
+- chart pointはmouse、keyboard focus、tapでlead timeとfacility別価格を確認でき、同じ値をaccessible tableでも確認できる。保存済み取得時刻と`保存済み履歴（自動更新なし）`を常時表示し、freshnessを推測しない。recordなし、stale、IndexedDB unavailable / read errorを同じemptyへ潰さない。680px以下ではsummaryを2列にし、detail chartを1枚のまま保ち、Next root自身の横overflowを0とする。
+- この第四段階は保存済み履歴の比較表示だけを所有する。Nextを単独運用した後の新規観測を取得・保存する契約ではない。Next cutover前に、`/api/v1/price_trends`のrequest範囲と頻度、保存scope、retention、削除方針、freshness表示、権限と負荷を別Yellow zone判断として固定し、利用者の明示承認後に実装する。
+
 公式 `価格推移` タブへの RAU 追加表示:
 
 - `RAU-CP-11` の 2026-05-29 read-only 調査では、Analyze 画面に `data-testid="tab-priceTrends"` の公式 `価格推移` タブがあり、本文には `data-testid="price-trends-content"`、`price-trends-filter-item`、`price-trends-filter-button`、`price-trends-chart-header`、`price-trends-chart-header-yad-list-item`、`price-trends-content-updated-at` が存在することを確認した。chart は Recharts の wrapper と `svg` として描画されている。調査中に保存したのは DOM 挿入位置、test id、通信 endpoint の発生有無、response shape の field 名や型の範囲に限定し、HAR、raw trace、request body、response body、Cookie、token、credential、非公開価格データは repo に保存しない。

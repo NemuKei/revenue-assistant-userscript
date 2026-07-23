@@ -39,6 +39,10 @@ const expectedSources = [
     "src/next/analyze/competitorHistorySnapshotStore.ts",
     "src/next/analyze/competitorHistoryView.ts",
     "src/next/analyze/competitorHistoryWriter.ts",
+    "src/next/analyze/priceTrendComparisonDataSource.ts",
+    "src/next/analyze/priceTrendComparisonModel.ts",
+    "src/next/analyze/priceTrendComparisonRuntime.ts",
+    "src/next/analyze/priceTrendComparisonView.ts",
     "src/next/entry.ts",
     "src/next/facilityContext.ts",
     "src/next/live/liveCalendarDomAdapter.ts",
@@ -104,8 +108,10 @@ assert.match(artifactText, /data-ra-next-similarity-lens-root/u);
 assert.match(artifactText, /data-ra-next-competitor-history-root/u);
 assert.match(artifactText, /data-ra-next-booking-curve-reference-root/u);
 assert.match(artifactText, /data-ra-next-booking-curve-rank-marker/u);
+assert.match(artifactText, /data-ra-next-price-trend-comparison-root/u);
 assert.match(artifactText, /data-ra-next-analyze-state/u);
 assert.match(artifactText, /data-ra-next-booking-curve-state/u);
+assert.match(artifactText, /data-ra-next-price-trend-state/u);
 assert.match(artifactText, /server-read-only\/local-bounded-history/u);
 assert.equal(countMatches(artifactText, /\bfetch\b/gu), 1, "Next candidate must contain one raw fetch");
 assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");

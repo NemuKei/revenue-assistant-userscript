@@ -14,6 +14,7 @@ const [
     bookingRuntimeSource,
     bookingRankSource,
     bookingReferenceDataSourceSource,
+    priceTrendRuntimeSource,
     smokeSource
 ] = await Promise.all([
     readFile(new URL("../src/main.ts", import.meta.url), "utf8"),
@@ -23,6 +24,7 @@ const [
     readFile(new URL("../src/next/analyze/bookingCurveReferenceRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankStatusDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/priceTrendComparisonRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("./run-distribution-smoke.mjs", import.meta.url), "utf8")
 ]);
 
@@ -38,6 +40,7 @@ assert.doesNotMatch(
 );
 assert.match(nextEntrySource, /startCompetitorHistoryRuntime/u);
 assert.match(nextEntrySource, /startBookingCurveReferenceRuntime/u);
+assert.match(nextEntrySource, /startPriceTrendComparisonRuntime/u);
 assert.match(analyzeRuntimeSource, /competitor-price-tax-included-text/u);
 assert.match(analyzeRuntimeSource, /buildCompetitorHistoryViewModel/u);
 assert.doesNotMatch(
@@ -63,6 +66,13 @@ assert.doesNotMatch(
     bookingRuntimeSource,
     /lincoln\/suggest\/status/u,
     "rank endpoint construction must stay in the shared closed transport"
+);
+assert.match(priceTrendRuntimeSource, /price-trends-content/u);
+assert.match(priceTrendRuntimeSource, /buildPriceTrendComparisonViewModel/u);
+assert.doesNotMatch(
+    priceTrendRuntimeSource,
+    /(?:from\s+["'][^"']*main|import\(["'][^"']*main)/u,
+    "Next price trend runtime must not import the Classic monolith"
 );
 
 const classicAnalyzeContracts = [

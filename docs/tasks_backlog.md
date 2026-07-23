@@ -215,12 +215,12 @@
 ### RAU-UX-150 Next Analyze固有graphをclean-roomで再接続する
 
 - 状態:
-  - 進行中。第一段階の競合snapshot履歴graph、明示承認済みの第二段階browser-local bounded writer、第三段階Aのbooking curve reference、第三段階Bのrank変更履歴は、clean-room source、合成fixture、ログイン済み実画面QAまで完了した。Next cutover blockerとしては、90日価格推移の比較UIが残る。
+  - 進行中。第一段階の競合snapshot履歴graph、明示承認済みの第二段階browser-local bounded writer、第三段階Aのbooking curve reference、第三段階Bのrank変更履歴、第四段階の90日価格推移read-only比較UIは、clean-room source、合成fixture、ログイン済み実画面QAまで完了した。Next cutover blockerとしては、価格推移のNext自前取得・保存契約が残る。
 - 目的:
   - 標準Analyzeを土台に、実務で価値が確認されているClassic固有の比較機能だけをNextの独立runtimeとして再接続する。`src/main.ts`の画面構造やmonolithを移植しない。
 - 実装順:
-  - 標準代替がない競合snapshot履歴graph、booking curve reference、別Yellow gateを通したbooking curve rank markerの順で完了した。次は90日価格推移の人数別比較UIを扱う。
-  - 90日推移は旧4 panelを無条件複製せず、1〜4名の同時比較が判断速度を上げるかを合成fixtureで比較してから形を決める。
+  - 標準代替がない競合snapshot履歴graph、booking curve reference、別Yellow gateを通したbooking curve rank marker、90日価格推移read-only比較UIの順で完了した。
+  - 90日推移は旧4大panelを複製せず、1〜4名を4 summary cardで同時比較し、選択中1人数だけを1 detail chartで深掘りする形を合成fixture比較後に採用した。次はNext自前の取得・保存を別Yellow gateとして判断する。
 - 第一段階完了:
   - `/analyze/YYYY-MM-DD` の可視な標準競合価格本文末尾へ、既存保存履歴だけを読む独立runtimeを追加した。desktop 2 x 2、390pxは1人数toggle、部屋 / 食事filter、取得日tooltip、最新値 / 前回差分の常時表示、日別table、empty / 1日 / errorを実装した。
   - 既存 `GET /api/v2/yad/info` 1回と、完全一致`facility-stay-date` indexのbounded readonly readだけを使う。新規endpoint、background prefetch、response保存、storage write、Revenue Assistant writeは追加していない。
@@ -239,12 +239,17 @@
   - response rootとeventをruntime validationし、stay date、room-group id、timestamp、変更前後rank、LT 0〜360を確認する。同一room / JST反映日は最新1件だけを使い、response / eventを保存せず、room名fallback、ホテル集約、`reflector_name`、隣接日 / 月取得、background prefetch、rank writeを追加していない。
   - current curveの直接値があるeventだけを色に依存しない◆markerと補助線へ置き、欠損eventもhover不要の履歴表に残す。markerはmouse、keyboard focus、tapでLT、反映日、変更前後rank、該当室数を確認できる。合成fixtureではGET予算、ready / empty / error / abort、marker / table、390px、標準chart非干渉を確認した。
   - ログイン済み実画面ではホテルscopeのrank GET 0、最初のroom scopeで1、別room / 価格推移tab往復後の追加0、Revenue Assistant originのwrite method 0、標準chart 2枚維持、runtime exception / console warning / error 0を確認した。対象日のexact raw cache不足時はvalid履歴を表へ出し、marker位置を推測しなかった。一時candidateはreloadで除去し、標準booking curveへ戻した。
+- 第四段階完了:
+  - 可視な標準価格推移chart直後へ、1〜4名の自社 / 競合最安 / 差額 / 直近lead timeを同時に見る4 summary cardと、選択中1人数の自社 / 競合施設別detail chartを持つ独立runtimeを追加した。部屋 / 食事filter、mouse / keyboard / tap tooltip、accessible table、保存時刻、empty / stale / read errorを分離した。
+  - 既存Classic IndexedDB `revenue-assistant-price-trends`の同一facility / stay date recordを最大512件readonlyで読む。`price_trend:v1`をruntime validationし、同一scopeの最新recordだけを採用する。7部屋タイプ x 4食事 x 4人数が完全な場合だけ指定なしをspecific-room集約へ切り替え、不完全な途中状態は指定なしrecordを使う。
+  - 合成fixtureではdesktop / 390px、4名 / 部屋filter、keyboard tooltip、empty / read error、route / tab / facility mismatch cleanup、標準chart非干渉、Next root自己overflow 0を確認した。ログイン済み実画面では保存済み履歴表示、4名切替、標準chart維持、facility GET 1、価格推移GET 0、Revenue Assistant originのwrite method 0、runtime exception / console warning / error 0、reload cleanupを確認した。
+  - この段階は保存済み履歴の比較表示だけを所有する。Next単独運用後の価格推移取得・保存は、request範囲 / 頻度、保存scope、retention、削除、freshness、負荷と権限を先に固定する別Yellow zone承認gateである。
 - gate:
   - calendar lensとAnalyze runtimeをroute単位で分離し、標準chartを隠さず、追加UIは非干渉領域へ置く。新規実装はadapter / cache read / view model / chartを分離する。
   - 既存browser-local recordのreadonly利用から始める。新規endpoint、background prefetch、response保存、storage write、freshness policy変更が必要なら、目的、保存範囲、削除方針、負荷、権限をYellow zone判断として実装前に記録する。
   - snapshot / empty / stale / error、人数 / 食事 / 部屋タイプ、tooltipのmouse / keyboard、screen reader label、390pxで追加root自身の横overflow 0、標準overflow非悪化、candidate request予算、console、write 0、route cleanupをfixture / smoke / liveで確認する。
 
-Remaining Task Triage は Now `RAU-UX-150`、Next / After Next / Later なしとする。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now `RAU-UX-150`（価格推移のNext自前取得・保存を別Yellow gateとして判断）、Next / After Next / Later なしとする。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
@@ -11240,7 +11245,7 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-150`: 標準Analyzeを土台に、競合snapshot履歴graphを最優先としてClassic固有の比較機能をclean-roomの独立runtimeで再接続する。
+- `RAU-UX-150`: Classic固有の比較UIのclean-room再接続は完了。Next単独運用に必要な90日価格推移の取得・保存契約を別Yellow gateとして判断する。
 
 Next:
 

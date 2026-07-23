@@ -1,0 +1,96 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAU Next 90-day price trend fixture</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { margin: 0; background: #f3f5f7; color: #263a4d; font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; }
+        [data-mock-toolbar] { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 10px 18px; background: #2378b8; color: #fff; }
+        [data-mock-toolbar] strong { margin-right: auto; }
+        [data-mock-toolbar] button { min-height: 38px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.75); border-radius: 6px; background: transparent; color: #fff; font: inherit; font-weight: 700; }
+        [data-mock-host] { width: min(1180px, calc(100% - 32px)); margin: 22px auto; }
+        [data-mock-host][data-fixed-host] { width: 1200px; min-width: 1200px; margin-left: 18px; }
+        [data-mock-tabs] { display: flex; gap: 8px; margin-bottom: 10px; }
+        [data-mock-tabs] button { min-height: 40px; padding: 8px 15px; border: 1px solid #aebdca; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
+        [data-mock-tabs] [aria-selected="true"] { border-color: #2378b8; color: #1268a6; font-weight: 800; }
+        [data-testid="price-trends-content"] { padding: 18px; border: 1px solid #c9d4dd; border-radius: 8px; background: #fff; }
+        [data-testid="price-trends-chart-header"] { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+        [data-testid="price-trends-chart-header"] h2 { margin: 0; font-size: 18px; }
+        [data-testid="price-trends-content-updated-at"] { color: #667887; font-size: 12px; }
+        [data-mock-native-filter] { display: flex; gap: 8px; margin-bottom: 12px; }
+        [data-mock-native-filter] span { padding: 7px 10px; border: 1px solid #ccd6df; border-radius: 5px; font-size: 12px; }
+        [data-mock-native-chart] { display: block; width: 100%; height: 250px; border: 1px solid #e0e6eb; background: linear-gradient(#fff, #fafcfd); }
+        [data-mock-native-chart] text { fill: #617283; font-size: 12px; }
+        [data-mock-native-chart] line { stroke: #d9e1e7; }
+        [data-mock-native-chart] path { fill: none; stroke: #2378b8; stroke-width: 3; }
+    </style>
+</head>
+<body>
+    <header data-mock-toolbar>
+        <strong>Revenue Assistant mock / standard price trend retained</strong>
+        <button type="button" data-mock-facility-context>施設A（mock）</button>
+        <button type="button" data-mock-remove-next>Next領域を再マウント</button>
+        <button type="button" data-mock-toggle-native>標準本文を切替</button>
+        <button type="button" data-mock-route-away>別画面へ</button>
+        <button type="button" data-mock-route-back>価格推移へ戻る</button>
+    </header>
+    <main data-mock-host>
+        <div data-mock-tabs role="tablist" aria-label="Analyze mock tabs">
+            <button type="button" role="tab">予約曲線</button>
+            <button type="button" role="tab">競合価格</button>
+            <button type="button" role="tab" data-testid="tab-priceTrends" aria-selected="true">価格推移</button>
+        </div>
+        <section data-testid="price-trends-content">
+            <div data-testid="price-trends-chart-header">
+                <h2>標準 価格推移</h2>
+                <span data-testid="price-trends-content-updated-at">更新 2026/07/23 09:50</span>
+            </div>
+            <div data-mock-native-filter>
+                <span data-testid="price-trends-filter-item">人数 2名</span>
+                <span data-testid="price-trends-filter-item">部屋タイプ 指定なし</span>
+                <span data-testid="price-trends-filter-item">食事 指定なし</span>
+            </div>
+            <svg data-mock-native-chart viewBox="0 0 880 250" role="img" aria-label="標準価格推移 mock">
+                <line x1="54" x2="850" y1="45" y2="45"></line>
+                <line x1="54" x2="850" y1="120" y2="120"></line>
+                <line x1="54" x2="850" y1="195" y2="195"></line>
+                <path d="M54 170 L210 156 L370 146 L530 126 L690 98 L850 76"></path>
+                <text x="54" y="230">90日前</text>
+                <text x="812" y="230">宿泊日</text>
+            </svg>
+        </section>
+    </main>
+    <script>
+        (() => {
+            const params = new URLSearchParams(window.location.search);
+            const host = document.querySelector("[data-mock-host]");
+            if (params.get("fixed-host") === "1") {
+                host.setAttribute("data-fixed-host", "");
+            }
+            document.querySelector("[data-mock-facility-context]").addEventListener("click", (event) => {
+                event.currentTarget.textContent = event.currentTarget.textContent.includes("A")
+                    ? "施設B（mock）"
+                    : "施設A（mock）";
+            });
+            document.querySelector("[data-mock-remove-next]").addEventListener("click", () => {
+                document.querySelector("[data-ra-next-price-trend-comparison-root]")?.remove();
+            });
+            document.querySelector("[data-mock-toggle-native]").addEventListener("click", () => {
+                const content = document.querySelector('[data-testid="price-trends-content"]');
+                content.hidden = !content.hidden;
+            });
+            document.querySelector("[data-mock-route-away]").addEventListener("click", () => {
+                window.history.pushState({}, "", "/away");
+                window.dispatchEvent(new PopStateEvent("popstate"));
+            });
+            document.querySelector("[data-mock-route-back]").addEventListener("click", () => {
+                window.history.pushState({}, "", "/dev/fixtures/next-analyze-price-trend/");
+                window.dispatchEvent(new PopStateEvent("popstate"));
+            });
+        })();
+    </script>
+    <script type="module" src="/src/next/dev/analyzePriceTrendComparisonFixtureEntry.ts"></script>
+</body>
+</html>
