@@ -1,6 +1,6 @@
 # PROJECT_CONTEXT
 
-最終更新: 2026-06-29
+最終更新: 2026-07-23
 
 ## Role
 
@@ -21,10 +21,9 @@ RAU は AGENTS-first, not AGENTS-only で運用する。毎回の作業入口、
 
 ## Profile
 
-RAU の暫定 profile は Profile B+ / C-light とする。
+RAU は Profile C とする。
 
-- Profile B+: userscript / browser integration / distribution boundary / non-public API boundary を持つため、単純な小型 repo よりも上位前提が必要。
-- C-light: Revenue Assistant 上の RM 作業判断に関わり、write boundary や配布物の扱いが business-critical に近い。ただし、独立サービス、PMS / DWH、本番自動化、外部公開 API 基盤ではないため full Profile C ではない。
+Classic / Next の並行境界、userscript distribution、non-public API / write boundary、Revenue Assistant 上の業務判断を扱うため、誤った再開や公開判断の影響が大きい。ただし Profile C でもこのファイルは optional upper premise layer であり、独立サービス、PMS / DWH、本番自動化、外部公開 API 基盤を RAU の責務にはしない。
 
 ## Purpose
 
