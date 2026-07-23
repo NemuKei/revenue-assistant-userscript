@@ -333,8 +333,11 @@ function checkIndexedDbBoundary(sources) {
             `IndexedDB getAll must have an explicit key/range and count limit: ${formatNode(getAll)}`
         );
         assert.equal(
-            getAll.node.arguments[1]?.getText(getAll.source),
-            "EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT",
+            new Set([
+                "EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT",
+                "EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT"
+            ]).has(getAll.node.arguments[1]?.getText(getAll.source)),
+            true,
             `IndexedDB getAll must use the reviewed fixed count limit: ${formatNode(getAll)}`
         );
     }
@@ -356,14 +359,19 @@ function checkIndexedDbBoundary(sources) {
     const recordLimitDeclarations = collectNodes(getProgramSourceFile(indexedDbPath), (node) => (
         ts.isVariableDeclaration(node)
         && ts.isIdentifier(node.name)
-        && node.name.text === "EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT"
+        && (
+            node.name.text === "EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT"
+            || node.name.text === "EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT"
+        )
     ));
-    assert.equal(recordLimitDeclarations.length, 1, "readonly IndexedDB record limit must be declared once");
-    assert.equal(
-        getNumericLiteralValue(recordLimitDeclarations[0].initializer),
-        1,
-        "readonly IndexedDB index reads must materialize at most one record per exact key"
-    );
+    const recordLimits = new Map(recordLimitDeclarations.map((declaration) => [
+        declaration.name.text,
+        getNumericLiteralValue(declaration.initializer)
+    ]));
+    assert.deepEqual(recordLimits, new Map([
+        ["EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT", 1],
+        ["EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT", 512]
+    ]), "readonly IndexedDB reads must retain reviewed fixed materialization limits");
 }
 
 function checkRuntimeImportBoundary(reviewedPaths) {

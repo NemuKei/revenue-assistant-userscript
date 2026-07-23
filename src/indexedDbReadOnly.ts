@@ -19,7 +19,16 @@ export interface ExistingIndexedDbPrimaryKeyReadOptions {
     keys: readonly IDBValidKey[];
 }
 
+export interface ExistingIndexedDbSeriesReadOptions {
+    databaseName: string;
+    databaseVersion: number;
+    storeName: string;
+    indexName: string;
+    key: IDBValidKey;
+}
+
 const EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT = 1;
+const EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT = 512;
 
 export async function readExistingIndexedDbRecordsByIndexKeys<T>(
     options: ExistingIndexedDbReadOptions
@@ -99,6 +108,70 @@ export async function readExistingIndexedDbRecordsByPrimaryKeys<T>(
         ) as Array<T | undefined>;
         return records.filter((record): record is T => record !== undefined);
     });
+}
+
+export async function readExistingIndexedDbRecordSeriesByIndexKey<T>(
+    options: ExistingIndexedDbSeriesReadOptions
+): Promise<ExistingIndexedDbReadResult<T>> {
+    if (typeof window === "undefined" || !("indexedDB" in window)) {
+        return { status: "unavailable", reason: "indexeddb-unavailable" };
+    }
+    if (typeof window.indexedDB.databases !== "function") {
+        return { status: "unavailable", reason: "database-list-unavailable" };
+    }
+
+    let databases: IDBDatabaseInfo[];
+    try {
+        databases = await window.indexedDB.databases();
+    } catch {
+        return { status: "error", reason: "database-list-failed" };
+    }
+    const databaseInfo = databases.find((database) => database.name === options.databaseName);
+    if (databaseInfo === undefined) {
+        return { status: "missing", reason: "database-missing" };
+    }
+    if (
+        typeof databaseInfo.version === "number"
+        && databaseInfo.version !== options.databaseVersion
+    ) {
+        return { status: "missing", reason: "version-mismatch" };
+    }
+
+    let databaseResult: Awaited<ReturnType<typeof openExistingDatabase>>;
+    try {
+        databaseResult = await openExistingDatabase(options.databaseName);
+    } catch {
+        return { status: "error", reason: "database-open-failed" };
+    }
+    if (!databaseResult.ok) {
+        return databaseResult.result;
+    }
+    const database = databaseResult.database;
+    try {
+        if (database.version !== options.databaseVersion) {
+            return { status: "missing", reason: "version-mismatch" };
+        }
+        if (!database.objectStoreNames.contains(options.storeName)) {
+            return { status: "missing", reason: "store-missing" };
+        }
+
+        const transaction = database.transaction(options.storeName, "readonly");
+        const completion = waitForReadonlyTransaction(transaction);
+        const store = transaction.objectStore(options.storeName);
+        if (!store.indexNames.contains(options.indexName)) {
+            transaction.abort();
+            await completion.catch(() => undefined);
+            return { status: "missing", reason: "index-missing" };
+        }
+        const index = store.index(options.indexName);
+        const recordsPromise = readRecordSeriesByKey<T>(index, options.key);
+        const [records] = await Promise.all([recordsPromise, completion]);
+        return { status: "ready", records };
+    } catch {
+        return { status: "error", reason: "read-failed" };
+    } finally {
+        database.close();
+    }
 }
 
 async function readExistingIndexedDbStore<T>(
@@ -230,6 +303,21 @@ function readRecordsByKey<T>(index: IDBIndex, key: IDBValidKey): Promise<T[]> {
         };
         request.onerror = () => {
             reject(request.error ?? new Error("readonly IndexedDB request failed"));
+        };
+    });
+}
+
+function readRecordSeriesByKey<T>(index: IDBIndex, key: IDBValidKey): Promise<T[]> {
+    return new Promise((resolve, reject) => {
+        const request = index.getAll(
+            IDBKeyRange.only(key),
+            EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT
+        );
+        request.onsuccess = () => {
+            resolve(request.result as T[]);
+        };
+        request.onerror = () => {
+            reject(request.error ?? new Error("readonly IndexedDB series request failed"));
         };
     });
 }

@@ -215,12 +215,16 @@
 ### RAU-UX-150 Next Analyze固有graphをclean-roomで再接続する
 
 - 状態:
-  - 未着手。NextのNowとする。
+  - 進行中。第一段階の競合snapshot履歴graphは、clean-room source、合成fixture、ログイン済み実画面のread-only QAまで完了した。Next cutover blockerとしては、履歴を更新するbounded writer、booking curve reference / rank marker、90日価格推移の比較UIが残る。
 - 目的:
   - 標準Analyzeを土台に、実務で価値が確認されているClassic固有の比較機能だけをNextの独立runtimeとして再接続する。`src/main.ts`の画面構造やmonolithを移植しない。
 - 実装順:
   - 最優先は標準代替がない競合snapshot履歴graph。次にbooking curveのreference / rank marker、最後に90日価格推移の人数別比較UIを扱う。
   - 90日推移は旧4 panelを無条件複製せず、1〜4名の同時比較が判断速度を上げるかを合成fixtureで比較してから形を決める。
+- 第一段階完了:
+  - `/analyze/YYYY-MM-DD` の可視な標準競合価格本文末尾へ、既存保存履歴だけを読む独立runtimeを追加した。desktop 2 x 2、390pxは1人数toggle、部屋 / 食事filter、取得日tooltip、最新値 / 前回差分の常時表示、日別table、empty / 1日 / errorを実装した。
+  - 既存 `GET /api/v2/yad/info` 1回と、完全一致`facility-stay-date` indexのbounded readonly readだけを使う。新規endpoint、background prefetch、response保存、storage write、Revenue Assistant writeは追加していない。
+  - 保存履歴の新規蓄積は未実装である。Classic無効後も推移を更新するには実データ保存が必要なため、次の実装gateはbounded writerのYellow zone判断と明示承認とする。承認前にbooking curveのread-only再接続を進める場合も、この欠落をcutover blockerとして残す。
 - gate:
   - calendar lensとAnalyze runtimeをroute単位で分離し、標準chartを隠さず、追加UIは非干渉領域へ置く。新規実装はadapter / cache read / view model / chartを分離する。
   - 既存browser-local recordのreadonly利用から始める。新規endpoint、background prefetch、response保存、storage write、freshness policy変更が必要なら、目的、保存範囲、削除方針、負荷、権限をYellow zone判断として実装前に記録する。

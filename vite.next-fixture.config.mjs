@@ -16,7 +16,8 @@ export default defineConfig({
         rollupOptions: {
             input: [
                 path.join(__dirname, "dev", "fixtures", "similarity-lens", "index.html"),
-                path.join(__dirname, "dev", "fixtures", "next-live-shell", "index.html")
+                path.join(__dirname, "dev", "fixtures", "next-live-shell", "index.html"),
+                path.join(__dirname, "dev", "fixtures", "next-analyze-competitor", "index.html")
             ]
         }
     }

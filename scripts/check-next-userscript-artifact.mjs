@@ -26,7 +26,12 @@ const expectedSources = [
     "src/competitorPriceSnapshotContract.ts",
     "src/curveCore.ts",
     "src/indexedDbReadOnly.ts",
+    "src/next/analyze/competitorHistoryDataSource.ts",
+    "src/next/analyze/competitorHistoryModel.ts",
+    "src/next/analyze/competitorHistoryRuntime.ts",
+    "src/next/analyze/competitorHistoryView.ts",
     "src/next/entry.ts",
+    "src/next/facilityContext.ts",
     "src/next/live/liveCalendarDomAdapter.ts",
     "src/next/live/liveSimilarityLensDataSource.ts",
     "src/next/live/liveSimilarityLensEvidence.ts",
@@ -87,6 +92,8 @@ assert.equal(metadata.has("resource"), false, "Next candidate must not load remo
 assert.match(artifactText, /data-ra-next-runtime-state/u);
 assert.match(artifactText, /ready-read-only/u);
 assert.match(artifactText, /data-ra-next-similarity-lens-root/u);
+assert.match(artifactText, /data-ra-next-competitor-history-root/u);
+assert.match(artifactText, /data-ra-next-analyze-state/u);
 assert.equal(countMatches(artifactText, /\bfetch\b/gu), 1, "Next candidate must contain one raw fetch");
 assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");
 assert.equal(countMatches(artifactText, /\/api\/v2\/yad\/info/gu), 1);
@@ -101,8 +108,8 @@ assert.equal(
     true,
     "competitor endpoint contract must remain present for cache validation"
 );
-assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 2);
-assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 1);
+assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 3);
+assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 2);
 assert.match(artifactText, /readonly/u);
 assert.match(artifactText, /GET/u);
 

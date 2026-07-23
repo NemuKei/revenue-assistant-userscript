@@ -24,6 +24,7 @@ import type {
     RankRecommendationCurrentSettingRoomGroup,
     RankRecommendationCurrentSettingsResponse
 } from "../../rankRecommendation";
+import { parseNextFacilityContext } from "../facilityContext";
 import {
     buildLiveSimilarityLensEvidence,
     type LiveSimilarityLensEvidenceViewModel
@@ -184,7 +185,7 @@ async function loadLiveSimilarityLensData(options: {
         if (session.usedRequestCount() !== 2) {
             return { status: "error", reason: "read-failed", contextKey: options.contextKey };
         }
-        const facilityContext = parseFacilityContext(facilityPayload);
+        const facilityContext = parseNextFacilityContext(facilityPayload);
         if (facilityContext === null) {
             return { status: "error", reason: "facility-response-invalid", contextKey: options.contextKey };
         }
@@ -287,17 +288,6 @@ export function buildCurrentBookingCurvePrimaryKeys(options: {
         }
     }
     return Array.from(keys).sort();
-}
-
-function parseFacilityContext(payload: unknown): { facilityId: string; facilityLabel: string } | null {
-    if (!isRecord(payload)) {
-        return null;
-    }
-    const yadNo = typeof payload.yad_no === "string" ? payload.yad_no.trim() : "";
-    const facilityLabel = typeof payload.name === "string" ? payload.name.trim() : "";
-    return yadNo === "" || facilityLabel === ""
-        ? null
-        : { facilityId: `yad:${yadNo}`, facilityLabel };
 }
 
 function parseCurrentSettings(payload: unknown): RankRecommendationCurrentSettingsResponse | null {
