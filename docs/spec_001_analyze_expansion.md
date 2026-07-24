@@ -223,8 +223,8 @@ BCL-tuned first wave の定義:
 
 ### 初回bootstrapと日々の差分
 
-- 初めて開く施設ではNext専用storeに有効sourceがないためbootstrap modeとする。最大800 request / sessionで止め、未完了分は保存済みsourceを再利用して次の可視sessionで再開する。
-- 2回目以降はdaily delta modeとし、新しく表示範囲へ入ったstay date、未保存source、前回取得後にcurrent tailが新しく観測可能になったsource、または直近型で次のlead-time目盛りが観測可能になったsourceだけを最大200 request / sessionで補う。APIがcumulative responseだけを返す場合もrequest自体を部分responseへ変えたとはみなさず、local mergeでは最後に保存したbooking curve pointの日付より後のpointだけを追加する。前回source as-ofよりpoint終端が遅れていた場合も、次のresponseでその遅延tailを取り込む。
+- 初めて開く施設ではNext専用storeに有効sourceがないためbootstrap modeとする。必要sourceに対する有効source coverageが80%未満の間は、最大800 request / sessionで止め、未完了分を保存済みsourceから次の可視sessionで再開する。したがってbootstrapは初回の1 sessionだけとは限らない。
+- 有効source coverageが80%以上に達した後はdaily delta modeとし、新しく表示範囲へ入ったstay date、未保存source、前回取得後にcurrent tailが新しく観測可能になったsource、または直近型で次のlead-time目盛りが観測可能になったsourceだけを最大200 request / sessionで補う。APIがcumulative responseだけを返す場合もrequest自体を部分responseへ変えたとはみなさず、local mergeでは最後に保存したbooking curve pointの日付より後のpointだけを追加する。前回source as-ofよりpoint終端が遅れていた場合も、次のresponseでその遅延tailを取り込む。
 - 保存済みpointには取得後の日数による期限を設けない。後続responseが同じ`booking_curve[].date`へ異なるroomsを返しても、先に保存したpointを置き換えず、差分補充の対象をその観測日より後へ限定する。
 - current taskは、future / 当日stay dateなら現在の`as_of_date`までのtailが未観測の場合にdueとする。past stay dateは、分離したlandingを1回保存できた時点で完了し、その後は年齢を理由に再取得しない。
 - 直近型reference taskは、そのsourceが新しいlead-time目盛りへ到達した場合、またはpast stay dateのlandingが未保存の場合だけdueとする。固定7〜13日refreshや14日expiryを設けず、まだ必要な目盛りが増えていないfuture sourceを毎日再取得しない。
@@ -240,7 +240,7 @@ BCL-tuned first wave の定義:
 ### 負荷、停止、再開
 
 - `/api/v4/booking_curve`のrequest開始間隔は250ms以上、同時実行数は2以下とする。Revenue Assistant本体の標準requestはこのcountへ含めない。
-- 初回bootstrapは最大800 request / session、daily deltaは最大200 request / sessionとする。選択中currentはqueue先頭へ上げるが、同時実行数と開始間隔を迂回しない。
+- coverage 80%未満のbounded bootstrapは最大800 request / session、coverage 80%以上のdaily deltaは最大200 request / sessionとする。選択中currentはqueue先頭へ上げるが、同時実行数と開始間隔を迂回しない。
 - HTTP 401はログイン確認、403は権限 / 施設確認、429はrate limitとしてqueueを即停止する。同一run内の自動retryは行わない。その他のrequest / validation / storage errorは記録して次taskへ進められるが、連続3 errorで停止する。
 - document hidden、calendar / Analyze以外へのroute変更、facility label不一致、facility / as-of変更、runtime停止では未完了requestをabortし、次の安全な可視contextで保存済みsourceから再計画する。
 - fixtureではwriterとnetwork acquisitionを完全に無効化する。
@@ -250,7 +250,7 @@ BCL-tuned first wave の定義:
 - 保存先はNext専用IndexedDB `revenue-assistant-next-booking-curve-sources`、store `booking-curve-sources`、version 1とし、Classic `revenue-assistant-booking-curve-sources`を変更しない。
 - 保存payloadはfacility、stay date、scope、room group、endpoint、query、最初と最新のsource as-of、取得時刻、`max_room_count`、`booking_curve[].date`と`all` / `transient` / `group`の`this_year_room_sum`、分離したlandingへ限定する。sales、ADR、過去年値、raw response、request / response body、HAR、Cookie、token、credential、予約・顧客情報は保存しない。
 - record keyはsource keyと最新source as-ofから決定し、Web Locksが利用可能な場合はfacility単位exclusive lock、IndexedDBは`add` constraintで重複を防ぐ。保存成功後は、それ以前のpointと最初のsource as-ofを内包した同じsourceの最新1件、および施設単位最大4,096件だけを残す。過去pointを含まない状態で旧recordだけを削除せず、削除対象はNext store内の超過recordに限定する。
-- 進捗は`初回準備`または`本日差分`、処理件数、保存、skip、error、停止理由だけを画面内の非干渉領域へ表示する。施設名、stay date、room group名、rooms値、response内容は進捗表示やconsoleへ出さない。
+- 進捗は`初回準備`または`本日差分`、処理件数、保存、重複保存回避、error、停止理由だけを画面内の非干渉領域へ表示する。bootstrapのsession上限で選んだqueueを処理し終えた場合は、全sourceの準備完了と誤読させず`今回分完了`とし、未確認の残りは次の可視sessionで確認することを表示する。施設名、stay date、room group名、rooms値、response内容は進捗表示やconsoleへ出さない。
 
 ## キャッシュと同期のルール
 

@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { importBundledTypeScript } from "./import-typescript-module.mjs";
 
+const coordinatorSource = await readFile(
+    new URL("../src/next/bookingCurve/bookingCurveAcquisitionCoordinator.ts", import.meta.url),
+    "utf8"
+);
 const model = await importBundledTypeScript(
     "../src/next/bookingCurve/bookingCurveAcquisitionModel.ts",
     import.meta.url
@@ -13,6 +18,10 @@ const coordinatorModule = await importBundledTypeScript(
     "../src/next/bookingCurve/bookingCurveAcquisitionCoordinator.ts",
     import.meta.url
 );
+const runtimeModule = await importBundledTypeScript(
+    "../src/next/bookingCurve/bookingCurveAcquisitionRuntime.ts",
+    import.meta.url
+);
 const transportModule = await importBundledTypeScript(
     "../src/next/live/liveSimilarityLensTransport.ts",
     import.meta.url
@@ -22,7 +31,40 @@ assert.equal(model.NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT, 800);
 assert.equal(model.NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT, 200);
 assert.equal(model.NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS, 250);
 assert.equal(model.NEXT_BOOKING_CURVE_CONCURRENCY, 2);
+assert.match(
+    coordinatorSource,
+    /const NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD = 0\.8;/u
+);
 assert.equal(storeModule.NEXT_BOOKING_CURVE_SOURCE_RETENTION_LIMIT, 4_096);
+assert.equal(
+    runtimeModule.formatNextBookingCurveAcquisitionState({
+        errorCount: 0,
+        mode: "bootstrap",
+        processedCount: 768,
+        requestCount: 768,
+        skippedCount: 0,
+        status: "complete",
+        stopReason: null,
+        storedCount: 768,
+        totalCount: 768
+    }),
+    "今回分完了 768/768（保存 768・重複回避 0・エラー 0・残りは次回確認）",
+    "bounded bootstrap completion must not imply that every source is ready"
+);
+assert.equal(
+    runtimeModule.formatNextBookingCurveAcquisitionState({
+        errorCount: 0,
+        mode: "daily-delta",
+        processedCount: 0,
+        requestCount: 0,
+        skippedCount: 0,
+        status: "complete",
+        stopReason: null,
+        storedCount: 0,
+        totalCount: 0
+    }),
+    "完了 0/0（保存 0・重複回避 0・エラー 0）"
+);
 
 const roomScopes = [
     { key: "hotel", kind: "hotel", roomGroupId: null },

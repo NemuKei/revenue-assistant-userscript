@@ -1,10 +1,10 @@
 # STATUS
 
-最終更新: 2026-07-23
+最終更新: 2026-07-24
 
 ## Current Task Bundle
 
-- `RAU-UX-151` は、Next booking curveの初回bootstrap + 日々の差分補充をclean-room実装し、ローカルQAまで完了、単一runtimeでの実画面QA待ちである。保存済みpointは年齢で失効・上書きせず、最後に保存したbooking curve pointより後の不足tailだけを追加する。`0日前`は宿泊日当日のexact観測、ACTは宿泊日後の分離landingだけを使い、current / 直近型 / 季節型で欠損`0日前`を表示補間しない。
+- `RAU-UX-151` は、Next booking curveの初回bootstrap + 日々の差分補充をclean-room実装し、ローカルQAと単一runtimeでの実画面QAまで完了した。保存済みpointは年齢で失効・上書きせず、最後に保存したbooking curve pointより後の不足tailだけを追加する。初回bootstrapはsession上限で複数回に分かれ得るが、保存済みsourceから再開し、収束後の同日再実行ではbooking curve GETを0件にできる。`0日前`は宿泊日当日のexact観測、ACTは宿泊日後の分離landingだけを使い、current / 直近型 / 季節型で欠損`0日前`を表示補間しない。
 - `RAU-UX-150` は完了した。第一段階の競合 snapshot 履歴 graph、利用者が明示承認した第二段階の browser-local bounded writer、第三段階Aの booking curve reference比較、第三段階Bの rank変更履歴、第四段階の90日価格推移read-only比較UI、第五段階の90日価格推移bounded acquisition / storeは、clean-room 実装、合成 fixture、ログイン済み実画面 QA まで完了した。
 - Next は `/analyze/YYYY-MM-DD` の可視な標準競合価格本文だけを所有し、標準表の末尾に追加表示する。desktop は4人数を 2 x 2、680px 以下は選択中1人数とし、部屋 / 食事 / 人数 filter、mouse / keyboard tooltip、最新値 / 前回差分、日別表を持つ。
 - 競合履歴は、可視な標準競合価格本文で未保存日の現在 stay date に競合一覧 / 競合価格 GETを各最大1回使う。booking curve referenceは既存raw cacheのexact primary keyだけを選択scopeごとにreadonlyで読み、メモリ上で算出する。rank履歴は確認済みroom scopeで表示中stay dateだけを最大1 GETし、responseを保存しない。90日価格推移はClassic / Nextの既存IndexedDB recordをbounded readonlyで統合し、可視な標準価格推移本文でJST当日から89日先までの部屋指定なし・4食事 x 4人数の不足scopeだけを最大16 GET / concurrency 2で取得する。週・月・周辺日程、部屋タイプ別のbackground prefetch、booking curve GET、Revenue Assistant write APIは追加していない。
@@ -22,15 +22,15 @@
 - `RAU-UX-150` 第三段階Bは、利用者の明示承認に基づき、facility guard通過後の確認済みroom scopeで表示中stay dateだけを既存rank status endpointへ最大1 GETする。responseはruntime validation後もメモリだけに置き、同一room / JST反映日の最新eventへ絞る。current curveの直接値があるeventだけをmarkerへ置き、値がないeventも履歴表には残す。room名fallback、ホテル全体への集約、`reflector_name`、response保存、自動retry、rank writeを追加していない。
 - `RAU-UX-150` 第四段階は、可視な標準価格推移chartを残し、そのnative content末尾へ独立rootを追加する。1〜4名は自社 / 競合最安 / 差額 / 直近lead timeの4 summary cardで同時比較し、選択中1人数だけを自社 / 競合施設別の詳細chartで見る。部屋 / 食事filter、mouse / keyboard tooltip、accessible table、保存時刻、empty / stale / errorを持つ。既存Classic DBの同一facility / stay dateを最大512件readonlyで読むだけで、価格推移GET、storage write、Classic DB変更を追加していない。
 - `RAU-UX-150` 第五段階は、利用者の明示承認に基づき、可視な標準価格推移本文、facility label guard、document visible、JST当日から89日先までのstay dateが揃う場合だけ、部屋指定なし・4食事 x 4人数の不足scopeを取得する。競合一覧GETは最大1回、価格推移GETは最大16回 / concurrency 2で、Classic / Nextに同日有効scopeがあれば両方を省略する。Next専用DB、deterministic key、Web Locks、IDB add constraint、scopeごとの最新1件、施設単位で当日〜89日先・最大1,440件の自動pruneをwriter / store境界へ隔離し、Classic DBを変更しない。
-- `RAU-UX-151` は、可視なcalendarまたはAnalyze、facility label guard、document visible、現在のas-ofが揃う場合だけ既存read-only `GET /api/v4/booking_curve`を使う。初回は表示中stay dateのhotel / 全room currentとhotel直近型referenceを最大800件、2回目以降は新規・欠損・current tail・新しく観測可能になったreference tickだけを最大200件、250ms以上 / concurrency 2で補う。Next専用DBはsource最新1件へ過去pointを内包し、施設最大4,096件、401 / 403 / 429即停止、同一run retryなしとする。
-- 2026-07-23に利用者がNext candidate version `0.1.0`をTampermonkeyへ手動installして有効化し、Classicは削除せず無効化した。実行中画面のruntime markerは`ready-read-only` / `0.1.0`、Classic markerは0件であり、現在の通常ChromeはNext単独実行である。ただし現在の実行版は`RAU-UX-151`のbooking curve acquisition rootを持たない旧candidateで、repo更新は自動反映されていない。candidateは引き続きupdateURL / downloadURLを持たないopt-in artifactで、公開版ではない。
+- `RAU-UX-151` は、可視なcalendarまたはAnalyze、facility label guard、document visible、現在のas-ofが揃う場合だけ既存read-only `GET /api/v4/booking_curve`を使う。必要source coverage 80%未満のbounded bootstrapは表示中stay dateのhotel / 全room currentとhotel直近型referenceを最大800件、coverage 80%以上のdaily deltaは新規・欠損・current tail・新しく観測可能になったreference tickだけを最大200件、250ms以上 / concurrency 2で補う。1 sessionで全sourceへ届かない場合は`今回分完了`として次の可視sessionで再計画し、全source準備済みを断定しない。Next専用DBはsource最新1件へ過去pointを内包し、施設最大4,096件、401 / 403 / 429即停止、同一run retryなしとする。
+- 2026-07-23に利用者がNext candidate version `0.1.0`をTampermonkeyへ手動installして有効化し、Classicは削除せず無効化した。2026-07-24の実画面QA前に利用者がこの旧Nextを無効化し、QA後も無効のままである。最新candidateは一時注入後にreloadで除去し、通常Chromeはnative UIだけへ戻した。candidateは引き続きupdateURL / downloadURLを持たないopt-in artifactで、公開版ではない。
 - `RAU-UX-145` は、Next が旧 stacked rail を採用していないため見送りである。同じ host 構造を将来採用する場合だけ再開する。
 - RAU は Profile C とし、root `AGENTS.md` を入口に、`PROJECT_CONTEXT.md`、`INTENT.md`、`DECISIONS.md`、この file、backlog を責務が一致するときだけ読む。
 
 ## Next Re-entry
 
-1. `RAU-UX-151`の実画面QAは、現在のTampermonkey Nextを一時停止し、最新candidateを単一runtimeとして一時注入できる状態で行う。初回bootstrap / 同日再実行のGET件数、Next DB保存と再利用、native UI維持、write method 0、console error 0を確認する。翌日tail差分は同日には再現できないため、純粋testの確認範囲とlive確認範囲を分ける。
-2. live QA後に現在の実行版を更新する場合は、最新candidateの手動reinstall / switchと切替後smokeを別の明示gateとして扱う。updateURL / downloadURLがないため、repo更新だけでは現在の実行版へ自動反映されない。
+1. 現在の実行版を更新する場合は、最新candidateの手動reinstall / switchと切替後smokeを別の明示gateとして扱う。updateURL / downloadURLがないため、repo更新だけでは現在の実行版へ自動反映されない。
+2. 翌日tail差分は2026-07-24の同日live QAでは再現できていない。pure testでは最後の保存point以後だけのappendを確認済みだが、次のJST観測日に実行版を有効化する場合は、新規・欠損・観測可能tailだけを最大200件で補うことをlive確認候補とする。
 3. Next publish、release、Classic再公開は未実施の明示gateである。週・月・周辺日程の取得、保存削除 UI、retention 変更が必要になった場合も、今回の明示承認へ含めず別の Yellow zone 判断とする。
 
 ## Verify / Confirmation State
@@ -49,15 +49,17 @@
 - ログイン済み実画面では、標準価格推移chartを残したまま初回にfacility 1 / 競合一覧1 / 価格推移16 GET、Revenue Assistant originのwrite method 0で、Next専用DBを0件から既定16 scopeへ保存した。reload後の再注入ではfacility 1、競合一覧0、価格推移0、DB 16件維持、`本日分は保存済み`、candidate / page console warning / error 0を確認した。保存recordは16 deterministic key、部屋指定なし、最小schema、禁止field 0だった。390pxではNext root自体359px、summary 2列、内部overflow 0で、標準画面由来の固定幅overflowを拡大しなかった。最後はdevice overrideを解除してreloadし、Next root / runtime marker 0、標準価格推移tabと本文を復元した。実価格、施設名、response body、raw trace、実画面screenshotは保存せず、明示承認に基づく当日16 recordだけをNext専用browser-local DBへ残した。
 - Tampermonkey切替後の通常Chromeをfresh reloadし、calendar routeでは標準calendarを残してNext基準日レンズroot 1件をidleでmountし、基準日選択とclearを確認した。Analyzeでは標準booking curve 2 chartとNext root 1件、確認済みscope 7件、room scopeのrank履歴ready、rank GET初回1・tab再表示0を確認した。競合価格では標準本文1件、Next root 1件、4 panel / SVG 4件、価格推移では標準本文1件、Next root 1件、summary 4件 / detail SVG 1件を確認し、両方とも`already-stored`でtab表示時の競合一覧 / 競合価格 / 価格推移GETは0件だった。各reload・route・tab操作区間のRevenue Assistant write methodは0件、runtime exceptionとconsole warning / errorは0件、Classic markerは0件だった。booking curveのexact raw cache不足と、基準日レンズの実比較候補不足は既存どおり推測で補っていない。
 - `RAU-UX-151`のfocused checkでは、保存済みpoint不変、最後の保存point以後のtail-only append、source as-ofより遅れたtailの次回補充、current当日差分、referenceの次tick到達時差分、past landing後の年齢再取得なし、source最新1件、施設最大4,096件、401 / 403 / 429即停止、同一run retryなし、連続3 error停止を確認した。`0日前`とlanding / ACTの分離、post-stay-only sourceの`0日前`欠損、current / 直近型 / 季節型での表示補間なし、直近型ACTへの別曜日landing混入なし、current tail未補充時の`比較準備中`も直接testした。
+- Tampermonkey旧Nextを無効化したログイン済み実画面へcandidateだけを一時注入した。Next booking curve DB 0件から開始し、初回sessionで768 source、次の可視sessionで残り235 sourceを保存して合計1,003件へ収束した。2回目の235 GETは全件HTTP 200、request開始間隔最短251.4ms、最大同時2、error 0、Revenue Assistant originのwrite method 0だった。3回目の同日再注入ではfacility / current settings GET各1、booking curve GET 0、DB 1,003件維持、candidate runtime exception / console error 0だった。これにより、初回bootstrapがsession上限で複数回に分かれ、保存済みsourceから再開した後は同日差分0へ収束することを確認した。
+- liveで判明したsession単位の誤読を避けるため、bootstrapの完了文言を`今回分完了` / `残りは次回確認`へ変更し、通常の保存済みsource再利用とIDB `add`競合を混同していた`再利用`を`重複回避`へ変更した。focused checkでbootstrap文言を、再生成candidateの同日live smokeで`本日差分完了 0/0（保存 0・重複回避 0・エラー 0）`、booking curve GET 0、DB 1,003件維持、write 0を確認した。
 - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、`npm run check:distribution-smoke-fixture`、`npm run check:booking-curve-smoke-fixture`、`npm run build:vite:fixture`、`git diff --check` が通過した。Next sourceは35 files、runtime graphは40 files、raw fetch 1か所、許可API path 7件である。既存cache reader `src/indexedDbReadOnly.ts` は `readonly` のまま、Next専用writer ownerは競合履歴120件、価格推移1,440件、booking curve4,096件へ分離されている。
-- 最新Next candidateは240,364 bytes、SHA-256 `E099F7B2189063554188D3215926B532F0D278041E76004EE8EBFE4FC814B275`、Classicと別identity、updateURL / downloadURLなし、`server-read-only/local-bounded-history`である。通常Chromeでは旧Next 0.1.0のruntime marker / similarity root 1件、今回のacquisition root 0件をread-only確認し、二重起動防止のため最新candidate注入を行っていない。Next publish、release、Classic再公開、Revenue Assistant write、最新candidateのTampermonkey reinstall / switchは未実施の別gateである。
+- 最新Next candidateは240,445 bytes、SHA-256 `ECEA745A492CDA76C0FE09938A5D61874E0C736A3D7183B6112914CC5B514E54`、Classicと別identity、updateURL / downloadURLなし、`server-read-only/local-bounded-history`である。live QAの一時candidateと計測用fetch wrapperはreloadで除去し、Next root / runtime marker 0、native main / calendar維持を確認した。明示承認されたbooking curve source 1,003件だけをNext専用browser-local DBへ残した。実施設名、room type名、rooms値、response body、raw trace、screenshotは保存またはcommitしていない。Next publish、release、Classic再公開、Revenue Assistant write、最新candidateのTampermonkey reinstall / switchは未実施の別gateである。
 
 ## Open Questions / Risks
 
 - 競合履歴は利用者が標準競合価格本文を表示した stay date だけ厚くなる。観測頻度を網羅性や鮮度保証と誤読せず、background prefetchを必要とする場合は別判断にする。
 - Next専用DBの削除UIはまだ持たない。競合履歴は同一施設・stay dateで120観測超過分、価格推移はscopeごとの旧record、当日〜89日先の範囲外、施設単位1,440件超過分だけを各保存成功時に自動削除する。
 - 現在のTampermonkey実行版は自己更新しないcandidateである。今後repoのsourceを変更しても自動反映されないため、実行版を更新する場合はcandidateの再build、artifact確認、手動再install、切替後smokeを同じrollback境界で行う。
-- `RAU-UX-151`の翌日tail差分と初回bootstrapの実データ負荷は、最新candidateを単一runtimeで動かすまで実画面未確認である。ローカルfixture / pure testの結果をlive完了として扱わない。
+- `RAU-UX-151`の初回bootstrap負荷と同日収束は実画面確認済みだが、翌日tail差分は同日には再現できない。翌日の新規観測pointだけを補う契約はpure test確認であり、live確認済みと誤記しない。
 - 競合 snapshot の room type 対応と freshness は断定しない。保存済み record の存在と取得時刻を、価格判断の十分条件として扱わない。
 - booking curve referenceとrank履歴は接続したが、実画面の対象日ではexact raw cache不足のため、実rank eventをcurrent curve上へ位置づけたmarkerは未確認である。ready marker / source不足 / 0 / stale / errorの表示契約は合成fixtureで確認した。90日価格推移のNext自前取得は部屋指定なし16 scopeに限定し、部屋タイプ別filterの新しい履歴は取得しない。Classicの既存specific-room recordがない場合、部屋タイプ別表示の鮮度や網羅性は保証しない。
 - rank write API、server-side validation、権限差、error / partial failure、rollback は現行の確認済み範囲を超える。推奨レート金額、自動反映、一括反映は非目的である。

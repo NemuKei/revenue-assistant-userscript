@@ -230,7 +230,7 @@ export function startBookingCurveAcquisitionRuntime(
                 ? "初回準備"
                 : "本日差分";
         const message = documentHost.createElement("span");
-        message.textContent = formatState(state);
+        message.textContent = formatNextBookingCurveAcquisitionState(state);
         root.append(label, message);
         root.setAttribute("role", "status");
         root.setAttribute("aria-live", state.status === "stopped" ? "assertive" : "polite");
@@ -392,16 +392,22 @@ function ensureStyles(documentHost: Document): void {
     documentHost.head.append(style);
 }
 
-function formatState(state: NextBookingCurveAcquisitionState): string {
+export function formatNextBookingCurveAcquisitionState(
+    state: NextBookingCurveAcquisitionState
+): string {
     if (state.status === "idle" || state.status === "planning") {
         return "取得済み範囲を確認しています";
     }
     const progress = `${state.processedCount}/${Math.max(state.totalCount, state.processedCount)}`;
-    const details = `保存 ${state.storedCount}・再利用 ${state.skippedCount}・エラー ${state.errorCount}`;
+    const details =
+        `保存 ${state.storedCount}・重複回避 ${state.skippedCount}・エラー ${state.errorCount}`;
     if (state.status === "running") {
         return `取得中 ${progress}（${details}）`;
     }
     if (state.status === "complete") {
+        if (state.mode === "bootstrap") {
+            return `今回分完了 ${progress}（${details}・残りは次回確認）`;
+        }
         return `完了 ${progress}（${details}）`;
     }
     return `停止 ${formatStopReason(state.stopReason)}（${details}）`;
