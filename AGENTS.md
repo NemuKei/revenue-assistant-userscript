@@ -43,6 +43,14 @@ RAU は、Revenue Assistant 上で RM のレート調整判断を軽くする Ta
 - `docs/spec_000_overview.md` は spec map と spec 更新規則に限定し、個別画面の詳細を書き溜めない。
 - `docs/ai/` は AI collaboration artifact の置き場候補だが、未確認生成物や user-owned artifact を自動採用しない。採用する場合も secret / PII / raw trace を除去し、今回 task の対象ファイルだけ stage する。
 
+## Project Compass
+
+- この repo は `maintain-project-compass` に明示 opt-in する。目的、優先順位、固定判断、作業仮説、未解決事項、停止条件、次の検証入口、正本との gap のいずれかが material に変わった場合だけ更新し、routine progress、文言修正、test rerun、通常 closeout では更新しない。
+- state は `.chatgpt/context-dashboard/state.json`、生成 HTML は `.tmp/context-dashboard/index.html` に置く。どちらも `.gitignore` 対象の local-only 派生物とし、Git 追跡、commit、push、release、deploy、外部公開を行わない。
+- Compass本文は、専門外の人が一読で理解できる日常語を優先し、内部の名前、通信方法、保存構造、検証件数などの技術詳細を並べない。何を目指すか、何が分かったか、何が未決定か、次に何を確かめるかを抽象度の高い判断単位で示し、正確な技術証拠はsource側へ残す。
+- 入力は repo 内の正本 docs と Git metadata、および今回 task で利用者が明示した安全な判断単位に限定する。会話全文、raw log、browser history、session data、認証情報、個人・顧客・予約情報、価格・在庫の非公開実データを保存しない。
+- Project Compass は正本ではない。正本との差は `alignment.gaps` に残し、Compass から正本を黙って上書きしない。正本更新が必要な場合は、対象の semantic owner と docs governance へ別途 route する。
+
 ## RAU Product Boundary
 
 - sourceから生成するClassic検証artifactと、明示承認後にTampermonkeyへ投入するrelease candidateは `dist/*.user.js` を正とする。Classic公開凍結中の現在の公開物は、公開URLのbyte列と `.github/classic-publication-baseline.json` を正とし、local `dist`を現在の公開版とみなさない。
