@@ -1,14 +1,10 @@
 # STATUS
 
-最終更新: 2026-07-24
+最終更新: 2026-07-31
 
 ## Current Task Bundle
 
-- `RAU-UX-151` は、Next booking curveの初回bootstrap + 日々の差分補充をclean-room実装し、ローカルQAと単一runtimeでの実画面QAまで完了した。保存済みpointは年齢で失効・上書きせず、最後に保存したbooking curve pointより後の不足tailだけを追加する。初回bootstrapはsession上限で複数回に分かれ得るが、保存済みsourceから再開し、収束後の同日再実行ではbooking curve GETを0件にできる。`0日前`は宿泊日当日のexact観測、ACTは宿泊日後の分離landingだけを使い、current / 直近型 / 季節型で欠損`0日前`を表示補間しない。
-- `RAU-UX-150` は完了した。第一段階の競合 snapshot 履歴 graph、利用者が明示承認した第二段階の browser-local bounded writer、第三段階Aの booking curve reference比較、第三段階Bの rank変更履歴、第四段階の90日価格推移read-only比較UI、第五段階の90日価格推移bounded acquisition / storeは、clean-room 実装、合成 fixture、ログイン済み実画面 QA まで完了した。
-- Next は `/analyze/YYYY-MM-DD` の可視な標準競合価格本文だけを所有し、標準表の末尾に追加表示する。desktop は4人数を 2 x 2、680px 以下は選択中1人数とし、部屋 / 食事 / 人数 filter、mouse / keyboard tooltip、最新値 / 前回差分、日別表を持つ。
-- 競合履歴は、可視な標準競合価格本文で未保存日の現在 stay date に競合一覧 / 競合価格 GETを各最大1回使う。booking curve referenceは既存raw cacheのexact primary keyだけを選択scopeごとにreadonlyで読み、メモリ上で算出する。rank履歴は確認済みroom scopeで表示中stay dateだけを最大1 GETし、responseを保存しない。90日価格推移はClassic / Nextの既存IndexedDB recordをbounded readonlyで統合し、可視な標準価格推移本文でJST当日から89日先までの部屋指定なし・4食事 x 4人数の不足scopeだけを最大16 GET / concurrency 2で取得する。週・月・周辺日程、部屋タイプ別のbackground prefetch、booking curve GET、Revenue Assistant write APIは追加していない。
-- `src/main.ts` の monolith、Classic view / store、標準 chart は Next へ import または複製しない。
+- 現在進行中の Goal Bundle はない。直近完了は `RAU-UX-151` のNext booking curve初回bootstrap + 日々の差分補充であり、実装、ローカルQA、単一runtimeでの実画面QAまで完了した。外部挙動と安全境界は対象spec、判断理由は`DECISIONS.md`、完了履歴と詳細verifyは`tasks_backlog.md`とGit historyを正とする。
 
 ## Current State
 
@@ -23,13 +19,13 @@
 - `RAU-UX-150` 第四段階は、可視な標準価格推移chartを残し、そのnative content末尾へ独立rootを追加する。1〜4名は自社 / 競合最安 / 差額 / 直近lead timeの4 summary cardで同時比較し、選択中1人数だけを自社 / 競合施設別の詳細chartで見る。部屋 / 食事filter、mouse / keyboard tooltip、accessible table、保存時刻、empty / stale / errorを持つ。既存Classic DBの同一facility / stay dateを最大512件readonlyで読むだけで、価格推移GET、storage write、Classic DB変更を追加していない。
 - `RAU-UX-150` 第五段階は、利用者の明示承認に基づき、可視な標準価格推移本文、facility label guard、document visible、JST当日から89日先までのstay dateが揃う場合だけ、部屋指定なし・4食事 x 4人数の不足scopeを取得する。競合一覧GETは最大1回、価格推移GETは最大16回 / concurrency 2で、Classic / Nextに同日有効scopeがあれば両方を省略する。Next専用DB、deterministic key、Web Locks、IDB add constraint、scopeごとの最新1件、施設単位で当日〜89日先・最大1,440件の自動pruneをwriter / store境界へ隔離し、Classic DBを変更しない。
 - `RAU-UX-151` は、可視なcalendarまたはAnalyze、facility label guard、document visible、現在のas-ofが揃う場合だけ既存read-only `GET /api/v4/booking_curve`を使う。必要source coverage 80%未満のbounded bootstrapは表示中stay dateのhotel / 全room currentとhotel直近型referenceを最大800件、coverage 80%以上のdaily deltaは新規・欠損・current tail・新しく観測可能になったreference tickだけを最大200件、250ms以上 / concurrency 2で補う。1 sessionで全sourceへ届かない場合は`今回分完了`として次の可視sessionで再計画し、全source準備済みを断定しない。Next専用DBはsource最新1件へ過去pointを内包し、施設最大4,096件、401 / 403 / 429即停止、同一run retryなしとする。
-- 2026-07-23に利用者がNext candidate version `0.1.0`をTampermonkeyへ手動installして有効化し、Classicは削除せず無効化した。2026-07-24の実画面QA前に利用者がこの旧Nextを無効化し、QA後も無効のままである。最新candidateは一時注入後にreloadで除去し、通常Chromeはnative UIだけへ戻した。candidateは引き続きupdateURL / downloadURLを持たないopt-in artifactで、公開版ではない。
+- 最終確認した2026-07-24時点では、利用者がTampermonkeyの旧Next version `0.1.0`を無効化し、最新candidateも一時注入後のreloadで除去して、通常Chromeをnative UIだけへ戻していた。2026-07-31のdocs lifecycleではbrowserを再確認していないため、現在のTampermonkey実行状態は未確認である。candidateは引き続きupdateURL / downloadURLを持たないopt-in artifactで、公開版ではない。
 - `RAU-UX-145` は、Next が旧 stacked rail を採用していないため見送りである。同じ host 構造を将来採用する場合だけ再開する。
 - RAU は Profile C とし、root `AGENTS.md` を入口に、`PROJECT_CONTEXT.md`、`INTENT.md`、`DECISIONS.md`、この file、backlog を責務が一致するときだけ読む。
 
 ## Next Re-entry
 
-1. 現在の実行版を更新する場合は、最新candidateの手動reinstall / switchと切替後smokeを別の明示gateとして扱う。updateURL / downloadURLがないため、repo更新だけでは現在の実行版へ自動反映されない。
+1. まずTampermonkeyの実行状態をfresh確認する。実行版を更新する場合は、最新candidateの手動reinstall / switchと切替後smokeを別の明示gateとして扱う。updateURL / downloadURLがないため、repo更新だけでは現在の実行版へ自動反映されない。
 2. 翌日tail差分は2026-07-24の同日live QAでは再現できていない。pure testでは最後の保存point以後だけのappendを確認済みだが、次のJST観測日に実行版を有効化する場合は、新規・欠損・観測可能tailだけを最大200件で補うことをlive確認候補とする。
 3. Next publish、release、Classic再公開は未実施の明示gateである。週・月・周辺日程の取得、保存削除 UI、retention 変更が必要になった場合も、今回の明示承認へ含めず別の Yellow zone 判断とする。
 
@@ -58,7 +54,7 @@
 
 - 競合履歴は利用者が標準競合価格本文を表示した stay date だけ厚くなる。観測頻度を網羅性や鮮度保証と誤読せず、background prefetchを必要とする場合は別判断にする。
 - Next専用DBの削除UIはまだ持たない。競合履歴は同一施設・stay dateで120観測超過分、価格推移はscopeごとの旧record、当日〜89日先の範囲外、施設単位1,440件超過分だけを各保存成功時に自動削除する。
-- 現在のTampermonkey実行版は自己更新しないcandidateである。今後repoのsourceを変更しても自動反映されないため、実行版を更新する場合はcandidateの再build、artifact確認、手動再install、切替後smokeを同じrollback境界で行う。
+- Tampermonkeyの現在の有効 / 無効と実行版は2026-07-31時点で未確認である。candidateは自己更新しないため、実行版を更新する場合はcandidateの再build、artifact確認、手動再install、切替後smokeを同じrollback境界で行う。
 - `RAU-UX-151`の初回bootstrap負荷と同日収束は実画面確認済みだが、翌日tail差分は同日には再現できない。翌日の新規観測pointだけを補う契約はpure test確認であり、live確認済みと誤記しない。
 - 競合 snapshot の room type 対応と freshness は断定しない。保存済み record の存在と取得時刻を、価格判断の十分条件として扱わない。
 - booking curve referenceとrank履歴は接続したが、実画面の対象日ではexact raw cache不足のため、実rank eventをcurrent curve上へ位置づけたmarkerは未確認である。ready marker / source不足 / 0 / stale / errorの表示契約は合成fixtureで確認した。90日価格推移のNext自前取得は部屋指定なし16 scopeに限定し、部屋タイプ別filterの新しい履歴は取得しない。Classicの既存specific-room recordがない場合、部屋タイプ別表示の鮮度や網羅性は保証しない。
