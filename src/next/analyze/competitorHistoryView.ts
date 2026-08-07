@@ -123,6 +123,7 @@ export function renderCompetitorHistory(
     note.setAttribute("data-ra-next-competitor-history-note", "");
     note.textContent =
         "各人数で同じ保存済み観測日・共通の価格目盛を使います。最新値と前回差分はグラフ下に常時表示しています。";
+    const details = createHistoryDetails(root.ownerDocument, note);
 
     const grid = root.ownerDocument.createElement("div");
     grid.setAttribute("data-ra-next-competitor-history-grid", "");
@@ -145,10 +146,19 @@ export function renderCompetitorHistory(
             "この絞り込み条件に一致する価格履歴はありません。条件を「すべて」に戻してください。",
             "empty"
         );
-        root.replaceChildren(header, meta, filters, guestSelector, legend, note, filteredEmpty, grid);
+        root.replaceChildren(header, meta, filters, guestSelector, legend, filteredEmpty, grid, details);
         return;
     }
-    root.replaceChildren(header, meta, filters, guestSelector, legend, note, grid);
+    root.replaceChildren(header, meta, filters, guestSelector, legend, grid, details);
+}
+
+function createHistoryDetails(documentHost: Document, note: HTMLElement): HTMLElement {
+    const details = documentHost.createElement("details");
+    details.setAttribute("data-ra-next-competitor-history-details", "");
+    const summary = documentHost.createElement("summary");
+    summary.textContent = "データの見方";
+    details.append(summary, note);
+    return details;
 }
 
 export function getCompetitorHistoryStyles(): string {
@@ -158,42 +168,36 @@ export function getCompetitorHistoryStyles(): string {
     width: 100%;
     max-width: calc(100vw - 48px);
     min-width: 0;
-    margin: 24px 0 8px;
-    padding: 20px;
-    border: 1px solid #cbd7e2;
-    border-radius: 10px;
-    background: #ffffff;
+    margin: 12px 0 8px;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
     color: #263a4d;
     font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
-    box-shadow: 0 2px 8px rgba(30, 54, 76, 0.08);
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] *,
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] *::before,
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] *::after { box-sizing: border-box; }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-header] {
     display: flex;
-    align-items: flex-start;
+    align-items: center;
     justify-content: space-between;
     gap: 12px;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] h2 {
     margin: 0;
     color: #1f3548;
-    font-size: 20px;
-    line-height: 1.4;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-kicker] {
-    margin: 2px 0 0;
-    color: #577084;
-    font-size: 12px;
+    font-size: 15px;
+    line-height: 1.35;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-badge] {
     flex: 0 0 auto;
-    padding: 4px 9px;
+    padding: 3px 7px;
     border-radius: 999px;
     background: #e8f3fb;
     color: #0d5f98;
-    font-size: 12px;
+    font-size: 11px;
     font-weight: 700;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-badge="error"],
@@ -202,15 +206,18 @@ export function getCompetitorHistoryStyles(): string {
     color: #8c3c25;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-meta] {
-    margin: 12px 0 0;
-    color: #5c7081;
+    margin: 6px 0 0;
+    color: #50627a;
     font-size: 12px;
-    line-height: 1.7;
+    font-weight: 700;
+    line-height: 1.45;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filters] {
-    display: grid;
-    gap: 10px;
-    margin: 16px 0 0;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px 18px;
+    margin: 8px 0 0;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] {
     display: flex;
@@ -223,18 +230,18 @@ export function getCompetitorHistoryStyles(): string {
     border: 0;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] legend {
-    float: left;
-    min-width: 72px;
-    padding: 8px 8px 8px 0;
-    color: #465d70;
+    float: none;
+    min-width: 0;
+    padding: 0 2px 0 0;
+    color: #50627a;
     font-size: 12px;
     font-weight: 700;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] button {
-    min-height: 36px;
-    padding: 7px 11px;
-    border: 1px solid #aebfce;
-    border-radius: 999px;
+    min-height: 30px;
+    padding: 4px 8px;
+    border: 1px solid #c9d3df;
+    border-radius: 4px;
     background: #ffffff;
     color: #385064;
     font: inherit;
@@ -260,10 +267,11 @@ export function getCompetitorHistoryStyles(): string {
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-legend] {
     display: flex;
     flex-wrap: wrap;
-    gap: 8px 14px;
-    margin: 14px 0 0;
-    color: #40586b;
+    gap: 6px 12px;
+    margin: 6px 0 0;
+    color: #50627a;
     font-size: 12px;
+    font-weight: 700;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-legend-item],
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-latest-label] {
@@ -280,23 +288,24 @@ export function getCompetitorHistoryStyles(): string {
     border-radius: 50%;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-note] {
-    margin: 10px 0 0;
+    margin: 8px 0 0;
     color: #5c7081;
     font-size: 12px;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-grid] {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 14px;
-    margin-top: 14px;
+    grid-template-columns: minmax(320px, 1fr);
+    gap: 12px;
+    max-width: 980px;
+    margin-top: 8px;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [${COMPETITOR_HISTORY_PANEL_ATTRIBUTE}] {
     position: relative;
     min-width: 0;
-    padding: 14px;
-    border: 1px solid #d6e0e8;
-    border-radius: 8px;
-    background: #fbfcfd;
+    padding: 12px 14px 10px;
+    border: 1px solid #d8e0ea;
+    border-radius: 6px;
+    background: #ffffff;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-panel-header] {
     display: flex;
@@ -388,6 +397,10 @@ export function getCompetitorHistoryStyles(): string {
     font-weight: 700;
     cursor: pointer;
 }
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-details] {
+    max-width: 980px;
+    padding-top: 2px;
+}
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] table {
     width: 100%;
     margin-top: 8px;
@@ -420,13 +433,11 @@ export function getCompetitorHistoryStyles(): string {
         width: 100%;
         max-width: calc(100vw - 16px);
         margin-top: 16px;
-        padding: 14px;
+        padding: 0;
     }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-header] { display: block; }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-badge] {
-        display: inline-block;
-        margin-top: 8px;
-    }
+    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-header] { align-items: flex-start; }
+    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filters] { display: grid; gap: 8px; }
+    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] { width: 100%; }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] legend {
         float: none;
         flex: 0 0 100%;
@@ -434,10 +445,7 @@ export function getCompetitorHistoryStyles(): string {
         padding-bottom: 2px;
     }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] button { min-height: 44px; }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-guest-selector] { display: flex; }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-guest-selector] button { flex: 1 1 0; }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-grid] { grid-template-columns: 1fr; }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [${COMPETITOR_HISTORY_PANEL_ATTRIBUTE}][data-mobile-active="false"] { display: none; }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-latest] li {
         grid-template-columns: minmax(0, 1fr) auto;
     }
@@ -458,11 +466,8 @@ function createHeader(
     const titleWrap = documentHost.createElement("div");
     const title = documentHost.createElement("h2");
     title.id = "ra-next-competitor-history-title";
-    title.textContent = "競合価格の保存履歴";
-    const kicker = documentHost.createElement("p");
-    kicker.setAttribute("data-ra-next-competitor-history-kicker", "");
-    kicker.textContent = "現在値は上の標準表、ここでは取得日ごとの変化を確認します。";
-    titleWrap.append(title, kicker);
+    title.textContent = "競合価格 最安値推移";
+    titleWrap.append(title);
     const badge = documentHost.createElement("span");
     badge.setAttribute("data-ra-next-competitor-history-badge", captureStatus);
     badge.textContent = formatCaptureStatus(captureStatus);

@@ -22,11 +22,12 @@ const view = await importBundledTypeScript(
     "../src/next/analyze/competitorHistoryView.ts",
     import.meta.url
 );
-const [entrySource, fixture, fixtureEntry, storeSource] = await Promise.all([
+const [entrySource, fixture, fixtureEntry, storeSource, viewSource] = await Promise.all([
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../dev/fixtures/next-analyze-competitor/index.html", import.meta.url), "utf8"),
     readFile(new URL("../src/next/dev/analyzeCompetitorFixtureEntry.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/next/analyze/competitorHistorySnapshotStore.ts", import.meta.url), "utf8")
+    readFile(new URL("../src/next/analyze/competitorHistorySnapshotStore.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/competitorHistoryView.ts", import.meta.url), "utf8")
 ]);
 
 assert.equal(runtime.parseCompetitorHistoryAnalyzeStayDate("/analyze/2026-08-12"), "20260812");
@@ -142,11 +143,26 @@ assert.equal((await invalidFacilityDataSource.load("20260812")).reason, "facilit
 invalidFacilityDataSource.stop();
 
 const styles = view.getCompetitorHistoryStyles();
-assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/u);
+assert.match(styles, /grid-template-columns: minmax\(320px, 1fr\)/u);
+assert.match(styles, /max-width: 980px/u);
 assert.match(styles, /@media \(max-width: 680px\)/u);
 assert.match(styles, /max-width: calc\(100vw - 16px\)/u);
 assert.match(styles, /min-height: 44px/u);
-assert.match(styles, /data-mobile-active="false"/u);
+assert.match(
+    styles,
+    /\[data-ra-next-competitor-history-guest-selector\] \{\s*display: none;/u
+);
+assert.doesNotMatch(styles, /data-mobile-active="false"/u);
+assert.doesNotMatch(
+    styles,
+    /\[data-ra-next-competitor-history-guest-selector\] \{\s*display: flex;/u
+);
+assert.match(viewSource, /title\.textContent = "競合価格 最安値推移"/u);
+assert.match(viewSource, /details\.setAttribute\("data-ra-next-competitor-history-details", ""\)/u);
+assert.match(
+    viewSource,
+    /root\.replaceChildren\(header, meta, filters, guestSelector, legend, grid, details\)/u
+);
 assert.equal(view.formatCompetitorHistoryCaptureStatus("checking"), "本日分を確認中");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("stored"), "本日分を保存");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("already-stored"), "本日分は保存済み");

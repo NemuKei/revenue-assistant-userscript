@@ -436,7 +436,8 @@ Analyze 上部から `推奨反映` または一括反映を実装する前に�
 - グラフに使う価格は、対象人数、施設、取得日、現在の簡易絞り込み条件に一致する plan の最安値とする。これは Revenue Assistant 標準表で見る最安値の考え方と揃える。
 - 部屋タイプと食事条件は、グラフ軸ではなく簡易絞り込みとして扱う。初期状態は指定なしとし、保存済み snapshot に含まれる `jalanFacilityRoomType` と `mealType` から選択肢を作る。選択 UI は pull-down ではなく toggle button とする。
 - 部屋タイプの表示名は、API response の raw value をそのまま出すのではなく、利用者が読みやすい `シングル`、`ダブル`、`ツイン`、`トリプル`、`和洋室` などの日本語表記へ寄せる。raw value は保存データとして保持し、filter 判定には raw value を使う。
-- Next の人数別グラフは、desktop では `1名`、`2名`、`3名`、`4名` の 2 x 2 比較、680px 以下では選択中 1 人数だけを表示する。狭幅では `1名` から `4名` の 44px 以上の toggle で切り替え、標準表由来の横 overflow を Next root が広げない。
+- `D-20260807-003` 以降の Next 競合価格履歴は、Classic で定着した読む順序を baseline とする。標準表の後へ `競合価格 最安値推移`、対象日と保存条件、compact な部屋タイプ / 食事 filter、施設凡例、`1名 最安値` から `4名 最安値` の4 panelを順に置く。人数切替で panel を隠さず、desktop / 680px以下とも4 panelを1列で常時表示し、desktopのchart幅は最大980pxとする。
+- 680px以下でも部屋タイプ / 食事 filterのtap targetを44px以上、Next root自身の横overflowを0とする。保存条件の補足説明は4 panel後の`データの見方`へ初期折りたたみで残し、chart前へ大きな説明blockを置かない。4 panelの共通取得日、共通価格目盛、tooltip、最新値、前回差分、採用部屋タイプ、初期折りたたみの日別表は変更しない。
 - グラフの Tooltip は取得日軸ごとに表示し、その取得日の施設別最安値と採用部屋タイプを mouse / keyboard の両方で確認できるようにする。最新値と同じ施設の前回取得日との差分は hover に依存させずグラフ下へ常時表示し、前回取得日がない場合は `前回なし` とする。
 - warm cache indicator と競合価格表示が干渉する場合に備え、indicator は詳細を折りたためる最小化機能を持つ。最小化しても状態の要約は残し、再表示できるようにする。
 - 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。初期表示では同じ stay_date の保存済み snapshot を読み、最新の同一 signature 群だけを採用する。画面には opaque な signature 文字列ではなく、同一条件の採用件数と条件違いとして除外した件数を表示する。

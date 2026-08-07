@@ -324,6 +324,27 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260807-003`
 
+### RAU-UX-154 Classic UI baselineでNext競合価格履歴の4大panelを戻す
+
+- 状態:
+  - 完了。Next競合価格履歴の取得・保存・model・runtimeを維持し、表示順と人数別panel配置だけをClassicで定着した見方へ戻した。Revenue Assistant実画面、Tampermonkey switch、publish / releaseは実施していない。
+- 目的:
+  - 競合価格を人数別に比較するとき、人数切替や2 x 2の視線移動を挟まず、1名から4名までを同じ方向へ読み進められるようにする。
+- 表示変更:
+  - 見出しを`競合価格 最安値推移`へ戻し、対象日と保存条件、compactな部屋 / 食事filter、施設凡例、`1名 最安値`〜`4名 最安値`の4 panelを順に置く。desktop / 390pxとも最大980pxの1列で4 panelを常時表示し、人数selectorでpanelを隠さない。
+  - 保存条件の補足はchart後の`データの見方`へ初期折りたたみで残す。共通取得日 / 価格目盛、最新値、前回差分、採用部屋タイプ、mouse / keyboard tooltip、日別表、empty / missing / error表示は維持する。
+- 実装境界:
+  - `competitorHistoryView.ts`と表示契約check以外のmodel / data source / runtime / writer / storeを変更しない。標準競合価格表、API path、request件数、capture scope、IndexedDB schema / retention、freshness判定、Revenue Assistant write、userscript metadataを変更しない。
+- ローカル確認:
+  - 1280pxの合成fixtureで標準表1、Next panel / SVG各4、最大980pxの1列、初期details closed、Next root自己overflow 0を確認した。最初のpanelまでの距離は267pxから128pxへ短縮した。
+  - `ツイン` / `朝食あり` filter後も4 panelを維持し、keyboard tooltip、日別表、説明details、route cleanup /復帰、missing / error時の標準表維持を確認した。390pxでは4 panelを1列、人数selector非表示、visible filter button最小高さ44px、Next root自己overflow 0、console warning / error 0だった。
+  - focused check、`npm run check:next`、`npm run check`、Classic公開境界、fixture marker、distribution / booking-curve smoke fixture、Classic / Next fixture build、Vite build比較、`git diff --check`が通過した。local Next candidateは238,962 bytes、SHA-256 `8DB2D851DF4401D2DA3C9D19D28CAA9B01D470DFB93F8B83859C12E4BA6B3895`、updateURL / downloadURLなしである。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260807-003`
+
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
