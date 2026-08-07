@@ -302,6 +302,28 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260807-003`
 
+### RAU-UX-153 Classic UI baselineでNext booking curveの読む順序を戻す
+
+- 状態:
+  - 完了。Next booking curveの取得・保存・model・SVG描画を維持し、表示順と密度だけをClassicで定着した操作へ戻した。Revenue Assistant実画面、Tampermonkey switch、publish / releaseは実施していない。
+- 目的:
+  - 対象と表示条件を選んだ直後にchartへ到達できるようにし、補助説明が比較判断を押し下げていた状態を解消する。
+- 表示変更:
+  - 見出しへ`ブッキングカーブ（対象scope）`を表示し、`表示範囲 / 内訳 / 参考線`のcompact toggle、凡例、2 chartを先に置く。取得条件、欠損説明、rank変更履歴はchart後の`データ条件とランク履歴`へ初期折りたたみで残す。
+  - 680px以下は2 panelを1列にし、全point、tooltip、accessible tableを維持したまま横軸labelだけを`360 / 180 / 90 / 30 / 7 / ACT`へ間引く。`0日前`の値と`ACT`は統合せず、表とtooltipでは従来どおり別のpointとして扱う。
+- 実装境界:
+  - `bookingCurveReferenceView.ts`以外のadapter / data source / model / runtime / storeを変更しない。標準booking curve 2 chart、API path、request件数、cache / IndexedDB schema、retention、rank履歴取得、Revenue Assistant write、userscript metadataを変更しない。
+- ローカル確認:
+  - 1280pxの合成fixtureで、Next rootから最初のchartまでを431pxから127pxへ短縮した。標準chart 2、Next panel 2、control group 3、Next root自己overflow 0、初期details closedを確認した。
+  - room scope、個人 / 団体、直近型 / 季節型、rank履歴1回読込、2 panelのrank marker、tap tooltip、details / table、route離脱時root / style 0と復帰時各1、missing / errorでも標準chart 2維持を確認した。
+  - 390pxでは2 panelを1列、toggle最小高さ44px、Next root自己overflow 0、横軸label 6件、console warning / error 0を確認した。fixtureは外部通信とbrowser-local保存を行わない合成データだけを使った。
+  - focused check、`npm run check:next`、`npm run check`、Classic公開境界、fixture marker、distribution / booking-curve smoke fixture、Classic fixture build、Vite build比較、`git diff --check`が通過した。local candidateは239,094 bytes、SHA-256 `401756E78ABD11B554DA3F3E9A555ED660E4F7AACC48730C1617EDE0D0557002`、updateURL / downloadURLなしである。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260807-003`
+
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
