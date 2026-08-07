@@ -345,6 +345,27 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260807-003`
 
+### RAU-UX-155 Classic UI baselineでTop入口をcalendar-firstへ戻す
+
+- 状態:
+  - 完了。基準日からAnalyzeへ進む設計、類似判定、取得・保存・安全境界を維持し、Top入口の見出し、初期開閉、画面密度だけを調整した。Revenue Assistant実画面、Tampermonkey switch、publish / releaseは実施していない。
+- 目的:
+  - 基準日と部屋を選んだ後も、似た日候補の一覧より先に標準calendarの`基準` / `類似` / `比較` markerを見渡せるようにする。
+- 表示変更:
+  - user-facing見出しを内部設計名の`類似日レンズ`から`基準日から似た日を探す`へ変更した。desktopでも候補一覧を初期折りたたみにし、利用者が開いた後の3列候補、最大3日の部分比較、再描画後のopen状態は維持する。
+  - headerをcompactにし、680px以下のbutton / selectを44px以上とした。基準日、部屋タイプ、OH / 個人 / 団体 / 競合、source note、候補件数、Analyze導線は削除していない。
+- 実装境界:
+  - `liveSimilarityLensView.ts`と表示契約check以外のstate / view model / runtime / data source / adapterを変更しない。標準calendar、通常の日付click、candidate scoring、API path / request件数、IndexedDB schema / retention、Revenue Assistant write、userscript metadataを変更しない。
+- ローカル確認:
+  - 1280pxの合成fixtureで部屋選択後のTop rootを410.9pxから280.4pxへ縮め、標準calendarの開始位置を約122px上げた。候補6件 / marker 6件、候補open後の比較選択、root再mount後のopen / checked状態を維持した。
+  - 390 x 844の固定幅hostではNext root 359px、自己overflow 0、visible control最小44px、候補closed、標準calendar 3件を確認した。missing / error、Analyze route cleanup / calendar復帰、console warning / error 0も確認した。
+  - focused check、`npm run check:next`、`npm run check`、Classic公開境界、fixture marker、distribution / booking-curve smoke fixture、Classic / Next fixture build、Vite build比較、`git diff --check`が通過した。local Next candidateは238,997 bytes、SHA-256 `7A7D91BC3299B6602DE96A83071FC6A23E0649E8D14B58B762B5A3A85763B56A`、updateURL / downloadURLなしである。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260807-003`
+
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile

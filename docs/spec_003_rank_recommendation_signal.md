@@ -106,7 +106,7 @@ Next first phase の候補では次を行う。Classic への公開済み変更�
 - 既存カレンダー上で 1 日を基準日に選び、そのときだけ類似日を最大6日浮かせる。カレンダー全体の常時 cluster 色分けは行わない。
 - 実画面接続の最初の shell は、通常の日付 click / Analyze 遷移を維持し、`基準日を選ぶ` を明示した選択モード中の次の1日だけを基準日として捕捉する。calendar DOM を安全に特定できない場合、Classic marker、重複 root を検出した場合は fail closed する。
 - 狭幅時の Next shell は、Revenue Assistant 側の親要素が viewport より広い固定幅でもその幅を引き継がず、shell 自身を viewport 内へ制限する。Next 自身がdocumentの横overflowを増やさず、OH / 個人 / 団体 / 競合の4指標を読めることを受け入れ条件とする。Revenue Assistant本体のcalendarや親要素の幅、responsive挙動は変更しない。
-- calendar-firstを維持するため、desktopの候補一覧は3列で圧縮し、比較詳細は初期折りたたみとする。900px以下では候補一覧も初期折りたたみにし、先にcalendar上の`基準` / `類似` / `比較` markerを見せる。利用者が候補一覧または比較詳細を開いた場合は、room typeや比較選択による再描画後も開状態を維持する。
+- `D-20260807-003` / `RAU-UX-155` 以降はcalendar-firstを維持するため、user-facing見出しを内部設計名の`類似日レンズ`ではなく`基準日から似た日を探す`とする。候補一覧と比較詳細はviewport幅にかかわらず初期折りたたみにし、先にcalendar上の`基準` / `類似` / `比較` markerを見せる。候補一覧を開いたdesktopでは3列で圧縮し、900px以下の既存2列 / 1列layoutを維持する。利用者が候補一覧または比較詳細を開いた場合は、room typeや比較選択、root再mountによる再描画後も開状態を維持する。680px以下ではbutton / selectを44px以上、Next root自身の横overflowを0とする。
 - 類似度は OH、個人 pace、団体 pace、競合価格を別 dimension として扱い、score とともにどの dimension が近いかを説明する。OH / 個人 / 団体 / 競合を統合ラベルへ潰さない。
 - 欠損 dimension は明示し、個人とほか2 dimension以上が揃わない日を強い類似候補にしない。0 は欠損と同一視せず `0` と表示し、別の値から差し引いて個人または団体を推測しない。
 - live adapterは、基準日未選択ではrequestを行わず、選択後だけ`/api/v2/yad/info`と`/api/v1/suggest/output/current_settings`を各1回GETする。同じ選択中のin-flightだけを重複排除し、完了結果やerrorは保持しない。calendarの同一context再描画ではruntimeが再loadしないため追加GET 0とするが、利用者が基準日を明示的に選び直した場合は施設を再検証して2 endpointを再読込する。施設APIの名称が現在のvisible headerに存在しない、calendar本体が差し替わる、またはcalendarが一時消失した場合は、旧施設・旧期間の基準日、比較、根拠とin-flight結果を破棄する。booking curveと競合価格は既存IndexedDBをreadonlyで読むだけとし、database作成、upgrade、全件scan、cursor系read、保存を行わない。

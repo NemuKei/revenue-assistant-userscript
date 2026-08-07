@@ -10,6 +10,10 @@ const fixture = await readFile(
     new URL("../dev/fixtures/next-live-shell/index.html", import.meta.url),
     "utf8"
 );
+const viewSource = await readFile(
+    new URL("../src/next/live/liveSimilarityLensView.ts", import.meta.url),
+    "utf8"
+);
 
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-08-12"), "2026-08-12");
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-02-29"), null);
@@ -141,8 +145,15 @@ assert.match(
     styles,
     /@media \(max-width: 680px\) \{[\s\S]*?\[data-ra-next-similarity-lens-root\] \{[^}]*width: calc\(100% - 16px\);[^}]*max-width: calc\(100vw - 16px\);[^}]*margin: 0 8px 8px;/
 );
+assert.match(
+    styles,
+    /@media \(max-width: 680px\) \{[\s\S]*?button, \[data-ra-next-similarity-lens-root\] select \{ min-height: 44px; \}/u
+);
 assert.doesNotMatch(styles, /(?<!max-)width: calc\(100vw - 32px\)/);
 assert.match(styles, /data-ra-next-lens-match-list[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
+assert.match(viewSource, /textElement\(root, "h2", "基準日から似た日を探す"\)/u);
+assert.match(viewSource, /section\.open = expanded \?\? false;/u);
+assert.doesNotMatch(viewSource, /matchMedia\("\(min-width: 901px\)"\)/u);
 assert.match(fixture, /\[data-mock-header\] \{[^}]*flex-wrap: wrap;/);
 assert.match(fixture, /\[data-mock-ra-shell\]\[data-mock-fixed-width-host\] \{ min-width: 1200px; \}/);
 assert.match(

@@ -35,7 +35,7 @@ const COMPARISON_DESCRIPTION_ID = "ra-next-similarity-lens-comparison-descriptio
 export function createLiveSimilarityLensRoot(documentHost: Document): HTMLElement {
     const root = documentHost.createElement("section");
     root.setAttribute(LIVE_SIMILARITY_LENS_ROOT_ATTRIBUTE, "");
-    root.setAttribute("aria-label", "類似日レンズ");
+    root.setAttribute("aria-label", "基準日から似た日を探す");
     return root;
 }
 
@@ -242,7 +242,7 @@ function createHeader(root: HTMLElement, state: LiveSimilarityLensState): HTMLEl
     const copy = root.ownerDocument.createElement("div");
     copy.setAttribute("data-ra-next-lens-copy", "");
     copy.append(
-        textElement(root, "h2", "類似日レンズ"),
+        textElement(root, "h2", "基準日から似た日を探す"),
         textElement(root, "p", getHeaderStatus(state), "data-ra-next-lens-status")
     );
     const actions = root.ownerDocument.createElement("div");
@@ -492,7 +492,7 @@ function createMatchList(
 ): HTMLElement {
     const section = root.ownerDocument.createElement("details");
     section.setAttribute("data-ra-next-lens-results", "");
-    section.open = expanded ?? shouldExpandMatchListByDefault(root);
+    section.open = expanded ?? false;
     const summary = root.ownerDocument.createElement("summary");
     summary.textContent = `似た動きの日（${viewModel.matches.length}件 / 比較は3日まで）`;
     const list = root.ownerDocument.createElement("ul");
@@ -561,10 +561,6 @@ function createComparisonRegion(
     }
     section.append(grid);
     return section;
-}
-
-function shouldExpandMatchListByDefault(root: HTMLElement): boolean {
-    return root.ownerDocument.defaultView?.matchMedia("(min-width: 901px)").matches ?? true;
 }
 
 function createComparisonCard(
@@ -657,14 +653,14 @@ function createInlineNotice(
 }
 
 function ensureHiddenCopy(root: HTMLElement): void {
-    ensureHiddenText(root, LIVE_SIMILARITY_LENS_DESCRIPTION_ID, "類似日レンズの基準日");
+    ensureHiddenText(root, LIVE_SIMILARITY_LENS_DESCRIPTION_ID, "似た日を探す基準日");
     ensureHiddenText(
         root,
         LIVE_SIMILARITY_LENS_INSTRUCTION_ID,
         "基準日選択モード。矢印キーで日付を移動し、EnterキーまたはSpaceキーで選択、Escapeキーで解除します。"
     );
-    ensureHiddenText(root, SIMILAR_DESCRIPTION_ID, "類似日レンズの候補日");
-    ensureHiddenText(root, COMPARISON_DESCRIPTION_ID, "類似日レンズで比較対象に選択中");
+    ensureHiddenText(root, SIMILAR_DESCRIPTION_ID, "基準日と似た候補日");
+    ensureHiddenText(root, COMPARISON_DESCRIPTION_ID, "似た日の比較対象に選択中");
 }
 
 function ensureHiddenText(root: HTMLElement, id: string, text: string): void {
@@ -741,7 +737,7 @@ function getLiveSimilarityLensAnnouncement(
         return "基準日選択モードです。矢印キーで移動し、EnterキーまたはSpaceキーで選択できます。";
     }
     if (state.baseDate === null) {
-        return "類似日レンズの基準日は未選択です。";
+        return "似た日を探す基準日は未選択です。";
     }
     if (evidenceState.status === "loading") {
         return `${formatJapaneseDate(state.baseDate)}の証拠を読み込んでいます。`;
@@ -820,7 +816,7 @@ export function getLiveSimilarityLensStyles(): string {
     return `
         [data-ra-next-similarity-lens-root] { box-sizing: border-box; display: block; width: calc(100% - 48px); max-width: calc(100vw - 48px); min-width: 0; margin: 0 24px 12px; border: 1px solid #c9d8e5; border-left: 4px solid #1767a5; border-radius: 8px; background: #fff; color: #263a4d; font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; }
         [data-ra-next-similarity-lens-root] *, [data-ra-next-similarity-lens-root] *::before, [data-ra-next-similarity-lens-root] *::after { box-sizing: border-box; }
-        [data-ra-next-similarity-lens-root] [data-ra-next-lens-header] { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 68px; padding: 12px 14px; }
+        [data-ra-next-similarity-lens-root] [data-ra-next-lens-header] { display: flex; align-items: center; justify-content: space-between; gap: 16px; min-height: 56px; padding: 8px 14px; }
         [data-ra-next-similarity-lens-root] [data-ra-next-lens-copy] { min-width: 0; }
         [data-ra-next-similarity-lens-root] h2 { margin: 0; font-size: 17px; font-weight: 800; line-height: 1.3; }
         [data-ra-next-similarity-lens-root] h3 { margin: 0; font-size: 14px; font-weight: 800; }
@@ -897,6 +893,7 @@ export function getLiveSimilarityLensStyles(): string {
         }
         @media (max-width: 680px) {
             [data-ra-next-similarity-lens-root] { width: calc(100% - 16px); max-width: calc(100vw - 16px); margin: 0 8px 8px; }
+            [data-ra-next-similarity-lens-root] button, [data-ra-next-similarity-lens-root] select { min-height: 44px; }
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-header] { align-items: stretch; flex-direction: column; }
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-actions] button { flex: 1 1 150px; }
             [data-ra-next-similarity-lens-root] [data-ra-next-lens-base-bar] { align-items: flex-start; flex-direction: column; }
