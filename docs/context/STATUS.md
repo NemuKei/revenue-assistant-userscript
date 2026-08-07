@@ -26,7 +26,7 @@
 
 ## Next Re-entry
 
-1. Classic UI baselineの次sliceへ進む場合は、Topの調整場所を見つける入口、Analyze booking curve、競合価格履歴の順にClassicとNextの見方・操作を合成fixtureで比較し、標準UI非干渉と判断時間への影響から1つを選ぶ。旧monolith、API / 保存範囲、実データを比較対象へ混ぜない。
+1. Classic UI baselineの次sliceへ進む場合は、基準日レンズからAnalyzeへ進む現行の判断導線と、現在の機能・取得・保存・安全設計を変更しない。Topの基準日レンズ、Analyze booking curve、競合価格履歴のうち、ClassicとNextの表示配置、情報の順序、filter / toggle、用語、操作感だけを合成fixtureで比較し、判断を最も妨げているUI差分を1つ局所修正する。Classicの9列候補表、旧monolith、API / 保存範囲、request / write境界、実データを比較・移植対象へ混ぜない。
 2. Tampermonkey実行版を更新する場合は、現在の有効 / 無効と実行版をfresh確認し、最新candidateの手動reinstall / switchと切替後smokeを別の明示gateとして扱う。updateURL / downloadURLがないため、repo更新だけでは現在の実行版へ自動反映されない。
 3. 翌日tail差分は2026-07-24の同日live QAでは再現できていない。pure testでは最後の保存point以後だけのappendを確認済みだが、次のJST観測日に実行版を有効化する場合は、新規・欠損・観測可能tailだけを最大200件で補うことをlive確認候補とする。
 4. Next publish、release、Classic再公開は未実施の明示gateである。週・月・周辺日程の取得、保存削除 UI、retention 変更が必要になった場合も、今回の明示承認へ含めず別の Yellow zone 判断とする。
