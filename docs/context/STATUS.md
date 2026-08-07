@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-07-31
+最終更新: 2026-08-07
 
 ## Current Task Bundle
 
@@ -21,7 +21,7 @@
 - `RAU-UX-151` は、可視なcalendarまたはAnalyze、facility label guard、document visible、現在のas-ofが揃う場合だけ既存read-only `GET /api/v4/booking_curve`を使う。必要source coverage 80%未満のbounded bootstrapは表示中stay dateのhotel / 全room currentとhotel直近型referenceを最大800件、coverage 80%以上のdaily deltaは新規・欠損・current tail・新しく観測可能になったreference tickだけを最大200件、250ms以上 / concurrency 2で補う。1 sessionで全sourceへ届かない場合は`今回分完了`として次の可視sessionで再計画し、全source準備済みを断定しない。Next専用DBはsource最新1件へ過去pointを内包し、施設最大4,096件、401 / 403 / 429即停止、同一run retryなしとする。
 - 最終確認した2026-07-24時点では、利用者がTampermonkeyの旧Next version `0.1.0`を無効化し、最新candidateも一時注入後のreloadで除去して、通常Chromeをnative UIだけへ戻していた。2026-07-31のdocs lifecycleではbrowserを再確認していないため、現在のTampermonkey実行状態は未確認である。candidateは引き続きupdateURL / downloadURLを持たないopt-in artifactで、公開版ではない。
 - `RAU-UX-145` は、Next が旧 stacked rail を採用していないため見送りである。同じ host 構造を将来採用する場合だけ再開する。
-- RAU は Profile C とし、root `AGENTS.md` を入口に、`PROJECT_CONTEXT.md`、`INTENT.md`、`DECISIONS.md`、この file、backlog を責務が一致するときだけ読む。
+- RAU は`solo-product`を採用し、data contract / migration、architecture / dependency、browser observationのconditional boundaryをroot `AGENTS.md`へ統合した。user-scope global policyは複製せず、`PROJECT_CONTEXT.md`、`INTENT.md`、`DECISIONS.md`、このfile、backlogは責務が一致するときだけ読む。今回のprofile最適化はruntime、Classic / Next、Tampermonkey、API / write、publication boundaryを変更しない。
 
 ## Next Re-entry
 

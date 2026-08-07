@@ -1,6 +1,6 @@
 # PROJECT_CONTEXT
 
-最終更新: 2026-07-23
+最終更新: 2026-08-07
 
 ## Role
 
@@ -21,9 +21,9 @@ RAU は AGENTS-first, not AGENTS-only で運用する。毎回の作業入口、
 
 ## Profile
 
-RAU は Profile C とする。
+RAU は、user-scope global policyが読まれる通常環境で`solo-product`を採用する。永続dataと外部contract、構造とdependency、browser通信観測の境界が成果と安全性を左右するため、`data-contract-and-migration`、`architecture-and-dependencies`、`browser-observation-safety`をconditional overlayとして採用する。global kernelをroot `AGENTS.md`へ複製せず、RAU固有の目的、境界、command、verifyだけを補う。
 
-Classic / Next の並行境界、userscript distribution、non-public API / write boundary、Revenue Assistant 上の業務判断を扱うため、誤った再開や公開判断の影響が大きい。ただし Profile C でもこのファイルは optional upper premise layer であり、独立サービス、PMS / DWH、本番自動化、外部公開 API 基盤を RAU の責務にはしない。
+Classic / Next の並行境界、userscript distribution、non-public API / write boundary、Revenue Assistant 上の業務判断を扱うため、誤った再開や公開判断の影響が大きい。このファイルは引き続き optional upper premise layer とし、独立サービス、PMS / DWH、本番自動化、外部公開 API 基盤を RAU の責務にはしない。
 
 ## Purpose
 
