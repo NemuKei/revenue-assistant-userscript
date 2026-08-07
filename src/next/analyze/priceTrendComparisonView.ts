@@ -11,7 +11,6 @@ import {
 export const PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE = "data-ra-next-price-trend-comparison-root";
 export const PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE = "data-ra-next-price-trend-filter-kind";
 export const PRICE_TREND_COMPARISON_FILTER_VALUE_ATTRIBUTE = "data-ra-next-price-trend-filter-value";
-export const PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE = "data-ra-next-price-trend-guest";
 export const PRICE_TREND_COMPARISON_SVG_ATTRIBUTE = "data-ra-next-price-trend-svg";
 export const PRICE_TREND_COMPARISON_HITBOX_ATTRIBUTE = "data-ra-next-price-trend-hitbox";
 
@@ -83,42 +82,25 @@ export function renderPriceTrendComparison(
     }
 
     const viewModel = state.viewModel;
-    const selectedComparison = viewModel.comparisons.find(
-        (comparison) => comparison.guestCount === viewModel.selectedGuestCount
-    ) ?? viewModel.comparisons[0];
     const filters = createFilters(documentHost, viewModel);
-    const summaries = createGuestSummaries(documentHost, viewModel);
-    if (selectedComparison === undefined || selectedComparison.points.length === 0) {
-        root.replaceChildren(
-            header,
-            filters,
-            summaries,
-            createMessage(documentHost, "選択した人数の価格推移はありません。", "empty")
-        );
-        return;
-    }
-
-    const detail = documentHost.createElement("section");
-    detail.setAttribute("data-ra-next-price-trend-detail", "");
-    const detailHeader = documentHost.createElement("div");
-    detailHeader.setAttribute("data-ra-next-price-trend-detail-header", "");
-    const title = documentHost.createElement("h4");
-    title.textContent = `${selectedComparison.guestCount}名の施設別推移`;
-    const reading = documentHost.createElement("p");
-    reading.textContent = "左が90日前側、右が宿泊日側です。";
-    detailHeader.append(title, reading);
-    detail.append(
-        detailHeader,
-        createLegend(documentHost, viewModel.facilities, selectedComparison.points),
-        createChart(
+    const allPoints = viewModel.comparisons.flatMap((comparison) => comparison.points);
+    const panels = documentHost.createElement("div");
+    panels.setAttribute("data-ra-next-price-trend-panels", "");
+    for (const guestCount of PRICE_TREND_COMPARISON_GUEST_COUNTS) {
+        panels.append(createGuestPanel(
             documentHost,
-            selectedComparison,
+            guestCount,
+            viewModel.comparisons.find((comparison) => comparison.guestCount === guestCount),
             viewModel.facilities,
             options.narrow
-        ),
-        createAccessibleTable(documentHost, selectedComparison, viewModel.facilities)
+        ));
+    }
+    root.replaceChildren(
+        header,
+        filters,
+        createLegend(documentHost, viewModel.facilities, allPoints),
+        panels
     );
-    root.replaceChildren(header, filters, summaries, detail);
 }
 
 export function getPriceTrendComparisonStyles(): string {
@@ -228,79 +210,46 @@ export function getPriceTrendComparisonStyles(): string {
     font-weight: 800;
 }
 [${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}]:focus-visible,
-[${PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE}]:focus-visible,
 [${PRICE_TREND_COMPARISON_HITBOX_ATTRIBUTE}]:focus-visible {
     outline: 3px solid #d98200;
     outline-offset: 2px;
 }
-[data-ra-next-price-trend-summaries] {
+[data-ra-next-price-trend-panels] {
     display: grid;
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 9px;
-    margin-bottom: 16px;
-}
-[${PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE}] {
-    display: grid;
-    grid-template-columns: 1fr auto;
-    gap: 5px 8px;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
     min-width: 0;
-    min-height: 104px;
-    padding: 11px;
-    border: 1px solid #c7d3dd;
-    border-radius: 8px;
-    background: #f9fbfc;
-    color: inherit;
-    font: inherit;
-    text-align: left;
-    cursor: pointer;
 }
-[${PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE}][aria-pressed="true"] {
-    border-color: var(--ra-next-price-blue);
-    box-shadow: inset 0 0 0 1px var(--ra-next-price-blue);
-    background: #f0f8fd;
-}
-[data-ra-next-price-trend-summary-guest] { font-size: 17px; font-weight: 900; }
-[data-ra-next-price-trend-summary-lt] {
-    align-self: center;
-    color: var(--ra-next-price-muted);
-    font-size: 11px;
-    font-weight: 700;
-}
-[data-ra-next-price-trend-summary-row] {
-    display: flex;
-    grid-column: 1 / -1;
-    justify-content: space-between;
-    gap: 8px;
-    color: #536575;
-    font-size: 12px;
-}
-[data-ra-next-price-trend-summary-row] strong { color: #20384b; font-size: 13px; }
-[data-ra-next-price-trend-gap] {
-    grid-column: 1 / -1;
-    font-size: 12px;
-    font-weight: 800;
-}
-[data-ra-next-price-trend-gap="above"] { color: #ae3f27; }
-[data-ra-next-price-trend-gap="below"] { color: #0c766e; }
-[data-ra-next-price-trend-gap="same"],
-[data-ra-next-price-trend-gap="missing"] { color: #667787; }
-[data-ra-next-price-trend-detail] {
+[data-ra-next-price-trend-panel] {
     display: grid;
     gap: 10px;
     min-width: 0;
-    padding-top: 14px;
-    border-top: 1px solid #d8e0e6;
+    padding: 14px;
+    border: 1px solid #c7d3dd;
+    border-radius: 8px;
+    background: #fff;
 }
-[data-ra-next-price-trend-detail-header] {
+[data-ra-next-price-trend-panel-header] {
     display: flex;
     flex-wrap: wrap;
     align-items: baseline;
     justify-content: space-between;
     gap: 5px 14px;
 }
-[data-ra-next-price-trend-detail-header] h4 { font-size: 16px; }
-[data-ra-next-price-trend-detail-header] p { color: var(--ra-next-price-muted); font-size: 12px; }
-[data-ra-next-price-trend-legend] { display: flex; flex-wrap: wrap; gap: 6px 14px; }
+[data-ra-next-price-trend-panel-header] h4 { font-size: 16px; }
+[data-ra-next-price-trend-panel-header] p { color: var(--ra-next-price-muted); font-size: 12px; }
+[data-ra-next-price-trend-panel-empty] {
+    padding: 18px;
+    border-radius: 7px;
+    background: #f3f6f8;
+    color: #526576;
+}
+[data-ra-next-price-trend-legend] {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    margin-bottom: 12px;
+}
 [data-ra-next-price-trend-legend-item] {
     display: inline-flex;
     align-items: center;
@@ -372,8 +321,7 @@ export function getPriceTrendComparisonStyles(): string {
         margin-top: 14px;
         padding: 13px;
     }
-    [data-ra-next-price-trend-summaries] { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    [${PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE}] { min-height: 112px; padding: 10px; }
+    [data-ra-next-price-trend-panel] { padding: 10px; }
     [data-ra-next-price-trend-filters] { display: grid; }
     [${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}] { min-height: 44px; }
     [${PRICE_TREND_COMPARISON_SVG_ATTRIBUTE}] { min-width: 0; }
@@ -392,7 +340,7 @@ function createHeader(
     eyebrow.setAttribute("data-ra-next-price-trend-eyebrow", "");
     eyebrow.textContent = "90日価格推移";
     const title = documentHost.createElement("h3");
-    title.textContent = "人数差を先に確認";
+    title.textContent = "競合価格 最安値推移（90日版）";
     const meta = documentHost.createElement("p");
     meta.setAttribute("data-ra-next-price-trend-meta", "");
     meta.textContent = state.status === "ready"
@@ -547,66 +495,37 @@ function createFilterGroup(
     return group;
 }
 
-function createGuestSummaries(
+function createGuestPanel(
     documentHost: Document,
-    viewModel: PriceTrendComparisonViewModel
+    guestCount: PriceTrendGuestComparison["guestCount"],
+    comparison: PriceTrendGuestComparison | undefined,
+    facilities: readonly PriceTrendComparisonFacility[],
+    narrow: boolean
 ): HTMLElement {
-    const summaries = documentHost.createElement("div");
-    summaries.setAttribute("data-ra-next-price-trend-summaries", "");
-    summaries.setAttribute("role", "group");
-    summaries.setAttribute("aria-label", "人数別の直近価格差");
-    for (const guestCount of PRICE_TREND_COMPARISON_GUEST_COUNTS) {
-        const comparison = viewModel.comparisons.find((item) => item.guestCount === guestCount);
-        const button = documentHost.createElement("button");
-        button.type = "button";
-        button.setAttribute(PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE, String(guestCount));
-        button.setAttribute("aria-pressed", String(guestCount === viewModel.selectedGuestCount));
-        const guest = documentHost.createElement("span");
-        guest.setAttribute("data-ra-next-price-trend-summary-guest", "");
-        guest.textContent = `${guestCount}名`;
-        const leadTime = documentHost.createElement("span");
-        leadTime.setAttribute("data-ra-next-price-trend-summary-lt", "");
-        leadTime.textContent = comparison?.latestLeadTimeDays === null
-            || comparison?.latestLeadTimeDays === undefined
-            ? "データなし"
-            : `${comparison.latestLeadTimeDays}日前`;
-        button.append(
-            guest,
-            leadTime,
-            createSummaryRow(documentHost, "自社", comparison?.ownPrice ?? null),
-            createSummaryRow(documentHost, "競合最安", comparison?.competitorMinPrice ?? null),
-            createGap(documentHost, comparison?.gapFromCompetitor ?? null)
-        );
-        summaries.append(button);
+    const panel = documentHost.createElement("section");
+    panel.setAttribute("data-ra-next-price-trend-panel", String(guestCount));
+    panel.setAttribute("aria-labelledby", `ra-next-price-trend-panel-${guestCount}`);
+    const panelHeader = documentHost.createElement("div");
+    panelHeader.setAttribute("data-ra-next-price-trend-panel-header", "");
+    const title = documentHost.createElement("h4");
+    title.id = `ra-next-price-trend-panel-${guestCount}`;
+    title.textContent = `${guestCount}名 最安値`;
+    const reading = documentHost.createElement("p");
+    reading.textContent = "左が90日前側、右が宿泊日側です。";
+    panelHeader.append(title, reading);
+    if (comparison === undefined || comparison.points.length === 0) {
+        const empty = documentHost.createElement("p");
+        empty.setAttribute("data-ra-next-price-trend-panel-empty", "");
+        empty.textContent = "対象データなし";
+        panel.append(panelHeader, empty);
+        return panel;
     }
-    return summaries;
-}
-
-function createSummaryRow(
-    documentHost: Document,
-    label: string,
-    price: number | null
-): HTMLElement {
-    const row = documentHost.createElement("span");
-    row.setAttribute("data-ra-next-price-trend-summary-row", "");
-    const labelElement = documentHost.createElement("span");
-    labelElement.textContent = label;
-    const value = documentHost.createElement("strong");
-    value.textContent = price === null ? "—" : formatPrice(price);
-    row.append(labelElement, value);
-    return row;
-}
-
-function createGap(documentHost: Document, gap: number | null): HTMLElement {
-    const element = documentHost.createElement("span");
-    const tone = gap === null ? "missing" : gap > 0 ? "above" : gap < 0 ? "below" : "same";
-    element.setAttribute("data-ra-next-price-trend-gap", tone);
-    element.textContent = gap === null
-        ? "自社との差 —"
-        : gap === 0
-            ? "自社と競合が同額"
-            : `自社 ${gap > 0 ? "+" : ""}${formatPrice(gap)}`;
-    return element;
+    panel.append(
+        panelHeader,
+        createChart(documentHost, comparison, facilities, narrow),
+        createAccessibleTable(documentHost, comparison, facilities)
+    );
+    return panel;
 }
 
 function createLegend(
@@ -655,7 +574,7 @@ function createChart(
     const title = documentHost.createElementNS("http://www.w3.org/2000/svg", "title");
     title.textContent = `${comparison.guestCount}名の施設別90日価格推移`;
     const description = documentHost.createElementNS("http://www.w3.org/2000/svg", "desc");
-    description.textContent = "左が宿泊日の約90日前、右が宿泊日側です。直近価格は上の人数比較、全値は下の表でも確認できます。";
+    description.textContent = "左が宿泊日の約90日前、右が宿泊日側です。全値は下の表でも確認できます。";
     svg.append(title, description);
 
     const domain = resolvePriceDomain(comparison.points);

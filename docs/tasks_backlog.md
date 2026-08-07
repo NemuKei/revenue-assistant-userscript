@@ -279,6 +279,29 @@
   - Next publish、release、Classic再公開、Tampermonkey reinstall / switch、Revenue Assistant write、delete UI、retention変更、季節型 / 同曜日補助線の追加取得は含めない。
   - ログイン済み通常Chromeの旧Next 0.1.0は利用者が無効化し、最新candidateはlive QA後にreloadで除去した。最新candidateのTampermonkey手動reinstall / switchと切替後smokeは、repo更新やtask完了から推論しない別の明示gateである。
 
+### RAU-UX-152 Classic UI baselineでNext Analyzeを段階的に戻す
+
+- 状態:
+  - 完了。最初のvertical sliceとして90日価格推移の人数別4 panelを復元し、合成fixtureとrepo-wide checkまで完了した。Revenue Assistant実画面、Tampermonkey switch、publish / releaseは実施していない。
+- 目的:
+  - Classicで定着した見方と操作を再利用し、Nextで大きく変わったUIによる学習負担を減らす。旧内部構造は移植せず、標準UIへの干渉、意味の誤り、判断時間悪化、mobile overflowなど確認できた問題だけを局所最適化する。
+- 最初のslice:
+  - 1〜4名のsummary cardと選択中1人数のdetail chartを廃止し、Classic同様に`1名 最安値`〜`4名 最安値`の施設別chart 4 panelを常時表示する。
+  - 部屋 / 食事filter、共通legend、mouse / keyboard / tap tooltip、人数別accessible table、capture / empty / stale / read error表示を維持する。人数ごとの欠損はそのpanelだけ`対象データなし`とし、他の人数を隠さない。
+- 実装境界:
+  - `src/main.ts`、Classic DOM、Classic runtime / storeをimportまたは変更しない。Nextのmodel / view / runtime分離を維持し、標準価格推移chartの後へsibling rootを1件だけ追加する。
+  - API path、request件数、concurrency、capture scope、IndexedDB schema / retention、freshness判定、Revenue Assistant write、userscript metadataを変更しない。
+  - desktop / 390pxで4 panel、filter、tooltip focus、accessible table、標準chart維持、Next root自己overflow 0、route / tab cleanup、console error 0を合成fixtureで確認する。live Revenue Assistant、Tampermonkey switch、publish / releaseは別gateとする。
+- ローカル確認:
+  - 1280pxではNext root 1、人数別panel / SVG / accessible table各4、標準chart 1、Next root自己overflow 0だった。部屋filter、keyboard tooltip、詳細表、route離脱 / 復帰、empty / read errorを確認し、4名だけ欠損するfixtureではpanel 4のまま4名だけ`対象データなし`となった。
+  - 390pxでは4 panelを1列で維持し、filter最小高さ44px、Next root自己overflow 0、console warning / error 0だった。取得・保存を無効化した合成fixtureだけを使い、実施設名、実価格、raw response、browser-local保存値は扱っていない。
+  - focused check、`npm run check:next`、`npm run check`、Classic公開境界、distribution / booking-curve smoke fixture、Classic fixture build、`git diff --check`が通過した。local candidateは237,697 bytes、SHA-256 `438BCDABEBD8BDAD05D4DF289883C55D54EEA3ADF53600C4EEF4707F23CDCB18`、updateURL / downloadURLなしである。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260807-003`
+
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile

@@ -43,7 +43,7 @@ function createFixtureDataSource(state: string): PriceTrendComparisonDataSource 
                 contextKey: `yad:fixture|${stayDate}`,
                 facilityId: "yad:fixture",
                 facilityLabel: "施設A（mock）",
-                records: createFixtureRecords(stayDate)
+                records: createFixtureRecords(stayDate, state === "partial" ? 4 : null)
             };
         },
         reset() {
@@ -55,7 +55,7 @@ function createFixtureDataSource(state: string): PriceTrendComparisonDataSource 
     };
 }
 
-function createFixtureRecords(stayDate: string): unknown[] {
+function createFixtureRecords(stayDate: string, omittedGuestCount: number | null): unknown[] {
     const facilities = [
         { yadNo: "own", name: "施設A（mock）", role: "own" },
         { yadNo: "competitor-a", name: "競合A（mock）", role: "competitor" },
@@ -64,6 +64,9 @@ function createFixtureRecords(stayDate: string): unknown[] {
     ];
     const records: unknown[] = [];
     for (const guestCount of [1, 2, 3, 4]) {
+        if (guestCount === omittedGuestCount) {
+            continue;
+        }
         for (const mealType of ["NONE", "BREAKFAST"]) {
             records.push(createFixtureRecord({
                 facilities,

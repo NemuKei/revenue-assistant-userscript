@@ -38,6 +38,7 @@ const [
     modelSource,
     runtimeSource,
     storeSource,
+    viewSource,
     writerSource
 ] = await Promise.all([
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
@@ -50,6 +51,7 @@ const [
     readFile(new URL("../src/next/analyze/priceTrendComparisonModel.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/priceTrendComparisonRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/priceTrendCaptureStore.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/priceTrendComparisonView.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/priceTrendCaptureWriter.ts", import.meta.url), "utf8")
 ]);
 
@@ -87,12 +89,10 @@ const records = [
 const defaultResult = model.buildPriceTrendComparisonViewModel({
     facilityId: "yad:fixture",
     records,
-    selectedGuestCount: 2,
     stayDate: "20260812"
 });
 assert.equal(defaultResult.status, "ready");
 assert.equal(defaultResult.viewModel.comparisons.length, 4);
-assert.equal(defaultResult.viewModel.selectedGuestCount, 2);
 assert.equal(defaultResult.viewModel.usesSpecificRoomTypeAggregation, false);
 assert.equal(defaultResult.viewModel.selectedRecordCount, 8);
 assert.equal(defaultResult.viewModel.comparisons[1].latestLeadTimeDays, 1);
@@ -105,7 +105,6 @@ const twinResult = model.buildPriceTrendComparisonViewModel({
     facilityId: "yad:fixture",
     filters: { roomType: "TWIN" },
     records,
-    selectedGuestCount: 4,
     stayDate: "2026-08-12"
 });
 assert.equal(twinResult.status, "ready");
@@ -601,12 +600,17 @@ assert.equal(storeModule.NEXT_PRICE_TREND_RETENTION_LIMIT, 1_440);
 assert.equal(storeModule.NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT, 16);
 
 const styles = view.getPriceTrendComparisonStyles();
-assert.match(styles, /grid-template-columns: repeat\(4, minmax\(0, 1fr\)\)/u);
+assert.match(styles, /data-ra-next-price-trend-panels/u);
+assert.match(styles, /grid-template-columns: minmax\(0, 1fr\)/u);
 assert.match(styles, /@media \(max-width: 680px\)/u);
-assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/u);
 assert.match(styles, /max-width: calc\(100vw - 16px\)/u);
 assert.match(styles, /min-height: 44px/u);
 assert.match(styles, /data-ra-next-price-trend-capture/u);
+assert.match(viewSource, /PRICE_TREND_COMPARISON_GUEST_COUNTS/u);
+assert.match(viewSource, /data-ra-next-price-trend-panel/u);
+assert.match(viewSource, /\$\{guestCount\}名 最安値/u);
+assert.doesNotMatch(viewSource, /createGuestSummaries|data-ra-next-price-trend-summaries/u);
+assert.doesNotMatch(runtimeSource, /selectedGuestCount|PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE/u);
 assert.match(entrySource, /startPriceTrendComparisonRuntime\(document, window\)/u);
 assert.match(runtimeSource, /price-trends-content/u);
 assert.match(runtimeSource, /hasLiveFacilityContextLabel/u);
@@ -618,6 +622,7 @@ assert.match(fixture, /data-mock-route-away/u);
 assert.match(fixtureEntry, /createFixtureDataSource/u);
 assert.match(fixtureEntry, /state === "empty"/u);
 assert.match(fixtureEntry, /state === "error"/u);
+assert.match(fixtureEntry, /state === "partial" \? 4 : null/u);
 assert.match(fixtureEntry, /writer: null/u);
 assert.match(storeSource, /revenue-assistant-next-price-trends/u);
 assert.match(storeSource, /store\.add\(record\)/u);

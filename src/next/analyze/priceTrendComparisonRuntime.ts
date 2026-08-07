@@ -11,7 +11,6 @@ import {
 import {
     buildPriceTrendComparisonViewModel,
     type PriceTrendComparisonFilters,
-    type PriceTrendComparisonGuestCount,
     type PriceTrendComparisonViewModel
 } from "./priceTrendComparisonModel";
 import {
@@ -22,7 +21,6 @@ import {
 import {
     PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE,
     PRICE_TREND_COMPARISON_FILTER_VALUE_ATTRIBUTE,
-    PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE,
     PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE,
     createPriceTrendComparisonRoot,
     ensurePriceTrendComparisonStyles,
@@ -91,7 +89,6 @@ export function startPriceTrendComparisonRuntime(
     let activeContext: PriceTrendComparisonRuntimeContext | null = null;
     let activeStayDate: string | null = null;
     let filters: PriceTrendComparisonFilters = { mealType: null, roomType: null };
-    let selectedGuestCount: PriceTrendComparisonGuestCount = 2;
     let root: HTMLElement | null = null;
     let mountTarget: HTMLElement | null = null;
     let blockedFacilityLabel: string | null = null;
@@ -195,7 +192,6 @@ export function startPriceTrendComparisonRuntime(
         captureAttempted = false;
         captureStatus = writer === null ? "disabled" : "checking";
         filters = { mealType: null, roomType: null };
-        selectedGuestCount = 2;
         state = { status: "idle" };
         removeMountedRoot();
     }
@@ -319,7 +315,6 @@ export function startPriceTrendComparisonRuntime(
             facilityId: activeContext.facilityId,
             filters,
             records: activeContext.records,
-            selectedGuestCount,
             stayDate: activeContext.stayDate
         });
         if (model.status === "empty") {
@@ -330,7 +325,6 @@ export function startPriceTrendComparisonRuntime(
             };
         } else {
             filters = model.viewModel.filters;
-            selectedGuestCount = model.viewModel.selectedGuestCount;
             state = { status: "ready", viewModel: model.viewModel };
         }
         renderCurrentState();
@@ -396,22 +390,6 @@ export function startPriceTrendComparisonRuntime(
             }
             return;
         }
-        const guestButton = event.target.closest<HTMLElement>(
-            `[${PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE}]`
-        );
-        if (guestButton === null) {
-            return;
-        }
-        const guestCount = Number(guestButton.getAttribute(PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE));
-        if (guestCount !== 1 && guestCount !== 2 && guestCount !== 3 && guestCount !== 4) {
-            return;
-        }
-        event.preventDefault();
-        selectedGuestCount = guestCount;
-        rebuildState();
-        root.querySelector<HTMLElement>(
-            `[${PRICE_TREND_COMPARISON_GUEST_ATTRIBUTE}="${guestCount}"]`
-        )?.focus({ preventScroll: true });
     }
 
     function handleResize(): void {
@@ -456,7 +434,6 @@ export function startPriceTrendComparisonRuntime(
         captureAttempted = false;
         captureStatus = writer === null ? "disabled" : "checking";
         filters = { mealType: null, roomType: null };
-        selectedGuestCount = 2;
         state = { status: "idle" };
         removePriceTrendComparisonArtifacts(documentHost);
         root = null;

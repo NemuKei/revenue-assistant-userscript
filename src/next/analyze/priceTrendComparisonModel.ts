@@ -50,7 +50,6 @@ export interface PriceTrendComparisonViewModel {
     filters: PriceTrendComparisonFilters;
     latestFetchedAt: string;
     latestSourceUpdatedAt: string | null;
-    selectedGuestCount: PriceTrendComparisonGuestCount;
     selectedRecordCount: number;
     stayDate: string;
     usesSpecificRoomTypeAggregation: boolean;
@@ -118,7 +117,6 @@ export function buildPriceTrendComparisonViewModel(options: {
     facilityId: string;
     filters?: Partial<PriceTrendComparisonFilters>;
     records: readonly unknown[];
-    selectedGuestCount?: PriceTrendComparisonGuestCount;
     stayDate: string;
 }): PriceTrendComparisonModelResult {
     const facilityId = options.facilityId.trim();
@@ -151,11 +149,6 @@ export function buildPriceTrendComparisonViewModel(options: {
         return { status: "empty", reason: "no-price-points" };
     }
 
-    const selectedGuestCount = PRICE_TREND_COMPARISON_GUEST_COUNTS.includes(
-        options.selectedGuestCount ?? 2
-    )
-        ? options.selectedGuestCount ?? 2
-        : 2;
     const latestRecord = selectedRecords.reduce<NormalizedPriceTrendRecord | null>(
         (latest, record) => latest === null || latest.fetchedAt < record.fetchedAt ? record : latest,
         null
@@ -177,7 +170,6 @@ export function buildPriceTrendComparisonViewModel(options: {
             filters,
             latestFetchedAt: latestRecord?.fetchedAt ?? "",
             latestSourceUpdatedAt,
-            selectedGuestCount,
             selectedRecordCount: selectedRecords.length,
             stayDate,
             usesSpecificRoomTypeAggregation: roomSelection.usesSpecificRecords
