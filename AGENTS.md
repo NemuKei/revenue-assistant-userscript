@@ -33,6 +33,7 @@ RAU は、Revenue Assistant 上で RM のレート調整判断を軽くする Ta
 - sourceから生成するClassic検証artifactと、明示承認後にTampermonkeyへ投入するrelease candidateは`dist/*.user.js`を正とする。Classic公開凍結中の公開物は、公開URLのbyte列と`.github/classic-publication-baseline.json`を正とし、local `dist`を現在の公開版とみなさない。
 - `dist/*.user.js`を手編集しない。変更は`src/`、`scripts/build.mjs`、`userscript.config.mjs`などのowner sourceで行い、userscript metadataは`userscript.config.mjs`へ集約する。
 - ClassicとNextのidentity、runtime、保存領域、publication boundaryを混ぜない。candidate生成、Tampermonkey install / switch、Classic再公開、Next publish / releaseは別gateとし、通常のcommit / pushから推論しない。
+- Next公開版は`docs/spec_004_next_distribution.md`を契約とし、Next専用GitHub Pages URL、`0.2.0.<workflow run number>`、`updateURL` / `downloadURL`を持つ。`main` pushでは公開せず、manual workflow、明示確認、Classic byte保全、remote照合を通した場合だけ更新する。
 - 既存のRevenue Assistant標準UIを置き換えず、非干渉領域へ補助情報を追加する。標準要素のgeometry、操作、表示切替、主要graphを変える場合は、利用者が触る経路でbefore / afterを確認する。
 - 変更は入口から表示結果まで動くvertical sliceにする。大きい変更は個別にsmokeできるsliceへ分け、長期間未完成になる全面置換を行わない。
 

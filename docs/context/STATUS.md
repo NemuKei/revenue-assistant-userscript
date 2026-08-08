@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 現在進行中の Goal Bundle はない。直近完了は `RAU-UX-157` であり、Analyzeの3補助表示をpanel配置だけでなく可視UI全体でClassic baselineへ揃え、Next candidate `0.1.0.157`としてlocal fixtureまで確認した。現在の通常Chrome / Tampermonkeyは一つ前の`0.1.0.156`であり、`0.1.0.157`の手動reinstallと実画面smokeは未実施である。Next publish / release、Classic再公開、Revenue Assistant writeは行っていない。
+- `RAU-UX-158`を進行中とする。Next専用GitHub Pages URL、manual publication workflow、Tampermonkey自動更新metadata、Classic byte保全、rollback、初回公開と実画面smokeを1つの配布sliceとして扱う。利用者は初回公開まで明示承認済みである。Nextの画面、API / IndexedDB / request budget / Revenue Assistant writeは変更しない。
 
 ## Current State
 

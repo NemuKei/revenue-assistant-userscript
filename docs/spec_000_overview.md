@@ -117,7 +117,8 @@ React + Vite + UI ライブラリへの完全移行は、Revenue Assistant 本�
 
 - Classic公開は凍結する。`.github/workflows/publish-userscript.yml` は `workflow_dispatch` による公開baselineのread-only照合だけを行い、push trigger、Pages / OIDC書込権限、source build、artifact upload、deployを持たない。
 - `main` pushでは、Pages権限を持たない `.github/workflows/validate-main.yml` がClassic / Next / fixture / publication boundaryを検証する。`.github/workflows/**` の追加または変更も起動対象とする。
-- publication boundary checkerはworkflow allowlistと全workflowの公開系権限 / action不在を検査する。Classicの再公開または更新は、candidate source SHA、digest、protected approvalを先に仕様化する別gateとする。
+- `.github/workflows/publish-next-userscript.yml`だけがNext公開のPages書込を持つ。`workflow_dispatch`、`main`、入力値`PUBLISH_NEXT`へ限定し、Classicの公開JS / source mapを固定baselineへ照合して同梱した後、Next専用pathを含むsite全体をdeployする。
+- publication boundary checkerはworkflow allowlistを検査し、Next公開workflow以外のPages / OIDC書込とdeploy actionを拒否する。Classicの再build、再公開、更新は引き続き別gateとする。
 
 ## Verification
 
@@ -128,6 +129,7 @@ React + Vite + UI ライブラリへの完全移行は、Revenue Assistant 本�
 3. `npm run build`
 4. 必要に応じて `npm run check`
 5. Next GUI変更は別identityのcandidateをClassic無効の単一runtimeで確認する。Classicの `dist/*.user.js` をTampermonkeyへ投入するのは、release gateを明示的に再開した場合だけとする
+6. Next公開時は`docs/spec_004_next_distribution.md`に従い、公開artifact / manifest、Classic不変、Tampermonkey installed version、単一runtime、標準UI非干渉、Revenue Assistant write 0を確認する
 
 ## Documentation Map
 
@@ -141,6 +143,7 @@ React + Vite + UI ライブラリへの完全移行は、Revenue Assistant 本�
 - `docs/spec_001_analyze_expansion.md`: analyze 画面拡張の現行仕様
 - `docs/spec_002_curve_core.md`: booking curve core logic、reference curve、将来の予測モデル、将来の予測評価の入出力契約
 - `docs/spec_003_rank_recommendation_signal.md`: トップ decision workspace、推奨ランク方向、user decision、candidate lifecycle、rank response、future bulk apply の契約
+- `docs/spec_004_next_distribution.md`: Next公開artifact、GitHub Pages配置、version、自動更新、Classic保全、rollbackの契約
 
 ## Spec Update Policy
 
@@ -148,6 +151,7 @@ React + Vite + UI ライブラリへの完全移行は、Revenue Assistant 本�
 - Analyze 画面の詳細仕様は `docs/spec_001_analyze_expansion.md` を正本とする。
 - booking curve core logic の入出力、算出規則、予測モデル候補、予測評価候補は `docs/spec_002_curve_core.md` を正本とする。
 - トップ decision workspace、推奨ランク方向、user decision、candidate lifecycle、rank response、future bulk apply は `docs/spec_003_rank_recommendation_signal.md` を正本とする。
+- Next公開artifact、GitHub Pages配置、version、自動更新、Classic保全、rollbackは `docs/spec_004_next_distribution.md` を正本とする。
 - `tasks_backlog` に task を追加しただけでは `spec` を確定しない。
 - `spec-impact: yes | unknown` の task は、実装開始前に `spec` 更新要否を再判定する。
 - 外部から見える挙動、入出力契約、受け入れ条件、非機能要件に影響する場合は、実装前を主 checkpoint として `spec` を更新する。

@@ -1,0 +1,115 @@
+name: Publish Next Userscript
+
+env:
+    FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
+on:
+    workflow_dispatch:
+        inputs:
+            confirmation:
+                description: Type PUBLISH_NEXT to publish the validated Next userscript
+                required: true
+                type: string
+
+concurrency:
+    group: github-pages
+    cancel-in-progress: false
+
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+
+        steps:
+            - name: Require main and explicit publication confirmation
+              env:
+                  PUBLICATION_CONFIRMATION: ${{ inputs.confirmation }}
+              run: |
+                  test "$GITHUB_REF" = "refs/heads/main"
+                  test "$PUBLICATION_CONFIRMATION" = "PUBLISH_NEXT"
+
+            - name: Checkout
+              uses: actions/checkout@v7
+
+            - name: Setup Node.js
+              uses: actions/setup-node@v7
+              with:
+                  node-version: 24
+                  cache: npm
+
+            - name: Install dependencies
+              run: npm ci
+
+            - name: Validate Classic and Next
+              run: |
+                  npm run check
+                  npm run check:next
+                  npm run check:classic-publication
+
+            - name: Verify frozen Classic bytes before packaging
+              run: node scripts/check-classic-publication-boundary.mjs --live
+
+            - name: Build and verify Next publication
+              env:
+                  NEXT_PUBLICATION_RUN_NUMBER: ${{ github.run_number }}
+              run: |
+                  npm run build:next:publication
+                  npm run check:next:publication-artifact
+
+            - name: Prepare complete Pages artifact
+              env:
+                  NEXT_PUBLICATION_RUN_NUMBER: ${{ github.run_number }}
+                  NEXT_PUBLICATION_SOURCE_SHA: ${{ github.sha }}
+                  NEXT_PUBLICATION_RUN_ID: ${{ github.run_id }}
+                  NEXT_PUBLICATION_RUN_ATTEMPT: ${{ github.run_attempt }}
+              run: node scripts/prepare-next-pages-artifact.mjs --live
+
+            - name: Upload Pages artifact
+              uses: actions/upload-pages-artifact@v5
+              with:
+                  path: .tmp/pages-artifact
+
+    deploy:
+        needs: build
+        runs-on: ubuntu-latest
+        permissions:
+            pages: write
+            id-token: write
+        environment:
+            name: github-pages
+            url: ${{ steps.deployment.outputs.page_url }}
+
+        steps:
+            - name: Deploy to GitHub Pages
+              id: deployment
+              uses: actions/deploy-pages@v5
+
+    verify:
+        needs: deploy
+        runs-on: ubuntu-latest
+        permissions:
+            contents: read
+        env:
+            NEXT_PUBLICATION_RUN_NUMBER: ${{ github.run_number }}
+            NEXT_PUBLICATION_SOURCE_SHA: ${{ github.sha }}
+            NEXT_PUBLICATION_RUN_ID: ${{ github.run_id }}
+            NEXT_PUBLICATION_RUN_ATTEMPT: ${{ github.run_attempt }}
+
+        steps:
+            - name: Checkout verification controls
+              uses: actions/checkout@v7
+
+            - name: Verify Classic after deploy
+              run: node scripts/check-classic-publication-boundary.mjs --live
+
+            - name: Verify published Next bytes and run identity
+              run: |
+                  node scripts/check-next-publication-boundary.mjs --live \
+                    --expected-source-sha "$NEXT_PUBLICATION_SOURCE_SHA" \
+                    --expected-run-id "$NEXT_PUBLICATION_RUN_ID" \
+                    --expected-run-number "$NEXT_PUBLICATION_RUN_NUMBER" \
+                    --expected-run-attempt "$NEXT_PUBLICATION_RUN_ATTEMPT" \
+                    --retry-count 18 \
+                    --retry-delay-ms 5000 \
+                    --allow-in-progress

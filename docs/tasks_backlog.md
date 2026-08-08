@@ -408,6 +408,27 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260808-002`
 
+### RAU-UX-158 Nextをリモート配布しTampermonkey更新を簡略化する
+
+- 状態:
+  - 進行中。利用者はNext専用GitHub Pages URL、manual publication workflow、初回公開、公開版へのTampermonkey切替を明示承認した。
+- 解決する問題:
+  - local candidateは`updateURL` / `downloadURL`を持たず、byte列が変わるたびに手動reinstallが必要である。実行版の更新が作業負担になり、local candidateとTampermonkey installed versionを取り違えやすい。
+- 実装範囲:
+  - candidateと同じTampermonkey identityを持つNext公開版を`0.2.0.<workflow run number>`で生成し、Next専用stable URLを`updateURL` / `downloadURL`へ設定する。
+  - `workflow_dispatch`、`main`、入力値`PUBLISH_NEXT`に限定したPages workflowを追加する。pushでは公開しない。
+  - deploy前後にClassic userscriptとsource mapを固定baselineへ照合し、Pages artifactへ同じbyte列で含める。Next userscript、source map、release manifestもremote照合する。
+  - 初回公開後、現在のNext candidateを公開版へ更新し、TopからAnalyzeまで単一runtime、標準UI非干渉、console error 0、Revenue Assistant write 0を確認する。
+- 対象外:
+  - Classic再build / 更新、Revenue Assistant write、新規API、取得上限、IndexedDB schema / retention、依存追加、push起点の自動公開、外部server新設。
+- 合格条件:
+  - `docs/spec_004_next_distribution.md`の7条件を満たし、公開URLとmanifestのversion / source SHA / byte数 / SHA-256が一致する。Classicのuserscript / source map hashは公開前後で不変とする。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_004_next_distribution.md`
+  - `decision: D-20260808-003`
+
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile

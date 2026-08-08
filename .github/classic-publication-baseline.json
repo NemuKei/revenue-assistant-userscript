@@ -23,5 +23,8 @@
     "publishedVersion": "0.1.0.442",
     "publishedBytes": 662626,
     "sha256": "6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB",
-    "observedDate": "2026-07-22"
+    "publishedSourceMapUrl": "https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js.map",
+    "publishedSourceMapBytes": 2707961,
+    "publishedSourceMapSha256": "AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD",
+    "observedDate": "2026-08-08"
 }

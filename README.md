@@ -241,21 +241,31 @@ version の扱いは `--version-policy warn | fail` で指定します。既定�
 - `docs/spec_000_overview.md`: リポジトリ全体の仕様概要
 - `docs/context/PROJECT_CONTEXT.md`: RAU の上位前提と profile
 - `docs/spec_001_analyze_expansion.md`: analyze 画面拡張の現行仕様
+- `docs/spec_004_next_distribution.md`: Next公開、Tampermonkey更新、Classic保全、rollbackの仕様
 - `docs/context/STATUS.md`: 現況の正本
 - `docs/context/DECISIONS.md`: 判断理由の正本
 - `docs/tasks_backlog.md`: 未実装タスクの管理
 
 ## 配布
 
-`userscript.config.mjs` が Classic metadata の正本です。localでsourceから生成するClassic検証artifactと、明示承認後にTampermonkeyへ投入するrelease candidateは `dist/revenue-assistant-userscript.user.js` を正とします。ただし凍結中の現在の公開物は、公開URLのbyte列と `.github/classic-publication-baseline.json` を正とし、local `dist`を現在の公開版とみなしません。`userscript.next.config.mjs` は未公開 Next candidate の metadata 正本であり、生成物は `.tmp/vite-next-candidate/revenue-assistant-next.candidate.user.js` に限ります。`.tmp` の candidate を公開物または自動更新の正本として扱いません。
+`userscript.config.mjs` が Classic metadata の正本です。localでsourceから生成するClassic検証artifactと、明示承認後にTampermonkeyへ投入するrelease candidateは `dist/revenue-assistant-userscript.user.js` を正とします。ただし凍結中の現在の公開物は、公開URLのbyte列と `.github/classic-publication-baseline.json` を正とし、local `dist`を現在の公開版とみなしません。
+
+`userscript.next.config.mjs` はNext candidate / publication metadataの正本です。通常buildは`.tmp/vite-next-candidate/revenue-assistant-next.candidate.user.js`へ`0.1.0.<candidate revision>`、自己更新URLなしで生成します。公開buildだけは`.tmp/vite-next-publication/next/revenue-assistant-next.user.js`へ`0.2.0.<workflow run number>`で生成し、Next専用`updateURL` / `downloadURL`を持ちます。`.tmp`は公開元ではなく、manual workflowが検証後にGitHub Pagesへ配置したremote byte列と`next/release.json`を公開版の正とします。
 
 公開 userscript URL:
 [https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js](https://nemukei.github.io/revenue-assistant-userscript/revenue-assistant-userscript.user.js)
+
+Next公開 userscript URL:
+[https://nemukei.github.io/revenue-assistant-userscript/next/revenue-assistant-next.user.js](https://nemukei.github.io/revenue-assistant-userscript/next/revenue-assistant-next.user.js)
 
 将来Classic release gateを再開する場合、production metadata付きbuildには `GITHUB_PAGES_BASE_URL` を使えますが、現verify-only workflowはbuildも配布も行いません。
 
 2026-07-22にfresh確認したClassic公開baselineは、source commit `659d998254c7527ecc40b45a3e22513f049168de`、GitHub Actions run 442、`@version 0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB` です。metadataを含む正本は `.github/classic-publication-baseline.json` に置きます。
 
-localの `.github/workflows/publish-userscript.yml` は、`main` pushによる自動公開を廃止し、manual dispatchによる公開baselineのread-only照合だけを行います。Pages / OIDCの書込権限、source build、artifact upload、deploy処理は持ちません。Classicを再公開または更新する機能は意図的に凍結し、必要になった場合はcandidate artifact、source SHA、digest、保護された承認を持つ別仕様として再開します。`main` pushではPages権限を持たない `validate-main.yml` がClassic / Nextを検証用buildしますが、artifactのupload / deployは行いません。
+localの `.github/workflows/publish-userscript.yml` は、`main` pushによるClassic自動公開を廃止し、manual dispatchによる公開baselineのread-only照合だけを行います。Pages / OIDCの書込権限、source build、artifact upload、deploy処理は持ちません。Classicを再公開または更新する機能は意図的に凍結しています。
+
+`.github/workflows/publish-next-userscript.yml`はNext専用のmanual publicationです。`main`上で入力値`PUBLISH_NEXT`を確認し、full check、公開build、Classic公開JS / source mapの固定hash照合を通した場合だけ、照合済みClassicとNext専用pathを一つのPages artifactとしてdeployします。deploy後にもClassicとNextをremote照合します。`main` pushではPages権限を持たない`validate-main.yml`だけが動き、Nextを自動公開しません。
+
+初回はNext公開URLをTampermonkeyで開き、現在のNext candidateを公開版へ更新します。以後はTampermonkeyの定期更新確認、またはdashboardの手動更新確認で同じURLから更新できます。Git pushやlocal candidate生成だけではinstalled versionは変わりません。詳細なversion、rollback、合格条件は`docs/spec_004_next_distribution.md`を参照してください。
 
 2026-07-22に明示承認を受け、origin/mainの6 dependency / Actions更新をverify-only workflowと同じtreeへ統合し、merge commit `57c99837303ed07ca86af924c922fcf783a342eb` をpushしました。Actionsはcheckout / setup-node v7、lockfileどおりの`npm ci`とfull verifyを通しています。同commitのGitHub ActionsはValidate Main run `29888589509` 1件だけがsuccessし、Publish系run 0件、GitHub Pages deployment 0件でした。最新Pages deploymentは引き続きsource `659d998254c7527ecc40b45a3e22513f049168de`で、公開artifactのversion / bytes / SHA-256もpush後のcache-bypass照合2回で不変です。Classic公開経路の分離は完了し、Nextの公開、Tampermonkey install、Classicからの切替はそれぞれ別gateです。

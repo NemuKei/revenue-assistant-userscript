@@ -69,6 +69,9 @@ assert.equal(
 );
 assert.ok(Number.isInteger(manifest.publishedBytes) && manifest.publishedBytes > 0);
 assert.match(manifest.sha256, /^[0-9A-F]{64}$/);
+assert.equal(manifest.publishedSourceMapUrl, `${manifest.publishedUrl}.map`);
+assert.ok(Number.isInteger(manifest.publishedSourceMapBytes) && manifest.publishedSourceMapBytes > 0);
+assert.match(manifest.publishedSourceMapSha256, /^[0-9A-F]{64}$/);
 assert.match(manifest.observedDate, /^\d{4}-\d{2}-\d{2}$/);
 
 assert.equal(
@@ -78,6 +81,7 @@ assert.equal(
 );
 
 const expectedWorkflowNames = [
+    "publish-next-userscript.yml",
     "publish-userscript.yml",
     "validate-main.yml",
     "validate-pr.yml"
@@ -92,6 +96,15 @@ assert.deepEqual(
 );
 for (const workflowName of workflowNames) {
     const source = await readFile(new URL(workflowName, workflowsDirectory), "utf8");
+    if (workflowName === "publish-next-userscript.yml") {
+        assert.match(source, /^on:\s*\r?\n\s{4}workflow_dispatch:/m);
+        assert.doesNotMatch(source, /^\s{4}(?:push|pull_request|schedule):/m);
+        assert.match(source, /node scripts\/prepare-next-pages-artifact\.mjs --live/);
+        assert.match(source, /node scripts\/check-classic-publication-boundary\.mjs --live/);
+        assert.equal(Array.from(source.matchAll(/^\s+pages:\s+write\s*$/gm)).length, 1);
+        assert.equal(Array.from(source.matchAll(/^\s+id-token:\s+write\s*$/gm)).length, 1);
+        continue;
+    }
     assert.doesNotMatch(source, /^\s*pages:\s*write\s*$/m, `${workflowName} must not write Pages`);
     assert.doesNotMatch(source, /^\s*id-token:\s*write\s*$/m, `${workflowName} must not mint a deploy token`);
     assert.doesNotMatch(source, /actions\/configure-pages@/i, `${workflowName} must not configure Pages`);
@@ -160,8 +173,21 @@ if (liveCheck) {
     assert.equal(publishedVersion, manifest.publishedVersion);
     assert.equal(bytes.length, manifest.publishedBytes);
     assert.equal(sha256, manifest.sha256);
+    const sourceMapUrl = new URL(manifest.publishedSourceMapUrl);
+    sourceMapUrl.searchParams.set("rau-baseline-check", Date.now().toString());
+    const sourceMapResponse = await fetch(sourceMapUrl, {
+        cache: "no-store",
+        headers: { "cache-control": "no-cache" }
+    });
+    assert.equal(sourceMapResponse.ok, true, "published Classic source map must be readable");
+    const sourceMapBytes = Buffer.from(await sourceMapResponse.arrayBuffer());
+    const sourceMapSha256 = createHash("sha256").update(sourceMapBytes).digest("hex").toUpperCase();
+    assert.equal(sourceMapBytes.length, manifest.publishedSourceMapBytes);
+    assert.equal(sourceMapSha256, manifest.publishedSourceMapSha256);
     result.observedBytes = bytes.length;
     result.observedSha256 = sha256;
+    result.observedSourceMapBytes = sourceMapBytes.length;
+    result.observedSourceMapSha256 = sourceMapSha256;
     result.observedRunId = run.id;
     result.observedRunHead = run.head_sha;
 }
