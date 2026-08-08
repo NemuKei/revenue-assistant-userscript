@@ -1,10 +1,12 @@
 import packageJson from "./package.json" with { type: "json" };
 
+const nextCandidateRevision = "156";
+
 export default {
     id: "revenue-assistant-next",
     name: "Revenue Assistant Next (Candidate)",
     namespace: "https://local.revenue-assistant.dev/userscript/next/",
-    version: packageJson.version,
+    version: `${packageJson.version}.${nextCandidateRevision}`,
     description: "レベニューアシスタント向けNext候補。反映操作なし・競合履歴をbrowser-localに日次保存",
     author: "Revenue Assistant Userscript Workspace",
     match: [

@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 
 import userscript from "../userscript.next.config.mjs";
 import classicUserscript from "../userscript.config.mjs";
+import packageJson from "../package.json" with { type: "json" };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -87,6 +88,16 @@ assert.equal(relativeArtifactPath.startsWith(`dist${path.sep}`), false, "Next ca
 assert.notEqual(userscript.id, classicUserscript.id, "Next artifact id must differ from Classic");
 assert.notEqual(userscript.name, classicUserscript.name, "Next name must differ from Classic");
 assert.notEqual(userscript.namespace, classicUserscript.namespace, "Next namespace must differ from Classic");
+assert.match(
+    userscript.version,
+    new RegExp(`^${escapeRegExp(packageJson.version)}\\.\\d+$`, "u"),
+    "Next candidate version must include a distinct numeric install revision"
+);
+assert.notEqual(
+    userscript.version,
+    packageJson.version,
+    "Next candidate must not reuse the package version after its bytes change"
+);
 assert.notDeepEqual(
     [userscript.namespace, userscript.name],
     [classicUserscript.namespace, classicUserscript.name],
@@ -192,6 +203,10 @@ function normalizeSourceMapPath(value) {
 
 function countMatches(content, pattern) {
     return Array.from(content.matchAll(pattern)).length;
+}
+
+function escapeRegExp(value) {
+    return value.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&");
 }
 
 function parseUserscriptMetadata(content) {

@@ -13,7 +13,7 @@
 ## Product Lines
 
 - `Classic`: 現在公開中の userscript。既存の name / namespace / filename / updateURL / downloadURL / 公開 URL を維持し、Next への cutover までは凍結する。
-- `Next`: 別 identity の未公開 candidate。`userscript.next.config.mjs` と `src/next/entry.ts` を入口にし、`.tmp/vite-next-candidate/revenue-assistant-next.candidate.user.js` へだけ生成する。自己更新 URL と `dist/` 出力を持たない。
+- `Next`: 別 identity の未公開 candidate。`userscript.next.config.mjs` と `src/next/entry.ts` を入口にし、`.tmp/vite-next-candidate/revenue-assistant-next.candidate.user.js` へだけ生成する。自己更新 URL と `dist/` 出力を持たない。`@version` はpackage versionにNext専用の数値revisionを加え、candidateのbyte列を変えた後の手動reinstallで同じversionを再利用しない。
 - Classic と Next を同じ Revenue Assistant tab で同時に実行しない。初期 Next QA は Tampermonkey で Classic を無効化してから reload する。Next は既に描画済みの Classic DOM を検出すると停止するが、現公開 Classic が後から起動する競合までは防げない。
 - Next のcalendar entryは、表示中カレンダーだけへ接続するread-onlyな基準日レンズである。利用者が`基準日を選ぶ`を押した後だけ確認済み2 endpointを各1回GETし、OHはcurrent settings、個人 / 団体は既存booking curve raw cache、競合は既存snapshot cacheから読む。facility、room type、source、current as-of、stay dateのguardを満たさない値を採用せず、競合snapshotの取得時刻を最新性保証や類似判定に使わない。
 - Next のAnalyze entryは、可視な標準競合価格本文の末尾へClassic / Nextのbrowser-local履歴を統合表示する。facility labelが一致する未保存日の現在stay dateだけ、既存の競合一覧 / 競合価格GETを各最大1回使い、部屋 / 食事指定なし・1〜6名のsnapshotをJST日単位でNext専用IndexedDBへ最大1件保存する。週・月・周辺日程のbackground prefetch、raw response保存、Classic DB変更、Revenue Assistant write操作は行わない。

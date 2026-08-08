@@ -366,6 +366,26 @@
   - `target-spec: docs/spec_003_rank_recommendation_signal.md`
   - `decision: D-20260807-003`
 
+### RAU-UX-156 Next candidateのinstall revisionとClassic UI baseline実画面QA
+
+- 状態:
+  - 完了。旧RA userscriptを無効のままNext candidateを通常Chrome / Tampermonkeyへ手動切替し、TopからAnalyzeまでを確認した。Next publish / release、Classic再公開、Revenue Assistant writeは実施していない。
+- 解決した問題:
+  - 更新前後のNext candidateが同じ`@version 0.1.0`だったため、Tampermonkey install完了だけでは旧候補と更新候補を判別できなかった。Nextだけに数値revisionを加えた`0.1.0.156`へ更新し、candidateのbyte列変更後にpackage version単独を再利用しないartifact checkを追加した。
+- 実画面確認:
+  - 再ログイン後のTopで新見出し1、旧見出し0、runtime root / style各1、標準calendar維持を確認した。基準日、room scope、OH / 個人 / 団体 / 競合、初期closedの候補一覧、比較選択、Analyze導線を操作し、Next root自己overflow 0、console warning / error 0だった。
+  - Analyzeの標準3 tabを順に開き、標準booking curve 2 chartを残したNext 2 panel、競合価格履歴4 panel、標準価格推移chartを残したNext 4 panelを確認した。各panelはSVGを持ち、tab切替時は前のNext rootをcleanupし、自己overflow 0だった。
+- 取得・安全確認:
+  - 本日差分は168/168、保存168、重複回避0、error 0で完了した。観測区間のbooking curve GETは開始間隔最小265ms、最大同時2、HTTP error 0で、収束後の同日再選択はbooking curve GET 0だった。確認済みAPIはGETだけで、POST / PUT / PATCH / DELETEは0だった。
+  - 実施設名、room名、価格、在庫、予約・顧客情報、raw response、HAR、credential、screenshotをrepoへ保存していない。
+- ローカル確認:
+  - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、`git diff --check`が通過した。Next candidateはversion `0.1.0.156`、239,001 bytes、SHA-256 `CA2ED015D171A59122C51B5575E77FEA487071488CE3BA1F94E9F9707DB18881`、updateURL / downloadURLなしである。Classic公開baselineは変更していない。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: README.md`
+  - `decision: D-20260808-001`
+
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
