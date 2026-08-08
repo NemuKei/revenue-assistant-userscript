@@ -1,8 +1,8 @@
 # tasks_backlog
 
-## 2026-07-17 Next Design Evidence / Unpublished
+## Next Design / Implementation History
 
-この section は `62f0568〜c9165cf` で試した未公開 Next 設計証拠である。各 task の「完了」「採用」「supersede」は当時の local candidate 内だけを指し、Classic の公開契約を変更しない。既存の料金調整候補を守ること自体ではなく、RM が今日の判断対象を短時間で見つけ、個人需要と団体需要を混同せず、安全に次操作へ進めることを目的に再設計した。比較案として、既存カレンダーに近い「カレンダー左 + `今日の判断` rail 右 + 選択詳細下」を実装したが、Next の現在の主仮説は基準日レンズであり、この rail 案を最終 layout として固定しない。
+この section の冒頭は `62f0568〜c9165cf` で試した未公開 Next 設計証拠であり、後半は採用後の実装・配布履歴である。初期taskの「完了」「採用」「supersede」は当時のlocal candidate内だけを指し、後続のactive decisionと各taskの状態を現在地として読む。既存の料金調整候補を守ること自体ではなく、RM が今日の判断対象を短時間で見つけ、個人需要と団体需要を混同せず、安全に次操作へ進めることを目的に再設計した。過去に試した「カレンダー左 + `今日の判断` rail 右 + 選択詳細下」とClassicの9列候補表は設計履歴であり、Nextの現行入口は基準日から類似日を探すcalendar-first導線である。
 
 ### RAU-UX-138 トップ料金調整候補を calendar decision workspace へ再設計する
 
@@ -411,7 +411,7 @@
 ### RAU-UX-158 Nextをリモート配布しTampermonkey更新を簡略化する
 
 - 状態:
-  - 進行中。利用者はNext専用GitHub Pages URL、manual publication workflow、初回公開、公開版へのTampermonkey切替を明示承認した。
+  - 完了。利用者の明示承認に基づく初回公開まで完了した。現在のTampermonkey実行版はmutable stateのため、次の実画面作業前にfresh確認する。
 - 解決する問題:
   - local candidateは`updateURL` / `downloadURL`を持たず、byte列が変わるたびに手動reinstallが必要である。実行版の更新が作業負担になり、local candidateとTampermonkey installed versionを取り違えやすい。
 - 実装範囲:
@@ -423,11 +423,38 @@
   - Classic再build / 更新、Revenue Assistant write、新規API、取得上限、IndexedDB schema / retention、依存追加、push起点の自動公開、外部server新設。
 - 合格条件:
   - `docs/spec_004_next_distribution.md`の7条件を満たし、公開URLとmanifestのversion / source SHA / byte数 / SHA-256が一致する。Classicのuserscript / source map hashは公開前後で不変とする。
+- 公開結果:
+  - Next公開版はversion `0.2.0.2`、source `085e4c49fff5c90589d271acf7a63927731a1a6b`、241,472 bytes、SHA-256 `64F79717069005455D8CE77F6917FE62361B6AFBBBF807D927512A5EBCBC4652`で、専用URLは`https://nemukei.github.io/revenue-assistant-userscript/next/revenue-assistant-next.user.js`である。
+  - manual workflow run `31234073872`はsuccessとなり、Classic公開baselineのuserscript / source mapは公開前後で同一byte列だった。push起点の自動公開は追加していない。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_004_next_distribution.md`
   - `decision: D-20260808-003`
+
+### RAU-UX-159 Classic保存済みbooking curveをNext差分取得の起点にする
+
+- 状態:
+  - 完了。旧版データのread-through、差分計画、保存時merge、速度設定、契約検査、正本同期をlocalで実装・検証した。新しい公開版へのdeploy、Tampermonkey更新、Revenue Assistant実画面QAは別gateである。
+- 解決する問題:
+  - Classicで取得済みのbooking curveがあってもNext専用DBが空なら同じ範囲を再取得していた。毎回の全件取得を避ける中心対策を、取得開始を遅くすることではなく、保存済み履歴から不足tailだけを補うことへ揃える。
+  - 製品の変更範囲を、booking curveの全件再取得、再描画周辺のbug、表形式の料金調整候補から類似日候補への移行の3点へ絞る。Classicで定着したTop / Analyzeの見た目と操作は、それ以外の問題が確認されるまでbaselineとして維持する。
+- 実装境界:
+  - Nextに同じsourceがない場合だけ、Classic DBの`facility-asof` indexを新しい順に最大4,096件readonlyで確認する。facility、stay date、scope、room group、endpoint、query、schema、as-ofが一致する最新`booking_curve_raw_source:v2`だけをrooms-only形式へ変換する。
+  - Classic DBの作成、upgrade、更新、削除、一括copyは行わない。Next recordがあれば常に優先し、Classic seedは同一画面文脈のmemoryでcoverage判定と表示に使う。当日分があればGET 0、後日不足tailが生じたsourceだけ既存APIを読み、旧prefixを保持したNext recordとして通常保存する。
+  - 宿泊後のClassic sourceはstay-date pointを`0日前`へ戻さず、着地証拠をlandingへ分離する。欠けた`0日前`を`1日前`とACTから補間しない。
+  - request開始間隔は100ms以上、concurrencyは30以下へ戻す。bootstrap最大800、daily delta最大200、重複防止、document / route / facility guard、401 / 403 / 429即停止、連続3 error停止、同一run retryなしは維持する。
+- ローカル確認:
+  - focused checkで、互換Classic v2の最新recordだけを採用し、別施設、v1、不一致keyを拒否し、余分なfieldを保存形式へ持ち込まないことを確認した。当日seedはbooking curve GET 0・Next保存0、翌日文脈は不足tail 1 GET・Next保存1となり、旧範囲の判定は画面文脈ごとに1回だった。宿泊後seedは`0日前`を作らずlandingだけを保持した。
+  - `npm run check:next`、`npm run check`、Classic公開境界、fixture marker、distribution / booking-curve smoke fixture、Next candidate build、Vite build比較、`git diff --check`が通過した。local candidateはversion `0.1.0.159`、245,845 bytes、SHA-256 `3F6CBD5C0267AEDD3FC6F33109992726B03D54FE30F102A1BFB6F2B5617B497F`、updateURL / downloadURLなしである。
+- 未確認 / gate:
+  - Classic保存済み実データを起点にしたGET 0と翌日tailだけの取得、100ms / concurrency 30での所要時間・失敗・画面応答は実画面未確認である。公開・更新後のlive QAではrequest数、開始間隔、最大同時数、HTTP error、console、標準UI非干渉、Revenue Assistant write 0を確認する。
+  - Next publish / deploy、Tampermonkey更新、Classic再公開、新規endpoint、取得範囲やsession上限の拡張、retention変更、Revenue Assistant writeは今回のcommit / pushへ含めない。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260808-004, D-20260808-005`
 
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
@@ -4813,9 +4840,9 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
   - `団体` click 後、segment toggle が `個人=false`、`団体=true` になり、panel title は `全体` と `団体` になった。panel 数は 2 件のままで、`団体` が常時 3 枚目 panel として増えないことを確認した。
   - 同じ確認で page error 0 件、console error 0 件だった。
 
-## Rank Recommendation Bundle
+## Historical Classic Rank Recommendation Bundle
 
-この section は、トップ料金調整候補リスト、推奨ランク方向、user decision、cooldown、rank response、future bulk apply に関する task をまとめる。仕様正本は `docs/spec_003_rank_recommendation_signal.md` とする。
+この section は、Classicのトップ料金調整候補リスト、推奨ランク方向、user decision、cooldown、rank response、future bulk applyに関する完了履歴である。Nextでは表形式の候補listとrow操作を現行入口へ戻さず、calendar-firstの類似日候補とAnalyze導線を正とする。個別の根拠や安全guardを再利用する場合は、`docs/spec_003_rank_recommendation_signal.md`のactive contractへ明示的に採用し直す。
 
 `RAU-FC-01` の rooms-only 予測モデル導入判断とは重なる部分があるが、rank recommendation は UI、候補 lifecycle、user decision、rank history、rank response、future bulk apply を含む独立した bundle として扱う。`RAU-FC-01` の結論後も、first phase では forecast model を必須入力にしない。reference curve からの差分、capacity、remaining rooms、transient / group 分解、直近 rank change、競合価格 snapshot、sales / ADR の保存契約を使い、RM の作業キューを先に作る。
 

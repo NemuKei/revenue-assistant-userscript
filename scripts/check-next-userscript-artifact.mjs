@@ -49,6 +49,7 @@ const expectedSources = [
     "src/next/bookingCurve/bookingCurveAcquisitionCoordinator.ts",
     "src/next/bookingCurve/bookingCurveAcquisitionModel.ts",
     "src/next/bookingCurve/bookingCurveAcquisitionRuntime.ts",
+    "src/next/bookingCurve/bookingCurveLegacySeedReader.ts",
     "src/next/bookingCurve/bookingCurveSourceStore.ts",
     "src/next/entry.ts",
     "src/next/facilityContext.ts",
@@ -150,9 +151,9 @@ assert.equal(
     true,
     "competitor endpoint contract must remain present for cache validation"
 );
-assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 9);
+assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 10);
 assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 4);
-assert.equal(countMatches(artifactText, /\.openCursor\s*\(/gu), 1);
+assert.equal(countMatches(artifactText, /\.openCursor\s*\(/gu), 2);
 assert.match(artifactText, /readonly/u);
 assert.match(artifactText, /readwrite/u);
 assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 3);

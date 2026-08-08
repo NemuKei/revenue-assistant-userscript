@@ -60,12 +60,14 @@ const alwaysForbiddenIndexedDbMethods = new Set([
 const allowedReadonlyIndexedDbMethods = new Set([
     "abort",
     "close",
+    "continue",
     "databases",
     "get",
     "getAll",
     "index",
     "objectStore",
     "open",
+    "openCursor",
     "transaction"
 ]);
 const allowedBoundedStoreIndexedDbMethods = new Set([
@@ -433,7 +435,7 @@ function checkIndexedDbBoundary(sources) {
         "readwrite mode is restricted to the three bounded Next stores"
     );
     assert.equal(forbiddenCalls.length, 0, formatReasonNodeList("forbidden IndexedDB mutation", forbiddenCalls));
-    assert.equal(transactionCalls.length, 9, "reviewed IndexedDB owners must retain nine explicit transactions");
+    assert.equal(transactionCalls.length, 10, "reviewed IndexedDB owners must retain ten explicit transactions");
     for (const transaction of transactionCalls) {
         assert.equal(transaction.node.arguments.length, 2, "IndexedDB transaction must use an explicit two-argument call");
         const mode = getStringLiteralText(transaction.node.arguments[1]);
@@ -461,6 +463,18 @@ function checkIndexedDbBoundary(sources) {
             `IndexedDB getAll must use the reviewed fixed count limit: ${formatNode(getAll)}`
         );
     }
+    const readonlyIndexedDbCalls = indexedDbCalls.filter(
+        (call) => normalizePath(call.source.fileName) === readonlyOwner
+    );
+    const readonlyMethodCounts = new Map();
+    for (const call of readonlyIndexedDbCalls) {
+        readonlyMethodCounts.set(
+            call.member.name,
+            (readonlyMethodCounts.get(call.member.name) ?? 0) + 1
+        );
+    }
+    assert.equal(readonlyMethodCounts.get("openCursor"), 1, "readonly range reader must use one cursor");
+    assert.equal(readonlyMethodCounts.get("continue"), 1, "readonly range cursor must have one advance site");
     const storeGetAllCalls = getAllCalls.filter((call) => normalizePath(call.source.fileName) === snapshotStoreOwner);
     assert.equal(storeGetAllCalls.length, 1, "snapshot store must have one bounded retention read");
     assert.equal(storeGetAllCalls[0].node.arguments.length, 2);
@@ -585,8 +599,9 @@ function checkIndexedDbBoundary(sources) {
         ts.isVariableDeclaration(node)
         && ts.isIdentifier(node.name)
         && (
-            node.name.text === "EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT"
-            || node.name.text === "EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT"
+                node.name.text === "EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT"
+                || node.name.text === "EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT"
+                || node.name.text === "EXISTING_INDEXED_DB_LATEST_RANGE_RECORD_LIMIT"
         )
     ));
     const recordLimits = new Map(recordLimitDeclarations.map((declaration) => [
@@ -595,7 +610,8 @@ function checkIndexedDbBoundary(sources) {
     ]));
     assert.deepEqual(recordLimits, new Map([
         ["EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT", 1],
-        ["EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT", 512]
+        ["EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT", 512],
+        ["EXISTING_INDEXED_DB_LATEST_RANGE_RECORD_LIMIT", 4_096]
     ]), "readonly IndexedDB reads must retain reviewed fixed materialization limits");
     const retentionDeclaration = collectNodes(getProgramSourceFile(snapshotStorePath), (node) => (
         ts.isVariableDeclaration(node)

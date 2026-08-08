@@ -10,6 +10,14 @@ const model = await importBundledTypeScript(
     "../src/next/bookingCurve/bookingCurveAcquisitionModel.ts",
     import.meta.url
 );
+const contractModule = await importBundledTypeScript(
+    "../src/bookingCurveRawSourceContract.ts",
+    import.meta.url
+);
+const legacySeedModule = await importBundledTypeScript(
+    "../src/next/bookingCurve/bookingCurveLegacySeedReader.ts",
+    import.meta.url
+);
 const storeModule = await importBundledTypeScript(
     "../src/next/bookingCurve/bookingCurveSourceStore.ts",
     import.meta.url
@@ -29,8 +37,8 @@ const transportModule = await importBundledTypeScript(
 
 assert.equal(model.NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT, 800);
 assert.equal(model.NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT, 200);
-assert.equal(model.NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS, 250);
-assert.equal(model.NEXT_BOOKING_CURVE_CONCURRENCY, 2);
+assert.equal(model.NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS, 100);
+assert.equal(model.NEXT_BOOKING_CURVE_CONCURRENCY, 30);
 assert.match(
     coordinatorSource,
     /const NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD = 0\.8;/u
@@ -174,6 +182,62 @@ assert.equal(
     }).length,
     0
 );
+const classicSeedRecords = legacySeedModule.buildNextBookingCurveLegacySeedRecords({
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    records: [
+        buildClassicRawSourceRecord({
+            asOfDate: "20260722",
+            facilityId: context.facilityId,
+            fetchedAt: "2026-07-22T01:00:00.000Z",
+            response: compactResponse,
+            task: currentTask
+        }),
+        buildClassicRawSourceRecord({
+            asOfDate: "20260723",
+            facilityId: context.facilityId,
+            fetchedAt: "2026-07-23T01:00:00.000Z",
+            response: {
+                ...compactResponse,
+                secret_field: "must-not-survive"
+            },
+            task: currentTask
+        }),
+        buildClassicRawSourceRecord({
+            asOfDate: "20260723",
+            facilityId: "yad:other",
+            fetchedAt: "2026-07-23T01:00:00.000Z",
+            response: compactResponse,
+            task: currentTask
+        }),
+        {
+            ...buildClassicRawSourceRecord({
+                asOfDate: "20260723",
+                facilityId: context.facilityId,
+                fetchedAt: "2026-07-23T01:00:00.000Z",
+                response: compactResponse,
+                task: currentTask
+            }),
+            schemaVersion: "booking_curve_raw_source:v1"
+        }
+    ],
+    tasks: [currentTask]
+});
+assert.equal(classicSeedRecords.length, 1);
+assert.equal(classicSeedRecords[0].asOfDate, "20260723");
+assert.equal(classicSeedRecords[0].sourceKey, currentTask.sourceKey);
+assert.equal("secret_field" in classicSeedRecords[0].response, false);
+assert.equal(storeModule.isNextBookingCurveSourceRecord(classicSeedRecords[0]), true);
+assert.equal(
+    model.selectNextBookingCurveDueTasks({
+        asOfDate: "20260723",
+        existingRecords: classicSeedRecords,
+        limit: 10,
+        tasks: [currentTask]
+    }).length,
+    0,
+    "a compatible Classic source must satisfy the same-day Next acquisition plan"
+);
 const overdueRecord = {
     ...freshRecord,
     asOfDate: "20260701",
@@ -223,6 +287,33 @@ assert.deepEqual(completedRecord.landing, {
     observedAsOfDate: "20260723",
     transient: 7
 });
+const completedClassicSeed = legacySeedModule.buildNextBookingCurveLegacySeedRecords({
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    records: [buildClassicRawSourceRecord({
+        asOfDate: "20260723",
+        facilityId: context.facilityId,
+        fetchedAt: "2026-07-23T01:00:00.000Z",
+        response: {
+            stay_date: "20260722",
+            booking_curve: [{
+                date: "2026-07-22",
+                all: { this_year_room_sum: 9 },
+                transient: { this_year_room_sum: 7 },
+                group: { this_year_room_sum: 2 }
+            }]
+        },
+        task: completedTask
+    })],
+    tasks: [completedTask]
+})[0];
+assert.notEqual(completedClassicSeed, undefined);
+assert.deepEqual(
+    completedClassicSeed.response.booking_curve,
+    [],
+    "a post-stay Classic source must not recreate an exact zero-day point"
+);
+assert.deepEqual(completedClassicSeed.landing, completedRecord.landing);
 assert.equal(model.isNextBookingCurveRecordUsable(completedRecord, "20260820"), true);
 assert.equal(
     model.selectNextBookingCurveDueTasks({
@@ -438,6 +529,75 @@ const fakeWindow = {
     navigator: { locks: undefined },
     setTimeout
 };
+const legacySeedStoreRecords = [];
+const legacySeedRequests = [];
+let legacySeedReadCount = 0;
+const legacySeedCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    legacySeedReader: {
+        async readLatest() {
+            legacySeedReadCount += 1;
+            return classicSeedRecords;
+        }
+    },
+    now: () => new Date("2026-07-23T03:00:00.000Z"),
+    store: {
+        async addAndPrune(records) {
+            legacySeedStoreRecords.push(...records);
+            return { addedCount: records.length, deletedCount: 0 };
+        },
+        async readLatestBySourceKeys(sourceKeys) {
+            return legacySeedStoreRecords.filter((record) => sourceKeys.includes(record.sourceKey));
+        }
+    },
+    transport: {
+        async read(request) {
+            legacySeedRequests.push(request);
+            return {
+                stay_date: request.stayDate,
+                booking_curve: [{
+                    date: "2026-07-23",
+                    all: { this_year_room_sum: 6 },
+                    transient: { this_year_room_sum: 5 },
+                    group: { this_year_room_sum: 1 }
+                }]
+            };
+        }
+    },
+    windowHost: fakeWindow
+});
+const legacySeedContext = {
+    ...context,
+    roomScopes: [roomScopes[1]],
+    visibleStayDates: ["20260723"]
+};
+const signal = new AbortController().signal;
+await legacySeedCoordinator.ensureCurrent({
+    context: legacySeedContext,
+    signal,
+    stayDate: "20260723"
+});
+assert.equal(legacySeedRequests.length, 0, "same-day Classic seed must avoid a duplicate GET");
+assert.equal(legacySeedStoreRecords.length, 0, "read-through seeding must not bulk-copy Classic data");
+assert.equal(
+    (await legacySeedCoordinator.readLatest([currentTask.sourceKey])).length,
+    1,
+    "a compatible Classic seed must remain available to the current UI without a bulk copy"
+);
+await legacySeedCoordinator.ensureCurrent({
+    context: { ...legacySeedContext, asOfDate: "20260724" },
+    signal,
+    stayDate: "20260723"
+});
+assert.equal(legacySeedRequests.length, 1, "the next day must request only the missing tail");
+assert.equal(legacySeedStoreRecords.length, 1, "a fetched delta promotes the source into the Next store");
+assert.equal(legacySeedStoreRecords[0].firstObservedAsOfDate, "20260723");
+assert.equal(
+    legacySeedReadCount,
+    2,
+    "the legacy range is evaluated once per acquisition context, not once per stored delta"
+);
+legacySeedCoordinator.stop();
+
 const coordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
     now: () => new Date("2026-07-23T03:00:00.000Z"),
     store: fakeStore,
@@ -458,7 +618,6 @@ const coordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinat
     windowHost: fakeWindow
 });
 const oneScopeContext = { ...context, roomScopes: [roomScopes[0]], visibleStayDates: ["20260723"] };
-const signal = new AbortController().signal;
 await coordinator.ensureCurrent({
     context: oneScopeContext,
     signal,
@@ -575,5 +734,30 @@ assert.equal(rateLimitedStates.at(-1).status, "stopped");
 assert.equal(rateLimitedStates.at(-1).stopReason, "http-429");
 assert.equal(rateLimitedStates.at(-1).requestCount, 1, "429 must stop without an automatic retry");
 rateLimitedCoordinator.stop();
+
+function buildClassicRawSourceRecord(options) {
+    const roomGroupId = options.task.roomGroupId;
+    return {
+        cacheKey: contractModule.buildBookingCurveRawSourceCacheKey({
+            facilityId: options.facilityId,
+            stayDate: options.task.stayDate,
+            asOfDate: options.asOfDate,
+            scope: options.task.scope,
+            ...(roomGroupId === null ? {} : { roomGroupId }),
+            endpoint: contractModule.BOOKING_CURVE_ENDPOINT,
+            query: options.task.query
+        }),
+        facilityId: options.facilityId,
+        stayDate: options.task.stayDate,
+        asOfDate: options.asOfDate,
+        scope: options.task.scope,
+        roomGroupId,
+        endpoint: contractModule.BOOKING_CURVE_ENDPOINT,
+        query: options.task.query,
+        fetchedAt: options.fetchedAt,
+        schemaVersion: contractModule.BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION,
+        response: options.response
+    };
+}
 
 console.log("Next booking curve acquisition checks passed");

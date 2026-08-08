@@ -194,8 +194,7 @@ BCL-tuned first wave の定義:
 - Revenue Assistant API が過去 stay_date の `0日前` 値を実績確定後の値で上書きして返す場合、raw source 保存開始前の過去日程については本当の `0日前` と `ACT` を後から分離できない。この制約は仕様上の欠損として扱い、推測で補完しない。
 - `直近型カーブ` と `季節型カーブ` の `ACT` がどの入力値から作られているかを diagnostics または調査ログで確認できるようにする。`0日前` と `ACT` が同じ値から作られているなら、`0日前` から `ACT` への線は平坦になるはずである。値が下がる、または不自然に跳ねる場合は、算出ロジック、入力 source の混在、segment 解決、API response の上書き仕様を調査対象にする。
 - reference curve の `0日前` は、core logic と IndexedDB の derived reference curve cache では推測補完しない。真の `0日前` を分離できない場合は、算出値としては欠損または diagnostics 上の制約として扱う。
-- 画面表示では、参考線の `0日前` が欠損している、または `0日前` と `ACT` が同値で `1日前` と `ACT` に差があるため API 側の実績上書き混入が疑われる場合に限り、表示層で `1日前` と `ACT` の線形補間値を描画してよい。初期実装では `0日前 = round(1日前 + (ACT - 1日前) * 0.5)` とし、表示補間値は整数室数に丸める。この補間値は current、直近同曜日補助線、core logic、derived reference curve cache、予測評価 dataset には使わない。
-- 表示補間した `0日前` は、Tooltip または diagnostics 表示で補間値であることを明示する。利用者が実観測値、core 算出値、表示補間値を混同しないことを優先する。
+- この旧一般節で許容していた`1日前`と`ACT`からの表示補間はClassicの履歴説明に限定する。Nextでは後発の`D-20260723-009`と本specの`Next Booking Curve Bootstrap / Daily Delta`を優先し、欠けた`0日前`を表示層でも補間しない。
 
 同曜日補助線:
 
@@ -210,7 +209,7 @@ BCL-tuned first wave の定義:
 
 ## Next Booking Curve Bootstrap / Daily Delta
 
-このsectionはClassicのhigh-throughput warm cacheを延命するものではなく、Next単独運用でcurrent、直近型reference、基準日レンズに必要なrooms-only sourceを再取得できるようにする独立契約である。Classicの35ms開始間隔、最大30並列、同曜日 / 季節型 / 全room reference一括queueはNextへ移植しない。
+このsectionはClassicの全件warm cacheを延命するものではなく、Nextでcurrent、直近型reference、基準日レンズに必要なrooms-only sourceを保存済みデータから差分補充する独立契約である。Classicの同曜日 / 季節型 / 全room reference一括queueは移植しない。取得開始の速度は旧実運用範囲を使えるが、対象source、session上限、差分判定、停止条件はNextのbounded contractを正とする。
 
 ### 取得対象と優先順
 
@@ -223,12 +222,19 @@ BCL-tuned first wave の定義:
 
 ### 初回bootstrapと日々の差分
 
-- 初めて開く施設ではNext専用storeに有効sourceがないためbootstrap modeとする。必要sourceに対する有効source coverageが80%未満の間は、最大800 request / sessionで止め、未完了分を保存済みsourceから次の可視sessionで再開する。したがってbootstrapは初回の1 sessionだけとは限らない。
+- Next storeと互換Classic sourceの両方に有効sourceがない施設ではbootstrap modeとする。必要sourceに対する有効source coverageが80%未満の間は、最大800 request / sessionで止め、未完了分を保存済みsourceから次の可視sessionで再開する。したがってbootstrapは初回の1 sessionだけとは限らない。
 - 有効source coverageが80%以上に達した後はdaily delta modeとし、新しく表示範囲へ入ったstay date、未保存source、前回取得後にcurrent tailが新しく観測可能になったsource、または直近型で次のlead-time目盛りが観測可能になったsourceだけを最大200 request / sessionで補う。APIがcumulative responseだけを返す場合もrequest自体を部分responseへ変えたとはみなさず、local mergeでは最後に保存したbooking curve pointの日付より後のpointだけを追加する。前回source as-ofよりpoint終端が遅れていた場合も、次のresponseでその遅延tailを取り込む。
 - 保存済みpointには取得後の日数による期限を設けない。後続responseが同じ`booking_curve[].date`へ異なるroomsを返しても、先に保存したpointを置き換えず、差分補充の対象をその観測日より後へ限定する。
 - current taskは、future / 当日stay dateなら現在の`as_of_date`までのtailが未観測の場合にdueとする。past stay dateは、分離したlandingを1回保存できた時点で完了し、その後は年齢を理由に再取得しない。
 - 直近型reference taskは、そのsourceが新しいlead-time目盛りへ到達した場合、またはpast stay dateのlandingが未保存の場合だけdueとする。固定7〜13日refreshや14日expiryを設けず、まだ必要な目盛りが増えていないfuture sourceを毎日再取得しない。
 - 類似比較のcurrent根拠は当日`as_of_date`まで揃ったsourceだけをreadyとする。過去prefixは破棄せず差分補充の起点として保持するが、本日のtailに見せない。直近型referenceは必要な観測点が保存済みならsource取得日の古さにかかわらず再利用できる。
+
+### Classic保存済みsourceのread-through
+
+- Next storeに同じsource keyの有効recordがない場合だけ、Classic IndexedDB `revenue-assistant-booking-curve-sources` / `booking-curve-raw-sources`の`facility-asof` indexをreadonlyで確認する。対象施設の新しいrecordから最大4,096件に限定し、database作成、version upgrade、全件materialize、Classic recordの更新・削除を行わない。
+- 採用できるのは`booking_curve_raw_source:v2`で、facility、stay date、scope、room group、endpoint、query、現在以前のas-of、cache keyが今回taskと一致する最新recordだけとする。sales、ADR、過去年値、未確認fieldはNext seedへ持ち込まず、`max_room_count`と`all` / `transient` / `group`の`this_year_room_sum`だけへ再compactする。不一致、破損、上限外はseedにせず、通常の不足sourceとして扱う。
+- Classic seedは一括copyせず、現在runtimeのcoverage判定と表示でmemory再利用する。当日分まで揃っていれば同じsourceのGETを省略する。後日tailまたは新しいreference tickが必要になったsourceだけAPIから取得し、Classic prefixを保持したNext recordとして既存storeへ保存する。Next recordが存在するsourceではClassicを混ぜず、Nextを優先する。
+- 宿泊日後に初めて取得されたClassic seedは、response内のstay-date pointを真の`0日前`とみなさない。stay-date pointを除いた過去prefixと、宿泊後に確認できたlandingだけを分離して使う。
 
 ### `0日前`と`ACT`の分離
 
@@ -239,7 +245,7 @@ BCL-tuned first wave の定義:
 
 ### 負荷、停止、再開
 
-- `/api/v4/booking_curve`のrequest開始間隔は250ms以上、同時実行数は2以下とする。Revenue Assistant本体の標準requestはこのcountへ含めない。
+- `/api/v4/booking_curve`のrequest開始間隔は100ms以上、同時実行数は30以下とする。Revenue Assistant本体の標準requestはこのcountへ含めない。総request数はClassic seed、Next store、due判定、session上限で先に抑える。
 - coverage 80%未満のbounded bootstrapは最大800 request / session、coverage 80%以上のdaily deltaは最大200 request / sessionとする。選択中currentはqueue先頭へ上げるが、同時実行数と開始間隔を迂回しない。
 - HTTP 401はログイン確認、403は権限 / 施設確認、429はrate limitとしてqueueを即停止する。同一run内の自動retryは行わない。その他のrequest / validation / storage errorは記録して次taskへ進められるが、連続3 errorで停止する。
 - document hidden、calendar / Analyze以外へのroute変更、facility label不一致、facility / as-of変更、runtime停止では未完了requestをabortし、次の安全な可視contextで保存済みsourceから再計画する。
@@ -248,6 +254,7 @@ BCL-tuned first wave の定義:
 ### Next専用保存契約
 
 - 保存先はNext専用IndexedDB `revenue-assistant-next-booking-curve-sources`、store `booking-curve-sources`、version 1とし、Classic `revenue-assistant-booking-curve-sources`を変更しない。
+- Classic seedを当日coverageへ利用しただけではNext storeへ一括保存しない。新しいtailをAPIから取得したsourceだけ、既存のNext保存処理でprefixとtailを1 recordへまとめる。
 - 保存payloadはfacility、stay date、scope、room group、endpoint、query、最初と最新のsource as-of、取得時刻、`max_room_count`、`booking_curve[].date`と`all` / `transient` / `group`の`this_year_room_sum`、分離したlandingへ限定する。sales、ADR、過去年値、raw response、request / response body、HAR、Cookie、token、credential、予約・顧客情報は保存しない。
 - record keyはsource keyと最新source as-ofから決定し、Web Locksが利用可能な場合はfacility単位exclusive lock、IndexedDBは`add` constraintで重複を防ぐ。保存成功後は、それ以前のpointと最初のsource as-ofを内包した同じsourceの最新1件、および施設単位最大4,096件だけを残す。過去pointを含まない状態で旧recordだけを削除せず、削除対象はNext store内の超過recordに限定する。
 - 進捗は`初回準備`または`本日差分`、処理件数、保存、重複保存回避、error、停止理由だけを画面内の非干渉領域へ表示する。bootstrapのsession上限で選んだqueueを処理し終えた場合は、全sourceの準備完了と誤読させず`今回分完了`とし、未確認の残りは次の可視sessionで確認することを表示する。施設名、stay date、room group名、rooms値、response内容は進捗表示やconsoleへ出さない。
@@ -478,7 +485,7 @@ Next booking curve clean-room contract (`RAU-UX-150` 第三段階A):
 - facility identity は既存の `GET /api/v2/yad/info`、room-group mapping は既存の `GET /api/v1/suggest/output/current_settings` を、表示中stay dateに対して各最大1回だけ使う。画面の最終データ更新日を読めない、facility labelが一致しない、stay dateまたはroom-group idが一致しない場合は推測や名称fallbackで補わない。
 - current / reference の入力は既存 `revenue-assistant-booking-curve-sources` database、`booking-curve-raw-sources` storeの `booking_curve_raw_source:v2` recordに限定する。選択中scopeの current stay date、直近型候補日、季節型候補日のdeterministic primary keyだけを1回の `readonly` transactionで読み、database upgrade、cursor scan、`GET /api/v4/booking_curve`、隣接日や他room-groupのbackground prefetch、derived cache write、storage writeを追加しない。
 - 初期scopeはホテル全体とし、room-groupは確認済みidを持つtoggleで利用者が選んだ場合だけ遅延読込する。同一stay date内で読み終えたscopeはmemory cacheしてよいが、route / stay date離脱後へ持ち越さない。room-group名だけからidを推測せず、全room-groupのreferenceを先読みしない。
-- 選択中scopeは `全体` と `個人` の2 panelを標準表示し、second panelだけを `個人 / 団体` toggleで切り替える。個人は`transient`、団体は`group`の直接値だけを使い、`all - group`で欠損を推測しない。current、`直近型`、`季節型` は同じ `360日前 ... 0日前 / ACT` 軸と共通の室数目盛を使い、reference系列は個別toggleで表示を切り替える。`0` は有効値、`null` は欠損として線を分断し、未着地stay dateの `ACT` は空のまま扱う。referenceの0日前を表示上補間した場合はtooltipで補間値と明示し、core inputやcacheへ書き戻さない。
+- 選択中scopeは `全体` と `個人` の2 panelを標準表示し、second panelだけを `個人 / 団体` toggleで切り替える。個人は`transient`、団体は`group`の直接値だけを使い、`all - group`で欠損を推測しない。current、`直近型`、`季節型` は同じ `360日前 ... 0日前 / ACT` 軸と共通の室数目盛を使い、reference系列は個別toggleで表示を切り替える。`0` は有効値、`null` は欠損として線を分断し、未着地stay dateの `ACT` は空のまま扱う。Nextではreferenceの`0日前`も宿泊日当日の実観測だけを使い、欠損時は線を分断して補間しない。
 - `D-20260808-002`以降の補助表示は、Classicで定着した可視UI全体をbaselineとする。対象scopeを含む見出し、短いdata source note、scope / `個人・団体` / 参考線のcompact toggleを同じheader内へ置き、toggle group名は画面上へ常時表示せずaccessible nameとして残す。その直後に凡例、`全体`と選択中の`個人 / 団体` chartを置き、Next固有の`閲覧のみ`badgeとpanel前の診断文は置かない。取得条件、系列診断、欠損説明、rank変更履歴はchart後の`データ条件とランク履歴`へ初期折りたたみで残し、情報自体は削除しない。
 - 680px以下では全pointと`0日前` / `ACT`の区別、tooltip、accessible tableを維持したまま、横軸の表示labelだけを`360 / 180 / 90 / 30 / 7 / ACT`へ間引く。横軸から`0日前`のlabelを省いても`0日前`と`ACT`は別pointのまま扱い、同じ表示labelへまとめない。狭幅でもNext root自身の横overflowを0、toggleのtap targetを44px以上とする。
 - SVG pointはmouseとkeyboard focusの双方で `何日前 / current / 直近型 / 季節型` を確認できる。凡例、最終データ更新日、reference source日数、欠損理由はhoverに依存させず表示し、current cacheなし、reference source不足、as-of不一致、IndexedDB unavailable / errorを同じ空表示へ潰さない。680px以下では2 panelを縦積みにし、toggleは44px以上、Next root自身の横overflowは0とする。

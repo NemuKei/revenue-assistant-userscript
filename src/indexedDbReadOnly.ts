@@ -27,8 +27,18 @@ export interface ExistingIndexedDbSeriesReadOptions {
     key: IDBValidKey;
 }
 
+export interface ExistingIndexedDbLatestRangeReadOptions {
+    databaseName: string;
+    databaseVersion: number;
+    storeName: string;
+    indexName: string;
+    lowerBound: IDBValidKey;
+    upperBound: IDBValidKey;
+}
+
 const EXISTING_INDEXED_DB_RECORDS_PER_INDEX_KEY_LIMIT = 1;
 const EXISTING_INDEXED_DB_SERIES_RECORD_LIMIT = 512;
+const EXISTING_INDEXED_DB_LATEST_RANGE_RECORD_LIMIT = 4_096;
 
 export async function readExistingIndexedDbRecordsByIndexKeys<T>(
     options: ExistingIndexedDbReadOptions
@@ -174,6 +184,71 @@ export async function readExistingIndexedDbRecordSeriesByIndexKey<T>(
     }
 }
 
+export async function readExistingIndexedDbLatestRecordsByIndexRange<T>(
+    options: ExistingIndexedDbLatestRangeReadOptions
+): Promise<ExistingIndexedDbReadResult<T>> {
+    if (typeof window === "undefined" || !("indexedDB" in window)) {
+        return { status: "unavailable", reason: "indexeddb-unavailable" };
+    }
+    if (typeof window.indexedDB.databases !== "function") {
+        return { status: "unavailable", reason: "database-list-unavailable" };
+    }
+
+    let databases: IDBDatabaseInfo[];
+    try {
+        databases = await window.indexedDB.databases();
+    } catch {
+        return { status: "error", reason: "database-list-failed" };
+    }
+    const databaseInfo = databases.find((database) => database.name === options.databaseName);
+    if (databaseInfo === undefined) {
+        return { status: "missing", reason: "database-missing" };
+    }
+    if (
+        typeof databaseInfo.version === "number"
+        && databaseInfo.version !== options.databaseVersion
+    ) {
+        return { status: "missing", reason: "version-mismatch" };
+    }
+
+    let databaseResult: Awaited<ReturnType<typeof openExistingDatabase>>;
+    try {
+        databaseResult = await openExistingDatabase(options.databaseName);
+    } catch {
+        return { status: "error", reason: "database-open-failed" };
+    }
+    if (!databaseResult.ok) {
+        return databaseResult.result;
+    }
+    const database = databaseResult.database;
+    try {
+        if (database.version !== options.databaseVersion) {
+            return { status: "missing", reason: "version-mismatch" };
+        }
+        if (!database.objectStoreNames.contains(options.storeName)) {
+            return { status: "missing", reason: "store-missing" };
+        }
+        const transaction = database.transaction(options.storeName, "readonly");
+        const completion = waitForReadonlyTransaction(transaction);
+        const store = transaction.objectStore(options.storeName);
+        if (!store.indexNames.contains(options.indexName)) {
+            transaction.abort();
+            await completion.catch(() => undefined);
+            return { status: "missing", reason: "index-missing" };
+        }
+        const recordsPromise = readLatestRecordsByRange<T>(
+            store.index(options.indexName),
+            IDBKeyRange.bound(options.lowerBound, options.upperBound)
+        );
+        const [records] = await Promise.all([recordsPromise, completion]);
+        return { status: "ready", records };
+    } catch {
+        return { status: "error", reason: "read-failed" };
+    } finally {
+        database.close();
+    }
+}
+
 async function readExistingIndexedDbStore<T>(
     options: ExistingIndexedDbPrimaryKeyReadOptions,
     read: (store: IDBObjectStore) => Promise<T[]>
@@ -303,6 +378,31 @@ function readRecordsByKey<T>(index: IDBIndex, key: IDBValidKey): Promise<T[]> {
         };
         request.onerror = () => {
             reject(request.error ?? new Error("readonly IndexedDB request failed"));
+        };
+    });
+}
+
+function readLatestRecordsByRange<T>(
+    index: IDBIndex,
+    range: IDBKeyRange
+): Promise<T[]> {
+    return new Promise((resolve, reject) => {
+        const records: T[] = [];
+        const request = index.openCursor(range, "prev");
+        request.onsuccess = () => {
+            const cursor = request.result;
+            if (
+                cursor === null
+                || records.length >= EXISTING_INDEXED_DB_LATEST_RANGE_RECORD_LIMIT
+            ) {
+                resolve(records);
+                return;
+            }
+            records.push(cursor.value as T);
+            cursor.continue();
+        };
+        request.onerror = () => {
+            reject(request.error ?? new Error("failed to read latest IndexedDB range"));
         };
     });
 }

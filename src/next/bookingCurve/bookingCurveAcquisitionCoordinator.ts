@@ -24,6 +24,10 @@ import {
     type NextBookingCurveSourceRecord,
     type NextBookingCurveSourceStore
 } from "./bookingCurveSourceStore";
+import {
+    createNextBookingCurveLegacySeedReader,
+    type NextBookingCurveLegacySeedReader
+} from "./bookingCurveLegacySeedReader";
 
 const NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD = 0.8;
 const NEXT_BOOKING_CURVE_CONSECUTIVE_ERROR_LIMIT = 3;
@@ -83,6 +87,7 @@ interface QueuedTask {
 }
 
 export interface CreateNextBookingCurveAcquisitionCoordinatorOptions {
+    legacySeedReader?: NextBookingCurveLegacySeedReader;
     now?: () => Date;
     store?: NextBookingCurveSourceStore;
     transport?: NextReadTransport;
@@ -95,8 +100,11 @@ export function createNextBookingCurveAcquisitionCoordinator(
     const windowHost = options.windowHost ?? window;
     const transport = options.transport ?? createBrowserNextReadTransport(windowHost);
     const store = options.store ?? createBrowserNextBookingCurveSourceStore(windowHost);
+    const legacySeedReader = options.legacySeedReader
+        ?? createNextBookingCurveLegacySeedReader();
     const now = options.now ?? (() => new Date());
     const listeners = new Set<(state: NextBookingCurveAcquisitionState) => void>();
+    const legacySeedBySourceKey = new Map<string, NextBookingCurveSourceRecord>();
     const pendingByTaskKey = new Map<string, QueuedTask>();
     const queue: QueuedTask[] = [];
     let state: NextBookingCurveAcquisitionState = createInitialState();
@@ -122,7 +130,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 ...(scopeKeys === undefined ? {} : { scopeKeys }),
                 stayDate
             });
-            const existing = await safeReadLatest(tasks.map((task) => task.sourceKey));
+            const existing = await readExistingForTasks({ context, tasks });
             const dueTasks = selectNextBookingCurveDueTasks({
                 asOfDate: context.asOfDate,
                 existingRecords: existing,
@@ -134,8 +142,19 @@ export function createNextBookingCurveAcquisitionCoordinator(
             await Promise.all(pending.map((promise) => raceWithAbort(promise, signal)
                 .catch(() => undefined)));
         },
-        readLatest(sourceKeys) {
-            return safeReadLatest(sourceKeys);
+        async readLatest(sourceKeys) {
+            const nextRecords = await safeReadLatest(sourceKeys);
+            const nextSourceKeys = new Set(nextRecords.map((record) => record.sourceKey));
+            return [
+                ...nextRecords,
+                ...Array.from(new Set(sourceKeys)).flatMap((sourceKey) => {
+                    if (nextSourceKeys.has(sourceKey)) {
+                        return [];
+                    }
+                    const legacySeed = legacySeedBySourceKey.get(sourceKey);
+                    return legacySeed === undefined ? [] : [legacySeed];
+                })
+            ];
         },
         async startBackground(context) {
             if (stopped) {
@@ -150,7 +169,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
             };
             emit();
             const tasks = buildNextBookingCurveBackgroundTasks(context);
-            const existing = await safeReadLatest(tasks.map((task) => task.sourceKey));
+            const existing = await readExistingForTasks({ context, tasks });
             if (stopped || generation !== planningGeneration || !matchesContext(context)) {
                 return;
             }
@@ -198,7 +217,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 scopeKey,
                 targetStayDate
             });
-            const existing = await safeReadLatest(tasks.map((task) => task.sourceKey));
+            const existing = await readExistingForTasks({ context, tasks });
             const remainingBudget = Math.max(0, sessionRequestLimit - state.requestCount);
             const dueTasks = selectNextBookingCurveDueTasks({
                 asOfDate: context.asOfDate,
@@ -233,6 +252,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         stop() {
             stopped = true;
             suspendRun("stopped");
+            legacySeedBySourceKey.clear();
             listeners.clear();
         }
     };
@@ -249,6 +269,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         activeController = new AbortController();
         currentContextKey = contextKey;
         currentFacilityId = context.facilityId;
+        legacySeedBySourceKey.clear();
         if (facilityChanged) {
             state = createInitialState();
         } else {
@@ -388,7 +409,9 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 throw new DOMException("aborted", "AbortError");
             }
             const result = await withFacilityLock(facilityId, signal, async () => {
-                const previousRecord = (await safeReadLatest([queued.task.sourceKey]))[0];
+                const previousRecord = (await readNextOrCachedLegacySeed(
+                    queued.task.sourceKey
+                ))[0];
                 const record = createNextBookingCurveSourceRecord({
                     asOfDate,
                     facilityId,
@@ -484,6 +507,61 @@ export function createNextBookingCurveAcquisitionCoordinator(
         } catch {
             return [];
         }
+    }
+
+    async function readExistingForTasks(options: {
+        context: NextBookingCurveAcquisitionContext;
+        tasks: readonly NextBookingCurveAcquisitionTask[];
+    }): Promise<NextBookingCurveSourceRecord[]> {
+        const nextRecords = await safeReadLatest(
+            options.tasks.map((task) => task.sourceKey)
+        );
+        const nextSourceKeys = new Set(nextRecords.map((record) => record.sourceKey));
+        const cachedLegacyRecords: NextBookingCurveSourceRecord[] = [];
+        const missingTasks = options.tasks.filter((task) => {
+            if (nextSourceKeys.has(task.sourceKey)) {
+                return false;
+            }
+            const cachedLegacyRecord = legacySeedBySourceKey.get(task.sourceKey);
+            if (cachedLegacyRecord !== undefined) {
+                cachedLegacyRecords.push(cachedLegacyRecord);
+                return false;
+            }
+            return true;
+        });
+        if (missingTasks.length === 0) {
+            return [...nextRecords, ...cachedLegacyRecords];
+        }
+        try {
+            const requestedSourceKeys = new Set(missingTasks.map((task) => task.sourceKey));
+            const legacyRecords = (await legacySeedReader.readLatest({
+                asOfDate: options.context.asOfDate,
+                facilityId: options.context.facilityId,
+                tasks: missingTasks
+            })).filter((record) => (
+                requestedSourceKeys.has(record.sourceKey)
+                && record.facilityId === options.context.facilityId
+                && record.asOfDate <= options.context.asOfDate
+                && isNextBookingCurveSourceRecord(record)
+            ));
+            for (const record of legacyRecords) {
+                legacySeedBySourceKey.set(record.sourceKey, record);
+            }
+            return [...nextRecords, ...cachedLegacyRecords, ...legacyRecords];
+        } catch {
+            return [...nextRecords, ...cachedLegacyRecords];
+        }
+    }
+
+    async function readNextOrCachedLegacySeed(
+        sourceKey: string
+    ): Promise<NextBookingCurveSourceRecord[]> {
+        const nextRecords = await safeReadLatest([sourceKey]);
+        if (nextRecords.length > 0) {
+            return nextRecords;
+        }
+        const legacySeed = legacySeedBySourceKey.get(sourceKey);
+        return legacySeed === undefined ? [] : [legacySeed];
     }
 
     function withFacilityLock<T>(

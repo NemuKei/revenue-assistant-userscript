@@ -2,9 +2,9 @@
 
 ## Purpose
 
-この仕様は、Revenue Assistant のトップ画面と Analyze 画面に、料金調整候補を `stayDate x roomGroup` 単位で提示するための外部挙動、入力、判定単位、状態管理、UI 契約、未確認論点を定義する。
+この仕様は、Revenue Assistant のトップ画面で基準日から類似日候補を見つけ、Analyze 画面で詳細根拠を確認するための外部挙動、入力、判定単位、状態管理、UI 契約、未確認論点を定義する。旧版の表形式料金調整候補は履歴として残すが、Nextの入口契約にはしない。
 
-最初の目的は、自動価格変更ではなく、RM（Revenue Manager）が今日確認すべき作業キューを作ることである。
+最初の目的は、自動価格変更ではなく、RM（Revenue Manager）が調整を検討する日をカレンダーから短時間で見つけ、必要なときだけ部屋タイプ別根拠へ進めることである。
 
 この仕様で扱う recommendation は、「この価格が正しい」と断定するものではない。利用者に対して、次のような判断支援を行う。
 
@@ -17,12 +17,12 @@ first phase では、推奨レート金額を出さない。Revenue Assistant �
 
 ## Product Line Applicability
 
-この仕様には Classic の現公開契約と、未公開の Next 設計証拠が併存する。移行完了までは次の境界を優先する。
+この仕様には Classic の凍結済み契約、Nextの現行契約、過去の未公開設計証拠が併存する。記述が競合する場合は次の順で適用する。
 
-- `Classic`: 現公開 userscript。トップ画面の有効な公開契約は 2026-07-17 より前のカレンダー下 9 列 list / row preview である。Analyze、booking curve、競合価格、価格推移 graph、OH / 個人 / 団体、単一行 rank 調整操作と guard、`様子見`、`対応不要` を cutover 前の parity gate とする。
-- `Next`: 別 identity / artifact の未公開 candidate。calendar decision workspace と基準日レンズは Next の設計証拠であり、Classic へ公開済みとは扱わない。
-- candidate generation、scoring、lifecycle、API adapter、write guard は再利用候補だが、明示した migration と parity 確認なしに Next へ移行済みとみなさない。
-- Next の初期 entry は read-only runtime boundary だけを持つ。基準日レンズ fixture の重み、閾値、最大表示件数は合成データ上の仮説であり、production scoring 契約ではない。
+- `Next`: 現行の実装・配布対象。標準カレンダー上の`基準日から似た日を探す`を入口とし、表形式の料金調整候補は表示しない。詳細根拠はAnalyzeのbooking curve、競合価格履歴、90日価格推移で確認する。
+- `Classic`: 凍結した旧公開契約。カレンダー下9列list / row previewはNextへ戻さない。Classicの慣れたTop / Analyze UI、booking curve、競合価格、価格推移、OH / 個人 / 団体の見方は、問題が確認された箇所以外の表示baselineとして扱う。
+- `calendar decision workspace`、`今日の判断 rail`、旧料金調整候補listに関する節は設計履歴であり、Nextのactive contractではない。現在の基準日レンズと矛盾する場合は適用しない。
+- 類似日候補の重み、閾値、最大表示件数は合成データ上の仮説であり、実データ評価前のproduction scoring契約とはしない。
 
 ## Ownership And Update Trigger
 
@@ -42,7 +42,7 @@ first phase では、推奨レート金額を出さない。Revenue Assistant �
 
 ## Product Intent / Background
 
-RAU の主線は、独立した本格 RMS（Revenue Management System）を先に作ることではなく、Revenue Assistant 画面上でレート調整判断を軽くすることである。Analyze 日付ページでは、booking curve、部屋タイプ別 card、全体 / 個人 / 団体、reference curve、rank marker、競合価格 snapshot、warm cache が段階的に入っている。次の価値は、トップ画面で「どの宿泊日と部屋タイプから見るべきか」を一覧化し、Analyze 画面で詳細根拠を確認できるようにすることである。
+RAU の主線は、独立した本格 RMS（Revenue Management System）を先に作ることではなく、Revenue Assistant 画面上でレート調整判断を軽くすることである。Analyze 日付ページでは、booking curve、部屋タイプ別 card、全体 / 個人 / 団体、reference curve、rank marker、競合価格 snapshotが段階的に入っている。トップ画面では表を増やさず、標準カレンダーから基準日と類似日候補を見つけ、Analyze 画面で詳細根拠を確認できるようにする。
 
 推奨レート金額を出すには、少なくとも次の情報が必要になる。
 
@@ -57,9 +57,9 @@ RAU の主線は、独立した本格 RMS（Revenue Management System）を先�
 
 これらが揃わない段階で金額を出すと、利用者は「RAU が提示した金額が正しい」と受け取りやすい。金額推奨は責任が大きく、間違った場合の影響も大きい。一方で、Revenue Assistant の実操作が販売 rank の変更中心であるなら、first phase の recommendation は `維持`、`1段階上げ検討`、`1段階下げ検討`、`監視`、`判定対象外` のような離散判断として扱うほうが自然である。
 
-トップカレンダーの badge だけでは、RM が「何から作業するか」を決めにくい。一方で、カレンダーは日付と曜日を位置で把握でき、既存業務との認知差が小さい。2026-07-17 以降に検討した Next 設計候補では、既存カレンダーを空間的な基準として残し、`今日の判断` rail と選択詳細で優先度の高い `stayDate x roomGroup` を確認する decision workspace を試した。この設計は未公開の evidence であり、Classic のカレンダー下 9 列 list を置き換えた公開契約ではない。Next の現在案はさらに、基準日を選択したときだけ似た日を浮かせる基準日レンズを主導線として比較する。
+トップカレンダーの badge だけでは、RM が「何から作業するか」を決めにくい。一方で、カレンダーは日付と曜日を位置で把握でき、既存業務との認知差が小さい。2026-07-17 以降に検討した Next 設計候補では、既存カレンダーを空間的な基準として残し、`今日の判断` rail と選択詳細で優先度の高い `stayDate x roomGroup` を確認する decision workspace を試した。この設計は未公開の evidence であり、Classic のカレンダー下 9 列 list を置き換えた公開契約ではない。Next は、基準日を選択したときだけ似た日を浮かせる基準日レンズを現行の主導線とする。
 
-Analyze は詳細確認の場として扱う。トップ画面では候補一覧と根拠要約を出し、Analyze では booking curve、全体 / 個人 / 団体、reference curve、rank 履歴、競合価格、sales / ADR などの詳細根拠を見る。リスト行から Analyze へ遷移できるようにし、将来的には対象 roomGroup card を開く、対象位置へ scroll する、対象 card を highlight する。
+Analyze は詳細確認の場として扱う。トップ画面では基準日と類似日候補の根拠要約を出し、Analyze では booking curve、全体 / 個人 / 団体、reference curve、rank 履歴、競合価格などの詳細根拠を見る。基準日または類似日から標準の日付遷移を再利用し、対象日を保ったままAnalyzeへ進めるようにする。
 
 全体 rooms の上振れだけを根拠に個人価格 rank を上げると、団体による押し上げを個人需要の上振れとして誤読する可能性がある。したがって `all` だけではなく、`transient` と `group` を分ける。`all` が基準より多くても `group` が主因なら、個人価格 rank の上げ検討は抑制する。`transient` または個人需要の推定が基準より多いかを重視する。
 
@@ -76,8 +76,8 @@ Analyze は詳細確認の場として扱う。トップ画面では候補一覧
 1. 推奨レート金額ではなく推奨ランク方向を優先する理由。
    Revenue Assistant の実操作は、販売 rank の変更を中心に行う可能性が高い。first wave では、操作単位に合う `上げ検討`、`下げ注意`、`監視`、`判定対象外` を出すほうが、未確認データを使った金額提示より安全である。推奨レート金額を出すには、プラン、人数、食事条件、販売中価格、競合価格、rank ladder、rank 別価格表、施設方針を合わせて確認する必要がある。これらが揃わない状態で金額を出すと、RAU が価格を断定したように見える。現在 rank と rank ladder が取得できると確認できた場合は、`推奨ランク方向` から `1段階上げ検討` や `1段階下げ検討` のような隣接 rank recommendation へ進める。実価格または rank price table が取れるまでは、厳密な価格弾力性ではなく `ランク反応度` として扱う。
 
-2. トップ画面にカレンダーと判断 rail を置く理由。
-   カレンダー badge は、日付セルに何らかの状態があることを示す補助表示には向いている。一方で、RM にとって価値があるのは「どの日付に印があるか」だけではなく、「今日どの宿泊日と部屋タイプから見るべきか」である。既存カレンダーは日付と曜日の位置認知を維持し、`今日の判断` rail は RM の作業キューとして priority の高い `stayDate × roomGroup` を上から並べる。実装や ASCII 文脈では同じ単位を `stayDate x roomGroup` と表記する場合がある。日付単位だけでは、同じ日付のどの部屋タイプを触るべきか分からないため、候補単位は `stayDate × roomGroup` を原則にする。rail と選択詳細は作業開始地点であり、Analyze はさらに深い根拠確認の場である。
+2. トップ画面をcalendar-firstにする理由。
+   RMは日付と曜日の位置関係を標準カレンダーで把握している。別の候補表を主役にすると、同じ期間を別の並びで読み直す必要がある。Nextは利用者が1日を基準日に選んだときだけ類似日候補を浮かせ、OH、個人、団体、競合を分けて比較する。部屋タイプ別の深い根拠はAnalyzeで確認する。過去に試した`今日の判断 rail`と`stayDate × roomGroup`の作業キューは設計証拠として残すが、activeな入口契約にはしない。
 
 3. 様子見 cooldown が必要な理由。
    利用者が候補を見たうえで「今は触らない」と判断したものが出続けると、recommendation list は作業キューではなくノイズになる。`様子見` は false positive ではなく、人間が「今はタイミングではない」と判断したログである。`対応不要` は false positive 候補であり、同じ根拠を再表示しないための model 改善 input である。したがって `snoozed_by_user` と `dismissed_by_user` は別状態にする。様子見中でも、priority、confidence、個人需要 pickup、残室率、競合価格、主因、reasonFingerprint が大きく変われば再表示できるようにする。reasonFingerprint は、同じ根拠の繰り返し通知と、新しい根拠による再通知を分けるために持つ。
@@ -109,11 +109,11 @@ Next first phase の候補では次を行う。Classic への公開済み変更�
 - `D-20260807-003` / `RAU-UX-155` 以降はcalendar-firstを維持するため、user-facing見出しを内部設計名の`類似日レンズ`ではなく`基準日から似た日を探す`とする。候補一覧と比較詳細はviewport幅にかかわらず初期折りたたみにし、先にcalendar上の`基準` / `類似` / `比較` markerを見せる。候補一覧を開いたdesktopでは3列で圧縮し、900px以下の既存2列 / 1列layoutを維持する。利用者が候補一覧または比較詳細を開いた場合は、room typeや比較選択、root再mountによる再描画後も開状態を維持する。680px以下ではbutton / selectを44px以上、Next root自身の横overflowを0とする。
 - 類似度は OH、個人 pace、団体 pace、競合価格を別 dimension として扱い、score とともにどの dimension が近いかを説明する。OH / 個人 / 団体 / 競合を統合ラベルへ潰さない。
 - 欠損 dimension は明示し、個人とほか2 dimension以上が揃わない日を強い類似候補にしない。0 は欠損と同一視せず `0` と表示し、別の値から差し引いて個人または団体を推測しない。
-- live adapterは、基準日未選択ではrequestを行わず、選択後だけ`/api/v2/yad/info`と`/api/v1/suggest/output/current_settings`を各1回GETする。同じ選択中のin-flightだけを重複排除し、完了結果やerrorは保持しない。calendarの同一context再描画ではruntimeが再loadしないため追加GET 0とするが、利用者が基準日を明示的に選び直した場合は施設を再検証して2 endpointを再読込する。施設APIの名称が現在のvisible headerに存在しない、calendar本体が差し替わる、またはcalendarが一時消失した場合は、旧施設・旧期間の基準日、比較、根拠とin-flight結果を破棄する。booking curveと競合価格は既存IndexedDBをreadonlyで読むだけとし、database作成、upgrade、全件scan、cursor系read、保存を行わない。
+- live adapterは、基準日未選択ではrequestを行わず、選択後だけ`/api/v2/yad/info`と`/api/v1/suggest/output/current_settings`を各1回GETする。同じ選択中のin-flightだけを重複排除し、完了結果やerrorは保持しない。calendarの同一context再描画ではruntimeが再loadしないため追加GET 0とするが、利用者が基準日を明示的に選び直した場合は施設を再検証して2 endpointを再読込する。施設APIの名称が現在のvisible headerに存在しない、calendar本体が差し替わる、またはcalendarが一時消失した場合は、旧施設・旧期間の基準日、比較、根拠とin-flight結果を破棄する。booking curveと競合価格は既存IndexedDBをreadonlyで読み、database作成、upgrade、全件scan、Classic recordの保存・更新・削除を行わない。通常の表示読込は完全一致keyを使い、booking curve差分取得のcoverage判定だけは`docs/spec_001_analyze_expansion.md`の上限付き`facility-asof`逆順cursorを使える。
 - facility identityは`yad_no`だけから作り、APIの施設名は現在の表示contextをfail closedで確認するguardにだけ使う。as-ofは画面の`最終データ更新`、OHはcurrent settingsのstay date / room group一致、個人 / 団体はbooking curve raw cacheのfacility / stay date / as-of / room group / endpoint / query完全一致を必須とする。booking curveはcurrent settingsから組み立てた既存primary keyだけを1件ずつ読み、過去as-ofを探索しない。そのため`古い保存値`はproduction到達状態ではなく合成fixtureだけの防御表示である。競合snapshotはfacility / stay dateの既存indexから1日最大1件だけ読み、index順のそのrecordについて保存有無と取得時刻を示すだけで最新性を保証しない。room type対応未確認のため類似scoreへ入れない。境界を確認できない値は`未取得`またはerrorとし、DOMの標準数値や名称fallbackで補わない。
 - 類似日を部分選択し、基準日と同じ画面で日別の OH、個人、団体、競合を比較できるようにする。基準日を変えた場合は比較選択を reset する。
 - 同曜日は説明 tag として表示できるが、初期 scoring の隠れた加点にはしない。重み、閾値、最大件数は合成 fixture の仮説であり、実データ評価前に固定しない。
-- 深い根拠は Analyze、booking curve、競合価格、価格推移 graph で確認できる導線を残す。Classic の単一行 rank 調整、様子見、対応不要は parity matrix で個別判断するまで廃止しない。
+- 深い根拠は Analyze、booking curve、競合価格、価格推移 graph で確認できる導線を残す。Classic候補表の単一行rank調整、様子見、対応不要はNextへ持ち込まない。将来これらの操作を戻す場合は、表の復元とは分け、現行のcalendar-first導線とwrite安全条件を満たす別判断とする。
 - first UI shell は read-only とし、類似日の選択だけで rank 変更、browser-local decision、一括調整、write API を実行しない。
 
 ## Classic To Next Target Contract Matrix
@@ -122,13 +122,13 @@ Next は Classic の画面配置を複製しない。実務上の責務を、`�
 
 | Classic の契約 | 判断 | Next target contract | current evidence | cutover gate |
 | --- | --- | --- | --- | --- |
-| カレンダー下の9列候補表の表構造 / 行内配置 | 廃止 | 基準日を選んだときだけ類似日を浮かせ、同じ画面で部分選択する。候補の探索と週・block単位の判断をカレンダーへ集約し、旧表の構造と行内配置の再現を parity 条件にしない。booking curve / 競合価格preview自体は各機能行の移行gateまで保持する | Next fixture / live shellで基準日選択を実装済み。旧表のcutover除去は未実施 | 基準日なしでは強調0、選択後だけ候補表示、通常の日付click維持、対象日と比較選択が一致する |
+| カレンダー下の9列候補表の表構造 / 行内配置 | 廃止 | 基準日を選んだときだけ類似日を浮かせ、同じ画面で部分選択する。候補の探索と週・block単位の判断をカレンダーへ集約し、旧表の構造と行内配置の再現を parity 条件にしない。booking curve / 競合価格preview自体は各機能行の移行gateまで保持する | NextのTopは基準日レンズを実装し、旧9列表を表示しない。fixture / liveで基準日選択、類似marker、部分比較、Analyze導線を確認済み | 基準日なしでは強調0、選択後だけ候補表示、通常の日付click維持、対象日と比較選択が一致する |
 | Revenue Assistant標準calendarの黒い値 | 保持 | 標準の黒い値要素の文字、子構造、位置を変更しない。date linkもwrap / reparentせず、position、focus、highlightを変更しない。黒い値をOHへ読み替えず、Next由来のOH / 個人 / 団体とは別契約にする | Revenue Assistant標準画面でlive観測済み。Next shellの非干渉をlive QA済み | desktop / 狭幅 / 再描画後に標準geometryと既存値が不変 |
 | Classicが追加する青い`団n` badge | 保持、再構築 | カレンダー上でOH相当の既存黒値と団体数を視覚的に切り分ける役割を残し、団体はhotel scopeの直接取得値だけを青い`団n`表記で示す。room group値を合算せず、標準date linkへ独立した子要素として追加するが標準値要素を上書きせず、0、未取得、非表示を混同しない | Nextはcurrent as-ofのhotel scope exact keyをreadonlyで読み、0は`団0`、欠損 / stale / 不一致は非表示にする。標準値非干渉、表示toggle、再描画、狭幅、cleanup、GET / write境界をfixture / live QA済み | cutover候補として確認済み。Next公開、Tampermonkey switchは別gate |
-| Analyze | 保持、入口再設計 | 全部屋タイプと詳細根拠を確認する深掘り画面として残す。基準日または類似日から対象日へ遷移し、旧候補表は再現しない | Nextは対象日を維持してAnalyzeへ遷移し、calendar lensをroute-scopedに休止する。fixture / liveでroot、style、marker、badgeを0にし、標準3 tabを残すことを確認した | 入口と非干渉は確認済み。Classic固有graphの再接続が完了するまでcutover不可 |
-| booking curve | 保持 | 全体、個人、団体、reference、rank marker、tooltip、ACT空表示を機能契約として維持する。Nextでは選択中日から必要時に開き、全日分を常時展開しない | Next第三段階Aは標準2 chartを残し、選択scopeの既存raw cacheだけからcurrent / 直近型 / 季節型を2 panelへ再接続した。ready / 0 / 欠損 / stale / error、keyboard tooltip、390px自己overflow 0をfixtureで確認し、liveではexact cache不足をemptyとして確認した。rank markerは未接続 | rank履歴の最大1 GETを別Yellow gateで承認・実装し、実画面ready系列、0 / ACT / 欠損 / tooltip / markerを確認するまでcutover不可 |
-| 競合価格 | 保持、入口再構築 | 保存済みsnapshot、人数別graph、部屋タイプ対応の注意を再利用し、選択中日から必要時だけ開く。競合価格だけで候補方向や推奨金額を断定しない | 標準Analyzeには人数1〜4、食事、部屋タイプの現時点確認が残るが、取得日別snapshot履歴graphはない。Classic source contractと新設`competitor-prices` smokeで履歴title、filter、4 panel、SVG、keyboard hitboxを固定した | `RAU-UX-150`の最優先。snapshot / empty / error、人数別series、部屋タイプ注意、同日重複取得防止を独立runtimeで確認 |
-| 価格推移graph | 保持 | 好評な90日graph、人数別series、filter、tooltip、failure時の次操作をAnalyzeで維持する。Nextカレンダーへの常時埋込みは初期cutover条件にしない | Next休止中も標準90日graph、3 filter、84〜0日前軸、更新時刻、1つのRecharts graphは残る。Classic固有の人数別4 panel、custom tooltip / empty / errorはNextでは未接続 | `RAU-UX-150`で人数別比較の最適UIを再設計し、graph / empty / error / filter / tooltip / own-root overflowをsmokeで確認 |
+| Analyze | 保持、入口再設計 | 全部屋タイプと詳細根拠を確認する深掘り画面として残す。基準日または類似日から対象日へ遷移し、旧候補表は再現しない | Nextは対象日を維持してAnalyzeへ遷移し、calendar lensをroute-scopedに休止する。標準3 tabを残し、booking curve、競合価格履歴、90日価格推移の補助表示をClassic UI baselineで再接続した | 入口、標準UI非干渉、3補助表示をfixture / liveで確認済み。今後は公開更新ごとの実画面smokeで維持を確認する |
+| booking curve | 保持 | 全体、個人、団体、reference、rank marker、tooltip、ACT空表示を機能契約として維持する。Nextでは選択中日から必要時に開き、全日分を常時展開しない | 標準2 chartを残し、current / 直近型 / 季節型を2 panelへ再接続した。room scopeのrank履歴は最大1 GETでmarker / tableへ接続し、欠損位置を推測しない。Classic / Next保存済みsourceから不足tailだけを補う | ready / 0 / ACT / 欠損 / tooltip / marker、差分取得、標準chart非干渉をfixtureで維持し、公開更新後にClassic seedと100ms / concurrency 30をlive確認する |
+| 競合価格 | 保持、入口再構築 | 保存済みsnapshot、人数別graph、部屋タイプ対応の注意を再利用し、選択中日から必要時だけ開く。競合価格だけで候補方向や推奨金額を断定しない | 標準本文を残し、Next専用の日次bounded保存とClassic / Next履歴統合、部屋 / 食事filter、1〜4名の4 panel、5列tooltipを再接続した | snapshot / empty / error、4 panel、同日重複取得0、標準表非干渉をfixture / liveで確認済み |
+| 価格推移graph | 保持 | 好評な90日graph、人数別series、filter、tooltip、failure時の次操作をAnalyzeで維持する。Nextカレンダーへの常時埋込みは初期cutover条件にしない | 標準graphを残し、Next専用の不足scope取得とbounded保存、部屋 / 食事filter、1〜4名の4 panel、5列tooltipをClassic UI baselineで再接続した | graph / empty / error / filter / tooltip / own-root overflow、同日再取得0をfixture / liveで確認済み |
 | OH / 個人 / 団体 | 必須再接続 | 3軸を別の直接取得値として表示し、0、未取得、未接続を区別する。`all - group`などの差し引きで推測しない。競合も第4軸として分離する | Next read-only adapterとmissing / zero / partial / error fixtureを実装済み。staleはproductionで探索しない過去as-ofの防御表示を合成fixtureだけで確認する。同一room groupだけを比較し、競合はroom type未確認としてscoreから除外する。source / as-of / room type一致、実画面の4軸、類似marker、GET予算、再描画時再利用をlive確認済み | cutover前にcalendar上の団体表記とAnalyze詳細機能のparityを個別確認する |
 | 前回変更 / rank history / soft cooldown / 再表示理由 | 保持、配置再設計 | 二重変更を避ける安全状態として、選択中の日付 x 部屋タイプの前回変更、resolved履歴、cooldown、再候補化理由を確認できるようにする。旧表の列配置は引き継がない | Classic実装 / contractは存在。Next選択詳細では未実装 | history欠損、cooldown中、重要変化による再表示、日付 / 部屋タイプ不一致を直接testする |
 | 単一行rank調整とguard | guard保持、UI再設計 | `変更内容を確認`から`この内容で変更する`へ進む明示2段階にする。timerによる自動送信を行わず、fresh current rank、同時更新停止、反映確認、自動retryなしを維持する | Classic guardは実装済み。Next UI / writeは未実装で別gate | write有効化は別gate。current-rank mismatch、生成後変更、重複送信、反映未確認、全disabled reasonを直接testする |
@@ -669,7 +669,11 @@ first wave の workspace では、推奨レート金額、forecast 数値、sale
 
 以下は Classic の現公開契約である。Next への cutover が明示承認され、parity gate と配布分離を通過するまでは、カレンダー下 9 列 list / row preview を有効な Classic layout として扱う。Next の calendar decision workspace と衝突する場合も、Classic を暗黙に上書きしない。candidate scoring、data source、lifecycle、API adapter、安全 guard は Classic の既存契約を維持する。
 
-トップ画面には、料金調整候補リストを追加する。
+#### Retired Classic Candidate-list Contract
+
+以下の料金調整候補list、row preview、操作cellはClassicの履歴契約であり、Nextへ実装するactive contractではない。Nextでは表形式の候補一覧を廃止し、前述の基準日レンズとAnalyze導線を正とする。旧節から再利用する場合は、一覧構造ではなく、個別の根拠・安全guard・表示意味を現在のspecへ明示的に採用し直す。
+
+Classicのトップ画面には、料金調整候補リストを追加する。
 
 - 日付 x 部屋タイプ単位の候補を優先度順に表示する。
 - 料金調整候補リストは、トップ画面のカレンダーより下に配置する。カレンダーの表示範囲を見たあとに、同じ表示範囲内の作業キューとして候補を読むためである。カレンダー上部の期間切替、表示切替、標準操作領域を押し下げる位置には置かない。
@@ -748,7 +752,7 @@ forecast 実装前は、Analyze detail に forecast 数値を表示しない。�
 
 ## React Island And UI Primitive Contract
 
-この section の decision workspace / rail 記述は未公開 Next prior design evidence である。Classic の9列 list契約や、Next の現在の基準日レンズ仮説を暗黙に置き換えない。再利用する component / state / guard だけを明示的に選ぶ。
+この section の decision workspace / rail 記述は未公開 Next prior design evidence である。Classic の9列 list契約や、Next の現行基準日レンズを暗黙に置き換えない。再利用する component / state / guard だけを明示的に選ぶ。
 
 React 化の目的は、Revenue Assistant 本体を React application として置き換えることではない。目的は、userscript が追加する UI の入力、UI state、利用者操作、出力 DOM、副作用呼び出しを分け、候補 list の表示と操作を保守しやすくすることである。
 
@@ -948,22 +952,12 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 
 ## Implementation Order Candidate
 
-実装順序の候補は次の通りとする。正本上の Task ID と詳細は `docs/tasks_backlog.md` を参照する。
+現在の実装順は次の通りとする。Task IDと詳細は`docs/tasks_backlog.md`を正とする。旧`RAU-RR-*`順序はClassic候補listを前提にした履歴であり、Nextの実行queueには使わない。
 
-1. `RAU-RR-01` で、この仕様と関連 docs を整備する。
-2. `RAU-RR-02` で、booking_curve raw source に sales / ADR を落とさず保存する契約を決めて実装する。
-3. `RAU-RR-03` で、current rank、rank ladder、rank price table、rank 反映 API の取得可否を browser trace で調査する。
-4. `RAU-RR-04` で、トップ料金調整候補リスト UI shell を実装する。
-5. `RAU-RR-05` で、reference deviation ベースの初期 priority scoring を実装する。
-6. `RAU-RR-06` で、Analyze 遷移と対象 roomGroup focus 導線を実装する。
-7. `RAU-RR-07` で、user snooze、dismissed decision、cooldown を保存する。
-8. `RAU-RR-08` で、rank change history による resolved 化を実装する。
-9. `RAU-RR-09` で、rank response dataset と metrics を設計する。
-10. `RAU-RR-10` で、推奨 rank 算出を設計する。
-11. `RAU-RR-11` で、bulk apply feasibility を調査する。
-12. `RAU-RR-12` から `RAU-RR-16` で、rank order source、rank ladder 端表示、数値 rank 名 fallback、manual override、settings screen source を実装する。
-13. `RAU-RR-17` で、曜日別関係と競合価格内自社料金位置を rank order source ではなく scoring 補助 input として扱う設計を確定する。
-14. `RAU-RR-18` で、曜日別関係と競合価格内自社料金位置の初期 signal を実装し、既存候補生成へ小さく接続する。
+1. 保存済みbooking curveを起点に全件再取得を差分取得へ置き換え、Classic互換sourceもreadonly seedとして再利用する。
+2. Classicの可視UIをbaselineに、route遷移、tab切替、filter / toggle、再描画で生じる重複・消失・stale表示を個別に修正する。
+3. Topでは表形式候補を戻さず、基準日と類似日候補の見つけやすさ、比較材料の充足、Analyzeへの到達時間を実画面で確認する。
+4. 推奨金額、Revenue Assistant write、自動反映、一括反映は別仕様・別承認まで実装しない。
 
 ## Open Questions
 
