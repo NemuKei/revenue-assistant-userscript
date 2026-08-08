@@ -103,7 +103,7 @@ export function renderBookingCurveReference(
     if (state.status === "empty") {
         const children = [header];
         if (state.controls !== undefined) {
-            children.push(createScopeControls(root.ownerDocument, state.controls));
+            header.append(createScopeControls(root.ownerDocument, state.controls));
         }
         if (state.rankHistory !== undefined && state.controls !== undefined) {
             children.push(createRankHistorySummary(
@@ -118,7 +118,7 @@ export function renderBookingCurveReference(
     }
 
     const { viewModel } = state;
-    const controls = createControls(root.ownerDocument, viewModel);
+    header.append(createControls(root.ownerDocument, viewModel));
     const meta = root.ownerDocument.createElement("p");
     meta.setAttribute("data-ra-next-booking-curve-reference-meta", "");
     meta.textContent = [
@@ -147,8 +147,9 @@ export function renderBookingCurveReference(
     for (const panel of viewModel.panels) {
         grid.append(createPanel(root.ownerDocument, panel, viewModel, domain, options.narrow));
     }
-    const details = createReferenceDetails(root.ownerDocument, meta, note, rankHistory);
-    root.replaceChildren(header, controls, legend, grid, details);
+    const diagnostics = createSeriesDiagnostics(root.ownerDocument, viewModel.panels);
+    const details = createReferenceDetails(root.ownerDocument, meta, note, diagnostics, rankHistory);
+    root.replaceChildren(header, legend, grid, details);
 }
 
 function createHeader(documentHost: Document, scopeLabel?: string): HTMLElement {
@@ -165,10 +166,7 @@ function createHeader(documentHost: Document, scopeLabel?: string): HTMLElement 
     note.setAttribute("data-ra-next-booking-curve-reference-header-note", "");
     note.textContent = "booking_curve実データ + 参考線";
     titleWrap.append(title, note);
-    const badge = documentHost.createElement("span");
-    badge.setAttribute("data-ra-next-booking-curve-reference-badge", "");
-    badge.textContent = "閲覧のみ";
-    header.append(titleWrap, badge);
+    header.append(titleWrap);
     return header;
 }
 
@@ -206,6 +204,7 @@ function createReferenceDetails(
     documentHost: Document,
     meta: HTMLElement,
     note: HTMLElement,
+    diagnostics: HTMLElement,
     rankHistory: HTMLElement
 ): HTMLElement {
     const details = documentHost.createElement("details");
@@ -214,7 +213,7 @@ function createReferenceDetails(
     summary.textContent = "データ条件とランク履歴";
     const body = documentHost.createElement("div");
     body.setAttribute("data-ra-next-booking-curve-reference-details-body", "");
-    body.append(meta, note, rankHistory);
+    body.append(meta, note, diagnostics, rankHistory);
     details.append(summary, body);
     return details;
 }
@@ -253,6 +252,7 @@ function createButtonGroup(
     const group = documentHost.createElement("fieldset");
     group.setAttribute("data-ra-next-booking-curve-reference-control-group", attribute);
     const legend = documentHost.createElement("legend");
+    legend.setAttribute("data-ra-next-booking-curve-reference-control-label", "");
     legend.textContent = label;
     group.append(legend);
     for (const item of items) {
@@ -264,6 +264,29 @@ function createButtonGroup(
         group.append(button);
     }
     return group;
+}
+
+function createSeriesDiagnostics(
+    documentHost: Document,
+    panels: readonly BookingCurveReferencePanel[]
+): HTMLElement {
+    const diagnostics = documentHost.createElement("div");
+    diagnostics.setAttribute("data-ra-next-booking-curve-reference-diagnostics", "");
+    for (const panel of panels) {
+        const line = documentHost.createElement("p");
+        const title = documentHost.createElement("strong");
+        title.textContent = panel.title;
+        line.append(
+            title,
+            documentHost.createTextNode(` / ${[
+                formatSeriesDiagnostic(panel.current),
+                formatSeriesDiagnostic(panel.recent),
+                formatSeriesDiagnostic(panel.seasonal)
+            ].join(" / ")}`)
+        );
+        diagnostics.append(line);
+    }
+    return diagnostics;
 }
 
 function createLegend(documentHost: Document, viewModel: BookingCurveReferenceViewModel): HTMLElement {
@@ -305,16 +328,8 @@ function createPanel(
     element.setAttribute(BOOKING_CURVE_REFERENCE_PANEL_ATTRIBUTE, panel.segment);
     const title = documentHost.createElement("h3");
     title.textContent = panel.title;
-    const diagnostics = documentHost.createElement("p");
-    diagnostics.setAttribute("data-ra-next-booking-curve-reference-diagnostics", "");
-    diagnostics.textContent = [
-        formatSeriesDiagnostic(panel.current),
-        formatSeriesDiagnostic(panel.recent),
-        formatSeriesDiagnostic(panel.seasonal)
-    ].join(" / ");
     element.append(
         title,
-        diagnostics,
         createChart(documentHost, panel, viewModel, domain, narrow),
         createAccessibleTable(documentHost, panel, viewModel)
     );
@@ -873,12 +888,15 @@ function formatDate(value: string): string {
 export function getBookingCurveReferenceStyles(): string {
     return `
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
     box-sizing: border-box;
     width: 100%;
     max-width: calc(100vw - 48px);
     min-width: 0;
-    margin: 18px 0 8px;
-    padding: 12px;
+    margin: 0 0 14px;
+    padding: 10px 12px 12px;
     overflow-x: hidden;
     border: 1px solid #dfe7f5;
     border-radius: 12px;
@@ -890,35 +908,35 @@ export function getBookingCurveReferenceStyles(): string {
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] *::before,
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] *::after { box-sizing: border-box; }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-header] {
-    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-title-wrap] {
     display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; min-width: 0;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] h2 {
-    margin: 0; color: #243447; font-size: 16px; line-height: 1.35;
+    margin: 0; color: #243447; font-size: 14px; line-height: 1.35;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-header-note] {
     display: inline-flex; align-items: center; justify-content: center; padding: 5px 8px;
     border-radius: 999px; background: #eef4ff; color: #5878a5;
     font-size: 11px; font-weight: 700; line-height: 1; white-space: nowrap;
 }
-[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-badge] {
-    flex: 0 0 auto; padding: 4px 8px; border-radius: 999px; background: #e7f4ee; color: #17624f;
-    font-size: 11px; font-weight: 700;
-}
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-controls] {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; margin-top: 10px;
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+    gap: 4px 8px; min-width: 0; margin-left: auto;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-control-group] {
-    display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0;
+    display: inline-flex; flex-wrap: wrap; align-items: center; justify-content: flex-end;
+    gap: 4px; min-width: 0; margin: 0; padding: 0; border: 0;
 }
-[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] legend {
-    float: none; min-width: 0; padding: 0 2px 0 0; color: #58708f; font-size: 11px; font-weight: 700;
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-control-label] {
+    position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+    overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] button {
-    min-height: 32px; padding: 6px 9px; border: 1px solid #d4deed; border-radius: 999px;
-    background: #fff; color: #58708f; font: inherit; font-size: 11px; font-weight: 700; cursor: pointer;
+    min-height: 28px; padding: 5px 8px; border: 1px solid #d4deed; border-radius: 999px;
+    background: #fff; color: #58708f; font: inherit; font-size: 11px; font-weight: 700;
+    line-height: 1; white-space: nowrap; cursor: pointer;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] button[aria-pressed="true"] {
     border-color: #9fb7d4; background: #f7fbff; color: #243447;
@@ -933,7 +951,7 @@ export function getBookingCurveReferenceStyles(): string {
     margin: 8px 0 0; color: #5c7081; font-size: 12px; line-height: 1.65;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-legend] {
-    display: flex; flex-wrap: wrap; gap: 8px 12px; margin-top: 9px; color: #58708f; font-size: 11px; font-weight: 700;
+    display: flex; flex-wrap: wrap; gap: 8px 12px; color: #58708f; font-size: 11px; font-weight: 700;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-legend-item] {
     display: inline-flex; align-items: center; gap: 6px;
@@ -956,17 +974,21 @@ export function getBookingCurveReferenceStyles(): string {
     border-color: #e6c7be; background: #fff7f4; color: #82452f;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-grid] {
-    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-top: 10px;
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_PANEL_ATTRIBUTE}] {
-    min-width: 0; padding: 10px; border: 1px solid #d8e2f1; border-radius: 10px; background: #fff;
+    display: flex; flex-direction: column; gap: 6px; min-width: 0;
+    padding: 10px 10px 8px; border: 1px solid #d8e2f1; border-radius: 10px; background: #fff;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] h3 { margin: 0; color: #243447; font-size: 13px; }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-diagnostics] {
-    margin: 5px 0 0; color: #687d8e; font-size: 11px; line-height: 1.5;
+    margin-top: 8px; color: #687d8e; font-size: 11px; line-height: 1.5;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-diagnostics] p {
+    margin: 3px 0 0;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-chart-wrap] {
-    position: relative; min-width: 0; margin-top: 8px;
+    position: relative; min-width: 0;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_SVG_ATTRIBUTE}] {
     display: block; width: 100%; height: auto; overflow: visible;
@@ -988,16 +1010,17 @@ export function getBookingCurveReferenceStyles(): string {
     fill: transparent; cursor: pointer;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-tooltip] {
-    position: absolute; z-index: 2; top: 8px; left: 8px; width: min(300px, calc(100% - 16px));
-    padding: 9px 10px; border: 1px solid #91a8ba; border-radius: 7px; background: rgba(255,255,255,.98);
-    box-shadow: 0 5px 16px rgba(25,49,67,.16); color: #2d4659; font-size: 11px; line-height: 1.5;
+    position: absolute; z-index: 2; top: 10px; left: 50%;
+    width: min(300px, calc(100% - 8px)); transform: translateX(-50%);
+    padding: 7px 9px; border: 1px solid #d7e0ef; border-radius: 10px; background: rgba(255,255,255,.96);
+    box-shadow: 0 8px 24px rgba(80,98,122,.12); color: #243447; font-size: 11px; line-height: 1.5;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-tooltip][hidden] { display: none; }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-tooltip] ul {
     display: grid; gap: 3px; margin: 5px 0 0; padding: 0; list-style: none;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-details] {
-    margin-top: 10px; padding-top: 8px; border-top: 1px solid #dfe7f5;
+    margin-top: 0; padding-top: 8px; border-top: 1px solid #dfe7f5;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-details] > summary {
     color: #456792; font-size: 12px; font-weight: 700; cursor: pointer;
@@ -1018,12 +1041,13 @@ export function getBookingCurveReferenceStyles(): string {
 }
 @media (max-width: 680px) {
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] {
-        width: 100%; max-width: calc(100vw - 48px); margin-top: 16px; padding: 10px;
+        width: 100%; max-width: calc(100vw - 48px); margin-top: 0; padding: 10px;
     }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-header] { align-items: flex-start; }
-    [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-controls] { display: grid; gap: 8px; }
+    [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-controls] {
+        width: 100%; justify-content: flex-start; margin-left: 0;
+    }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-control-group] { width: 100%; }
-    [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] legend { flex: 0 0 100%; padding-bottom: 1px; }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] button { min-height: 44px; }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-grid] { grid-template-columns: 1fr; }
 }

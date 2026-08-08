@@ -106,61 +106,36 @@ export function renderPriceTrendComparison(
 export function getPriceTrendComparisonStyles(): string {
     return `
 [${PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE}] {
-    --ra-next-price-blue: #1268a6;
-    --ra-next-price-ink: #24394b;
-    --ra-next-price-muted: #617283;
+    --ra-next-price-blue: #4b7fc7;
     box-sizing: border-box;
-    width: min(100%, 1180px);
-    max-width: calc(100vw - 16px);
-    margin: 22px auto 4px;
-    padding: 18px;
-    overflow: hidden;
-    border: 1px solid #c7d3dd;
-    border-radius: 10px;
-    background: #ffffff;
-    color: var(--ra-next-price-ink);
+    width: 100%;
+    max-width: calc(100vw - 48px);
+    min-width: 0;
+    margin: 12px 0 8px;
+    padding: 0;
+    overflow-x: hidden;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    color: #263a4d;
     font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif;
 }
 [${PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE}] * { box-sizing: border-box; }
 [${PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE}] h3,
 [${PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE}] h4,
 [${PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE}] p { margin: 0; }
-[data-ra-next-price-trend-header] { display: grid; gap: 4px; margin-bottom: 14px; }
-[data-ra-next-price-trend-eyebrow] {
-    color: #2e6e98;
+[data-ra-next-price-trend-header] { display: grid; gap: 6px; margin-bottom: 8px; }
+[data-ra-next-price-trend-header] h3 {
+    color: #243447;
+    font-size: 15px;
+    font-weight: 700;
+    line-height: 1.35;
+}
+[data-ra-next-price-trend-meta] {
+    color: #50627a;
     font-size: 12px;
-    font-weight: 800;
-    letter-spacing: .04em;
-}
-[data-ra-next-price-trend-header] h3 { font-size: 20px; line-height: 1.35; }
-[data-ra-next-price-trend-meta] { color: var(--ra-next-price-muted); font-size: 12px; line-height: 1.55; }
-[data-ra-next-price-trend-capture] {
-    justify-self: start;
-    padding: 4px 9px;
-    border: 1px solid #bfd0dd;
-    border-radius: 999px;
-    background: #f3f7fa;
-    color: #455e72;
-    font-size: 12px;
-    font-weight: 800;
-}
-[data-ra-next-price-trend-capture="capturing"],
-[data-ra-next-price-trend-capture="checking"] {
-    border-color: #9fc7e0;
-    background: #edf7fd;
-    color: #125f90;
-}
-[data-ra-next-price-trend-capture="stored"],
-[data-ra-next-price-trend-capture="already-stored"] {
-    border-color: #a9cdb8;
-    background: #edf8f1;
-    color: #286842;
-}
-[data-ra-next-price-trend-capture="error"],
-[data-ra-next-price-trend-capture="unavailable"] {
-    border-color: #e5b9b1;
-    background: #fff1ef;
-    color: #8d3428;
+    font-weight: 700;
+    line-height: 1.35;
 }
 [data-ra-next-price-trend-message] {
     padding: 18px;
@@ -173,41 +148,49 @@ export function getPriceTrendComparisonStyles(): string {
 [data-ra-next-price-trend-filters] {
     display: flex;
     flex-wrap: wrap;
-    gap: 10px 18px;
-    margin-bottom: 14px;
+    align-items: center;
+    gap: 8px 18px;
+    margin-bottom: 8px;
+    color: #50627a;
+    font-size: 12px;
+    font-weight: 700;
 }
 [data-ra-next-price-trend-filter-group] {
-    display: flex;
+    display: inline-flex;
     flex-wrap: wrap;
-    gap: 6px;
+    align-items: center;
+    gap: 4px;
     min-width: 0;
     margin: 0;
     padding: 0;
     border: 0;
 }
 [data-ra-next-price-trend-filter-group] legend {
-    width: 100%;
-    margin-bottom: 2px;
-    color: #56697a;
+    float: none;
+    width: auto;
+    margin-right: 2px;
+    padding: 0;
+    color: #50627a;
     font-size: 12px;
     font-weight: 800;
 }
 [${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}] {
-    min-height: 36px;
-    padding: 6px 11px;
-    border: 1px solid #b9c8d4;
-    border-radius: 999px;
+    min-height: 30px;
+    padding: 2px 8px;
+    border: 1px solid #c9d3df;
+    border-radius: 4px;
     background: #fff;
-    color: #33495c;
+    color: #50627a;
     font: inherit;
-    font-size: 13px;
+    font-size: 12px;
+    font-weight: 800;
+    line-height: 1.35;
     cursor: pointer;
 }
 [${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}][aria-pressed="true"] {
     border-color: var(--ra-next-price-blue);
-    background: #eaf4fb;
-    color: #0d5b90;
-    font-weight: 800;
+    background: var(--ra-next-price-blue);
+    color: #fff;
 }
 [${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}]:focus-visible,
 [${PRICE_TREND_COMPARISON_HITBOX_ATTRIBUTE}]:focus-visible {
@@ -218,26 +201,27 @@ export function getPriceTrendComparisonStyles(): string {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 12px;
+    max-width: 980px;
     min-width: 0;
 }
 [data-ra-next-price-trend-panel] {
-    display: grid;
-    gap: 10px;
+    display: block;
+    position: relative;
     min-width: 0;
-    padding: 14px;
-    border: 1px solid #c7d3dd;
-    border-radius: 8px;
+    padding: 12px 14px 10px;
+    border: 1px solid #d8e0ea;
+    border-radius: 6px;
     background: #fff;
 }
 [data-ra-next-price-trend-panel-header] {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 5px 14px;
+    margin-bottom: 2px;
 }
-[data-ra-next-price-trend-panel-header] h4 { font-size: 16px; }
-[data-ra-next-price-trend-panel-header] p { color: var(--ra-next-price-muted); font-size: 12px; }
+[data-ra-next-price-trend-panel-header] h4 {
+    color: #243447;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 1.35;
+}
 [data-ra-next-price-trend-panel-empty] {
     padding: 18px;
     border-radius: 7px;
@@ -247,20 +231,21 @@ export function getPriceTrendComparisonStyles(): string {
 [data-ra-next-price-trend-legend] {
     display: flex;
     flex-wrap: wrap;
-    gap: 6px 14px;
-    margin-bottom: 12px;
+    gap: 6px 12px;
+    margin-bottom: 8px;
 }
 [data-ra-next-price-trend-legend-item] {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 4px;
     min-width: 0;
-    color: #435769;
+    color: #50627a;
     font-size: 12px;
+    font-weight: 700;
 }
 [data-ra-next-price-trend-swatch] {
-    width: 16px;
-    height: 3px;
+    width: 10px;
+    height: 10px;
     flex: 0 0 auto;
     border-radius: 2px;
 }
@@ -268,32 +253,70 @@ export function getPriceTrendComparisonStyles(): string {
 [${PRICE_TREND_COMPARISON_SVG_ATTRIBUTE}] {
     display: block;
     width: 100%;
+    max-width: 760px;
     height: auto;
-    max-height: 320px;
     overflow: visible;
 }
 [${PRICE_TREND_COMPARISON_SVG_ATTRIBUTE}] text {
-    fill: #617283;
+    fill: #50627a;
     font-family: inherit;
-    font-size: 11px;
+    font-size: 10px;
 }
 [data-ra-next-price-trend-grid] { stroke: #dbe3e9; stroke-width: 1; }
 [data-ra-next-price-trend-tooltip] {
     position: absolute;
     z-index: 2;
-    top: 8px;
-    right: 8px;
-    max-width: min(340px, calc(100% - 16px));
-    padding: 9px 11px;
-    border: 1px solid #9fb2c1;
-    border-radius: 7px;
+    top: 28px;
+    left: 50%;
+    width: max-content;
+    min-width: 220px;
+    max-width: min(560px, calc(100% - 16px));
+    max-height: 220px;
+    overflow: auto;
+    transform: translateX(-50%);
+    padding: 6px 8px;
+    border: 1px solid #cbd7e8;
+    border-radius: 6px;
     background: rgba(255,255,255,.98);
-    box-shadow: 0 4px 16px rgba(38,58,77,.13);
-    font-size: 12px;
-    line-height: 1.5;
+    box-shadow: 0 8px 24px rgba(32,50,76,.14);
+    color: #29384d;
+    font-size: 11px;
+    font-weight: 700;
+    line-height: 1.45;
     pointer-events: none;
 }
-[data-ra-next-price-trend-tooltip] ul { margin: 5px 0 0; padding-left: 18px; }
+[data-ra-next-price-trend-tooltip] table {
+    min-width: 430px;
+    margin-top: 4px;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+[data-ra-next-price-trend-tooltip] th,
+[data-ra-next-price-trend-tooltip] td {
+    padding: 2px 6px;
+    border-bottom: 1px solid #e5ebf2;
+    text-align: right;
+    white-space: nowrap;
+}
+[data-ra-next-price-trend-tooltip] th:first-child,
+[data-ra-next-price-trend-tooltip] td:first-child {
+    max-width: 240px;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+}
+[data-ra-next-price-trend-tooltip] th { color: #50627a; font-weight: 800; }
+[data-ra-next-price-trend-tooltip] tr:last-child td { border-bottom: 0; }
+[data-ra-next-price-trend-tooltip] [data-ra-next-price-trend-delta="negative"] { color: #c93a3a; }
+[data-ra-next-price-trend-tooltip-facility] {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: top;
+}
 [data-ra-next-price-trend-table-details] { color: #4f6272; font-size: 12px; }
 [data-ra-next-price-trend-table-details] summary {
     min-height: 36px;
@@ -317,12 +340,15 @@ export function getPriceTrendComparisonStyles(): string {
 [data-ra-next-price-trend-table-details] th { background: #f3f6f8; }
 @media (max-width: 680px) {
     [${PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE}] {
-        width: min(100%, calc(100vw - 16px));
+        width: 100%;
+        max-width: calc(100vw - 16px);
         margin-top: 14px;
-        padding: 13px;
+        padding: 0;
     }
     [data-ra-next-price-trend-panel] { padding: 10px; }
     [data-ra-next-price-trend-filters] { display: grid; }
+    [data-ra-next-price-trend-filter-group] { width: 100%; }
+    [data-ra-next-price-trend-filter-group] legend { flex: 0 0 100%; }
     [${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}] { min-height: 44px; }
     [${PRICE_TREND_COMPARISON_SVG_ATTRIBUTE}] { min-width: 0; }
 }
@@ -336,21 +362,16 @@ function createHeader(
 ): HTMLElement {
     const header = documentHost.createElement("header");
     header.setAttribute("data-ra-next-price-trend-header", "");
-    const eyebrow = documentHost.createElement("span");
-    eyebrow.setAttribute("data-ra-next-price-trend-eyebrow", "");
-    eyebrow.textContent = "90日価格推移";
     const title = documentHost.createElement("h3");
     title.textContent = "競合価格 最安値推移（90日版）";
     const meta = documentHost.createElement("p");
     meta.setAttribute("data-ra-next-price-trend-meta", "");
-    meta.textContent = state.status === "ready"
+    const context = state.status === "ready"
         ? formatMeta(state.viewModel)
         : `対象宿泊日 ${formatStayDate(state.stayDate)} / 保存済み履歴を確認`;
-    const capture = documentHost.createElement("span");
-    capture.setAttribute("data-ra-next-price-trend-capture", captureStatus);
-    capture.setAttribute("role", captureStatus === "error" ? "alert" : "status");
-    capture.textContent = formatCaptureStatus(captureStatus);
-    header.append(eyebrow, title, meta, capture);
+    meta.setAttribute("role", captureStatus === "error" ? "alert" : "status");
+    meta.textContent = `${context} / 保存状態 ${formatCaptureStatus(captureStatus)}`;
+    header.append(title, meta);
     return header;
 }
 
@@ -510,9 +531,7 @@ function createGuestPanel(
     const title = documentHost.createElement("h4");
     title.id = `ra-next-price-trend-panel-${guestCount}`;
     title.textContent = `${guestCount}名 最安値`;
-    const reading = documentHost.createElement("p");
-    reading.textContent = "左が90日前側、右が宿泊日側です。";
-    panelHeader.append(title, reading);
+    panelHeader.append(title);
     if (comparison === undefined || comparison.points.length === 0) {
         const empty = documentHost.createElement("p");
         empty.setAttribute("data-ra-next-price-trend-panel-empty", "");
@@ -556,7 +575,7 @@ function createChart(
     facilities: readonly PriceTrendComparisonFacility[],
     narrow: boolean
 ): HTMLElement {
-    const width = narrow ? 360 : 860;
+    const width = narrow ? 360 : 760;
     const height = narrow ? 274 : 284;
     const padding = { top: 18, right: 18, bottom: 38, left: narrow ? 54 : 64 };
     const plotWidth = width - padding.left - padding.right;
@@ -737,20 +756,63 @@ function showLeadTimeTooltip(
     const documentHost = tooltip.ownerDocument;
     const title = documentHost.createElement("strong");
     title.textContent = `${leadTime}日前`;
-    const list = documentHost.createElement("ul");
-    for (const point of points
-        .filter((candidate) => candidate.leadTimeDays === leadTime)
-        .sort((left, right) => left.price - right.price)) {
-        const item = documentHost.createElement("li");
-        item.textContent = [
-            facilityById.get(point.facilityId)?.label ?? "競合施設",
-            formatPrice(point.price),
-            point.roomTypeLabel,
-            formatPriceTrendComparisonMealType(point.mealType)
-        ].join(" / ");
-        list.append(item);
+    const currentPoints = points.filter((candidate) => candidate.leadTimeDays === leadTime);
+    const leadTimes = Array.from(new Set(points.map((point) => point.leadTimeDays)))
+        .sort((left, right) => right - left);
+    const leadTimeIndex = leadTimes.indexOf(leadTime);
+    const previousLeadTime = leadTimeIndex > 0 ? leadTimes[leadTimeIndex - 1] : null;
+    const previousPointByFacility = new Map(
+        points
+            .filter((point) => point.leadTimeDays === previousLeadTime)
+            .map((point) => [point.facilityId, point])
+    );
+    const ownPoint = currentPoints.find((point) => facilityById.get(point.facilityId)?.isOwn === true);
+    const table = documentHost.createElement("table");
+    const head = documentHost.createElement("thead");
+    const headRow = documentHost.createElement("tr");
+    for (const label of ["施設", "部屋タイプ", "価格", "前回差分", "自社との差"]) {
+        const cell = documentHost.createElement("th");
+        cell.scope = "col";
+        cell.textContent = label;
+        headRow.append(cell);
     }
-    tooltip.replaceChildren(title, list);
+    head.append(headRow);
+    const body = documentHost.createElement("tbody");
+    for (const point of currentPoints) {
+        const facility = facilityById.get(point.facilityId);
+        const previousPoint = previousPointByFacility.get(point.facilityId);
+        const previousDelta = previousPoint === undefined ? null : point.price - previousPoint.price;
+        const ownDelta = facility?.isOwn === true || ownPoint === undefined
+            ? null
+            : point.price - ownPoint.price;
+        const row = documentHost.createElement("tr");
+        const facilityCell = documentHost.createElement("td");
+        const facilityLabel = documentHost.createElement("span");
+        facilityLabel.setAttribute("data-ra-next-price-trend-tooltip-facility", "");
+        const swatch = documentHost.createElement("span");
+        swatch.setAttribute("data-ra-next-price-trend-swatch", "");
+        swatch.style.backgroundColor = facility?.color ?? "#53677c";
+        swatch.setAttribute("aria-hidden", "true");
+        facilityLabel.append(
+            swatch,
+            documentHost.createTextNode(facility?.label ?? "競合施設")
+        );
+        facilityCell.append(facilityLabel);
+        const roomCell = documentHost.createElement("td");
+        roomCell.textContent = point.roomTypeLabel;
+        const priceCell = documentHost.createElement("td");
+        priceCell.textContent = formatPrice(point.price);
+        const previousCell = documentHost.createElement("td");
+        previousCell.textContent = previousDelta === null ? "前回なし" : formatSignedPrice(previousDelta);
+        previousCell.setAttribute("data-ra-next-price-trend-delta", getDeltaTone(previousDelta));
+        const ownCell = documentHost.createElement("td");
+        ownCell.textContent = ownDelta === null ? "-" : formatSignedPrice(ownDelta);
+        ownCell.setAttribute("data-ra-next-price-trend-delta", getDeltaTone(ownDelta));
+        row.append(facilityCell, roomCell, priceCell, previousCell, ownCell);
+        body.append(row);
+    }
+    table.append(head, body);
+    tooltip.replaceChildren(title, table);
     tooltip.hidden = false;
 }
 
@@ -817,6 +879,17 @@ function selectLeadTimeTicks(maximum: number, minimum: number): number[] {
 
 function formatPrice(value: number): string {
     return `${new Intl.NumberFormat("ja-JP").format(Math.round(value))}円`;
+}
+
+function formatSignedPrice(value: number): string {
+    return `${value > 0 ? "+" : ""}${new Intl.NumberFormat("ja-JP").format(Math.round(value))}円`;
+}
+
+function getDeltaTone(value: number | null): "negative" | "neutral" | "positive" {
+    if (value === null || value === 0) {
+        return "neutral";
+    }
+    return value < 0 ? "negative" : "positive";
 }
 
 function formatAxisPrice(value: number): string {

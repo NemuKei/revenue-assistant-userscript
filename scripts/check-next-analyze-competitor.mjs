@@ -148,21 +148,20 @@ assert.match(styles, /max-width: 980px/u);
 assert.match(styles, /@media \(max-width: 680px\)/u);
 assert.match(styles, /max-width: calc\(100vw - 16px\)/u);
 assert.match(styles, /min-height: 44px/u);
-assert.match(
-    styles,
-    /\[data-ra-next-competitor-history-guest-selector\] \{\s*display: none;/u
-);
 assert.doesNotMatch(styles, /data-mobile-active="false"/u);
-assert.doesNotMatch(
-    styles,
-    /\[data-ra-next-competitor-history-guest-selector\] \{\s*display: flex;/u
-);
+assert.doesNotMatch(styles, /data-ra-next-competitor-history-guest-selector/u);
+assert.match(styles, /max-width: 760px/u);
+assert.match(styles, /border-radius: 2px/u);
 assert.match(viewSource, /title\.textContent = "競合価格 最安値推移"/u);
 assert.match(viewSource, /details\.setAttribute\("data-ra-next-competitor-history-details", ""\)/u);
 assert.match(
     viewSource,
-    /root\.replaceChildren\(header, meta, filters, guestSelector, legend, grid, details\)/u
+    /root\.replaceChildren\(header, meta, filters, legend, grid, details\)/u
 );
+assert.doesNotMatch(viewSource, /createGuestSelector|competitor-history-badge/u);
+assert.doesNotMatch(viewSource, /createLatestValues\(documentHost, panel, facilities\),\s*createAccessibleTable/u);
+assert.match(viewSource, /details\.append\(summary, latestValues, table\)/u);
+assert.match(viewSource, /\["施設", "部屋タイプ", "価格", "前回差分", "自社との差"\]/u);
 assert.equal(view.formatCompetitorHistoryCaptureStatus("checking"), "本日分を確認中");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("stored"), "本日分を保存");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("already-stored"), "本日分は保存済み");

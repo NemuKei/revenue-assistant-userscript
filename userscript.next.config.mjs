@@ -1,6 +1,6 @@
 import packageJson from "./package.json" with { type: "json" };
 
-const nextCandidateRevision = "156";
+const nextCandidateRevision = "157";
 
 export default {
     id: "revenue-assistant-next",

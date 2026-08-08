@@ -386,6 +386,28 @@
   - `target-spec: README.md`
   - `decision: D-20260808-001`
 
+### RAU-UX-157 Analyzeの可視UI全体をClassic baselineへ揃える
+
+- 状態:
+  - 完了。booking curve、競合価格履歴、90日価格推移の初期表示を実際のClassic UI構造へ揃え、合成fixtureとrepo-wide checkまで完了した。通常Chrome / Tampermonkeyへの`0.1.0.157`手動reinstall、Revenue Assistant実画面QA、publish / releaseは実施していない。
+- 解決した問題:
+  - `RAU-UX-152`〜`RAU-UX-154`では人数別panel数と読む順序を戻したが、Next固有の大きな外枠、eyebrow、状態pill、可視group label、panel前診断、最新値list、軸説明が残り、実画面ではClassicと異なるUIに見えていた。
+- 表示変更:
+  - booking curveは対象scope、短いsource note、scope / 個人・団体 / 参考線toggleを同じheaderへ置き、group labelを視覚的に隠してaccessible nameとして維持した。`閲覧のみ`badgeとpanel前診断を外し、系列診断はchart後の`データ条件とランク履歴`へ移した。
+  - 競合価格履歴は透明root、compactな部屋 / 食事filter、矩形swatchの共通凡例、1〜4名の最大980px 1列panelへ揃えた。状態badge、人数selector、panel最新日、初期表示の最新値listを外し、保存状態はmeta、最新値 / 前回差分は初期折りたたみの日別表へ残した。
+  - 90日価格推移も透明root、15px見出し、compact filter、矩形swatchの共通凡例、1〜4名の最大980px 1列panelへ揃えた。eyebrow、大きなcard、状態pill、panel軸説明を外し、保存状態をmetaへ統合した。
+  - 競合価格履歴と90日価格推移のtooltipはClassicと同じ`施設 / 部屋タイプ / 価格 / 前回差分 / 自社との差`の5列へ揃えた。keyboard focus、tap、accessible tableは維持した。
+- 実装境界:
+  - `src/main.ts`、Classic DOM / runtime / storeをimportせず、Nextの3 viewと表示契約checkだけを変更した。model / data source / runtime / writer / store、API path、request件数、concurrency、IndexedDB schema / retention、freshness、Revenue Assistant write、Classic公開物は変更していない。
+- ローカル確認:
+  - 通常Chromeの合成fixtureを1280px / 390 x 844で確認した。booking curveは2 panel、競合価格履歴と90日価格推移は4 panelを常時表示し、3 rootとも自己overflow 0、mobile control最小44pxだった。部屋 / 団体filter、keyboard tooltip、初期details closed、5列tooltip、console warning / error 0を確認した。
+  - focused Analyze check、`npm run check:next`、`npm run check`、`npm run check:classic-publication`、fixture marker、distribution / booking-curve smoke fixture、`git diff --check`が通過した。Next candidateはversion `0.1.0.157`、241,268 bytes、SHA-256 `9B367C73BF9862724B3BCD976E234FEBC1392815669804015D1F96232FF3C55A`、updateURL / downloadURLなしであり、公開していない。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260808-002`
+
 Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Tampermonkey install / switch、publish、release、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile

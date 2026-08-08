@@ -41,7 +41,8 @@ const [
     runtimeSource,
     dataSourceSource,
     rankDataSourceSource,
-    rankModelSource
+    rankModelSource,
+    viewSource
 ] = await Promise.all([
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../dev/fixtures/next-analyze-booking-curve/index.html", import.meta.url), "utf8"),
@@ -49,7 +50,8 @@ const [
     readFile(new URL("../src/next/analyze/bookingCurveReferenceRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankStatusDataSource.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/next/analyze/bookingCurveRankMarkerModel.ts", import.meta.url), "utf8")
+    readFile(new URL("../src/next/analyze/bookingCurveRankMarkerModel.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveReferenceView.ts", import.meta.url), "utf8")
 ]);
 
 assert.equal(runtime.parseBookingCurveReferenceAnalyzeStayDate("/analyze/2026-08-12"), "20260812");
@@ -633,6 +635,13 @@ assert.match(styles, /@media \(max-width: 680px\)/u);
 assert.match(styles, /max-width: calc\(100vw - 48px\)/u);
 assert.match(styles, /min-height: 44px/u);
 assert.match(styles, /data-ra-next-booking-curve-rank-marker-hitbox/u);
+assert.match(styles, /font-size: 14px/u);
+assert.match(styles, /data-ra-next-booking-curve-reference-control-label/u);
+assert.match(viewSource, /header\.append\(createControls\(root\.ownerDocument, viewModel\)\)/u);
+assert.match(viewSource, /root\.replaceChildren\(header, legend, grid, details\)/u);
+assert.match(viewSource, /body\.append\(meta, note, diagnostics, rankHistory\)/u);
+assert.doesNotMatch(viewSource, /閲覧のみ|booking-curve-reference-badge/u);
+assert.doesNotMatch(viewSource, /element\.append\(\s*title,\s*diagnostics,/u);
 assert.match(entrySource, /startBookingCurveReferenceRuntime\(document, window, \{/u);
 assert.match(entrySource, /createBookingCurveReferenceDataSource\(\{[\s\S]*acquisition: bookingCurveAcquisition/u);
 assert.match(runtimeSource, /booking-curve-main-chart-header/u);

@@ -1,5 +1,4 @@
 import {
-    COMPETITOR_HISTORY_GUEST_COUNTS,
     type CompetitorHistoryFacility,
     type CompetitorHistoryFilters,
     type CompetitorHistoryGuestCount,
@@ -67,7 +66,7 @@ export function renderCompetitorHistory(
     options: { captureStatus: CompetitorHistoryCaptureStatus; narrow: boolean }
 ): void {
     root.setAttribute("data-ra-next-competitor-history-state", state.status);
-    const header = createHeader(root.ownerDocument, options.captureStatus);
+    const header = createHeader(root.ownerDocument);
     if (state.status === "loading") {
         root.replaceChildren(
             header,
@@ -109,6 +108,7 @@ export function renderCompetitorHistory(
         `対象宿泊日 ${formatStayDate(viewModel.stayDate)}`,
         `観測 ${viewModel.observationDates.length}日`,
         `最終取得 ${formatDateTime(viewModel.latestFetchedAt)}`,
+        `保存状態 ${formatCaptureStatus(options.captureStatus)}`,
         `同一検索条件 ${viewModel.selectedConditionRecordCount}件`,
         viewModel.excludedConditionRecordCount > 0
             ? `条件違い ${viewModel.excludedConditionRecordCount}件は別系列として除外`
@@ -117,12 +117,11 @@ export function renderCompetitorHistory(
     ].filter((value): value is string => value !== null).join(" / ");
 
     const filters = createFilters(root.ownerDocument, viewModel);
-    const guestSelector = createGuestSelector(root.ownerDocument, state.selectedGuestCount);
     const legend = createLegend(root.ownerDocument, viewModel.facilities);
     const note = root.ownerDocument.createElement("p");
     note.setAttribute("data-ra-next-competitor-history-note", "");
     note.textContent =
-        "各人数で同じ保存済み観測日・共通の価格目盛を使います。最新値と前回差分はグラフ下に常時表示しています。";
+        "各人数で同じ保存済み観測日・共通の価格目盛を使います。最新値、前回差分、採用部屋タイプは各グラフの表で確認できます。";
     const details = createHistoryDetails(root.ownerDocument, note);
 
     const grid = root.ownerDocument.createElement("div");
@@ -134,7 +133,6 @@ export function renderCompetitorHistory(
             panel,
             viewModel.facilities,
             viewModel.observationDates,
-            state.selectedGuestCount,
             sharedDomain,
             options.narrow
         ));
@@ -146,10 +144,10 @@ export function renderCompetitorHistory(
             "この絞り込み条件に一致する価格履歴はありません。条件を「すべて」に戻してください。",
             "empty"
         );
-        root.replaceChildren(header, meta, filters, guestSelector, legend, filteredEmpty, grid, details);
+        root.replaceChildren(header, meta, filters, legend, filteredEmpty, grid, details);
         return;
     }
-    root.replaceChildren(header, meta, filters, guestSelector, legend, grid, details);
+    root.replaceChildren(header, meta, filters, legend, grid, details);
 }
 
 function createHistoryDetails(documentHost: Document, note: HTMLElement): HTMLElement {
@@ -180,30 +178,13 @@ export function getCompetitorHistoryStyles(): string {
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] *::before,
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] *::after { box-sizing: border-box; }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-header] {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
+    display: block;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] h2 {
     margin: 0;
     color: #1f3548;
     font-size: 15px;
     line-height: 1.35;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-badge] {
-    flex: 0 0 auto;
-    padding: 3px 7px;
-    border-radius: 999px;
-    background: #e8f3fb;
-    color: #0d5f98;
-    font-size: 11px;
-    font-weight: 700;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-badge="error"],
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-badge="unavailable"] {
-    background: #fff2ef;
-    color: #8c3c25;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-meta] {
     margin: 6px 0 0;
@@ -259,11 +240,6 @@ export function getCompetitorHistoryStyles(): string {
     outline: 3px solid #d98200;
     outline-offset: 2px;
 }
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-guest-selector] {
-    display: none;
-    gap: 6px;
-    margin: 14px 0 0;
-}
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-legend] {
     display: flex;
     flex-wrap: wrap;
@@ -285,7 +261,7 @@ export function getCompetitorHistoryStyles(): string {
     flex: 0 0 auto;
     width: 10px;
     height: 10px;
-    border-radius: 50%;
+    border-radius: 2px;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-note] {
     margin: 8px 0 0;
@@ -307,36 +283,28 @@ export function getCompetitorHistoryStyles(): string {
     border-radius: 6px;
     background: #ffffff;
 }
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-panel-header] {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 8px;
-}
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-panel-title] {
-    color: #263f52;
-    font-size: 15px;
+    margin-bottom: 2px;
+    color: #243447;
+    font-size: 13px;
     font-weight: 800;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-panel-date] {
-    color: #687d8e;
-    font-size: 11px;
+    line-height: 1.35;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-chart-wrap] {
     position: relative;
     min-width: 0;
-    margin-top: 8px;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [${COMPETITOR_HISTORY_SVG_ATTRIBUTE}] {
     display: block;
     width: 100%;
+    max-width: 760px;
     height: auto;
     overflow: visible;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [${COMPETITOR_HISTORY_SVG_ATTRIBUTE}] text {
     fill: #607486;
     font-family: inherit;
-    font-size: 11px;
+    font-size: 10px;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-grid-line] {
     stroke: #dfe7ed;
@@ -349,27 +317,59 @@ export function getCompetitorHistoryStyles(): string {
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] {
     position: absolute;
     z-index: 2;
-    top: 8px;
-    left: 8px;
-    width: min(330px, calc(100% - 16px));
-    max-height: 185px;
+    top: 28px;
+    left: 50%;
+    width: max-content;
+    min-width: 220px;
+    max-width: min(560px, calc(100% - 16px));
+    max-height: 220px;
     overflow: auto;
-    padding: 10px;
-    border: 1px solid #91a8ba;
-    border-radius: 7px;
+    transform: translateX(-50%);
+    padding: 6px 8px;
+    border: 1px solid #cbd7e8;
+    border-radius: 6px;
     background: rgba(255, 255, 255, 0.98);
-    box-shadow: 0 5px 16px rgba(25, 49, 67, 0.16);
-    color: #2d4659;
+    box-shadow: 0 8px 24px rgba(32, 50, 76, 0.14);
+    color: #29384d;
     font-size: 11px;
     line-height: 1.5;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip][hidden] { display: none; }
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] ul {
-    display: grid;
-    gap: 4px;
-    margin: 6px 0 0;
-    padding: 0;
-    list-style: none;
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] table {
+    min-width: 430px;
+    margin-top: 4px;
+    border-collapse: collapse;
+    font-size: 11px;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] th,
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] td {
+    padding: 2px 6px;
+    border-bottom: 1px solid #e5ebf2;
+    text-align: right;
+    white-space: nowrap;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] th:first-child,
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] td:first-child {
+    max-width: 240px;
+    overflow: hidden;
+    text-align: left;
+    text-overflow: ellipsis;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip-facility] {
+    display: inline-flex;
+    max-width: 100%;
+    align-items: center;
+    gap: 5px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: top;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] th {
+    color: #50627a;
+    font-weight: 800;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] tr:last-child td {
+    border-bottom: 0;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-latest] {
     display: grid;
@@ -377,6 +377,9 @@ export function getCompetitorHistoryStyles(): string {
     margin: 8px 0 0;
     padding: 0;
     list-style: none;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] details:not([open]) > [data-ra-next-competitor-history-latest] {
+    display: none;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-latest] li {
     display: grid;
@@ -435,7 +438,6 @@ export function getCompetitorHistoryStyles(): string {
         margin-top: 16px;
         padding: 0;
     }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-header] { align-items: flex-start; }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filters] { display: grid; gap: 8px; }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] { width: 100%; }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] legend {
@@ -457,10 +459,7 @@ export function getCompetitorHistoryStyles(): string {
 `;
 }
 
-function createHeader(
-    documentHost: Document,
-    captureStatus: CompetitorHistoryCaptureStatus
-): HTMLElement {
+function createHeader(documentHost: Document): HTMLElement {
     const header = documentHost.createElement("div");
     header.setAttribute("data-ra-next-competitor-history-header", "");
     const titleWrap = documentHost.createElement("div");
@@ -468,10 +467,7 @@ function createHeader(
     title.id = "ra-next-competitor-history-title";
     title.textContent = "競合価格 最安値推移";
     titleWrap.append(title);
-    const badge = documentHost.createElement("span");
-    badge.setAttribute("data-ra-next-competitor-history-badge", captureStatus);
-    badge.textContent = formatCaptureStatus(captureStatus);
-    header.append(titleWrap, badge);
+    header.append(titleWrap);
     return header;
 }
 
@@ -541,25 +537,6 @@ function createFilterGroup(
     return group;
 }
 
-function createGuestSelector(
-    documentHost: Document,
-    selectedGuestCount: CompetitorHistoryGuestCount
-): HTMLElement {
-    const selector = documentHost.createElement("div");
-    selector.setAttribute("data-ra-next-competitor-history-guest-selector", "");
-    selector.setAttribute("role", "group");
-    selector.setAttribute("aria-label", "表示する人数");
-    for (const guestCount of COMPETITOR_HISTORY_GUEST_COUNTS) {
-        const button = documentHost.createElement("button");
-        button.type = "button";
-        button.setAttribute(COMPETITOR_HISTORY_GUEST_ATTRIBUTE, String(guestCount));
-        button.setAttribute("aria-pressed", String(guestCount === selectedGuestCount));
-        button.textContent = `${guestCount}名`;
-        selector.append(button);
-    }
-    return selector;
-}
-
 function createLegend(
     documentHost: Document,
     facilities: readonly CompetitorHistoryFacility[]
@@ -581,30 +558,21 @@ function createPanel(
     panel: CompetitorHistoryPanel,
     facilities: readonly CompetitorHistoryFacility[],
     observationDates: readonly string[],
-    selectedGuestCount: CompetitorHistoryGuestCount,
     sharedDomain: { min: number; max: number },
     narrow: boolean
 ): HTMLElement {
     const element = documentHost.createElement("section");
     element.setAttribute(COMPETITOR_HISTORY_PANEL_ATTRIBUTE, String(panel.guestCount));
-    element.setAttribute("data-mobile-active", String(panel.guestCount === selectedGuestCount));
-    const header = documentHost.createElement("div");
-    header.setAttribute("data-ra-next-competitor-history-panel-header", "");
     const title = documentHost.createElement("div");
     title.setAttribute("data-ra-next-competitor-history-panel-title", "");
     title.textContent = `${panel.guestCount}名 最安値`;
-    const date = documentHost.createElement("div");
-    date.setAttribute("data-ra-next-competitor-history-panel-date", "");
-    date.textContent = panel.latestDate === null ? "観測なし" : `最新 ${formatShortDate(panel.latestDate)}`;
-    header.append(title, date);
-    element.append(header);
+    element.append(title);
     if (panel.points.length === 0) {
         element.append(createMessage(documentHost, "対象データなし", "empty"));
         return element;
     }
     element.append(
         createChart(documentHost, panel, facilities, observationDates, sharedDomain, narrow),
-        createLatestValues(documentHost, panel, facilities),
         createAccessibleTable(documentHost, panel, facilities)
     );
     return element;
@@ -799,7 +767,8 @@ function createAccessibleTable(
         body.append(row);
     }
     table.append(caption, head, body);
-    details.append(summary, table);
+    const latestValues = createLatestValues(documentHost, panel, facilities);
+    details.append(summary, latestValues, table);
     return details;
 }
 
@@ -820,14 +789,59 @@ function showDateTooltip(
     const documentHost = tooltip.ownerDocument;
     const title = documentHost.createElement("strong");
     title.textContent = formatStayDate(date);
-    const list = documentHost.createElement("ul");
     const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
-    for (const point of points.filter((candidate) => candidate.date === date)) {
-        const item = documentHost.createElement("li");
-        item.textContent = `${facilityById.get(point.facilityId)?.label ?? "競合施設"} / ${point.roomTypeLabel} / ${formatPrice(point.price)}`;
-        list.append(item);
+    const currentPoints = points.filter((candidate) => candidate.date === date);
+    const dates = Array.from(new Set(points.map((point) => point.date))).sort();
+    const dateIndex = dates.indexOf(date);
+    const previousDate = dateIndex > 0 ? dates[dateIndex - 1] : null;
+    const previousPointByFacility = new Map(
+        points
+            .filter((point) => point.date === previousDate)
+            .map((point) => [point.facilityId, point])
+    );
+    const ownPoint = currentPoints.find((point) => facilityById.get(point.facilityId)?.isOwn === true);
+    const table = documentHost.createElement("table");
+    const head = documentHost.createElement("thead");
+    const headRow = documentHost.createElement("tr");
+    for (const label of ["施設", "部屋タイプ", "価格", "前回差分", "自社との差"]) {
+        const cell = documentHost.createElement("th");
+        cell.scope = "col";
+        cell.textContent = label;
+        headRow.append(cell);
     }
-    tooltip.replaceChildren(title, list);
+    head.append(headRow);
+    const body = documentHost.createElement("tbody");
+    for (const point of currentPoints) {
+        const facility = facilityById.get(point.facilityId);
+        const previousPoint = previousPointByFacility.get(point.facilityId);
+        const previousDelta = previousPoint === undefined ? null : point.price - previousPoint.price;
+        const ownDelta = facility?.isOwn === true || ownPoint === undefined
+            ? null
+            : point.price - ownPoint.price;
+        const row = documentHost.createElement("tr");
+        const facilityCell = documentHost.createElement("td");
+        const facilityLabel = documentHost.createElement("span");
+        facilityLabel.setAttribute("data-ra-next-competitor-history-tooltip-facility", "");
+        facilityLabel.append(
+            createSwatch(documentHost, facility?.color ?? "#53677c"),
+            documentHost.createTextNode(facility?.label ?? "競合施設")
+        );
+        facilityCell.append(facilityLabel);
+        const roomCell = documentHost.createElement("td");
+        roomCell.textContent = point.roomTypeLabel;
+        const priceCell = documentHost.createElement("td");
+        priceCell.textContent = formatPrice(point.price);
+        const previousCell = documentHost.createElement("td");
+        previousCell.textContent = previousDelta === null ? "前回なし" : formatSignedPrice(previousDelta);
+        previousCell.setAttribute("data-ra-next-competitor-history-delta", getDeltaTone(previousDelta));
+        const ownCell = documentHost.createElement("td");
+        ownCell.textContent = ownDelta === null ? "-" : formatSignedPrice(ownDelta);
+        ownCell.setAttribute("data-ra-next-competitor-history-delta", getDeltaTone(ownDelta));
+        row.append(facilityCell, roomCell, priceCell, previousCell, ownCell);
+        body.append(row);
+    }
+    table.append(head, body);
+    tooltip.replaceChildren(title, table);
     tooltip.hidden = false;
 }
 

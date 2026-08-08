@@ -4,7 +4,7 @@
 
 ## Current Task Bundle
 
-- 現在進行中の Goal Bundle はない。直近完了は `RAU-UX-156` であり、Classic UI baselineの4 sliceをNext candidate `0.1.0.156`として通常Chrome / Tampermonkeyへ手動切替し、TopからAnalyzeまで実画面確認した。Next publish / release、Classic再公開、Revenue Assistant writeは行っていない。
+- 現在進行中の Goal Bundle はない。直近完了は `RAU-UX-157` であり、Analyzeの3補助表示をpanel配置だけでなく可視UI全体でClassic baselineへ揃え、Next candidate `0.1.0.157`としてlocal fixtureまで確認した。現在の通常Chrome / Tampermonkeyは一つ前の`0.1.0.156`であり、`0.1.0.157`の手動reinstallと実画面smokeは未実施である。Next publish / release、Classic再公開、Revenue Assistant writeは行っていない。
 
 ## Current State
 
@@ -24,19 +24,23 @@
 - `RAU-UX-154` は、Next競合価格履歴のdesktop 2 x 2 / mobile 1 panel切替を廃止し、Classic同様に`1名 最安値`〜`4名 最安値`を最大980pxの1列で常時表示する。見出しを`競合価格 最安値推移`へ戻し、compactな部屋 / 食事filterと凡例をchart前、補足説明をchart後の初期折りたたみ`データの見方`へ置いた。model / data source / runtime / writer / store、API / storage / write境界は変更していない。
 - `RAU-UX-155` は、Topのuser-facing見出しを`基準日から似た日を探す`へ改め、desktopでも似た日候補を初期折りたたみにした。候補を開いた後の3列表示、最大3日の部分比較、再描画後の開状態、calendar marker、通常の日付click / Analyze導線は維持する。狭幅のbutton / selectは44px以上とし、state / view model / runtime / data source、API / storage / write境界は変更していない。
 - `RAU-UX-156` は、candidateのbyte列が変わってもNext `@version 0.1.0`を再利用していたため、Tampermonkey install完了だけでは旧候補と更新候補を判別できない問題をlive切替で確認した。Nextだけに数値revisionを加えた`0.1.0.156`へ更新し、artifact checkでpackage version単独の再利用を拒否する。Classic version、package version、name / namespace、updateURL / downloadURLなし、公開境界は変更していない。
+- `RAU-UX-157` は、利用者の実画面feedbackに基づき、AnalyzeのClassic UI baselineをpanel数と読む順序だけでなく初期表示全体へ適用した。booking curveは見出し内toggle、凡例、2 chartへ集約し、`閲覧のみ`とpanel前診断を外した。競合価格履歴と90日価格推移は透明root、compact filter、矩形swatchの共通凡例、1〜4名の1列panel、5列tooltipへ揃え、状態pill、eyebrow、人数selector、panel最新日 / 軸説明 / 最新値listを初期表示から外した。状態・診断・最新値はmetaまたは初期折りたたみdetails / tableへ残し、model / runtime / data source / store、API / request / write境界は変更していない。
 - 2026-08-08に利用者が旧RA userscriptを無効のままNext `0.1.0.156`を手動reinstallし、再ログイン後の通常Chromeで新見出し、単一root、Top / Analyze表示を確認した。task終了時点では同candidateが有効だが、Tampermonkey状態はmutableなので次のlive作業前にもfresh確認する。candidateは引き続きmanual opt-in artifactで、公開版ではない。
 - `RAU-UX-145` は、Next が旧 stacked rail を採用していないため見送りである。同じ host 構造を将来採用する場合だけ再開する。
 - RAU は`solo-product`を採用し、data contract / migration、architecture / dependency、browser observationのconditional boundaryをroot `AGENTS.md`へ統合した。user-scope global policyは複製せず、`PROJECT_CONTEXT.md`、`INTENT.md`、`DECISIONS.md`、このfile、backlogは責務が一致するときだけ読む。今回のprofile最適化はruntime、Classic / Next、Tampermonkey、API / write、publication boundaryを変更しない。
 
 ## Next Re-entry
 
-1. Classic UI baselineは`RAU-UX-152`〜`RAU-UX-155`のfixtureと`RAU-UX-156`の通常Chrome実画面で確認済みである。90日価格推移、booking curve、競合価格履歴、Top入口の追加変更は、実利用で具体的な判断阻害を確認した場合だけ局所修正する。
-2. Next candidateのbyte列を変更した後にTampermonkeyへ手動reinstallする場合は、`userscript.next.config.mjs`の数値revisionを進め、同じ`@version`を再利用しない。updateURL / downloadURLがないため、repo更新だけでは現在の実行版へ自動反映されない。
+1. Analyzeの3補助表示は`RAU-UX-157`で実際のClassic可視UIへ揃え、desktop / 390pxの合成fixtureで確認済みである。次のsafe actionはNext candidate `0.1.0.157`を利用者が通常Chrome / Tampermonkeyへ手動reinstallした後、標準3 tab、初期表示、filter / toggle、tooltip、標準UI非干渉、console、write 0を実画面で確認することである。
+2. Next candidateのbyte列を変更した後にTampermonkeyへ手動reinstallする場合は、`userscript.next.config.mjs`の数値revisionを進め、同じ`@version`を再利用しない。updateURL / downloadURLがないため、repo更新だけでは現在の実行版へ自動反映されない。現在の実行版`0.1.0.156`とlocal candidate `0.1.0.157`を混同しない。
 3. 翌日tail差分は2026-08-08の通常Chromeで、本日差分168件を保存、error 0、開始間隔265ms以上、concurrency 2で完了し、収束後の同日再選択ではbooking curve GET 0を確認した。将来の別日再確認は新しい不具合や速度課題が見つかった場合の追加検証とし、現時点のblockerにしない。
 4. Next publish、release、Classic再公開は未実施の明示gateである。週・月・周辺日程の取得、保存削除 UI、retention 変更が必要になった場合も、今回の明示承認へ含めず別の Yellow zone 判断とする。
 
 ## Verify / Confirmation State
 
+- `RAU-UX-157` の合成fixtureを通常Chromeで1280px / 390 x 844表示した。booking curveはbadge 0、可視group label 0、2 panel / SVG、初期details closed、root overflow 0で、団体切替とkeyboard tooltipを確認した。競合価格履歴は状態badge / 人数selector 0、4 panel / SVG、最大980pxの1列、初期表示の最新値list 0、root overflow 0で、部屋filterと5列tooltipを確認した。90日価格推移はeyebrow / 状態pill / panel軸説明 0、共通legend 1、4 panel / SVG、透明root、最大980pxの1列、root overflow 0で、部屋filterと5列tooltipを確認した。390pxでは3画面ともcontrol最小44px、Next root overflow 0、競合 / 価格推移の4 panel常時表示を維持した。合成fixtureは外部通信とbrowser-local保存を行わず、console warning / errorは0だった。
+- `npm run check:next`、`npm run check`、`npm run check:classic-publication`、focused Analyze check、fixture marker、distribution / booking-curve smoke fixture、`git diff --check`が通過した。fixture markerはsandboxの親directory読取拒否だけで一度停止し、同じ検査を制限外で再実行して通過した。Next candidateはversion `0.1.0.157`、241,268 bytes、SHA-256 `9B367C73BF9862724B3BCD976E234FEBC1392815669804015D1F96232FF3C55A`、updateURL / downloadURLなしである。Classic公開baselineはversion `0.1.0.442`、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`のまま変えていない。
+- `RAU-UX-157` はlocal-only確認までで、通常Chrome / Tampermonkeyの`0.1.0.157` install / switch、Revenue Assistant実画面QA、publish / releaseは未実施である。現在有効な`0.1.0.156`の実行状態はこのrepo変更だけでは更新されない。
 - `RAU-UX-156` の通常Chromeでは、再ログイン後にNext `0.1.0.156`の新見出し1、旧見出し0、runtime root / style各1、標準calendarを確認した。基準日、room scope、4指標、初期closedの候補一覧、比較選択、Analyze導線を操作し、Next root自己overflow 0と標準calendar維持を確認した。
 - Analyzeでは標準tabを順に開き、標準booking curve 2 chartを残したNext 2 panel / SVG、競合価格履歴4 panel / SVG、標準価格推移chartを残したNext 4 panel / SVGを確認した。tab切替時は前のNext rootが0へcleanupされ、各root自己overflow 0、console warning / error 0だった。実施設名、room名、価格、在庫、raw response、HAR、screenshotは保存していない。
 - 本日差分は168/168、保存168、重複回避0、error 0で完了した。観測区間のbooking curve GETは開始間隔最小265ms、最大同時2、HTTP error 0で、収束後の同日再選択はbooking curve GET 0、確認済みAPIはGETだけ、POST / PUT / PATCH / DELETE 0だった。
