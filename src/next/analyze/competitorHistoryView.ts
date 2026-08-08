@@ -105,36 +105,25 @@ export function renderCompetitorHistory(
     const meta = root.ownerDocument.createElement("p");
     meta.setAttribute("data-ra-next-competitor-history-meta", "");
     meta.textContent = [
+        options.captureStatus === "checking" ? "保存済み表示・再取得中" : null,
         `対象宿泊日 ${formatStayDate(viewModel.stayDate)}`,
-        `観測 ${viewModel.observationDates.length}日`,
+        `取得日 ${viewModel.observationDates.length}日`,
         `最終取得 ${formatDateTime(viewModel.latestFetchedAt)}`,
-        `保存状態 ${formatCaptureStatus(options.captureStatus)}`,
-        `同一検索条件 ${viewModel.selectedConditionRecordCount}件`,
-        viewModel.excludedConditionRecordCount > 0
-            ? `条件違い ${viewModel.excludedConditionRecordCount}件は別系列として除外`
-            : null,
-        "最新性は未判定"
+        "同日複数取得は最新 snapshot",
+        `条件 ${shortenConditionSignature(viewModel.selectedConditionSignature)}`
     ].filter((value): value is string => value !== null).join(" / ");
 
     const filters = createFilters(root.ownerDocument, viewModel);
     const legend = createLegend(root.ownerDocument, viewModel.facilities);
-    const note = root.ownerDocument.createElement("p");
-    note.setAttribute("data-ra-next-competitor-history-note", "");
-    note.textContent =
-        "各人数で同じ保存済み観測日・共通の価格目盛を使います。最新値、前回差分、採用部屋タイプは各グラフの表で確認できます。";
-    const details = createHistoryDetails(root.ownerDocument, note);
 
     const grid = root.ownerDocument.createElement("div");
     grid.setAttribute("data-ra-next-competitor-history-grid", "");
-    const sharedDomain = resolveSharedPriceDomain(viewModel.panels);
     for (const panel of viewModel.panels) {
         grid.append(createPanel(
             root.ownerDocument,
             panel,
             viewModel.facilities,
-            viewModel.observationDates,
-            sharedDomain,
-            options.narrow
+            viewModel.observationDates
         ));
     }
 
@@ -144,19 +133,10 @@ export function renderCompetitorHistory(
             "この絞り込み条件に一致する価格履歴はありません。条件を「すべて」に戻してください。",
             "empty"
         );
-        root.replaceChildren(header, meta, filters, legend, filteredEmpty, grid, details);
+        root.replaceChildren(header, meta, filters, legend, filteredEmpty, grid);
         return;
     }
-    root.replaceChildren(header, meta, filters, legend, grid, details);
-}
-
-function createHistoryDetails(documentHost: Document, note: HTMLElement): HTMLElement {
-    const details = documentHost.createElement("details");
-    details.setAttribute("data-ra-next-competitor-history-details", "");
-    const summary = documentHost.createElement("summary");
-    summary.textContent = "データの見方";
-    details.append(summary, note);
-    return details;
+    root.replaceChildren(header, meta, filters, legend, grid);
 }
 
 export function getCompetitorHistoryStyles(): string {
@@ -231,8 +211,8 @@ export function getCompetitorHistoryStyles(): string {
     cursor: pointer;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] button[aria-pressed="true"] {
-    border-color: #1268a6;
-    background: #1268a6;
+    border-color: #4b7fc7;
+    background: #4b7fc7;
     color: #ffffff;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] button:focus-visible,
@@ -302,9 +282,10 @@ export function getCompetitorHistoryStyles(): string {
     overflow: visible;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [${COMPETITOR_HISTORY_SVG_ATTRIBUTE}] text {
-    fill: #607486;
+    fill: #50627a;
     font-family: inherit;
     font-size: 10px;
+    font-weight: 700;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-grid-line] {
     stroke: #dfe7ed;
@@ -314,17 +295,24 @@ export function getCompetitorHistoryStyles(): string {
     stroke: #9fb0bd;
     stroke-width: 1;
 }
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-guide-line] {
+    stroke: #3f5872;
+    stroke-width: 1.5;
+    stroke-dasharray: 2 3;
+    opacity: 0.95;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [${COMPETITOR_HISTORY_HITBOX_ATTRIBUTE}][data-ra-next-competitor-history-hitbox-active="true"] {
+    fill: rgba(47, 111, 187, 0.08);
+}
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] {
     position: absolute;
     z-index: 2;
     top: 28px;
-    left: 50%;
     width: max-content;
     min-width: 220px;
-    max-width: min(560px, calc(100% - 16px));
+    max-width: min(560px, 90vw);
     max-height: 220px;
     overflow: auto;
-    transform: translateX(-50%);
     padding: 6px 8px;
     border: 1px solid #cbd7e8;
     border-radius: 6px;
@@ -332,7 +320,9 @@ export function getCompetitorHistoryStyles(): string {
     box-shadow: 0 8px 24px rgba(32, 50, 76, 0.14);
     color: #29384d;
     font-size: 11px;
+    font-weight: 700;
     line-height: 1.5;
+    pointer-events: none;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip][hidden] { display: none; }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] table {
@@ -418,6 +408,18 @@ export function getCompetitorHistoryStyles(): string {
     overflow-wrap: anywhere;
     text-align: left;
     vertical-align: top;
+}
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-accessible-table] {
+    position: absolute !important;
+    width: 1px !important;
+    height: 1px !important;
+    margin: -1px !important;
+    padding: 0 !important;
+    overflow: hidden !important;
+    clip: rect(0 0 0 0) !important;
+    clip-path: inset(50%) !important;
+    white-space: nowrap !important;
+    border: 0 !important;
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-message] {
     margin: 16px 0 0;
@@ -525,7 +527,7 @@ function createFilterGroup(
     const legend = documentHost.createElement("legend");
     legend.textContent = label;
     group.append(legend);
-    for (const option of [{ label: "すべて", value: "" }, ...options]) {
+    for (const option of [{ label: "指定なし", value: "" }, ...options]) {
         const button = documentHost.createElement("button");
         button.type = "button";
         button.setAttribute(COMPETITOR_HISTORY_FILTER_KIND_ATTRIBUTE, kind);
@@ -557,9 +559,7 @@ function createPanel(
     documentHost: Document,
     panel: CompetitorHistoryPanel,
     facilities: readonly CompetitorHistoryFacility[],
-    observationDates: readonly string[],
-    sharedDomain: { min: number; max: number },
-    narrow: boolean
+    observationDates: readonly string[]
 ): HTMLElement {
     const element = documentHost.createElement("section");
     element.setAttribute(COMPETITOR_HISTORY_PANEL_ATTRIBUTE, String(panel.guestCount));
@@ -572,7 +572,7 @@ function createPanel(
         return element;
     }
     element.append(
-        createChart(documentHost, panel, facilities, observationDates, sharedDomain, narrow),
+        createChart(documentHost, panel, facilities, observationDates),
         createAccessibleTable(documentHost, panel, facilities)
     );
     return element;
@@ -582,15 +582,15 @@ function createChart(
     documentHost: Document,
     panel: CompetitorHistoryPanel,
     facilities: readonly CompetitorHistoryFacility[],
-    observationDates: readonly string[],
-    domain: { min: number; max: number },
-    narrow: boolean
+    observationDates: readonly string[]
 ): HTMLElement {
-    const width = narrow ? 360 : 680;
-    const height = narrow ? 246 : 228;
-    const padding = { top: 18, right: narrow ? 16 : 22, bottom: 34, left: narrow ? 52 : 60 };
+    const width = 760;
+    const height = 220;
+    const padding = { top: 18, right: 24, bottom: 34, left: 54 };
     const plotWidth = width - padding.left - padding.right;
     const plotHeight = height - padding.top - padding.bottom;
+    const layout = resolveDateLayout(observationDates.length, padding.left, plotWidth);
+    const domain = resolvePanelPriceDomain(panel);
     const wrapper = documentHost.createElement("div");
     wrapper.setAttribute("data-ra-next-competitor-history-chart-wrap", "");
     const tooltip = documentHost.createElement("div");
@@ -604,18 +604,22 @@ function createChart(
     const title = documentHost.createElementNS("http://www.w3.org/2000/svg", "title");
     title.textContent = `${panel.guestCount}名の競合価格保存履歴`;
     const description = documentHost.createElementNS("http://www.w3.org/2000/svg", "desc");
-    description.textContent = `${observationDates.length}日分の施設別最安値。最新値はグラフ下、全値は表で確認できます。`;
+    description.textContent = `${observationDates.length}日分の施設別最安値。各取得日の値はフォーカス時の説明または読み上げ表で確認できます。`;
     svg.append(title, description);
 
-    const ticks = buildPriceTicks(domain.min, domain.max, 4);
-    for (const tick of ticks) {
+    const ticks = buildPriceTicks(domain.min, domain.max, 5);
+    for (const [tickIndex, tick] of ticks.entries()) {
         const y = scaleY(tick, domain, padding.top, plotHeight);
         const line = documentHost.createElementNS("http://www.w3.org/2000/svg", "line");
-        line.setAttribute("x1", String(padding.left));
-        line.setAttribute("x2", String(width - padding.right));
+        line.setAttribute("x1", layout.plotLeft.toFixed(2));
+        line.setAttribute("x2", (layout.plotLeft + layout.plotWidth).toFixed(2));
         line.setAttribute("y1", y.toFixed(2));
         line.setAttribute("y2", y.toFixed(2));
         line.setAttribute("data-ra-next-competitor-history-grid-line", "");
+        if (tickIndex > 0 && tickIndex < ticks.length - 1) {
+            line.setAttribute("stroke-dasharray", "2 4");
+            line.setAttribute("opacity", "0.75");
+        }
         const label = documentHost.createElementNS("http://www.w3.org/2000/svg", "text");
         label.setAttribute("x", String(padding.left - 7));
         label.setAttribute("y", String(y + 4));
@@ -625,19 +629,27 @@ function createChart(
     }
 
     const dateIndex = new Map(observationDates.map((date, index) => [date, index]));
-    const visibleTickIndexes = selectTickIndexes(observationDates.length, narrow ? 3 : 5);
-    for (const index of visibleTickIndexes) {
+    for (const index of observationDates.keys()) {
         const date = observationDates[index];
         if (date === undefined) {
             continue;
         }
         const label = documentHost.createElementNS("http://www.w3.org/2000/svg", "text");
-        label.setAttribute("x", scaleX(index, observationDates.length, padding.left, plotWidth).toFixed(2));
+        label.setAttribute("x", scaleX(index, observationDates.length, layout).toFixed(2));
         label.setAttribute("y", String(height - 9));
         label.setAttribute("text-anchor", "middle");
-        label.textContent = formatShortDate(date);
+        label.textContent = formatStayDate(date).slice(5);
         svg.append(label);
     }
+
+    const guide = documentHost.createElementNS("http://www.w3.org/2000/svg", "line");
+    guide.setAttribute("x1", String(padding.left));
+    guide.setAttribute("x2", String(padding.left));
+    guide.setAttribute("y1", String(padding.top));
+    guide.setAttribute("y2", String(height - padding.bottom));
+    guide.setAttribute("visibility", "hidden");
+    guide.setAttribute("data-ra-next-competitor-history-guide-line", "");
+    svg.append(guide);
 
     for (const facility of facilities) {
         const facilityPoints = panel.points
@@ -648,46 +660,61 @@ function createChart(
         }
         const path = documentHost.createElementNS("http://www.w3.org/2000/svg", "path");
         path.setAttribute("d", facilityPoints.map((point, index) => {
-            const x = scaleX(dateIndex.get(point.date) ?? 0, observationDates.length, padding.left, plotWidth);
+            const x = scaleX(dateIndex.get(point.date) ?? 0, observationDates.length, layout);
             const y = scaleY(point.price, domain, padding.top, plotHeight);
             return `${index === 0 ? "M" : "L"} ${x.toFixed(2)} ${y.toFixed(2)}`;
         }).join(" "));
         path.setAttribute("fill", "none");
         path.setAttribute("stroke", facility.color);
-        path.setAttribute("stroke-width", facility.isOwn ? "3" : "2");
+        path.setAttribute("stroke-width", "2");
         path.setAttribute("stroke-linejoin", "round");
         path.setAttribute("stroke-linecap", "round");
         svg.append(path);
         for (const point of facilityPoints) {
             const circle = documentHost.createElementNS("http://www.w3.org/2000/svg", "circle");
-            circle.setAttribute("cx", scaleX(dateIndex.get(point.date) ?? 0, observationDates.length, padding.left, plotWidth).toFixed(2));
+            circle.setAttribute("cx", scaleX(dateIndex.get(point.date) ?? 0, observationDates.length, layout).toFixed(2));
             circle.setAttribute("cy", scaleY(point.price, domain, padding.top, plotHeight).toFixed(2));
-            circle.setAttribute("r", facility.isOwn ? "3.5" : "3");
+            circle.setAttribute("r", "3");
             circle.setAttribute("fill", facility.color);
             svg.append(circle);
         }
     }
 
+    const hitboxes: SVGRectElement[] = [];
     for (const [index, date] of observationDates.entries()) {
         if (!panel.points.some((point) => point.date === date)) {
             continue;
         }
         const hitbox = documentHost.createElementNS("http://www.w3.org/2000/svg", "rect");
-        const step = plotWidth / Math.max(1, observationDates.length - 1);
-        const center = scaleX(index, observationDates.length, padding.left, plotWidth);
-        const hitWidth = observationDates.length <= 1 ? plotWidth : Math.max(28, step);
-        hitbox.setAttribute("x", String(Math.max(padding.left, center - hitWidth / 2)));
+        const center = scaleX(index, observationDates.length, layout);
+        const hitWidth = resolveHitboxWidth(observationDates.length, layout);
+        hitbox.setAttribute("x", resolveHitboxX(index, observationDates.length, layout).toFixed(2));
         hitbox.setAttribute("y", String(padding.top));
-        hitbox.setAttribute("width", String(Math.min(hitWidth, width - padding.right - Math.max(padding.left, center - hitWidth / 2))));
+        hitbox.setAttribute("width", hitWidth.toFixed(2));
         hitbox.setAttribute("height", String(plotHeight));
         hitbox.setAttribute("fill", "transparent");
         hitbox.setAttribute("tabindex", "0");
         hitbox.setAttribute(COMPETITOR_HISTORY_HITBOX_ATTRIBUTE, date);
+        hitbox.setAttribute("data-ra-next-competitor-history-hitbox-active", "false");
         hitbox.setAttribute("aria-label", buildDateAriaLabel(date, panel.points, facilities));
-        const show = (): void => showDateTooltip(tooltip, date, panel.points, facilities);
-        const hide = (): void => { tooltip.hidden = true; };
-        hitbox.addEventListener("mouseenter", show);
-        hitbox.addEventListener("focus", show);
+        hitboxes.push(hitbox);
+        hitbox.addEventListener("mouseenter", (event) => {
+            setActiveHitbox(hitboxes, hitbox);
+            showDateTooltip(tooltip, date, panel.points, facilities);
+            showGuide(guide, center);
+            positionTooltip(tooltip, center, width, event.clientX);
+        });
+        hitbox.addEventListener("focus", () => {
+            setActiveHitbox(hitboxes, hitbox);
+            showDateTooltip(tooltip, date, panel.points, facilities);
+            showGuide(guide, center);
+            positionTooltip(tooltip, center, width, null);
+        });
+        const hide = (): void => {
+            tooltip.hidden = true;
+            guide.setAttribute("visibility", "hidden");
+            clearActiveHitboxes(hitboxes);
+        };
         hitbox.addEventListener("mouseleave", hide);
         hitbox.addEventListener("blur", hide);
         svg.append(hitbox);
@@ -696,49 +723,13 @@ function createChart(
     return wrapper;
 }
 
-function createLatestValues(
-    documentHost: Document,
-    panel: CompetitorHistoryPanel,
-    facilities: readonly CompetitorHistoryFacility[]
-): HTMLElement {
-    const list = documentHost.createElement("ul");
-    list.setAttribute("data-ra-next-competitor-history-latest", "");
-    const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
-    for (const value of panel.latestValues) {
-        const facility = facilityById.get(value.facilityId);
-        if (facility === undefined) {
-            continue;
-        }
-        const item = documentHost.createElement("li");
-        const label = documentHost.createElement("span");
-        label.setAttribute("data-ra-next-competitor-history-latest-label", "");
-        label.append(createSwatch(documentHost, facility.color), documentHost.createTextNode(facility.label));
-        const price = documentHost.createElement("strong");
-        price.textContent = formatPrice(value.price);
-        const room = documentHost.createElement("span");
-        room.setAttribute("data-ra-next-competitor-history-latest-room", "");
-        room.textContent = value.roomTypeLabel;
-        const delta = documentHost.createElement("span");
-        delta.setAttribute("data-ra-next-competitor-history-delta", getDeltaTone(value.deltaFromPrevious));
-        delta.textContent = value.deltaFromPrevious === null
-            ? "前回なし"
-            : `前回 ${formatSignedPrice(value.deltaFromPrevious)}`;
-        item.append(label, price, delta, room);
-        list.append(item);
-    }
-    return list;
-}
-
 function createAccessibleTable(
     documentHost: Document,
     panel: CompetitorHistoryPanel,
     facilities: readonly CompetitorHistoryFacility[]
 ): HTMLElement {
-    const details = documentHost.createElement("details");
-    details.setAttribute("data-ra-next-competitor-history-table-details", String(panel.guestCount));
-    const summary = documentHost.createElement("summary");
-    summary.textContent = "日別の値を表で確認";
     const table = documentHost.createElement("table");
+    table.setAttribute("data-ra-next-competitor-history-accessible-table", String(panel.guestCount));
     const caption = documentHost.createElement("caption");
     caption.textContent = `${panel.guestCount}名の取得日・施設別最安値`;
     const head = documentHost.createElement("thead");
@@ -767,9 +758,7 @@ function createAccessibleTable(
         body.append(row);
     }
     table.append(caption, head, body);
-    const latestValues = createLatestValues(documentHost, panel, facilities);
-    details.append(summary, latestValues, table);
-    return details;
+    return table;
 }
 
 function createSwatch(documentHost: Document, color: string): HTMLElement {
@@ -789,6 +778,9 @@ function showDateTooltip(
     const documentHost = tooltip.ownerDocument;
     const title = documentHost.createElement("strong");
     title.textContent = formatStayDate(date);
+    const value = documentHost.createElement("div");
+    value.setAttribute("data-ra-next-competitor-history-tooltip-value", "");
+    value.textContent = "最安値";
     const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
     const currentPoints = points.filter((candidate) => candidate.date === date);
     const dates = Array.from(new Set(points.map((point) => point.date))).sort();
@@ -841,7 +833,7 @@ function showDateTooltip(
         body.append(row);
     }
     table.append(head, body);
-    tooltip.replaceChildren(title, table);
+    tooltip.replaceChildren(title, value, table);
     tooltip.hidden = false;
 }
 
@@ -857,10 +849,15 @@ function buildDateAriaLabel(
     return `${formatStayDate(date)}。${values.join("、")}`;
 }
 
-function resolveSharedPriceDomain(
-    panels: readonly CompetitorHistoryPanel[]
-): { min: number; max: number } {
-    const prices = panels.flatMap((panel) => panel.points.map((point) => point.price));
+interface CompetitorHistoryDateLayout {
+    activeLeft: number;
+    activeWidth: number;
+    plotLeft: number;
+    plotWidth: number;
+}
+
+function resolvePanelPriceDomain(panel: CompetitorHistoryPanel): { min: number; max: number } {
+    const prices = panel.points.map((point) => point.price);
     const min = Math.min(...prices);
     const max = Math.max(...prices);
     if (!Number.isFinite(min) || !Number.isFinite(max)) {
@@ -869,17 +866,52 @@ function resolveSharedPriceDomain(
     if (min === max) {
         return { min: Math.max(0, min - 1000), max: max + 1000 };
     }
-    const padding = Math.max(500, (max - min) * 0.08);
-    return { min: Math.max(0, min - padding), max: max + padding };
+    return { min, max };
 }
 
 function buildPriceTicks(min: number, max: number, count: number): number[] {
     const step = (max - min) / Math.max(1, count - 1);
-    return Array.from({ length: count }, (_, index) => max - step * index);
+    const rounded = Array.from(
+        { length: count },
+        (_, index) => Math.round((max - step * index) / 100) * 100
+    );
+    return new Set(rounded).size === count
+        ? rounded
+        : Array.from({ length: count }, (_, index) => Math.round(max - step * index));
 }
 
-function scaleX(index: number, count: number, left: number, width: number): number {
-    return count <= 1 ? left + width / 2 : left + (index * width) / (count - 1);
+function resolveDateLayout(
+    count: number,
+    plotLeft: number,
+    plotWidth: number
+): CompetitorHistoryDateLayout {
+    const activeWidth = count >= 7
+        ? plotWidth
+        : Math.min(plotWidth, Math.max(160, (Math.max(2, count) - 1) * 140));
+    return {
+        activeLeft: plotLeft + (plotWidth - activeWidth) / 2,
+        activeWidth,
+        plotLeft,
+        plotWidth
+    };
+}
+
+function scaleX(index: number, count: number, layout: CompetitorHistoryDateLayout): number {
+    return count <= 1
+        ? layout.activeLeft + layout.activeWidth / 2
+        : layout.activeLeft + (index * layout.activeWidth) / (count - 1);
+}
+
+function resolveHitboxX(index: number, count: number, layout: CompetitorHistoryDateLayout): number {
+    if (count <= 1) {
+        return layout.activeLeft;
+    }
+    const step = layout.activeWidth / Math.max(1, count - 1);
+    return Math.max(layout.plotLeft, scaleX(index, count, layout) - step / 2);
+}
+
+function resolveHitboxWidth(count: number, layout: CompetitorHistoryDateLayout): number {
+    return count <= 1 ? layout.activeWidth : layout.activeWidth / Math.max(1, count - 1);
 }
 
 function scaleY(
@@ -891,13 +923,48 @@ function scaleY(
     return top + height - ((price - domain.min) / Math.max(1, domain.max - domain.min)) * height;
 }
 
-function selectTickIndexes(length: number, maximum: number): number[] {
-    if (length <= maximum) {
-        return Array.from({ length }, (_, index) => index);
+function setActiveHitbox(hitboxes: readonly SVGRectElement[], active: SVGRectElement): void {
+    for (const hitbox of hitboxes) {
+        hitbox.setAttribute(
+            "data-ra-next-competitor-history-hitbox-active",
+            String(hitbox === active)
+        );
     }
-    return Array.from(new Set(Array.from({ length: maximum }, (_, index) => (
-        Math.round((index * (length - 1)) / Math.max(1, maximum - 1))
-    ))));
+}
+
+function clearActiveHitboxes(hitboxes: readonly SVGRectElement[]): void {
+    for (const hitbox of hitboxes) {
+        hitbox.setAttribute("data-ra-next-competitor-history-hitbox-active", "false");
+    }
+}
+
+function showGuide(guide: SVGLineElement, x: number): void {
+    guide.setAttribute("visibility", "visible");
+    guide.setAttribute("x1", x.toFixed(2));
+    guide.setAttribute("x2", x.toFixed(2));
+}
+
+function positionTooltip(
+    tooltip: HTMLElement,
+    x: number,
+    chartViewBoxWidth: number,
+    cursorClientX: number | null
+): void {
+    const panelRect = tooltip.parentElement?.getBoundingClientRect();
+    const panelWidth = panelRect?.width ?? chartViewBoxWidth;
+    const scale = chartViewBoxWidth > 0 ? panelWidth / chartViewBoxWidth : 1;
+    const panelViewportLeft = panelRect?.left ?? 0;
+    const xInPanel = cursorClientX === null ? x * scale : cursorClientX - panelViewportLeft;
+    const tooltipOffset = 8;
+    const rightSideLeft = xInPanel + tooltipOffset;
+    const viewportConstrainedLeft = window.innerWidth
+        - tooltipOffset
+        - tooltip.offsetWidth
+        - panelViewportLeft;
+    tooltip.style.left = `${Math.max(
+        tooltipOffset,
+        Math.min(rightSideLeft, viewportConstrainedLeft)
+    )}px`;
 }
 
 function formatPrice(value: number): string {
@@ -909,9 +976,7 @@ function formatSignedPrice(value: number): string {
 }
 
 function formatAxisPrice(value: number): string {
-    return value >= 10_000
-        ? `${(value / 10_000).toFixed(value % 10_000 === 0 ? 0 : 1)}万`
-        : new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 }).format(value);
+    return new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 }).format(value);
 }
 
 function formatStayDate(value: string): string {
@@ -936,6 +1001,10 @@ function formatDateTime(value: string): string {
         timeStyle: "short",
         timeZone: "Asia/Tokyo"
     }).format(date);
+}
+
+function shortenConditionSignature(value: string): string {
+    return value.length <= 24 ? value : `${value.slice(0, 24)}...`;
 }
 
 function getDeltaTone(value: number | null): "down" | "neutral" | "up" {

@@ -67,18 +67,18 @@ assert.equal(unfiltered.viewModel.panels.length, 4);
 assert.equal(unfiltered.viewModel.panels[1].guestCount, 2);
 assert.equal(unfiltered.viewModel.panels[1].latestValues[0].price, 12_600);
 assert.equal(unfiltered.viewModel.panels[1].latestValues[0].deltaFromPrevious, 300);
-assert.equal(unfiltered.viewModel.availableFilters.roomTypes.some((item) => item.value === "TWIN"), true);
+assert.equal(unfiltered.viewModel.availableFilters.roomTypes.some((item) => item.value === "ツイン"), true);
 assert.equal(unfiltered.viewModel.availableFilters.mealTypes.some((item) => item.value === "BREAKFAST"), true);
 
 const twin = model.buildCompetitorHistoryViewModel({
     facilityId: "yad:fixture",
-    filters: { roomType: "TWIN" },
+    filters: { roomType: "ツイン" },
     records,
     stayDate: "2026-08-12"
 });
 assert.equal(twin.status, "ready");
 assert.equal(twin.viewModel.selectedConditionRecordCount, 1);
-assert.equal(twin.viewModel.filters.roomType, "TWIN");
+assert.equal(twin.viewModel.filters.roomType, "ツイン");
 assert.equal(twin.viewModel.panels[0].points.every((point) => point.roomTypeLabel === "ツイン"), true);
 
 const breakfast = model.buildCompetitorHistoryViewModel({
@@ -152,16 +152,31 @@ assert.doesNotMatch(styles, /data-mobile-active="false"/u);
 assert.doesNotMatch(styles, /data-ra-next-competitor-history-guest-selector/u);
 assert.match(styles, /max-width: 760px/u);
 assert.match(styles, /border-radius: 2px/u);
+assert.match(styles, /rgba\(47, 111, 187, 0\.08\)/u);
+assert.match(styles, /data-ra-next-competitor-history-guide-line/u);
+assert.match(styles, /data-ra-next-competitor-history-accessible-table/u);
 assert.match(viewSource, /title\.textContent = "競合価格 最安値推移"/u);
-assert.match(viewSource, /details\.setAttribute\("data-ra-next-competitor-history-details", ""\)/u);
 assert.match(
     viewSource,
-    /root\.replaceChildren\(header, meta, filters, legend, grid, details\)/u
+    /root\.replaceChildren\(header, meta, filters, legend, grid\)/u
 );
 assert.doesNotMatch(viewSource, /createGuestSelector|competitor-history-badge/u);
-assert.doesNotMatch(viewSource, /createLatestValues\(documentHost, panel, facilities\),\s*createAccessibleTable/u);
-assert.match(viewSource, /details\.append\(summary, latestValues, table\)/u);
+assert.doesNotMatch(viewSource, /データの見方|日別の値を表で確認/u);
+assert.match(viewSource, /table\.setAttribute\("data-ra-next-competitor-history-accessible-table"/u);
 assert.match(viewSource, /\["施設", "部屋タイプ", "価格", "前回差分", "自社との差"\]/u);
+assert.match(viewSource, /const width = 760/u);
+assert.match(viewSource, /const height = 220/u);
+assert.match(viewSource, /const padding = \{ top: 18, right: 24, bottom: 34, left: 54 \}/u);
+assert.match(viewSource, /resolvePanelPriceDomain\(panel\)/u);
+assert.match(viewSource, /Math\.max\(160, \(Math\.max\(2, count\) - 1\) \* 140\)/u);
+assert.match(viewSource, /for \(const index of observationDates\.keys\(\)\)/u);
+assert.match(viewSource, /path\.setAttribute\("stroke-width", "2"\)/u);
+assert.match(viewSource, /circle\.setAttribute\("r", "3"\)/u);
+assert.match(viewSource, /positionTooltip\(tooltip, center, width, event\.clientX\)/u);
+assert.equal(model.formatCompetitorHistoryRoomType("FOUR_BEDS"), "フォース");
+assert.equal(model.formatCompetitorHistoryRoomType("SEMI_DOUBLE"), "セミダブル");
+assert.equal(model.formatCompetitorHistoryMealType("NONE"), "素泊まり");
+assert.equal(model.formatCompetitorHistoryMealType("BREAKFAST_DINNER"), "朝夕食");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("checking"), "本日分を確認中");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("stored"), "本日分を保存");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("already-stored"), "本日分は保存済み");

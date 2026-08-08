@@ -1,0 +1,701 @@
+import { detectLegacyClassicRuntime } from "../runtimeLease";
+import {
+    hasLiveFacilityContextLabel,
+    readLiveFacilityContextHints
+} from "../live/liveCalendarDomAdapter";
+import { parseLiveSimilarityLensAsOfDate } from "../live/liveSimilarityLensDataSource";
+import {
+    createBookingCurveReferenceDataSource,
+    type BookingCurveReferenceDataLoadResult,
+    type BookingCurveReferenceDataSource,
+    type BookingCurveReferenceScope
+} from "./bookingCurveReferenceDataSource";
+import {
+    buildBookingCurveReferenceViewModel,
+    type BookingCurveReferenceSecondarySegment,
+    type BookingCurveReferenceVisibility,
+    type BookingCurveReferenceViewModel
+} from "./bookingCurveReferenceModel";
+import {
+    buildBookingCurveRankHistoryViewState,
+    type BookingCurveRankStatusSnapshot
+} from "./bookingCurveRankMarkerModel";
+import {
+    createBookingCurveRankStatusDataSource,
+    type BookingCurveRankStatusDataSource,
+    type BookingCurveRankStatusLoadResult
+} from "./bookingCurveRankStatusDataSource";
+import { parseBookingCurveReferenceAnalyzeStayDate } from "./bookingCurveReferenceRuntime";
+import {
+    BOOKING_CURVE_REFERENCE_SEGMENT_ATTRIBUTE,
+    BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE
+} from "./bookingCurveReferenceView";
+import {
+    buildSalesSettingClassicViewModel,
+    type SalesSettingClassicRankState
+} from "./salesSettingClassicModel";
+import {
+    SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE,
+    SALES_SETTING_CLASSIC_ROOT_ATTRIBUTE,
+    SALES_SETTING_CLASSIC_SCOPE_ATTRIBUTE,
+    SALES_SETTING_CLASSIC_SUPPLEMENT_ATTRIBUTE,
+    createSalesSettingClassicRoot,
+    ensureSalesSettingClassicStyles,
+    removeSalesSettingClassicArtifacts,
+    renderSalesSettingClassic,
+    type SalesSettingClassicNativeCard
+} from "./salesSettingClassicView";
+
+const NEXT_SALES_SETTING_STATE_ATTRIBUTE = "data-ra-next-sales-setting-classic-state";
+const SALES_SETTING_HEADING_SELECTOR = '[data-testid="suggestions-heading"]';
+const SALES_SETTING_ROOM_LABEL_SELECTOR = '[data-testid="suggestions-room-type-name"]';
+const SALES_SETTING_LATEST_REFLECTION_SELECTOR = '[data-testid="suggestions-latest-reflection-at"]';
+const SALES_SETTING_DETAIL_SELECTOR = '[data-testid="suggestions-detail-wrapper"]';
+
+type SalesSettingClassicRuntimeState = "idle" | "loading" | "ready";
+
+export interface SalesSettingClassicRuntimeHandle {
+    reconcile(): void;
+    stop(): void;
+}
+
+export interface StartSalesSettingClassicRuntimeOptions {
+    dataSource?: BookingCurveReferenceDataSource;
+    rankStatusDataSource?: BookingCurveRankStatusDataSource;
+    resolveAsOfDate?: (documentHost: Document) => string | null;
+    resolveStayDate?: (location: Location) => string | null;
+}
+
+export interface SalesSettingClassicSurface {
+    insertionAnchor: HTMLElement;
+    mountTarget: HTMLElement;
+    nativeCards: readonly Omit<SalesSettingClassicNativeCard, "scopeKey">[];
+}
+
+export function startSalesSettingClassicRuntime(
+    documentHost: Document = document,
+    windowHost: Window = window,
+    options: StartSalesSettingClassicRuntimeOptions = {}
+): SalesSettingClassicRuntimeHandle {
+    const dataSource = options.dataSource ?? createBookingCurveReferenceDataSource({
+        documentHost,
+        windowHost
+    });
+    const rankStatusDataSource = options.rankStatusDataSource
+        ?? createBookingCurveRankStatusDataSource({ windowHost });
+    const resolveStayDate = options.resolveStayDate
+        ?? ((location: Location) => parseBookingCurveReferenceAnalyzeStayDate(location.pathname));
+    const resolveAsOfDate = options.resolveAsOfDate ?? parseLiveSimilarityLensAsOfDate;
+    let state: SalesSettingClassicRuntimeState = "idle";
+    let activeStayDate: string | null = null;
+    let activeAsOfDate: string | null = null;
+    let activeScopes: readonly BookingCurveReferenceScope[] = [];
+    let activeData = new Map<string, Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }>>();
+    let activeCurves = new Map<string, BookingCurveReferenceViewModel>();
+    let activeRankSnapshot: BookingCurveRankStatusSnapshot | null = null;
+    let rankLoadError: Extract<BookingCurveRankStatusLoadResult, { status: "error" }>["reason"] | null = null;
+    let rankLoading = false;
+    let root: HTMLElement | null = null;
+    let surface: SalesSettingClassicSurface | null = null;
+    let contextBlocked = false;
+    let loadGeneration = 0;
+    let rankGeneration = 0;
+    let scheduledReconcileTimer: number | null = null;
+    let scheduledDataRefreshTimer: number | null = null;
+    let narrow = windowHost.innerWidth <= 680;
+    let stopped = false;
+    const openScopes = new Set<string>();
+    const secondarySegments = new Map<string, BookingCurveReferenceSecondarySegment>();
+    const visibilities = new Map<string, BookingCurveReferenceVisibility>();
+    const abortController = new AbortController();
+    const observer = new MutationObserver(scheduleReconcile);
+    const unsubscribeDataSource = dataSource.subscribe?.(scheduleDataRefresh) ?? (() => undefined);
+
+    documentHost.addEventListener("click", handleDocumentClick, {
+        capture: true,
+        signal: abortController.signal
+    });
+    windowHost.addEventListener("popstate", scheduleReconcile, { signal: abortController.signal });
+    windowHost.addEventListener("resize", handleResize, { signal: abortController.signal });
+    documentHost.addEventListener("visibilitychange", scheduleReconcile, { signal: abortController.signal });
+    observer.observe(documentHost.body, {
+        attributeFilter: ["aria-hidden", "aria-selected", "class", "data-testid", "hidden", "inert", "style"],
+        attributes: true,
+        childList: true,
+        subtree: true
+    });
+    reconcile();
+
+    return { reconcile, stop };
+
+    function reconcile(): void {
+        if (stopped) {
+            return;
+        }
+        if (detectLegacyClassicRuntime(documentHost)) {
+            stop("suspended-classic-detected");
+            return;
+        }
+        const stayDate = resolveStayDate(windowHost.location);
+        if (stayDate === null) {
+            suspendForInactiveRoute();
+            return;
+        }
+        const nextSurface = resolveSalesSettingClassicSurface(documentHost);
+        if (documentHost.visibilityState === "hidden" || nextSurface === null) {
+            suspendForInactiveSurface(nextSurface === null ? "waiting-native-sales-setting" : "suspended-hidden");
+            return;
+        }
+        const asOfDate = resolveAsOfDate(documentHost);
+        if (activeStayDate !== stayDate || activeAsOfDate !== asOfDate) {
+            resetContext(stayDate, asOfDate);
+        }
+        if (contextBlocked) {
+            removeSalesSettingClassicArtifacts(documentHost);
+            root = null;
+            surface = null;
+            setRuntimeMarker("suspended-facility-context-mismatch");
+            return;
+        }
+        surface = nextSurface;
+        ensureMountedRoot(nextSurface);
+        if (asOfDate === null) {
+            renderCurrentState();
+            setRuntimeMarker("comparison-preparing");
+            return;
+        }
+        if (state === "idle") {
+            startLoadAll(stayDate, asOfDate, true);
+            return;
+        }
+        if (root !== null && state === "ready") {
+            const mappedCards = mapNativeCards(nextSurface.nativeCards, activeScopes);
+            const expectedSupplements = mappedCards.length;
+            const presentSupplements = mappedCards.filter((card) => (
+                Array.from(card.cardElement.children).some((child) => (
+                    child instanceof HTMLElement && child.hasAttribute(SALES_SETTING_CLASSIC_SUPPLEMENT_ATTRIBUTE)
+                ))
+            )).length;
+            if (presentSupplements !== expectedSupplements) {
+                renderCurrentState();
+            }
+        }
+    }
+
+    function resetContext(stayDate: string, asOfDate: string | null): void {
+        loadGeneration += 1;
+        rankGeneration += 1;
+        dataSource.reset();
+        rankStatusDataSource.reset();
+        activeStayDate = stayDate;
+        activeAsOfDate = asOfDate;
+        activeScopes = [];
+        activeData = new Map();
+        activeCurves = new Map();
+        activeRankSnapshot = null;
+        rankLoadError = null;
+        rankLoading = false;
+        contextBlocked = false;
+        state = "idle";
+        openScopes.clear();
+        secondarySegments.clear();
+        visibilities.clear();
+        removeMountedArtifacts();
+    }
+
+    function startLoadAll(stayDate: string, asOfDate: string, showLoading: boolean): void {
+        const generation = ++loadGeneration;
+        dataSource.cancel();
+        if (showLoading) {
+            state = "loading";
+            renderCurrentState();
+        }
+        void loadAllScopes(generation, stayDate, asOfDate);
+    }
+
+    async function loadAllScopes(generation: number, stayDate: string, asOfDate: string): Promise<void> {
+        const hotelResult = await dataSource.load(stayDate, asOfDate, "hotel");
+        if (!isCurrentLoad(generation, stayDate, asOfDate)) {
+            return;
+        }
+        if (hotelResult.status === "error") {
+            if (hotelResult.reason !== "aborted") {
+                state = "ready";
+                renderCurrentState();
+                setRuntimeMarker(hotelResult.reason === "facility-context-mismatch"
+                    ? "suspended-facility-context-mismatch"
+                    : "comparison-preparing");
+            }
+            return;
+        }
+        if (!hasLiveFacilityContextLabel(readLiveFacilityContextHints(documentHost), hotelResult.facilityLabel)) {
+            blockMismatchedContext();
+            return;
+        }
+        activeScopes = hotelResult.scopes;
+        activeData.set(hotelResult.scope.key, hotelResult);
+        ensurePreference(hotelResult.scope.key);
+        state = "ready";
+        rebuildCurves();
+        renderCurrentState();
+        startRankLoad(hotelResult.facilityId, stayDate);
+
+        for (const scope of activeScopes) {
+            if (scope.kind !== "roomGroup") {
+                continue;
+            }
+            const result = await dataSource.load(stayDate, asOfDate, scope.key);
+            if (!isCurrentLoad(generation, stayDate, asOfDate)) {
+                return;
+            }
+            if (result.status === "ready") {
+                activeData.set(scope.key, result);
+                ensurePreference(scope.key);
+                rebuildCurves();
+                renderCurrentState();
+            } else if (result.reason === "facility-context-mismatch") {
+                blockMismatchedContext();
+                return;
+            }
+        }
+        setRuntimeMarker("mounted-classic-ui");
+    }
+
+    function isCurrentLoad(generation: number, stayDate: string, asOfDate: string): boolean {
+        return !stopped
+            && generation === loadGeneration
+            && activeStayDate === stayDate
+            && activeAsOfDate === asOfDate;
+    }
+
+    function ensurePreference(scopeKey: string): void {
+        if (!secondarySegments.has(scopeKey)) {
+            secondarySegments.set(scopeKey, "transient");
+        }
+        if (!visibilities.has(scopeKey)) {
+            visibilities.set(scopeKey, { recent: true, seasonal: false });
+        }
+    }
+
+    function rebuildCurves(): void {
+        const curves = new Map<string, BookingCurveReferenceViewModel>();
+        for (const [scopeKey, data] of activeData) {
+            const rankHistory = resolveRankHistory(data.scope);
+            const result = buildBookingCurveReferenceViewModel({
+                asOfDate: data.asOfDate,
+                facilityId: data.facilityId,
+                readStatus: data.readStatus,
+                records: data.records,
+                rankEvents: rankHistory.status === "ready" ? rankHistory.events : [],
+                scope: data.scope,
+                scopes: data.scopes,
+                secondarySegment: secondarySegments.get(scopeKey) ?? "transient",
+                stayDate: data.stayDate,
+                visibility: visibilities.get(scopeKey) ?? { recent: true, seasonal: false }
+            });
+            if (result.status === "ready") {
+                curves.set(scopeKey, result.viewModel);
+            }
+        }
+        activeCurves = curves;
+    }
+
+    function resolveRankHistory(scope: BookingCurveReferenceScope) {
+        if (scope.kind !== "roomGroup") {
+            return { status: "scope-required" } as const;
+        }
+        if (activeRankSnapshot !== null) {
+            return buildBookingCurveRankHistoryViewState(activeRankSnapshot, scope);
+        }
+        if (rankLoadError !== null) {
+            return { status: "error", reason: rankLoadError } as const;
+        }
+        return rankLoading ? { status: "loading" } as const : { status: "empty", invalidEventCount: 0 } as const;
+    }
+
+    function startRankLoad(facilityId: string, stayDate: string): void {
+        if (rankLoading || activeRankSnapshot !== null || rankLoadError !== null) {
+            return;
+        }
+        const generation = ++rankGeneration;
+        rankLoading = true;
+        rebuildCurves();
+        renderCurrentState();
+        void rankStatusDataSource.load(facilityId, stayDate).then((result) => {
+            if (
+                stopped
+                || generation !== rankGeneration
+                || activeStayDate !== stayDate
+                || activeData.get("hotel")?.facilityId !== facilityId
+            ) {
+                return;
+            }
+            rankLoading = false;
+            if (result.status === "ready") {
+                activeRankSnapshot = result.snapshot;
+                rankLoadError = null;
+            } else if (result.reason !== "aborted") {
+                activeRankSnapshot = null;
+                rankLoadError = result.reason;
+            }
+            rebuildCurves();
+            renderCurrentState();
+        });
+    }
+
+    function rankState(): SalesSettingClassicRankState {
+        return {
+            error: rankLoadError,
+            loading: rankLoading,
+            snapshot: activeRankSnapshot
+        };
+    }
+
+    function ensureMountedRoot(nextSurface: SalesSettingClassicSurface): void {
+        const candidates = Array.from(
+            documentHost.querySelectorAll<HTMLElement>(`[${SALES_SETTING_CLASSIC_ROOT_ATTRIBUTE}]`)
+        );
+        if (candidates.length > 1) {
+            stop("suspended-duplicate-root");
+            return;
+        }
+        const candidate = candidates[0] ?? null;
+        if (candidate !== null && candidate.parentElement !== nextSurface.mountTarget) {
+            candidate.remove();
+        }
+        if (root?.isConnected !== true || root.parentElement !== nextSurface.mountTarget) {
+            root = candidate?.parentElement === nextSurface.mountTarget
+                ? candidate
+                : createSalesSettingClassicRoot(documentHost);
+            nextSurface.mountTarget.insertBefore(root, nextSurface.insertionAnchor);
+            ensureSalesSettingClassicStyles(documentHost);
+            renderCurrentState();
+            return;
+        }
+        if (root.nextElementSibling !== nextSurface.insertionAnchor) {
+            nextSurface.mountTarget.insertBefore(root, nextSurface.insertionAnchor);
+        }
+        ensureSalesSettingClassicStyles(documentHost);
+    }
+
+    function renderCurrentState(): void {
+        if (root === null || !root.isConnected || surface === null) {
+            return;
+        }
+        const nativeCards = mapNativeCards(surface.nativeCards, activeScopes);
+        if (state !== "ready" || activeStayDate === null) {
+            renderSalesSettingClassic(
+                root,
+                { status: "loading", stayDate: activeStayDate ?? "" },
+                nativeCards.length > 0 ? nativeCards : surface.nativeCards.map((card, index) => ({
+                    ...card,
+                    scopeKey: `pending:${index}`
+                })),
+                { narrow, openScopes }
+            );
+            return;
+        }
+        const model = buildSalesSettingClassicViewModel({
+            curves: Array.from(activeCurves.values()),
+            rankState: rankState(),
+            scopes: activeScopes,
+            stayDate: activeStayDate,
+            todayDate: getLocalTodayDate()
+        });
+        renderSalesSettingClassic(root, { status: "ready", viewModel: model }, nativeCards, {
+            narrow,
+            openScopes
+        });
+    }
+
+    function handleDocumentClick(event: MouseEvent): void {
+        if (stopped || !(event.target instanceof Element)) {
+            return;
+        }
+        const curveToggle = event.target.closest<HTMLElement>(`[${SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE}]`);
+        if (curveToggle !== null) {
+            const scopeKey = curveToggle.getAttribute(SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE) ?? "";
+            if (scopeKey !== "") {
+                event.preventDefault();
+                if (openScopes.has(scopeKey)) {
+                    openScopes.delete(scopeKey);
+                } else {
+                    openScopes.add(scopeKey);
+                }
+                renderCurrentState();
+                focusControl(SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE, scopeKey, scopeKey);
+            }
+            return;
+        }
+        const segmentButton = event.target.closest<HTMLElement>(`[${BOOKING_CURVE_REFERENCE_SEGMENT_ATTRIBUTE}]`);
+        if (segmentButton !== null) {
+            const value = segmentButton.getAttribute(BOOKING_CURVE_REFERENCE_SEGMENT_ATTRIBUTE);
+            const scopeKey = resolveControlScope(segmentButton);
+            if (scopeKey !== null && (value === "transient" || value === "group")) {
+                event.preventDefault();
+                secondarySegments.set(scopeKey, value);
+                rebuildCurves();
+                renderCurrentState();
+                focusControl(BOOKING_CURVE_REFERENCE_SEGMENT_ATTRIBUTE, value, scopeKey);
+            }
+            return;
+        }
+        const visibilityButton = event.target.closest<HTMLElement>(`[${BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE}]`);
+        if (visibilityButton === null) {
+            return;
+        }
+        const value = visibilityButton.getAttribute(BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE);
+        const scopeKey = resolveControlScope(visibilityButton);
+        if (scopeKey === null || (value !== "recent" && value !== "seasonal")) {
+            return;
+        }
+        event.preventDefault();
+        const current = visibilities.get(scopeKey) ?? { recent: true, seasonal: false };
+        visibilities.set(scopeKey, { ...current, [value]: !current[value] });
+        rebuildCurves();
+        renderCurrentState();
+        focusControl(BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE, value, scopeKey);
+    }
+
+    function resolveControlScope(control: HTMLElement): string | null {
+        return control.closest<HTMLElement>(`[${SALES_SETTING_CLASSIC_SCOPE_ATTRIBUTE}]`)
+            ?.getAttribute(SALES_SETTING_CLASSIC_SCOPE_ATTRIBUTE) ?? null;
+    }
+
+    function focusControl(attribute: string, value: string, scopeKey: string): void {
+        const scopeElements = documentHost.querySelectorAll<HTMLElement>(`[${SALES_SETTING_CLASSIC_SCOPE_ATTRIBUTE}]`);
+        for (const scopeElement of scopeElements) {
+            if (scopeElement.getAttribute(SALES_SETTING_CLASSIC_SCOPE_ATTRIBUTE) !== scopeKey) {
+                continue;
+            }
+            for (const control of scopeElement.querySelectorAll<HTMLElement>(`[${attribute}]`)) {
+                if (control.getAttribute(attribute) === value) {
+                    control.focus({ preventScroll: true });
+                    return;
+                }
+            }
+        }
+    }
+
+    function handleResize(): void {
+        const nextNarrow = windowHost.innerWidth <= 680;
+        if (nextNarrow === narrow) {
+            return;
+        }
+        narrow = nextNarrow;
+        renderCurrentState();
+    }
+
+    function scheduleReconcile(): void {
+        if (stopped || scheduledReconcileTimer !== null) {
+            return;
+        }
+        scheduledReconcileTimer = windowHost.setTimeout(() => {
+            scheduledReconcileTimer = null;
+            reconcile();
+        }, 0);
+    }
+
+    function scheduleDataRefresh(): void {
+        if (
+            stopped
+            || activeStayDate === null
+            || activeAsOfDate === null
+            || state !== "ready"
+            || scheduledDataRefreshTimer !== null
+        ) {
+            return;
+        }
+        scheduledDataRefreshTimer = windowHost.setTimeout(() => {
+            scheduledDataRefreshTimer = null;
+            if (stopped || activeStayDate === null || activeAsOfDate === null) {
+                return;
+            }
+            startLoadAll(activeStayDate, activeAsOfDate, false);
+        }, 1_500);
+    }
+
+    function blockMismatchedContext(): void {
+        loadGeneration += 1;
+        rankGeneration += 1;
+        dataSource.cancel();
+        rankStatusDataSource.cancel();
+        contextBlocked = true;
+        removeMountedArtifacts();
+        setRuntimeMarker("suspended-facility-context-mismatch");
+    }
+
+    function suspendForInactiveRoute(): void {
+        if (activeStayDate === null && root === null) {
+            setRuntimeMarker("suspended-route");
+            return;
+        }
+        loadGeneration += 1;
+        rankGeneration += 1;
+        dataSource.reset();
+        rankStatusDataSource.reset();
+        activeStayDate = null;
+        activeAsOfDate = null;
+        activeScopes = [];
+        activeData = new Map();
+        activeCurves = new Map();
+        activeRankSnapshot = null;
+        rankLoadError = null;
+        rankLoading = false;
+        contextBlocked = false;
+        state = "idle";
+        openScopes.clear();
+        secondarySegments.clear();
+        visibilities.clear();
+        removeMountedArtifacts();
+        setRuntimeMarker("suspended-route");
+    }
+
+    function suspendForInactiveSurface(finalState: string): void {
+        if (root === null) {
+            setRuntimeMarker(finalState);
+            return;
+        }
+        if (state === "loading") {
+            loadGeneration += 1;
+            rankGeneration += 1;
+            dataSource.cancel();
+            rankStatusDataSource.cancel();
+            state = "idle";
+            activeData = new Map();
+            activeCurves = new Map();
+            activeScopes = [];
+            activeRankSnapshot = null;
+            rankLoadError = null;
+            rankLoading = false;
+        }
+        removeMountedArtifacts();
+        setRuntimeMarker(finalState);
+    }
+
+    function removeMountedArtifacts(): void {
+        removeSalesSettingClassicArtifacts(documentHost);
+        root = null;
+        surface = null;
+    }
+
+    function setRuntimeMarker(value: string): void {
+        documentHost.documentElement.setAttribute(NEXT_SALES_SETTING_STATE_ATTRIBUTE, value);
+    }
+
+    function stop(finalState = "stopped-classic-ui"): void {
+        if (stopped) {
+            return;
+        }
+        stopped = true;
+        loadGeneration += 1;
+        rankGeneration += 1;
+        unsubscribeDataSource();
+        dataSource.stop();
+        rankStatusDataSource.stop();
+        abortController.abort();
+        observer.disconnect();
+        if (scheduledReconcileTimer !== null) {
+            windowHost.clearTimeout(scheduledReconcileTimer);
+            scheduledReconcileTimer = null;
+        }
+        if (scheduledDataRefreshTimer !== null) {
+            windowHost.clearTimeout(scheduledDataRefreshTimer);
+            scheduledDataRefreshTimer = null;
+        }
+        removeMountedArtifacts();
+        setRuntimeMarker(finalState);
+    }
+}
+
+export function resolveSalesSettingClassicSurface(documentHost: Document): SalesSettingClassicSurface | null {
+    const headings = Array.from(documentHost.querySelectorAll<HTMLElement>(SALES_SETTING_HEADING_SELECTOR))
+        .filter(isVisiblyRendered);
+    const nativeCards: Omit<SalesSettingClassicNativeCard, "scopeKey">[] = [];
+    for (const heading of headings) {
+        const cardElement = resolveNativeCardElement(heading);
+        if (cardElement === null) {
+            continue;
+        }
+        const roomLabelElement = cardElement.querySelector<HTMLElement>(SALES_SETTING_ROOM_LABEL_SELECTOR);
+        const roomLabel = normalizeRoomLabel(roomLabelElement?.textContent ?? "");
+        if (roomLabel === "") {
+            continue;
+        }
+        nativeCards.push({
+            cardElement,
+            detailWrapperElement: cardElement.querySelector<HTMLElement>(SALES_SETTING_DETAIL_SELECTOR),
+            latestReflectionElement: cardElement.querySelector<HTMLElement>(SALES_SETTING_LATEST_REFLECTION_SELECTOR),
+            roomLabel
+        });
+    }
+    const distinctCards = nativeCards.filter((card, index, all) => (
+        all.findIndex((candidate) => candidate.cardElement === card.cardElement) === index
+    ));
+    const insertionAnchor = distinctCards[0]?.cardElement ?? null;
+    const mountTarget = insertionAnchor?.parentElement ?? null;
+    return insertionAnchor !== null && mountTarget instanceof HTMLElement
+        ? { insertionAnchor, mountTarget, nativeCards: distinctCards }
+        : null;
+}
+
+function resolveNativeCardElement(heading: HTMLElement): HTMLElement | null {
+    let candidate: HTMLElement | null = heading;
+    while (candidate !== null && !candidate.matches("main, body, html")) {
+        if (
+            candidate.querySelector(SALES_SETTING_ROOM_LABEL_SELECTOR) !== null
+            && candidate.querySelector(SALES_SETTING_DETAIL_SELECTOR) !== null
+            && candidate.querySelectorAll(SALES_SETTING_HEADING_SELECTOR).length === 1
+        ) {
+            return candidate;
+        }
+        candidate = candidate.parentElement;
+    }
+    return heading.parentElement;
+}
+
+function mapNativeCards(
+    cards: readonly Omit<SalesSettingClassicNativeCard, "scopeKey">[],
+    scopes: readonly BookingCurveReferenceScope[]
+): SalesSettingClassicNativeCard[] {
+    const unmatchedScopes = scopes.filter((scope) => scope.kind === "roomGroup").slice();
+    return cards.flatMap((card) => {
+        const index = unmatchedScopes.findIndex((scope) => normalizeRoomLabel(scope.label) === card.roomLabel);
+        if (index < 0) {
+            return [];
+        }
+        const [scope] = unmatchedScopes.splice(index, 1);
+        if (scope === undefined) {
+            return [];
+        }
+        return [{ ...card, scopeKey: scope.key }];
+    });
+}
+
+function normalizeRoomLabel(value: string): string {
+    return value.replace(/\s+/gu, " ").trim();
+}
+
+function getLocalTodayDate(): string {
+    const date = new Date();
+    return [
+        String(date.getFullYear()).padStart(4, "0"),
+        String(date.getMonth() + 1).padStart(2, "0"),
+        String(date.getDate()).padStart(2, "0")
+    ].join("");
+}
+
+function isVisiblyRendered(element: HTMLElement): boolean {
+    if (
+        element.hidden
+        || element.closest('[hidden], [aria-hidden="true"], [inert]') !== null
+        || element.getClientRects().length === 0
+    ) {
+        return false;
+    }
+    const style = element.ownerDocument.defaultView?.getComputedStyle(element);
+    return style?.display !== "none"
+        && style?.visibility !== "hidden"
+        && style?.visibility !== "collapse"
+        && Number(style?.opacity ?? "1") > 0;
+}

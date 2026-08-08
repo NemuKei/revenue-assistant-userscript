@@ -63,6 +63,14 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 全体販売室数サマリーは、販売設定タブ上に描画済みの室タイプ別表示を合算して生成する
 - 販売設定タブの販売室数差分は、Phase 1 では `/api/v4/booking_curve` の室タイプ別 `all.this_year_room_sum` を正として維持する
 
+#### Next Classic UI baseline correction (`RAU-UX-160`)
+
+- Nextでも標準の`販売設定`タブとnative部屋cardを隠す、移動する、置換する処理は持たない。RAU追加表示は、native card群の直前と各card内の非干渉領域へ追加し、tab切替、React再描画、route変更では重複せず再同期 / cleanupする。
+- 初期の読む順序はClassicを正とし、native card群の前へ`ランク変更履歴`overview、その次へ`全体`summaryを置く。全体summaryは`販売室数`と`区分 / 室数 / 1日前 / 7日前 / 30日前`を表示し、その直下の`ブッキングカーブ（全体）`は開いた状態にする。
+- 各native部屋cardには、標準heading / detailを残したまま、`全体 / 個人 / 団体`の`室数 / 1日前 / 7日前 / 30日前`summaryをdetail wrapperの直前へ置く。変更前後rankを標準の最終変更表示の近くへ追加し、`ブッキングカーブ（部屋タイプ）`はcardごとに独立した初期折りたたみとする。
+- 全体 / 部屋別booking curveはClassicと同じ`全体`と`個人 / 団体`の2 panel、reference toggle、共通凡例、room scopeだけのrank markerを維持する。全体blockは常時展開、部屋別blockは必要なcardだけ開く操作を既定とする。
+- summaryとcurveの入力はNextの保存済みsource、Classic read-through seed、必要な不足tailだけに限定する。`販売設定`表示を理由に過去sourceを毎回全件取得せず、欠損scope / tickを0や`類似日なし`へ読み替えず`比較準備中`とする。API、IndexedDB、session上限、重複防止、停止条件、`0日前` / `ACT`分離は既存Next契約を変えない。
+
 ### Candidate: Room-Type Booking Curve
 
 - 対象は analyze 日付ページの `販売設定` タブ内にある各室タイプカードとする
@@ -442,12 +450,15 @@ Analyze 上部から `推奨反映` または一括反映を実装する前に�
 - グラフの横軸は取得日、縦軸は価格とする。同じ取得日に複数 snapshot がある場合は、その取得日の最新 snapshot だけを代表として使う。取得時刻は保存データとして保持するが、初期表示の比較単位は日単位にする。
 - グラフに使う価格は、対象人数、施設、取得日、現在の簡易絞り込み条件に一致する plan の最安値とする。これは Revenue Assistant 標準表で見る最安値の考え方と揃える。
 - 部屋タイプと食事条件は、グラフ軸ではなく簡易絞り込みとして扱う。初期状態は指定なしとし、保存済み snapshot に含まれる `jalanFacilityRoomType` と `mealType` から選択肢を作る。選択 UI は pull-down ではなく toggle button とする。
-- 部屋タイプの表示名は、API response の raw value をそのまま出すのではなく、利用者が読みやすい `シングル`、`ダブル`、`ツイン`、`トリプル`、`和洋室` などの日本語表記へ寄せる。raw value は保存データとして保持し、filter 判定には raw value を使う。
-- `D-20260808-002` 以降の Next 競合価格履歴は、Classic で定着した可視UI全体を baseline とする。標準表の後へ透明なrootで `競合価格 最安値推移`、対象日・保存状態のcompactなmeta、部屋タイプ / 食事の小さな角丸filter、矩形swatchの共通施設凡例、`1名 最安値` から `4名 最安値` の4 panelを順に置く。Next固有の状態pill、人数selector、panelごとの最新日label、最新値listを初期表示へ置かず、desktop / 680px以下とも4 panelを最大980pxの1列で常時表示し、各SVGは最大760pxとする。
-- 680px以下でも部屋タイプ / 食事 filterのtap targetを44px以上、Next root自身の横overflowを0とする。保存条件の補足説明と最新値 / 前回差分は4 panel後の`データの見方`または各panelの日別表へ初期折りたたみで残し、chart前へ大きな説明blockを置かない。4 panelの共通取得日、共通価格目盛、採用部屋タイプ、accessible tableは変更しない。
-- グラフの Tooltip は取得日軸ごとに表示し、その取得日の`施設 / 部屋タイプ / 価格 / 前回差分 / 自社との差`を mouse / keyboard の両方で確認できるようにする。前回取得日がない場合は `前回なし` とし、同じ情報を初期折りたたみの表からも確認できるようにする。
+- 部屋タイプの表示名は、API response の raw value をそのまま出すのではなく、利用者が読みやすい `シングル`、`ダブル`、`ツイン`、`トリプル`、`和洋室` などの日本語表記へ寄せる。raw value は保存データとして保持し、filter UIと各planの照合は同じ表示名正規化を通す。
+- `D-20260808-006` 以降の Next 競合価格履歴は、Classic で定着した可視UI全体を baseline とする。標準表の後へ透明なrootで `競合価格 最安値推移`、`対象宿泊日 / 取得日 / 最終取得 / 同日複数取得は最新 snapshot / 条件`のcompactなmeta、部屋タイプ / 食事の小さな角丸filter、矩形swatchの共通施設凡例、`1名 最安値` から `4名 最安値` の4 panelを順に置く。Next固有の状態pill、人数selector、panelごとの最新日label、最新値list、可視の`データの見方` / 日別表を初期表示へ置かない。
+- filterの未指定表記は`指定なし`、食事表記は`素泊まり / 朝食 / 夕食 / 朝夕食`、部屋表記はClassicの日本語寄せを正とし、`FOUR_BEDS`等は`フォース`へ揃える。自社色は`#2f6fbb`、競合色はClassicの固定palette順を使い、施設ごとの色を4 panelで共通にする。
+- 各panelのSVGは`760 x 220`、paddingはleft 54 / right 24 / top 18 / bottom 34を基準にする。価格domainは4 panel共通へ広げずpanelごとの最小 / 最大とし、同値だけ±1,000円、通常は余白を加えない。y軸は5目盛を100円単位へ丸め、全施設のlineは2px、pointは半径3pxとする。
+- 横軸は全取得日labelを表示する。取得日が7日未満なら、1 interval約140px・最小160pxのactive幅をplot中央へ置き、少ない日数をpanel全幅へ引き延ばさない。hover / keyboard focusではactive列を薄く着色し、同日のvertical guideを表示して、tooltipをcursorまたはactive日付の近くへ収める。
+- 680px以下でも部屋タイプ / 食事filterのtap targetを44px以上、Next root自身の横overflowを0とする。tooltipと同内容のaccessible tableは視覚上の初期UIを増やさない方法で維持し、chart前へ大きな説明blockを置かない。
+- グラフの Tooltip は取得日軸ごとに表示し、その取得日の`施設 / 部屋タイプ / 価格 / 前回差分 / 自社との差`を mouse / keyboard の両方で確認できるようにする。前回取得日がない場合は `前回なし` とし、同じ情報を視覚上は隠した読み上げ用tableでも確認できるようにする。
 - warm cache indicator と競合価格表示が干渉する場合に備え、indicator は詳細を折りたためる最小化機能を持つ。最小化しても状態の要約は残し、再表示できるようにする。
-- 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。初期表示では同じ stay_date の保存済み snapshot を読み、最新の同一 signature 群だけを採用する。画面には opaque な signature 文字列ではなく、同一条件の採用件数と条件違いとして除外した件数を表示する。
+- 検索条件 signature が違う競合価格 snapshot を同じ推移系列として扱わない。初期表示では同じ stay_date の保存済み snapshot を読み、最新の同一 signature 群だけを採用する。画面のcompact metaはClassicと同じ短縮条件signatureを表示し、異なるsignatureを同じ線へ混ぜない。
 - 初回調査では、Revenue Assistant に保存されている検索条件を無視して、絞り込みなし、または空条件に近い request で競合価格 data を取得できるかを確認する。
 - 絞り込みなし取得が可能かどうかは、次の観点で判定する。
   - API endpoint と request method。
@@ -466,7 +477,7 @@ Next clean-room read-only contract (`RAU-UX-150` 第一段階):
 - Next の追加表示は `/analyze/YYYY-MM-DD` の標準競合価格本文が実際に可視である場合だけ、標準表と同じ section の末尾へ 1 root を追加する。他 tab、別 route、後発 Classic、重複 root を検知した場合は root / style を除去または fail closed とし、標準表を隠す、移動する、置換する処理は持たない。
 - facility identity は既存の `GET /api/v2/yad/info` を 1 回だけ使って確認し、表示中の施設 label と一致する場合だけ保存済み履歴を描画する。競合履歴は既存 IndexedDB の `facility-stay-date` index を完全一致 key `[facilityId, stayDate]`、`readonly` transaction、固定上限 512 record で読む。database upgrade、cursor scan、response 保存、新規 endpoint、background prefetch、storage write、Revenue Assistant write API は追加しない。
 - 外部 record は schema version、facility、stay date、payload shape を検証してから使う。room type scope を選んだ後、最新の同一 condition signature 群だけを採用し、同じ JST 取得日に複数 record がある場合は最終取得 1 件を代表にする。過去 snapshot の競合施設名は現在の一覧で上書きしない。
-- 4 panel は同じ取得日集合と共通価格目盛を使う。各 panel は施設別最安値、最新値、前回差分、採用部屋タイプを示し、全日別値は初期折りたたみ表でも確認できる。snapshot が 1 日だけなら点として表示し、0 件、IndexedDB 不在、read error は標準表を残したまま区別して表示する。保存時刻は表示するが、現在時刻との鮮度判定は行わず `最新性は未判定` と明示する。
+- 4 panel は同じ取得日集合を使うが、価格目盛はClassicと同じpanel別domainとする。各 panel は施設別最安値、前回差分、採用部屋タイプをtooltip / accessible tableで確認できる。snapshot が 1 日だけなら点として表示し、0 件、IndexedDB 不在、read error は標準表を残したまま区別して表示する。保存時刻は表示するが、現在時刻との鮮度を推測しない。
 - この第一段階は既存保存履歴の表示だけを再接続する。Classic を無効化した後も新しい観測を蓄積する writer は含まれない。Next cutover 前に、保存対象、保存期間、削除方針、request 負荷、権限を Yellow zone 判断として固定し、利用者の明示承認後に別実装する。
 
 Next bounded snapshot writer contract (`RAU-UX-150` 第二段階):

@@ -181,6 +181,15 @@ assert.equal(built.status, "ready");
 assert.equal(built.viewModel.panels.length, 2);
 assert.equal(built.viewModel.panels[0].title, "全体");
 assert.equal(built.viewModel.panels[1].title, "個人");
+assert.equal(built.viewModel.capacityRooms, 40);
+assert.deepEqual(built.viewModel.currentSummary.all, {
+    currentValue: 8,
+    previousDayValue: null,
+    previousMonthValue: null,
+    previousWeekValue: null
+});
+assert.equal(built.viewModel.currentSummary.transient.currentValue, 7);
+assert.equal(built.viewModel.currentSummary.group.currentValue, 1);
 assert.equal(built.viewModel.panels[0].current.points.find((point) => point.tick === 20).value, 8);
 assert.equal(built.viewModel.panels[0].current.points.find((point) => point.tick === 14).value, null);
 assert.equal(built.viewModel.panels[0].current.points.find((point) => point.tick === "ACT").value, null);
@@ -638,6 +647,8 @@ assert.match(styles, /data-ra-next-booking-curve-rank-marker-hitbox/u);
 assert.match(styles, /font-size: 14px/u);
 assert.match(styles, /data-ra-next-booking-curve-reference-control-label/u);
 assert.match(viewSource, /header\.append\(createControls\(root\.ownerDocument, viewModel\)\)/u);
+assert.match(viewSource, /export function createEmbeddedBookingCurveReference/u);
+assert.match(viewSource, /createControls\(documentHost, viewModel, false\)/u);
 assert.match(viewSource, /root\.replaceChildren\(header, legend, grid, details\)/u);
 assert.match(viewSource, /body\.append\(meta, note, diagnostics, rankHistory\)/u);
 assert.doesNotMatch(viewSource, /閲覧のみ|booking-curve-reference-badge/u);

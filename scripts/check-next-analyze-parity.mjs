@@ -14,6 +14,8 @@ const [
     bookingRuntimeSource,
     bookingRankSource,
     bookingReferenceDataSourceSource,
+    salesSettingRuntimeSource,
+    salesSettingViewSource,
     priceTrendRuntimeSource,
     smokeSource
 ] = await Promise.all([
@@ -24,6 +26,8 @@ const [
     readFile(new URL("../src/next/analyze/bookingCurveReferenceRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankStatusDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/salesSettingClassicRuntime.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/salesSettingClassicView.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/priceTrendComparisonRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("./run-distribution-smoke.mjs", import.meta.url), "utf8")
 ]);
@@ -40,6 +44,7 @@ assert.doesNotMatch(
 );
 assert.match(nextEntrySource, /startCompetitorHistoryRuntime/u);
 assert.match(nextEntrySource, /startBookingCurveReferenceRuntime/u);
+assert.match(nextEntrySource, /startSalesSettingClassicRuntime/u);
 assert.match(nextEntrySource, /startPriceTrendComparisonRuntime/u);
 assert.match(analyzeRuntimeSource, /competitor-price-tax-included-text/u);
 assert.match(analyzeRuntimeSource, /buildCompetitorHistoryViewModel/u);
@@ -61,6 +66,15 @@ assert.doesNotMatch(
     bookingRuntimeSource,
     /(?:from\s+["'][^"']*main|import\(["'][^"']*main)/u,
     "Next booking curve runtime must not import the Classic monolith"
+);
+assert.match(salesSettingRuntimeSource, /suggestions-heading/u);
+assert.match(salesSettingRuntimeSource, /suggestions-detail-wrapper/u);
+assert.match(salesSettingViewSource, /ランク変更履歴/u);
+assert.match(salesSettingViewSource, /ブッキングカーブを開く/u);
+assert.doesNotMatch(
+    salesSettingRuntimeSource,
+    /(?:from\s+["'][^"']*main|import\(["'][^"']*main)/u,
+    "Next Sales Setting runtime must not import the Classic monolith"
 );
 assert.doesNotMatch(
     bookingRuntimeSource,

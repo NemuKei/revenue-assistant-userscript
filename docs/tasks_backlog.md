@@ -462,7 +462,28 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `decision: D-20260808-004, D-20260808-005`
 
-Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Next公開版`0.2.0.3`の配信、Tampermonkey更新、実画面smokeまで完了した。Classic再公開、新規endpoint、取得範囲や上限の拡張、Revenue Assistant writeはtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+### RAU-UX-160 Analyze旧版UI契約の欠落を補正する
+
+- 状態:
+  - source実装と合成QAは完了し、Next manual publicationとTampermonkey更新後の通常Chrome実画面QAを待つ。公開版`0.2.0.3`にはまだ反映していない。
+- 目的:
+  - Nextの取得・保存・差分方式と標準UI非干渉を保ち、Analyzeで利用者が実際に見ていたClassicの表示配置、情報順序、用語、chart操作へ戻す。
+- 実装範囲:
+  - `販売設定`へrank overview、全体summary / 常時展開booking curve、各native部屋cardのsummary / rank detail / 初期折りたたみbooking curveを再接続する。保存済みsourceが足りない箇所は`比較準備中`とし、全件再取得、欠損の0推測、標準card置換を行わない。
+  - 競合価格履歴をClassicの`指定なし`、食事 / 部屋表記、施設色、760 x 220、panel別5目盛、少数取得日の中央寄せ、全日label、同幅line / point、active列 / guide、cursor近傍tooltipへ揃える。Nextの保存・同一条件選択・retentionは変更しない。
+- 合格条件:
+  - 合成fixtureのdesktop / 390pxで、標準販売設定cardを残した全体 / 部屋別UI、全体open / 部屋closed、再描画時root重複0、競合4 panelの詳細契約、keyboard / tap、横overflow 0を確認する。
+  - focused Analyze check、`npm run check:next`、`npm run check`、Classic公開境界、candidate artifact、`git diff --check`を通す。Revenue Assistant実画面への反映はNext manual publicationとTampermonkey更新後の別gateとし、今回のcommit / pushから推論しない。
+- 実装・検証結果:
+  - 販売設定のstable native selectorへ非干渉で差し込み、hotel / room scopeを順番に読むruntime、Classic表示を組み立てるmodel / view、desktop / 390px / 欠損 / tab cleanup用fixtureとfocused checkを追加した。標準card / detailを残し、tab復帰時の追加load 0、root重複0、欠損`比較準備中`を確認した。
+  - 競合価格はClassicの可視契約へ補正し、4 panel、少数日の中央配置、keyboard tooltip、390pxのroot overflow 0を合成確認した。`npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`は通過した。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: after-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260808-006`
+
+Remaining Task Triage は Now `RAU-UX-160`のmanual publication / 更新後live QA、Next / After Next / Laterなしとする。Next公開版`0.2.0.3`は取得差分のlive evidenceを持つが、Analyze旧版UI parityの完了証拠には使わない。Classic再公開、新規endpoint、取得範囲や上限の拡張、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

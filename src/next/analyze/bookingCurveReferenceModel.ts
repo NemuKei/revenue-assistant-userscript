@@ -68,9 +68,23 @@ export interface BookingCurveReferenceRankMarker {
     value: number;
 }
 
+export interface BookingCurveReferenceMetricSummary {
+    currentValue: number | null;
+    previousDayValue: number | null;
+    previousMonthValue: number | null;
+    previousWeekValue: number | null;
+}
+
+export interface BookingCurveReferenceCurrentSummary {
+    all: BookingCurveReferenceMetricSummary;
+    group: BookingCurveReferenceMetricSummary;
+    transient: BookingCurveReferenceMetricSummary;
+}
+
 export interface BookingCurveReferenceViewModel {
     asOfDate: string;
     capacityRooms: number | null;
+    currentSummary: BookingCurveReferenceCurrentSummary;
     invalidRecordCount: number;
     panels: readonly BookingCurveReferencePanel[];
     scope: BookingCurveReferenceScope;
@@ -211,6 +225,7 @@ export function buildBookingCurveReferenceViewModel(options: {
     const currentRecord = selectedStayDateRecord?.asOfDate === asOfDate
         ? selectedStayDateRecord
         : null;
+    const currentSummary = buildCurrentSummary(currentRecord?.response ?? null, normalizedAsOfDate);
     const sources = records.map((record): BookingCurveResponseSource => ({
         response: buildReferenceResponse(record),
         scope: options.scope.kind,
@@ -301,6 +316,7 @@ export function buildBookingCurveReferenceViewModel(options: {
         viewModel: {
             asOfDate,
             capacityRooms: normalizeNonNegativeNumber(currentRecord?.response.max_room_count),
+            currentSummary,
             invalidRecordCount,
             panels,
             scope: options.scope,
@@ -312,6 +328,36 @@ export function buildBookingCurveReferenceViewModel(options: {
             stayDate,
             visibility
         }
+    };
+}
+
+function buildCurrentSummary(
+    response: BookingCurveApiResponse | null,
+    asOfDate: string
+): BookingCurveReferenceCurrentSummary {
+    return {
+        all: buildMetricSummary(response, asOfDate, "all"),
+        group: buildMetricSummary(response, asOfDate, "group"),
+        transient: buildMetricSummary(response, asOfDate, "transient")
+    };
+}
+
+function buildMetricSummary(
+    response: BookingCurveApiResponse | null,
+    asOfDate: string,
+    segment: CurveSegment
+): BookingCurveReferenceMetricSummary {
+    const valueAtOffset = (offsetDays: number): number | null => {
+        const date = shiftDate(asOfDate, -offsetDays);
+        return response === null || date === null
+            ? null
+            : resolveMetricAtDate(response, date, segment, false);
+    };
+    return {
+        currentValue: valueAtOffset(0),
+        previousDayValue: valueAtOffset(1),
+        previousMonthValue: valueAtOffset(30),
+        previousWeekValue: valueAtOffset(7)
     };
 }
 

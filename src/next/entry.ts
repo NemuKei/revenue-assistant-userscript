@@ -8,6 +8,7 @@ import { createLiveSimilarityLensDataSource } from "./live/liveSimilarityLensDat
 import { startCompetitorHistoryRuntime } from "./analyze/competitorHistoryRuntime";
 import { startBookingCurveReferenceRuntime } from "./analyze/bookingCurveReferenceRuntime";
 import { createBookingCurveReferenceDataSource } from "./analyze/bookingCurveReferenceDataSource";
+import { startSalesSettingClassicRuntime } from "./analyze/salesSettingClassicRuntime";
 import { startPriceTrendComparisonRuntime } from "./analyze/priceTrendComparisonRuntime";
 import { createNextBookingCurveAcquisitionCoordinator } from "./bookingCurve/bookingCurveAcquisitionCoordinator";
 import { startBookingCurveAcquisitionRuntime } from "./bookingCurve/bookingCurveAcquisitionRuntime";
@@ -50,6 +51,13 @@ function startNextCandidateRuntime(): void {
     });
     startCompetitorHistoryRuntime(document, window);
     startBookingCurveReferenceRuntime(document, window, {
+        dataSource: createBookingCurveReferenceDataSource({
+            acquisition: bookingCurveAcquisition,
+            documentHost: document,
+            windowHost: window
+        })
+    });
+    startSalesSettingClassicRuntime(document, window, {
         dataSource: createBookingCurveReferenceDataSource({
             acquisition: bookingCurveAcquisition,
             documentHost: document,

@@ -16,6 +16,7 @@ export const BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE = "data-ra-next-bookin
 export const BOOKING_CURVE_REFERENCE_PANEL_ATTRIBUTE = "data-ra-next-booking-curve-reference-panel";
 export const BOOKING_CURVE_REFERENCE_SVG_ATTRIBUTE = "data-ra-next-booking-curve-reference-svg";
 export const BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-reference-hitbox";
+export const BOOKING_CURVE_REFERENCE_COMPONENT_ATTRIBUTE = "data-ra-next-booking-curve-reference-component";
 export const BOOKING_CURVE_RANK_MARKER_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker";
 export const BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker-hitbox";
 
@@ -152,13 +153,51 @@ export function renderBookingCurveReference(
     root.replaceChildren(header, legend, grid, details);
 }
 
-function createHeader(documentHost: Document, scopeLabel?: string): HTMLElement {
+export function createEmbeddedBookingCurveReference(
+    documentHost: Document,
+    viewModel: BookingCurveReferenceViewModel,
+    rankHistory: BookingCurveRankHistoryViewState,
+    options: { narrow: boolean; titleId: string }
+): HTMLElement {
+    const component = documentHost.createElement("section");
+    component.setAttribute(BOOKING_CURVE_REFERENCE_COMPONENT_ATTRIBUTE, viewModel.scope.key);
+    component.setAttribute("aria-labelledby", options.titleId);
+    const header = createHeader(documentHost, viewModel.scope.label, options.titleId);
+    header.append(createControls(documentHost, viewModel, false));
+    const meta = documentHost.createElement("p");
+    meta.setAttribute("data-ra-next-booking-curve-reference-meta", "");
+    meta.textContent = [
+        `対象宿泊日 ${formatDate(viewModel.stayDate)}`,
+        `データ更新 ${formatDate(viewModel.asOfDate)}`,
+        `利用cache ${viewModel.sourceRecordCount}日分`
+    ].join(" / ");
+    const note = documentHost.createElement("p");
+    note.setAttribute("data-ra-next-booking-curve-reference-note", "");
+    note.textContent = "欠損位置は推測せず、保存済みsourceと不足tailだけで描画します。";
+    const legend = createLegend(documentHost, viewModel);
+    const grid = documentHost.createElement("div");
+    grid.setAttribute("data-ra-next-booking-curve-reference-grid", "");
+    const domain = resolveSharedDomain(viewModel);
+    for (const panel of viewModel.panels) {
+        grid.append(createPanel(documentHost, panel, viewModel, domain, options.narrow));
+    }
+    const diagnostics = createSeriesDiagnostics(documentHost, viewModel.panels);
+    const details = createReferenceDetails(documentHost, meta, note, diagnostics, createRankHistorySummary(
+        documentHost,
+        rankHistory,
+        viewModel.scope.label
+    ));
+    component.replaceChildren(header, legend, grid, details);
+    return component;
+}
+
+function createHeader(documentHost: Document, scopeLabel?: string, titleId = "ra-next-booking-curve-reference-title"): HTMLElement {
     const header = documentHost.createElement("div");
     header.setAttribute("data-ra-next-booking-curve-reference-header", "");
     const titleWrap = documentHost.createElement("div");
     titleWrap.setAttribute("data-ra-next-booking-curve-reference-title-wrap", "");
     const title = documentHost.createElement("h2");
-    title.id = "ra-next-booking-curve-reference-title";
+    title.id = titleId;
     title.textContent = scopeLabel === undefined
         ? "ブッキングカーブ"
         : `ブッキングカーブ（${scopeLabel}）`;
@@ -170,11 +209,15 @@ function createHeader(documentHost: Document, scopeLabel?: string): HTMLElement 
     return header;
 }
 
-function createControls(documentHost: Document, viewModel: BookingCurveReferenceViewModel): HTMLElement {
+function createControls(
+    documentHost: Document,
+    viewModel: BookingCurveReferenceViewModel,
+    includeScope = true
+): HTMLElement {
     const controls = documentHost.createElement("div");
     controls.setAttribute("data-ra-next-booking-curve-reference-controls", "");
     controls.append(
-        createScopeButtonGroup(documentHost, viewModel),
+        ...(includeScope ? [createScopeButtonGroup(documentHost, viewModel)] : []),
         createButtonGroup(
             documentHost,
             "内訳",

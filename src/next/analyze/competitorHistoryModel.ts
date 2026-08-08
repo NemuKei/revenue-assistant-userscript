@@ -58,6 +58,7 @@ export interface CompetitorHistoryViewModel {
     latestFetchedAt: string;
     observationDates: string[];
     panels: CompetitorHistoryPanel[];
+    selectedConditionSignature: string;
     selectedConditionRecordCount: number;
     stayDate: string;
 }
@@ -66,15 +67,19 @@ export type CompetitorHistoryModelResult =
     | { status: "ready"; viewModel: CompetitorHistoryViewModel }
     | { status: "empty"; reason: "no-records" };
 
-const OWN_SERIES_COLOR = "#1268a6";
+const OWN_SERIES_COLOR = "#2f6fbb";
 const COMPETITOR_SERIES_COLORS = [
-    "#b54a26",
-    "#4f6f1f",
-    "#7656a8",
-    "#a26212",
-    "#0d7a72",
-    "#9b3f75",
-    "#53677c"
+    "#c4552d",
+    "#2e7d58",
+    "#7d5fb2",
+    "#b47a12",
+    "#5c6b7a",
+    "#d14f7a",
+    "#008b8b",
+    "#8a5a44",
+    "#6f7f22",
+    "#9a4fb3",
+    "#4f7f9f"
 ] as const;
 const JST_OFFSET_MILLISECONDS = 9 * 60 * 60 * 1000;
 
@@ -123,6 +128,7 @@ export function buildCompetitorHistoryViewModel(options: {
             latestFetchedAt,
             observationDates: dailyRecords.map((record) => formatFetchedAtAsJstDate(record.fetchedAt)),
             panels,
+            selectedConditionSignature: selectedRecords.at(-1)?.conditionSignature ?? "-",
             selectedConditionRecordCount: selectedRecords.length,
             stayDate
         }
@@ -130,26 +136,43 @@ export function buildCompetitorHistoryViewModel(options: {
 }
 
 export function formatCompetitorHistoryRoomType(value: string): string {
-    const labels: Record<string, string> = {
-        DOUBLE: "ダブル",
-        FOUR_BEDS: "4ベッド",
-        JAPANESE: "和室",
-        SINGLE: "シングル",
-        TRIPLE: "トリプル",
-        TWIN: "ツイン",
-        WASHITSU: "和室",
-        WAYOUSHITSU: "和洋室"
-    };
-    const normalized = value.trim();
-    return labels[normalized] ?? normalized;
+    const normalized = value.trim().toLowerCase();
+    if (/four_beds|4_beds|quad|フォース/u.test(normalized)) {
+        return "フォース";
+    }
+    if (/single|シングル/u.test(normalized)) {
+        return "シングル";
+    }
+    if (/semi_double|semidouble|セミダブル/u.test(normalized)) {
+        return "セミダブル";
+    }
+    if (/double|ダブル/u.test(normalized)) {
+        return "ダブル";
+    }
+    if (/twin|ツイン/u.test(normalized)) {
+        return "ツイン";
+    }
+    if (/triple|トリプル/u.test(normalized)) {
+        return "トリプル";
+    }
+    if (/suite|スイート/u.test(normalized)) {
+        return "スイート";
+    }
+    if (/和室|washitsu|japanese/u.test(normalized)) {
+        return "和室";
+    }
+    if (/wayoushitsu|wayo|和洋/u.test(normalized)) {
+        return "和洋室";
+    }
+    return value.trim();
 }
 
 export function formatCompetitorHistoryMealType(value: string): string {
     const labels: Record<string, string> = {
-        BREAKFAST: "朝食あり",
-        BREAKFAST_DINNER: "朝・夕食あり",
-        DINNER: "夕食あり",
-        NONE: "食事なし"
+        BREAKFAST: "朝食",
+        BREAKFAST_DINNER: "朝夕食",
+        DINNER: "夕食",
+        NONE: "素泊まり"
     };
     const normalized = value.trim();
     return labels[normalized] ?? normalized;
@@ -238,7 +261,9 @@ function buildFilterOptions(records: readonly CompetitorPriceSnapshotRecord[]): 
             .map((value) => ({ label: formatCompetitorHistoryMealType(value), value }))
             .sort(compareFilterOptions),
         roomTypes: Array.from(roomTypes)
-            .map((value) => ({ label: formatCompetitorHistoryRoomType(value), value }))
+            .map((value) => formatCompetitorHistoryRoomType(value))
+            .filter((value, index, values) => values.indexOf(value) === index)
+            .map((value) => ({ label: value, value }))
             .sort(compareFilterOptions)
     };
 }
@@ -267,7 +292,10 @@ function selectRecordsForRoomType(
         if (requestRoomTypes.length === 0) {
             unspecified.push(record);
         }
-        if (roomType !== null && requestRoomTypes.includes(roomType)) {
+        if (
+            roomType !== null
+            && requestRoomTypes.some((value) => formatCompetitorHistoryRoomType(value) === roomType)
+        ) {
             matching.push(record);
         }
     }
@@ -349,7 +377,10 @@ function buildPointsByGuest(
                 || typeof plan.price !== "number"
                 || !Number.isFinite(plan.price)
                 || plan.price < 0
-                || (filters.roomType !== null && plan.jalanFacilityRoomType !== filters.roomType)
+                || (
+                    filters.roomType !== null
+                    && formatCompetitorHistoryRoomType(plan.jalanFacilityRoomType ?? "") !== filters.roomType
+                )
                 || (filters.mealType !== null && plan.mealType !== filters.mealType)
             ) {
                 continue;
@@ -450,6 +481,13 @@ function compareFetchedAt(
 }
 
 function compareFilterOptions(left: CompetitorHistoryFilterOption, right: CompetitorHistoryFilterOption): number {
+    const order = ["シングル", "セミダブル", "ダブル", "ツイン", "トリプル", "フォース", "和室", "和洋室"];
+    const leftIndex = order.indexOf(left.label);
+    const rightIndex = order.indexOf(right.label);
+    if (leftIndex !== -1 || rightIndex !== -1) {
+        return (leftIndex === -1 ? order.length : leftIndex)
+            - (rightIndex === -1 ? order.length : rightIndex);
+    }
     return left.label.localeCompare(right.label, "ja") || left.value.localeCompare(right.value);
 }
 

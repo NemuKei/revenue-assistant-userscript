@@ -46,6 +46,9 @@ const expectedSources = [
     "src/next/analyze/priceTrendComparisonView.ts",
     "src/next/analyze/priceTrendCaptureStore.ts",
     "src/next/analyze/priceTrendCaptureWriter.ts",
+    "src/next/analyze/salesSettingClassicModel.ts",
+    "src/next/analyze/salesSettingClassicRuntime.ts",
+    "src/next/analyze/salesSettingClassicView.ts",
     "src/next/bookingCurve/bookingCurveAcquisitionCoordinator.ts",
     "src/next/bookingCurve/bookingCurveAcquisitionModel.ts",
     "src/next/bookingCurve/bookingCurveAcquisitionRuntime.ts",
@@ -126,6 +129,7 @@ assert.match(artifactText, /data-ra-next-similarity-lens-root/u);
 assert.match(artifactText, /data-ra-next-competitor-history-root/u);
 assert.match(artifactText, /data-ra-next-booking-curve-reference-root/u);
 assert.match(artifactText, /data-ra-next-booking-curve-rank-marker/u);
+assert.match(artifactText, /data-ra-next-sales-setting-classic-root/u);
 assert.match(artifactText, /data-ra-next-price-trend-comparison-root/u);
 assert.match(artifactText, /保存状態/u);
 assert.doesNotMatch(artifactText, /data-ra-next-price-trend-capture/u);
