@@ -435,7 +435,7 @@
 ### RAU-UX-159 Classic保存済みbooking curveをNext差分取得の起点にする
 
 - 状態:
-  - 実装と配信まで完了。旧版データのread-through、差分計画、保存時merge、速度設定、契約検査、正本同期をlocalで実装・検証し、公開版`0.2.0.3`へ配信した。Tampermonkey更新とRevenue Assistant実画面QAは公開後の別確認である。
+  - 完了。旧版データのread-through、差分計画、保存時merge、速度設定、契約検査、正本同期をlocalで実装・検証し、公開版`0.2.0.3`への配信、Tampermonkey更新後のRevenue Assistant実画面QAまで確認した。
 - 解決する問題:
   - Classicで取得済みのbooking curveがあってもNext専用DBが空なら同じ範囲を再取得していた。毎回の全件取得を避ける中心対策を、取得開始を遅くすることではなく、保存済み履歴から不足tailだけを補うことへ揃える。
   - 製品の変更範囲を、booking curveの全件再取得、再描画周辺のbug、表形式の料金調整候補から類似日候補への移行の3点へ絞る。Classicで定着したTop / Analyzeの見た目と操作は、それ以外の問題が確認されるまでbaselineとして維持する。
@@ -450,16 +450,19 @@
 - 配信確認:
   - 2026-08-08に利用者の明示承認を受け、source `bc20624de6ee0b94f68f07499809596030e11e2a`をmanual workflow run `31236765218`で公開版`0.2.0.3`へ配信した。build / Pages deploy / post-deploy verifyはすべてsuccessだった。
   - remote再照合では公開Nextが246,049 bytes、SHA-256 `D38603B94417FDC93E90D3D81A07FED1FAE2C016C29E8BD32CE5E7F4B5888F07`でrelease manifestと一致した。Classic userscriptは662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source mapも固定baselineと同一byte列だった。
-- 未確認 / gate:
-  - Classic保存済み実データを起点にしたGET 0と翌日tailだけの取得、100ms / concurrency 30での所要時間・失敗・画面応答は実画面未確認である。公開・更新後のlive QAではrequest数、開始間隔、最大同時数、HTTP error、console、標準UI非干渉、Revenue Assistant write 0を確認する。
-  - Tampermonkey更新、Classic再公開、新規endpoint、取得範囲やsession上限の拡張、retention変更、Revenue Assistant writeは配信から推論せず、必要な別gateを維持する。
+- 実画面確認:
+  - 2026-08-08に通常Chromeでinstalled runtime `0.2.0.3`、Next単一root、Classic marker 0を確認した。保存済み履歴を起点に不足source 300件を複数の可視sessionで補い、最後の同日sessionは`本日差分完了 0/0`、booking curve GET 0へ収束した。完全観測した79 GETのsessionは開始間隔最小105ms、最大同時10、HTTP error 0、401 / 403 / 429 0、Revenue Assistant write 0、runtime exception 0だった。
+  - Topは標準calendarとNext類似日レンズを各1件、Analyzeは標準booking curve 2 chartとNext 2 panel、標準競合価格本文とNext 4 panel、標準価格推移本文とNext 4 panelを維持した。tab切替で前のNext rootはcleanupされ、app console warning / errorは0だった。browserの`unload` permissions-policy message 1件はpage runtime errorと分けた。
+- 残る確認 / gate:
+  - Classic / Nextの保存元別件数はbrowser storageを直接調べていないため、Classic read-through自体の採用条件とlazy promotionはpure / fixture確認を正とする。翌営業日をまたいだ通常利用で、新しく増えたsourceだけを補うことは継続観察する。
+  - Classic再公開、新規endpoint、取得範囲やsession上限の拡張、retention変更、Revenue Assistant writeは配信とlive QAから推論せず、必要な別gateを維持する。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: during-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `decision: D-20260808-004, D-20260808-005`
 
-Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Next公開版`0.2.0.3`への配信は完了したが、Tampermonkey install / switch、実画面smoke、Classic再公開はtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now / Next / After Next / Later すべて空とする。Next公開版`0.2.0.3`の配信、Tampermonkey更新、実画面smokeまで完了した。Classic再公開、新規endpoint、取得範囲や上限の拡張、Revenue Assistant writeはtask完了から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
