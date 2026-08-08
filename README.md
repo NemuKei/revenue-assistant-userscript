@@ -13,11 +13,11 @@
 ## Product Lines
 
 - `Classic`: 現在公開中の userscript。既存の name / namespace / filename / updateURL / downloadURL / 公開 URL を維持し、Next への cutover までは凍結する。
-- `Next`: 別 identity の未公開 candidate。`userscript.next.config.mjs` と `src/next/entry.ts` を入口にし、`.tmp/vite-next-candidate/revenue-assistant-next.candidate.user.js` へだけ生成する。自己更新 URL と `dist/` 出力を持たない。`@version` はpackage versionにNext専用の数値revisionを加え、candidateのbyte列を変えた後の手動reinstallで同じversionを再利用しない。
+- `Next`: Classicとは別 identity の userscript。`userscript.next.config.mjs` と `src/next/entry.ts` を共通の入口にし、local candidateは`.tmp/vite-next-candidate/revenue-assistant-next.candidate.user.js`へ自己更新URLなしで生成する。公開版は明示承認されたmanual workflowだけがNext専用URLへ生成・配信し、local candidateや`dist/`をそのまま公開しない。
 - Classic と Next を同じ Revenue Assistant tab で同時に実行しない。初期 Next QA は Tampermonkey で Classic を無効化してから reload する。Next は既に描画済みの Classic DOM を検出すると停止するが、現公開 Classic が後から起動する競合までは防げない。
 - Next のcalendar entryは、表示中カレンダーだけへ接続するread-onlyな基準日レンズである。利用者が`基準日を選ぶ`を押した後だけ確認済み2 endpointを各1回GETし、OHはcurrent settings、個人 / 団体は既存booking curve raw cache、競合は既存snapshot cacheから読む。facility、room type、source、current as-of、stay dateのguardを満たさない値を採用せず、競合snapshotの取得時刻を最新性保証や類似判定に使わない。
 - Next のAnalyze entryは、可視な標準競合価格本文の末尾へClassic / Nextのbrowser-local履歴を統合表示する。facility labelが一致する未保存日の現在stay dateだけ、既存の競合一覧 / 競合価格GETを各最大1回使い、部屋 / 食事指定なし・1〜6名のsnapshotをJST日単位でNext専用IndexedDBへ最大1件保存する。週・月・周辺日程のbackground prefetch、raw response保存、Classic DB変更、Revenue Assistant write操作は行わない。
-- Tampermonkey install / switch、Next publish、Classic再公開は未実施であり、別gateのままである。
+- Next公開版`0.2.0.3`は配信済みである。Tampermonkeyのinstalled version / 有効状態とRevenue Assistant実画面smokeはmutable stateとして別に確認し、Classic再公開は引き続き別gateとする。
 
 ## 前提
 
@@ -269,3 +269,5 @@ localの `.github/workflows/publish-userscript.yml` は、`main` pushによるCl
 初回はNext公開URLをTampermonkeyで開き、現在のNext candidateを公開版へ更新します。以後はTampermonkeyの定期更新確認、またはdashboardの手動更新確認で同じURLから更新できます。Git pushやlocal candidate生成だけではinstalled versionは変わりません。詳細なversion、rollback、合格条件は`docs/spec_004_next_distribution.md`を参照してください。
 
 2026-07-22に明示承認を受け、origin/mainの6 dependency / Actions更新をverify-only workflowと同じtreeへ統合し、merge commit `57c99837303ed07ca86af924c922fcf783a342eb` をpushしました。Actionsはcheckout / setup-node v7、lockfileどおりの`npm ci`とfull verifyを通しています。同commitのGitHub ActionsはValidate Main run `29888589509` 1件だけがsuccessし、Publish系run 0件、GitHub Pages deployment 0件でした。最新Pages deploymentは引き続きsource `659d998254c7527ecc40b45a3e22513f049168de`で、公開artifactのversion / bytes / SHA-256もpush後のcache-bypass照合2回で不変です。Classic公開経路の分離は完了し、Nextの公開、Tampermonkey install、Classicからの切替はそれぞれ別gateです。
+
+2026-08-08に利用者の明示承認を受け、source `bc20624de6ee0b94f68f07499809596030e11e2a`をmanual workflow run `31236765218`で公開版`0.2.0.3`へ配信しました。公開Nextは246,049 bytes、SHA-256 `D38603B94417FDC93E90D3D81A07FED1FAE2C016C29E8BD32CE5E7F4B5888F07`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。Tampermonkey更新とRevenue Assistant実画面smokeは公開後の別確認です。
