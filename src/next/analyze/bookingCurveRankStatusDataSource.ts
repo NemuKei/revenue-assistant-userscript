@@ -103,7 +103,8 @@ async function loadBookingCurveRankStatus(options: {
     try {
         const payload = await options.transport.read({
             kind: "rank-status",
-            stayDate: options.stayDate
+            from: options.stayDate,
+            to: options.stayDate
         }, options.signal);
         if (options.signal.aborted) {
             return { status: "error", contextKey: options.contextKey, reason: "aborted" };

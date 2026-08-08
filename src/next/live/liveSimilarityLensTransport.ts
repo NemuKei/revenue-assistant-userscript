@@ -10,7 +10,7 @@ export type NextReadRequest =
     | { kind: "facility" }
     | { kind: "current-settings"; from: string; to: string }
     | { kind: "competitors" }
-    | { kind: "rank-status"; stayDate: string }
+    | { kind: "rank-status"; from: string; to: string }
     | {
         kind: "booking-curve";
         roomGroupId: string | null;
@@ -106,8 +106,8 @@ export function buildNextReadUrl(request: NextReadRequest, origin: string): URL 
     if (request.kind === "rank-status") {
         const url = new URL(NEXT_RANK_STATUS_ENDPOINT, origin);
         url.searchParams.set("filter_type", "stay_date");
-        url.searchParams.set("from", request.stayDate);
-        url.searchParams.set("to", request.stayDate);
+        url.searchParams.set("from", request.from);
+        url.searchParams.set("to", request.to);
         return url;
     }
     if (request.kind === "booking-curve") {

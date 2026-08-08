@@ -11,6 +11,11 @@ import {
     type LiveSimilarityLensDataSource
 } from "./liveSimilarityLensDataSource";
 import {
+    createIdleLiveCalendarSummarySnapshot,
+    type LiveCalendarSummaryDataSource,
+    type LiveCalendarSummarySnapshot
+} from "./liveCalendarSummaryDataSource";
+import {
     armLiveSimilarityLens,
     cancelLiveSimilarityLensSelection,
     clearLiveSimilarityLensBaseDate,
@@ -45,6 +50,7 @@ export interface LiveSimilarityLensRuntimeHandle {
 }
 
 export interface StartLiveSimilarityLensRuntimeOptions {
+    calendarSummary?: LiveCalendarSummaryDataSource;
     dataSource?: LiveSimilarityLensDataSource;
     isCalendarRoute?: (location: Location) => boolean;
 }
@@ -86,6 +92,8 @@ export function startLiveSimilarityLensRuntime(
     let pendingRoomGroupFocusAnchor: HTMLAnchorElement | null = null;
     let activeFacilityLabel: string | null = null;
     let routeSuspended = false;
+    let calendarSummarySnapshot: LiveCalendarSummarySnapshot = options.calendarSummary?.getSnapshot()
+        ?? createIdleLiveCalendarSummarySnapshot();
     let disclosureState: LiveSimilarityLensDisclosureState = {
         comparisonExpanded: null,
         matchListExpanded: null
@@ -108,6 +116,11 @@ export function startLiveSimilarityLensRuntime(
     });
     const unsubscribeDataSource = dataSource.subscribe?.(scheduleEvidenceRefresh)
         ?? (() => undefined);
+    const unsubscribeCalendarSummary = options.calendarSummary?.subscribe(() => {
+        calendarSummarySnapshot = options.calendarSummary?.getSnapshot()
+            ?? createIdleLiveCalendarSummarySnapshot();
+        scheduleReconcile();
+    }) ?? (() => undefined);
 
     documentHost.addEventListener("click", handleDocumentClick, {
         capture: true,
@@ -260,7 +273,8 @@ export function startLiveSimilarityLensRuntime(
             snapshot,
             state,
             readyViewModel,
-            evidenceState.status === "ready" ? evidenceState.evidence.calendarGroups : []
+            getCalendarGroups(),
+            calendarSummarySnapshot.latestChanges
         );
         syncSelectedBaseFocusability();
         documentHost.documentElement.setAttribute(NEXT_LIVE_STATE_ATTRIBUTE, "mounted-read-only");
@@ -482,7 +496,8 @@ export function startLiveSimilarityLensRuntime(
             snapshot,
             state,
             readyViewModel,
-            evidenceState.status === "ready" ? evidenceState.evidence.calendarGroups : []
+            getCalendarGroups(),
+            calendarSummarySnapshot.latestChanges
         );
         syncSelectedBaseFocusability();
     }
@@ -725,6 +740,7 @@ export function startLiveSimilarityLensRuntime(
         stopped = true;
         evidenceGeneration += 1;
         unsubscribeDataSource();
+        unsubscribeCalendarSummary();
         dataSource.stop();
         abortController.abort();
         observer.disconnect();
@@ -746,6 +762,18 @@ export function startLiveSimilarityLensRuntime(
         pendingRoomGroupFocus = false;
         pendingRoomGroupFocusAnchor = null;
         activeFacilityLabel = null;
+    }
+
+    function getCalendarGroups() {
+        const groupsByStayDate = new Map(calendarSummarySnapshot.calendarGroups.map((group) => (
+            [group.stayDate, group] as const
+        )));
+        if (evidenceState.status === "ready") {
+            for (const group of evidenceState.evidence.calendarGroups) {
+                groupsByStayDate.set(group.stayDate, group);
+            }
+        }
+        return Array.from(groupsByStayDate.values());
     }
 }
 

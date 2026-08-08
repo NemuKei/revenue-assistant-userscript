@@ -57,6 +57,7 @@ const expectedSources = [
     "src/next/entry.ts",
     "src/next/facilityContext.ts",
     "src/next/live/liveCalendarDomAdapter.ts",
+    "src/next/live/liveCalendarSummaryDataSource.ts",
     "src/next/live/liveSimilarityLensDataSource.ts",
     "src/next/live/liveSimilarityLensEvidence.ts",
     "src/next/live/liveSimilarityLensRuntime.ts",

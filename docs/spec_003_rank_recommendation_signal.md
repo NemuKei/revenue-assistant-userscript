@@ -116,6 +116,14 @@ Next first phase の候補では次を行う。Classic への公開済み変更�
 - 深い根拠は Analyze、booking curve、競合価格、価格推移 graph で確認できる導線を残す。Classic候補表の単一行rank調整、様子見、対応不要はNextへ持ち込まない。将来これらの操作を戻す場合は、表の復元とは分け、現行のcalendar-first導線とwrite安全条件を満たす別判断とする。
 - first UI shell は read-only とし、類似日の選択だけで rank 変更、browser-local decision、一括調整、write API を実行しない。
 
+### Top Calendar Preselection Summary
+
+- `RAU-UX-162`では、基準日を選ぶ前から、標準calendarの現在の可視範囲に限ってhotel scopeの団体室数と前回調整からの経過日数を表示する。標準date linkの文字、子構造、位置、click、focusを変更せず、Nextが独立した子要素を重ねる。
+- 団体室数は、現在のfacility / as-of / stay date / hotel scope / endpoint / queryが一致する保存済みbooking curveだけから直接読む。room group値を合算せず、`all - transient`でも推測しない。直接値の0は`団0`、欠損、stale、不一致、未準備は非表示とする。不足sourceは既存bootstrap / daily delta queueへ任せ、room scope、可視範囲外、session上限を追加しない。
+- 前回調整日は、既存read-only `/api/v3/lincoln/suggest/status`を可視範囲の最初の日から最後の日まで最大1 GETし、stay dateごとに有効な最新timestampだけを現在のJST日付から`n日前`へ変換する。欠損、invalid response、対象日不一致は非表示とし、0件を`0日前`や`調整なし`へ読み替えない。raw response、実行者、rank名、価格、在庫、予約・顧客情報は保存しない。
+- facility名とIDの一致、Top route、visible calendar、document visibilityを確認してから表示・取得する。calendar、facility、route、document visibilityが変わった場合はin-flightを中止して表示を除去する。同じ可視contextではrank statusを自動retryせず、401 / 403 / 429では差分取得を含む同じrunを即停止する。
+- この表示追加で、許可endpoint、booking curveの開始間隔 / concurrency / request上限、IndexedDB schema / retention、Revenue Assistant write、Classic / Nextの公開境界は変更しない。manual publication、Tampermonkey更新、更新後の実画面QAは別gateとする。
+
 ## Classic To Next Target Contract Matrix
 
 Next は Classic の画面配置を複製しない。実務上の責務を、`探索 = カレンダー`、`根拠確認 = Analyze / graph`、`更新 = 単一候補の明示確認`へ分ける。表形式の料金調整候補は探索UIとして廃止対象だが、そこから到達できた根拠、状態、単一候補の安全操作は個別に parity 判定する。

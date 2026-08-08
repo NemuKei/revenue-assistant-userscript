@@ -126,6 +126,14 @@ export interface BuildLiveSimilarityLensEvidenceOptions {
     competitorReadStatus: ExistingIndexedDbReadResult<CompetitorPriceSnapshotRecord>;
 }
 
+export interface BuildLiveCalendarGroupEvidenceOptions {
+    facilityId: string;
+    asOfDate: string;
+    visibleStayDates: readonly string[];
+    bookingRawRecords: readonly BookingCurveRawSourceRecord[];
+    bookingReadStatus: ExistingIndexedDbReadResult<BookingCurveRawSourceRecord>;
+}
+
 interface CurrentSettingBucket {
     stayDate: string;
     roomGroupId: string;
@@ -165,20 +173,12 @@ export function buildLiveSimilarityLensEvidence(
 
     const visibleStayDateSet = new Set(visibleStayDates);
     const bookingReadFailure = convertReadFailure(options.bookingReadStatus);
-    const calendarGroups = visibleStayDates.map((stayDate): LiveSimilarityLensCalendarGroupEvidence => {
-        const bookingRecord = bookingReadFailure ?? resolveBookingRecord({
-            facilityId: options.facilityId,
-            stayDate,
-            asOfDate,
-            scope: "hotel",
-            roomGroupId: null,
-            expectedQuery: `date=${stayDate}`,
-            records: options.bookingRawRecords
-        });
-        return {
-            stayDate,
-            groupCurve: resolveCurveEvidence(bookingRecord, "group", stayDate, asOfDate)
-        };
+    const calendarGroups = buildLiveCalendarGroupEvidence({
+        asOfDate,
+        bookingRawRecords: options.bookingRawRecords,
+        bookingReadStatus: options.bookingReadStatus,
+        facilityId: options.facilityId,
+        visibleStayDates
     });
     const roomGroups = collectCurrentSettingBuckets(options.currentSettings, visibleStayDateSet)
         .map((bucket): LiveSimilarityLensRoomGroupEvidence => {
@@ -217,6 +217,32 @@ export function buildLiveSimilarityLensEvidence(
             readStatus: options.competitorReadStatus
         })
     };
+}
+
+export function buildLiveCalendarGroupEvidence(
+    options: BuildLiveCalendarGroupEvidenceOptions
+): LiveSimilarityLensCalendarGroupEvidence[] {
+    const asOfDate = toCompactDateKey(options.asOfDate);
+    const visibleStayDates = normalizeVisibleStayDates(options.visibleStayDates);
+    if (options.facilityId.trim() === "" || asOfDate === null) {
+        return [];
+    }
+    const bookingReadFailure = convertReadFailure(options.bookingReadStatus);
+    return visibleStayDates.map((stayDate): LiveSimilarityLensCalendarGroupEvidence => {
+        const bookingRecord = bookingReadFailure ?? resolveBookingRecord({
+            facilityId: options.facilityId,
+            stayDate,
+            asOfDate,
+            scope: "hotel",
+            roomGroupId: null,
+            expectedQuery: `date=${stayDate}`,
+            records: options.bookingRawRecords
+        });
+        return {
+            stayDate,
+            groupCurve: resolveCurveEvidence(bookingRecord, "group", stayDate, asOfDate)
+        };
+    });
 }
 
 export function projectLiveSimilarityLensEvidenceForRoomGroup(

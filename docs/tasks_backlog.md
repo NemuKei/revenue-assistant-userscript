@@ -509,7 +509,7 @@
 ### RAU-UX-162 Topの団体数と前回調整日を基準日選択前から表示する
 
 - 状態:
-  - 利用者承認待ち。設計候補だけを固定し、source実装、API実行、browser確認、publicationは開始しない。
+  - source実装、focused / full check、desktop / 390px合成fixture QAまで完了。`RAU-UX-161`と同じ次回更新候補へ含めた。manual publication、Tampermonkey更新、通常Chrome実画面QAを待つ。公開版`0.2.0.4`にはまだ反映していない。
 - 解決する問題:
   - 旧版で常時見えていた青い団体数と「前回調整から◯日前」が、現行Nextでは基準日選択前に揃わない。団体数は基準日選択後だけ表示し、前回調整日はNextに未実装なので、単なる描画遅延として扱わない。
 - 提案する境界:
@@ -519,13 +519,18 @@
 - 合格条件:
   - 基準日未選択でも、保存済み団体数と前回調整日が標準calendarを変形せず先に見える。欠損は非表示または`比較準備中`とし、0や「調整なし」を推測しない。
   - 可視範囲外、全room scope、追加endpoint、storage schema / retention、session上限、Revenue Assistant writeを変えず、fixtureと通常Chromeでrequest数、401 / 403 / 429停止、write 0、cleanupを確認する。
+- 合格条件と結果:
+  - focused checkで可視範囲rank status 1 GET、同一context retry 0、保存済みhotel scopeの先行表示、local再読込の追加GET 0、401 / 403 / 429即停止、calendar / route cleanup時abortを固定した。欠損responseと欠損stay dateは表示せず、`0日前`や`調整なし`へ推測しない。
+  - live-shell fixtureでは基準日未選択で団体badge 92件と合成前回調整23件を表示し、desktop / 390 x 844の標準値・団体・前回調整の相互重なり0、document overflow 0、console warning / error 0を確認した。基準日選択後も表示を維持し、Analyzeで追加artifact 0、標準3 tab維持、calendar復帰でidle再mountした。
+  - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`が通過した。runtime graph 46 files、raw fetch 1か所、許可API path 7件、Revenue Assistant write path追加0である。local candidateはversion `0.1.0.160`、275,691 bytes、SHA-256 `4018D311C9045415D97358EEDD09A5F701855A37559C2EF31A9F4A260876DBEA`、updateURL / downloadURLなしである。
+  - 通常Chrome実画面の保存済み件数、rank status range GET、標準UI非干渉、write 0はmanual publicationとTampermonkey更新後の別gateとして未実施である。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_003_rank_recommendation_signal.md`
-  - `decision: pending explicit Yellow zone approval`
+  - `decision: D-20260808-008`
 
-Remaining Task Triage は Now `RAU-UX-161`のmanual publication / 更新後live QA、Next `RAU-UX-162`のYellow zone承認待ち、After Next / Laterなしとする。次のreleaseで両方をまとめるか、`RAU-UX-161`だけを先に配信するかを利用者判断とする。Classic再公開、新規endpoint、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now `RAU-UX-161` / `RAU-UX-162`を同じNext manual publicationへ進め、Tampermonkey更新後の通常Chrome live QAを行うこと、After Next / Laterなしとする。`main` pushは公開を開始しない。Classic再公開、新規endpoint、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

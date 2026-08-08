@@ -183,6 +183,11 @@ assert.match(
     /a\[data-testid\^="calendar-date-"\] > \[data-ra-next-calendar-group-badge\] \{[^}]*position: absolute;[^}]*top: 24px;[^}]*left: 6px;[^}]*color: #1f5fbf;/u,
     "calendar group badges must use an independent overlay without changing native date-link positioning"
 );
+assert.match(
+    styles,
+    /a\[data-testid\^="calendar-date-"\] > \[data-ra-next-calendar-last-change\] \{[^}]*position: absolute;[^}]*bottom: 28px;[^}]*left: 2px;[^}]*color: #6a7e99;/u,
+    "calendar latest-change labels must use the free middle row without changing native geometry"
+);
 assert.doesNotMatch(
     styles,
     /a\[data-testid\^="calendar-date-"\][^{>]*\{[^}]*position:/u,
@@ -193,6 +198,13 @@ assert.match(
     /@media \(max-width: 680px\) \{[\s\S]*?a\[data-testid\^="calendar-date-"\] > \[data-ra-next-calendar-group-badge\] \{[^}]*left: 0;[^}]*font-size: 9px;/u,
     "narrow calendar cells must keep the independent group badge clear of the native value"
 );
+assert.match(
+    styles,
+    /@media \(max-width: 680px\) \{[\s\S]*?a\[data-testid\^="calendar-date-"\] > \[data-ra-next-calendar-last-change\] \{[^}]*left: 1px;[^}]*font-size: 9px;/u,
+    "narrow calendar cells must keep the latest-change label readable"
+);
+assert.match(viewSource, /accessibleLabel = `前回調整 \$\{label\}`/u);
+assert.doesNotMatch(viewSource, /調整なし/u, "missing rank status must stay absent instead of being inferred");
 assert.match(
     await readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
     /nativeCell\.anchor\.click\(\)/u,

@@ -12,6 +12,7 @@ import { startSalesSettingClassicRuntime } from "./analyze/salesSettingClassicRu
 import { startPriceTrendComparisonRuntime } from "./analyze/priceTrendComparisonRuntime";
 import { createNextBookingCurveAcquisitionCoordinator } from "./bookingCurve/bookingCurveAcquisitionCoordinator";
 import { startBookingCurveAcquisitionRuntime } from "./bookingCurve/bookingCurveAcquisitionRuntime";
+import { createLiveCalendarSummaryDataSource } from "./live/liveCalendarSummaryDataSource";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -42,7 +43,12 @@ if (!runtimeResult.started) {
 function startNextCandidateRuntime(): void {
     document.documentElement.setAttribute(NEXT_RUNTIME_VERSION_ATTRIBUTE, SCRIPT_VERSION);
     const bookingCurveAcquisition = createNextBookingCurveAcquisitionCoordinator({ windowHost: window });
+    const liveCalendarSummary = createLiveCalendarSummaryDataSource({
+        acquisition: bookingCurveAcquisition,
+        windowHost: window
+    });
     startLiveSimilarityLensRuntime(document, window, {
+        calendarSummary: liveCalendarSummary,
         dataSource: createLiveSimilarityLensDataSource({
             acquisition: bookingCurveAcquisition,
             documentHost: document,
@@ -66,6 +72,7 @@ function startNextCandidateRuntime(): void {
     });
     startPriceTrendComparisonRuntime(document, window);
     startBookingCurveAcquisitionRuntime(document, window, {
+        calendarSummary: liveCalendarSummary,
         coordinator: bookingCurveAcquisition
     });
     console.info(`[${SCRIPT_NAME}] candidate runtime ready`, {

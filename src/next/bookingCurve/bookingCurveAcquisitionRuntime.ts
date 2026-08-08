@@ -16,6 +16,7 @@ import {
     createNextReadSession,
     type NextReadTransport
 } from "../live/liveSimilarityLensTransport";
+import type { LiveCalendarSummaryDataSource } from "../live/liveCalendarSummaryDataSource";
 import {
     createNextBookingCurveScopes,
     type NextBookingCurveAcquisitionContext
@@ -39,6 +40,7 @@ export interface BookingCurveAcquisitionRuntimeHandle {
 }
 
 export interface StartBookingCurveAcquisitionRuntimeOptions {
+    calendarSummary?: LiveCalendarSummaryDataSource;
     coordinator: NextBookingCurveAcquisitionCoordinator;
     transport?: NextReadTransport;
 }
@@ -110,6 +112,9 @@ export function startBookingCurveAcquisitionRuntime(
             suspend("inactive-route");
             return;
         }
+        if (surface.kind !== "calendar") {
+            options.calendarSummary?.clear();
+        }
         ensureRoot(surface);
         const asOfDate = parseLiveSimilarityLensAsOfDate(documentHost);
         if (asOfDate === null) {
@@ -119,6 +124,7 @@ export function startBookingCurveAcquisitionRuntime(
                 activeLoadController = null;
                 options.coordinator.suspend("facility-context-changed");
             }
+            options.calendarSummary?.clear();
             setRuntimeState("waiting-as-of");
             return;
         }
@@ -135,6 +141,7 @@ export function startBookingCurveAcquisitionRuntime(
         if (activeFingerprint !== null) {
             options.coordinator.suspend("facility-context-changed");
         }
+        options.calendarSummary?.clear();
         activeFingerprint = fingerprint;
         activeLoadController?.abort();
         const controller = new AbortController();
@@ -156,12 +163,17 @@ export function startBookingCurveAcquisitionRuntime(
                 return;
             }
             if (context === null) {
+                options.calendarSummary?.clear();
                 setRuntimeState("suspended-context-mismatch");
                 return;
+            }
+            if (surface.kind === "calendar") {
+                options.calendarSummary?.setContext(context);
             }
             await options.coordinator.startBackground(context);
         }).catch(() => {
             if (!controller.signal.aborted) {
+                options.calendarSummary?.clear();
                 setRuntimeState("context-error");
             }
         });
@@ -255,6 +267,7 @@ export function startBookingCurveAcquisitionRuntime(
         activeLoadController = null;
         activeFingerprint = null;
         options.coordinator.suspend(reason);
+        options.calendarSummary?.clear();
         root?.remove();
         root = null;
         documentHost.querySelector(`[${NEXT_BOOKING_CURVE_ACQUISITION_STYLE_ATTRIBUTE}]`)?.remove();
@@ -284,6 +297,7 @@ export function startBookingCurveAcquisitionRuntime(
         }
         unsubscribe();
         options.coordinator.stop();
+        options.calendarSummary?.stop();
         generation += 1;
         activeLoadController?.abort();
         activeLoadController = null;

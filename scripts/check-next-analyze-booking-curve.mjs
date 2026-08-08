@@ -139,7 +139,7 @@ assert.deepEqual(
 assert.equal(rankModel.parseBookingCurveRankStatusResponse({}, "20260812"), null);
 
 const rankUrl = transport.buildNextReadUrl(
-    { kind: "rank-status", stayDate: "20260812" },
+    { kind: "rank-status", from: "20260812", to: "20260812" },
     "https://ra.jalan.net"
 );
 assert.equal(rankUrl.pathname, "/api/v3/lincoln/suggest/status");
@@ -614,7 +614,7 @@ const firstRankLoad = await rankDataSource.load("yad:fixture", "20260812");
 const reusedRankLoad = await rankDataSource.load("yad:fixture", "20260812");
 assert.equal(firstRankLoad.status, "ready");
 assert.equal(reusedRankLoad.status, "ready");
-assert.deepEqual(rankRequests, [{ kind: "rank-status", stayDate: "20260812" }]);
+assert.deepEqual(rankRequests, [{ kind: "rank-status", from: "20260812", to: "20260812" }]);
 rankDataSource.stop();
 
 let abortRequestCount = 0;

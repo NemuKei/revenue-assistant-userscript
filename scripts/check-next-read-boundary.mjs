@@ -308,7 +308,7 @@ function checkTransportBoundary(sources, source) {
             ["date", "request.stayDate"],
             ["filter_type", "\"stay_date\""],
             ["from", "request.from"],
-            ["from", "request.stayDate"],
+            ["from", "request.from"],
             ["max_num_guests", "String(request.maxNumGuests)"],
             ["meal_type", "request.mealType"],
             ["min_num_guests", "String(request.minNumGuests)"],
@@ -316,7 +316,7 @@ function checkTransportBoundary(sources, source) {
             ["rm_room_group_id", "request.roomGroupId"],
             ["stay_date", "request.stayDate"],
             ["to", "request.to"],
-            ["to", "request.stayDate"]
+            ["to", "request.to"]
         ],
         "Next query parameters must remain the reviewed exact values"
     );

@@ -9,7 +9,14 @@ import {
     type CompetitorPriceSnapshotRecord
 } from "../../competitorPriceSnapshotContract";
 import type { RankRecommendationCurrentSettingsResponse } from "../../rankRecommendation";
-import { buildLiveSimilarityLensEvidence } from "../live/liveSimilarityLensEvidence";
+import {
+    buildLiveCalendarGroupEvidence,
+    buildLiveSimilarityLensEvidence
+} from "../live/liveSimilarityLensEvidence";
+import type {
+    LiveCalendarSummaryDataSource,
+    LiveCalendarSummarySnapshot
+} from "../live/liveCalendarSummaryDataSource";
 import type {
     LiveSimilarityLensDataLoadResult,
     LiveSimilarityLensDataSource
@@ -52,6 +59,61 @@ export function createLiveSimilarityLensFixtureDataSource(
         },
         stop() {
             stopped = true;
+        }
+    };
+}
+
+export function createLiveCalendarSummaryFixtureDataSource(
+    windowHost: Window = window
+): LiveCalendarSummaryDataSource {
+    let stopped = false;
+    return {
+        clear() {
+            // The fixture keeps its synthetic context so route cleanup can be verified by the view runtime.
+        },
+        getSnapshot(): LiveCalendarSummarySnapshot {
+            if (stopped) {
+                return {
+                    calendarGroups: [],
+                    contextKey: null,
+                    latestChanges: [],
+                    rankStatus: "idle",
+                    rankStatusError: null
+                };
+            }
+            const stayDates = Array.from(windowHost.document.querySelectorAll<HTMLElement>(
+                '[data-testid^="calendar-date-"]'
+            )).map((element) => (
+                element.getAttribute("data-testid")?.replace(/^calendar-date-/u, "").replaceAll("-", "") ?? ""
+            )).filter((stayDate) => /^\d{8}$/u.test(stayDate)).sort();
+            const scenario = parseFixtureScenario(windowHost.location.search);
+            const records = scenario === "missing" || scenario === "error"
+                ? []
+                : buildFixtureBookingRecords(stayDates, scenario);
+            return {
+                calendarGroups: buildLiveCalendarGroupEvidence({
+                    asOfDate: FIXTURE_AS_OF_DATE,
+                    bookingRawRecords: records,
+                    bookingReadStatus: { status: "ready", records },
+                    facilityId: FIXTURE_FACILITY_ID,
+                    visibleStayDates: stayDates
+                }),
+                contextKey: `fixture-calendar:${scenario}:${stayDates.join(",")}`,
+                latestChanges: stayDates
+                    .filter((_, index) => index % 4 === 0)
+                    .map((stayDate, index) => ({ daysAgo: index, stayDate })),
+                rankStatus: "ready",
+                rankStatusError: null
+            };
+        },
+        setContext() {
+            // Production context resolution is owned by the acquisition runtime; this fixture is static.
+        },
+        stop() {
+            stopped = true;
+        },
+        subscribe() {
+            return () => undefined;
         }
     };
 }
