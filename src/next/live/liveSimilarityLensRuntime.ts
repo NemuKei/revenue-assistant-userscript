@@ -1,4 +1,5 @@
 import { detectLegacyClassicRuntime } from "../runtimeLease";
+import { shouldReconcileForDomMutations } from "../runtimeDomMutation";
 import {
     collectLiveCalendarDom,
     hasLiveFacilityContextLabel,
@@ -100,7 +101,11 @@ export function startLiveSimilarityLensRuntime(
     const isCalendarRoute = options.isCalendarRoute
         ?? ((location: Location) => isLiveSimilarityLensCalendarRoute(location.pathname));
     const abortController = new AbortController();
-    const observer = new MutationObserver(scheduleReconcile);
+    const observer = new MutationObserver((records) => {
+        if (shouldReconcileForDomMutations(records)) {
+            scheduleReconcile();
+        }
+    });
     const unsubscribeDataSource = dataSource.subscribe?.(scheduleEvidenceRefresh)
         ?? (() => undefined);
 

@@ -64,6 +64,7 @@ const expectedSources = [
     "src/next/live/liveSimilarityLensTransport.ts",
     "src/next/live/liveSimilarityLensView.ts",
     "src/next/live/liveSimilarityLensViewModel.ts",
+    "src/next/runtimeDomMutation.ts",
     "src/next/runtimeLease.ts",
     "src/next/runtimeMarker.ts",
     "src/next/similarityLensModel.ts"

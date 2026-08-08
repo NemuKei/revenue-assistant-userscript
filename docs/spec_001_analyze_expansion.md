@@ -92,6 +92,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 生データ保存は日次のまま維持し、圧縮するのは表示だけとする
 - 初期表示は、全体 block は `開いた状態`、各室タイプ card は `閉じた状態` を既定とする
 - 利用の流れは、最初にサマリーで調整対象を絞り込み、その後に必要な室タイプだけ booking curve を開いて確認してから調整する運用を前提とする
+- Next販売設定の初期読込はhotel scopeを先に表示し、確認済みroom scopeはrequestを並列化せず順番に読む。各room scopeの完了ごとに販売設定全体を再描画せず、room batch終了後にcurveとUIを1回更新する。途中でroute、tab、facility、stay dateが変わった場合は旧batchを破棄し、待ち状態を次contextへ残さない
 - `0日前` とは別に `ACT` を独立した tick として扱う。値が存在しない stay_date では `ACT` は空でよい
 - LT 圧縮は bucket 集約とし、各 bucket の代表値は平均ではなく `bucket の最後の日` の値を使う
 - 仕様上の LT tick は次を正とする
@@ -112,6 +113,7 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - rank 変更履歴 marker の y 座標は、同日の `booking_curve` 値を panel ごとに解決して使う
 - tooltip は point 詳細と rank 変更履歴を 1 つにまとめ、line hover 側でも同じ区間の rank marker 情報を拾えるようにする。point 側の `何日前 / 室数 / 稼働率 / 上限` に加えて、rank marker では `ランク A→B / 反映日 / 反映者` を追記する
 - tooltip は point または marker の hover / focus 中だけ表示し、カーソルまたはフォーカスが外れたら非表示にする
+- tooltip、chart、Next補助root内だけのDOM変化は、全runtimeのroute / host再検査を起動しない。標準UI側でtab、native card、calendar、mount境界が追加・削除・更新された場合は従来どおり再同期し、Next rootの重複防止とcleanupを維持する
 - 同じ部屋タイプで同じ日に複数回 rank 変更がある場合、Phase 1 ではその日の最後の 1 件だけを marker として表示する
 - `/api/v4/booking_curve` の raw source は `stayDate`、`asOfDate`、`fetchedAt`、scope、roomGroupId、endpoint、query、schema を key 情報として IndexedDB に保存する
 - raw source は、response に含まれる rooms、sales、ADR を後続の reference curve、rank response、単価予測、売上予測で再利用できる保存契約にする。`RAU-RR-02` では、完全な response 全文ではなく、RAU が扱う rooms / sales / ADR fields を `compactBookingCurveResponse()` で保持する方針にした
@@ -224,6 +226,7 @@ BCL-tuned first wave の定義:
 - 取得を開始できるのは、可視なcalendarまたは`/analyze/YYYY-MM-DD`、document visible、現在の`as_of_date`、`/api/v2/yad/info`とvisible headerのfacility label一致、`current_settings`で確認できたroom groupが揃う場合だけとする。
 - 初回bootstrapは、表示中stay dateのホテル全体と全room groupのcurrent source、およびホテル全体の直近型reference coreが各lead-time目盛りに必要とするsourceを対象にする。現在の360〜0日前目盛りでは`as_of_date - 90日`から最大`as_of_date + 360日`のうちcoreが返すtarget weekdayだけであり、任意の連続日prefetchではない。同じsourceは1 taskへdedupeする。
 - 選択中Analyze stay date、または基準日レンズの選択stay dateのcurrent sourceを最優先にする。currentはホテル全体と確認済みroom groupを対象にし、当日`as_of_date`と一致するrecordを優先する。
+- 基準日レンズでstay dateを選んだ場合は、選択日のcurrent taskを完了し、保存済み根拠を画面へ投影してから、表示期間全体のbackground計画を開始する。全期間のcoverage確認やreference補充を、青い`団n`と選択日の根拠表示のbarrierにしない。この順序変更でrequest対象、due判定、開始間隔、concurrency、session上限は変えない。
 - room groupの直近型reference sourceは、そのroom groupをAnalyzeで選択したときに不足分だけ段階取得し、選択中currentの次にbackground backlogより優先する。全部屋タイプ分のreference sourceを初回bootstrapで一括取得しない。
 - 独立した`-14日 / -7日 / +7日 / +14日`同曜日補助線、季節型reference用source、表示範囲外の週 / 月 / 隣接日prefetchは対象外とする。直近型coreがtarget weekdayと同じsourceを選ぶ既存算出意味は維持するが、別の同曜日線や別queueは作らない。
 - current lineは選択日のcurrent sourceが保存できた時点で先に描画し、直近型referenceはsource coverageの増加に合わせて段階更新する。reference完了をcurrent描画のbarrierにしない。

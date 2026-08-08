@@ -1,4 +1,5 @@
 import { detectLegacyClassicRuntime } from "../runtimeLease";
+import { shouldReconcileForDomMutations } from "../runtimeDomMutation";
 import {
     hasLiveFacilityContextLabel,
     readLiveFacilityContextHints
@@ -99,7 +100,11 @@ export function startPriceTrendComparisonRuntime(
     let narrow = windowHost.innerWidth <= 680;
     let stopped = false;
     const abortController = new AbortController();
-    const observer = new MutationObserver(scheduleReconcile);
+    const observer = new MutationObserver((records) => {
+        if (shouldReconcileForDomMutations(records)) {
+            scheduleReconcile();
+        }
+    });
 
     documentHost.addEventListener("click", handleDocumentClick, {
         capture: true,

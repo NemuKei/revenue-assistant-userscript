@@ -1,4 +1,5 @@
 import { detectLegacyClassicRuntime } from "../runtimeLease";
+import { shouldReconcileForDomMutations } from "../runtimeDomMutation";
 import { parseNextFacilityContext } from "../facilityContext";
 import {
     collectLiveCalendarDom,
@@ -49,7 +50,11 @@ export function startBookingCurveAcquisitionRuntime(
 ): BookingCurveAcquisitionRuntimeHandle {
     const transport = options.transport ?? createBrowserNextReadTransport(windowHost);
     const abortController = new AbortController();
-    const observer = new MutationObserver(scheduleReconcile);
+    const observer = new MutationObserver((records) => {
+        if (shouldReconcileForDomMutations(records)) {
+            scheduleReconcile();
+        }
+    });
     let activeLoadController: AbortController | null = null;
     let activeFingerprint: string | null = null;
     let generation = 0;

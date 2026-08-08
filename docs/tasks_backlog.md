@@ -465,7 +465,7 @@
 ### RAU-UX-160 Analyze旧版UI契約の欠落を補正する
 
 - 状態:
-  - source実装と合成QAは完了し、Next manual publicationとTampermonkey更新後の通常Chrome実画面QAを待つ。公開版`0.2.0.3`にはまだ反映していない。
+  - 完了。source実装、合成QA、Next `0.2.0.4`へのmanual publication、Tampermonkey更新後の通常Chromeでruntimeと販売設定UIのmountまで確認した。取得中の操作遅延は`RAU-UX-161`へ分けた。
 - 目的:
   - Nextの取得・保存・差分方式と標準UI非干渉を保ち、Analyzeで利用者が実際に見ていたClassicの表示配置、情報順序、用語、chart操作へ戻す。
 - 実装範囲:
@@ -477,13 +477,55 @@
 - 実装・検証結果:
   - 販売設定のstable native selectorへ非干渉で差し込み、hotel / room scopeを順番に読むruntime、Classic表示を組み立てるmodel / view、desktop / 390px / 欠損 / tab cleanup用fixtureとfocused checkを追加した。標準card / detailを残し、tab復帰時の追加load 0、root重複0、欠損`比較準備中`を確認した。
   - 競合価格はClassicの可視契約へ補正し、4 panel、少数日の中央配置、keyboard tooltip、390pxのroot overflow 0を合成確認した。`npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`は通過した。
+  - 2026-08-08にsource `adfdfcba056db942406ff3f690e02f47738e4698`をmanual workflow run `31245090079`で公開版`0.2.0.4`へ配信した。公開Nextは268,546 bytes、SHA-256 `912F5A947BF31C3C5882F91F748C1A3F80F3C26D91AF7AE82E87CBEF58DE9943`、workflowはsuccessで、Classic公開baselineは不変だった。
+  - 更新後の通常Chromeではinstalled runtime `0.2.0.4`、Next単一runtime、Classic root 0、販売設定の6 room supplement、booking curve component 1、SVG 2、Tooltip hitbox 88を確認した。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: after-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260808-006`
 
-Remaining Task Triage は Now `RAU-UX-160`のmanual publication / 更新後live QA、Next / After Next / Laterなしとする。Next公開版`0.2.0.3`は取得差分のlive evidenceを持つが、Analyze旧版UI parityの完了証拠には使わない。Classic再公開、新規endpoint、取得範囲や上限の拡張、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+### RAU-UX-161 取得中のTooltipとTop団体数表示の待ちを減らす
+
+- 状態:
+  - source実装、focused / full check、合成fixture QAまで完了。Next manual publicationと更新後の通常Chrome実画面QAを待つ。公開版`0.2.0.4`にはまだ反映していない。
+- 解決する問題:
+  - `0.2.0.4`の通常Chromeで、取得中はTooltip操作と単純な画面状態確認が3秒を超えてtimeoutし、Topの基準日選択から青い`団n` 92件が揃うまで約27秒かかった。取得完了後は同じ状態確認が約40msへ戻った。
+  - Tooltip handler単体ではなく、選択時の全期間差分再計画、Analyze room scopeごとの全描画、Next-owned Tooltip / chart DOM変化を6 runtimeのMutationObserverが再検査する処理が重なっていた。
+- 実装境界:
+  - Topは、基準日のcurrentを全期間background再計画より先に処理し、保存済み根拠を先に投影してからbackground補充を開始する。API path、request対象、due判定、開始間隔、concurrency、session上限は変更しない。
+  - 販売設定はhotel scopeを先に描画し、room scopeを従来どおり直列で読む。各room結果では再描画せず、room batch終了後に1回だけcurveとUIを更新する。route / context変更で旧batchを中断した場合は待ちflagを残さない。
+  - Next-owned root内のMutationObserver eventはruntime reconcileを起動しない。標準UI側のroot追加・削除、tab / route / visibility / facility変更は従来どおり再同期・cleanupする。
+- 合格条件と結果:
+  - 選択日current -> 保存済み投影 -> background計画の順序、room scope直列取得と一括描画、Next-owned / 標準UI mutationの分離をfocused checkで固定した。
+  - 合成販売設定fixtureでTooltip click約342ms、追加load / rank load 0、console warning / error 0、tab離脱時root / supplement 0、復帰時root 1 / supplement 2を確認した。
+  - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.159`、269,104 bytes、SHA-256 `3A2EE34AF337E9F5B39476E393C6E190A4449EE7D81706277F90B6E605A1590D`、updateURL / downloadURLなしである。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260808-007`
+
+### RAU-UX-162 Topの団体数と前回調整日を基準日選択前から表示する
+
+- 状態:
+  - 利用者承認待ち。設計候補だけを固定し、source実装、API実行、browser確認、publicationは開始しない。
+- 解決する問題:
+  - 旧版で常時見えていた青い団体数と「前回調整から◯日前」が、現行Nextでは基準日選択前に揃わない。団体数は基準日選択後だけ表示し、前回調整日はNextに未実装なので、単なる描画遅延として扱わない。
+- 提案する境界:
+  - Top mount後、標準calendarの可視範囲だけを対象に、保存済みhotel scopeの団体数を先に表示する。不足hotel scopeは既存のbootstrap / daily delta queueへ任せ、room scopeの追加取得や表示範囲外prefetchを増やさない。
+  - 前回調整日は、既存のread-only `/api/v3/lincoln/suggest/status`を可視範囲に対して最大1 GETし、stay dateごとの最新調整からの経過日数だけをmemory表示する。raw response、実行者、価格・在庫、個人・予約情報は保存しない。
+  - facility / visible calendar / document guard、401 / 403 / 429即停止、自動retryなし、route cleanup、Revenue Assistant write 0を維持する。request追加を伴うため、実装前にYellow zone承認を得る。
+- 合格条件:
+  - 基準日未選択でも、保存済み団体数と前回調整日が標準calendarを変形せず先に見える。欠損は非表示または`比較準備中`とし、0や「調整なし」を推測しない。
+  - 可視範囲外、全room scope、追加endpoint、storage schema / retention、session上限、Revenue Assistant writeを変えず、fixtureと通常Chromeでrequest数、401 / 403 / 429停止、write 0、cleanupを確認する。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_003_rank_recommendation_signal.md`
+  - `decision: pending explicit Yellow zone approval`
+
+Remaining Task Triage は Now `RAU-UX-161`のmanual publication / 更新後live QA、Next `RAU-UX-162`のYellow zone承認待ち、After Next / Laterなしとする。次のreleaseで両方をまとめるか、`RAU-UX-161`だけを先に配信するかを利用者判断とする。Classic再公開、新規endpoint、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

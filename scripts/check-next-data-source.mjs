@@ -297,4 +297,102 @@ assert.equal(
 );
 guardedDataSource.stop();
 
+let releaseSelectedDate;
+const selectedDateGate = new Promise((resolve) => {
+    releaseSelectedDate = resolve;
+});
+let signalSelectedDateStarted;
+const selectedDateStarted = new Promise((resolve) => {
+    signalSelectedDateStarted = resolve;
+});
+const acquisitionOrder = [];
+let acquisitionStateListener = null;
+let planningRefreshCount = 0;
+const prioritizedFacilityHint = {
+    hidden: false,
+    closest() {
+        return null;
+    },
+    getBoundingClientRect() {
+        return { height: 1, width: 1 };
+    },
+    ownerDocument: { defaultView: null },
+    parentElement: null,
+    textContent: "施設A（mock）"
+};
+const prioritizedDataSource = dataSourceModule.createLiveSimilarityLensDataSource({
+    acquisition: {
+        async ensureCurrent() {
+            acquisitionOrder.push("ensure-current");
+            signalSelectedDateStarted();
+            await selectedDateGate;
+        },
+        async readLatest() {
+            acquisitionOrder.push("read-stored");
+            return [];
+        },
+        async startBackground() {
+            acquisitionOrder.push("start-background");
+            acquisitionStateListener?.({ status: "planning", storedCount: 0 });
+            acquisitionStateListener?.({ status: "complete", storedCount: 0 });
+        },
+        async startReference() {},
+        subscribe(listener) {
+            acquisitionStateListener = listener;
+            listener({ status: "idle", storedCount: 0 });
+            return () => {
+                acquisitionStateListener = null;
+            };
+        },
+        suspend() {},
+        stop() {}
+    },
+    documentHost: {
+        ...documentHost,
+        querySelectorAll() {
+            return [prioritizedFacilityHint];
+        }
+    },
+    indexReader: async () => {
+        acquisitionOrder.push("read-competitor-cache");
+        return { status: "ready", records: [] };
+    },
+    primaryKeyReader: async () => {
+        acquisitionOrder.push("read-classic-cache");
+        return { status: "ready", records: [] };
+    },
+    transport: {
+        async read(request) {
+            return request.kind === "facility"
+                ? { yad_no: "fixture", name: "施設A（mock）" }
+                : settingsPayload;
+        }
+    },
+    windowHost: {}
+});
+const unsubscribePrioritized = prioritizedDataSource.subscribe(() => {
+    planningRefreshCount += 1;
+});
+const prioritizedLoad = prioritizedDataSource.load(["2026-08-12"], "20260812");
+await selectedDateStarted;
+assert.deepEqual(
+    acquisitionOrder,
+    ["ensure-current"],
+    "selected-date evidence must run before broad background planning and cache projection"
+);
+releaseSelectedDate();
+assert.equal((await prioritizedLoad).status, "ready");
+assert.equal(acquisitionOrder.filter((step) => step === "start-background").length, 1);
+assert.equal(
+    planningRefreshCount,
+    1,
+    "background planning completion must refresh Classic read-through evidence without a new stored record"
+);
+assert.ok(
+    acquisitionOrder.indexOf("read-stored") < acquisitionOrder.indexOf("start-background"),
+    "stored calendar evidence must be projected before broad background planning"
+);
+unsubscribePrioritized();
+prioritizedDataSource.stop();
+
 console.log("Next data source checks passed");

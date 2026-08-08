@@ -89,6 +89,15 @@ assert.match(entrySource, /startSalesSettingClassicRuntime\(document, window, \{
 assert.match(entrySource, /startSalesSettingClassicRuntime[\s\S]*acquisition: bookingCurveAcquisition/u);
 assert.match(runtimeSource, /for \(const scope of activeScopes\)[\s\S]*await dataSource\.load/u);
 assert.doesNotMatch(runtimeSource, /Promise\.all\([\s\S]*dataSource\.load/u);
+assert.match(runtimeSource, /dataSource\.cancel\(\);\s*scopeBatchLoading = true;/u);
+const roomScopeLoop = runtimeSource.match(
+    /scopeBatchLoading = true;[\s\S]*for \(const scope of activeScopes\) \{([\s\S]*?)\n {8}\}\n {8}scopeBatchLoading = false;/u
+);
+assert.notEqual(roomScopeLoop, null, "room scopes must remain sequential while their redraw is batched");
+assert.doesNotMatch(roomScopeLoop?.[1] ?? "", /renderCurrentState\(\)/u);
+assert.match(runtimeSource, /scopeBatchLoading = false;\s*rebuildCurves\(\);\s*renderCurrentState\(\);/u);
+assert.match(runtimeSource, /hotelResult\.status === "error"\) \{\s*scopeBatchLoading = false;/u);
+assert.match(runtimeSource, /state !== "ready"\s*\|\| scopeBatchLoading/u);
 assert.doesNotMatch(runtimeSource, /\bfetch\s*\(|XMLHttpRequest|POST|PUT|PATCH|DELETE/u);
 assert.match(viewSource, /"ランク変更履歴"/u);
 for (const segmentLabel of ["全体", "個人", "団体"]) {

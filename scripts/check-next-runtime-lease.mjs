@@ -29,6 +29,15 @@ const {
     NEXT_RUNTIME_READY_STATE,
     resolveNextRuntimeMarker
 } = await import(markerModuleUrl);
+const mutationSource = await readFile(new URL("../src/next/runtimeDomMutation.ts", import.meta.url), "utf8");
+const mutationTranspiled = ts.transpileModule(mutationSource, {
+    compilerOptions: {
+        module: ts.ModuleKind.ES2022,
+        target: ts.ScriptTarget.ES2022
+    }
+}).outputText;
+const mutationModuleUrl = `data:text/javascript;base64,${Buffer.from(mutationTranspiled).toString("base64")}`;
+const { shouldReconcileForDomMutations } = await import(mutationModuleUrl);
 
 verifySingleOwner("classic", "next");
 verifySingleOwner("next", "classic");
@@ -39,6 +48,7 @@ verifyLegacySentinelsFailClosed();
 verifyNonExtensibleHostFailsClosed();
 verifyStartFailureKeepsLease();
 verifyLeaseDescriptor();
+verifyRuntimeOwnedMutationsAreIgnored();
 
 console.log("Next runtime lease checks passed");
 
@@ -195,4 +205,39 @@ function verifyLeaseDescriptor() {
     assert.equal(descriptor?.writable, false);
     assert.equal(descriptor?.configurable, false);
     assert.equal(Object.isFrozen(descriptor?.value), true);
+}
+
+function verifyRuntimeOwnedMutationsAreIgnored() {
+    let observedSelector = "";
+    const ownedElement = {
+        parentElement: null,
+        closest: (selector) => {
+            observedSelector = selector;
+            return {};
+        }
+    };
+    const externalElement = {
+        parentElement: null,
+        closest: () => null
+    };
+    const ownedText = { parentElement: ownedElement };
+
+    assert.equal(shouldReconcileForDomMutations([{ target: ownedElement }]), false);
+    assert.equal(shouldReconcileForDomMutations([{ target: ownedText }]), false);
+    assert.equal(shouldReconcileForDomMutations([{ target: externalElement }]), true);
+    assert.equal(shouldReconcileForDomMutations([
+        { target: ownedElement },
+        { target: externalElement }
+    ]), true);
+    for (const attribute of [
+        "data-ra-next-similarity-lens-root",
+        "data-ra-next-sales-setting-classic-root",
+        "data-ra-next-sales-setting-classic-supplement",
+        "data-ra-next-booking-curve-reference-root",
+        "data-ra-next-competitor-history-root",
+        "data-ra-next-price-trend-comparison-root",
+        "data-ra-next-booking-curve-acquisition-root"
+    ]) {
+        assert.match(observedSelector, new RegExp(attribute, "u"));
+    }
 }

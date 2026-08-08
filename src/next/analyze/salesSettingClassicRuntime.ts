@@ -1,4 +1,5 @@
 import { detectLegacyClassicRuntime } from "../runtimeLease";
+import { shouldReconcileForDomMutations } from "../runtimeDomMutation";
 import {
     hasLiveFacilityContextLabel,
     readLiveFacilityContextHints
@@ -95,6 +96,7 @@ export function startSalesSettingClassicRuntime(
     let activeRankSnapshot: BookingCurveRankStatusSnapshot | null = null;
     let rankLoadError: Extract<BookingCurveRankStatusLoadResult, { status: "error" }>["reason"] | null = null;
     let rankLoading = false;
+    let scopeBatchLoading = false;
     let root: HTMLElement | null = null;
     let surface: SalesSettingClassicSurface | null = null;
     let contextBlocked = false;
@@ -108,7 +110,11 @@ export function startSalesSettingClassicRuntime(
     const secondarySegments = new Map<string, BookingCurveReferenceSecondarySegment>();
     const visibilities = new Map<string, BookingCurveReferenceVisibility>();
     const abortController = new AbortController();
-    const observer = new MutationObserver(scheduleReconcile);
+    const observer = new MutationObserver((records) => {
+        if (shouldReconcileForDomMutations(records)) {
+            scheduleReconcile();
+        }
+    });
     const unsubscribeDataSource = dataSource.subscribe?.(scheduleDataRefresh) ?? (() => undefined);
 
     documentHost.addEventListener("click", handleDocumentClick, {
@@ -195,6 +201,7 @@ export function startSalesSettingClassicRuntime(
         activeRankSnapshot = null;
         rankLoadError = null;
         rankLoading = false;
+        scopeBatchLoading = false;
         contextBlocked = false;
         state = "idle";
         openScopes.clear();
@@ -206,6 +213,7 @@ export function startSalesSettingClassicRuntime(
     function startLoadAll(stayDate: string, asOfDate: string, showLoading: boolean): void {
         const generation = ++loadGeneration;
         dataSource.cancel();
+        scopeBatchLoading = true;
         if (showLoading) {
             state = "loading";
             renderCurrentState();
@@ -219,6 +227,7 @@ export function startSalesSettingClassicRuntime(
             return;
         }
         if (hotelResult.status === "error") {
+            scopeBatchLoading = false;
             if (hotelResult.reason !== "aborted") {
                 state = "ready";
                 renderCurrentState();
@@ -251,13 +260,14 @@ export function startSalesSettingClassicRuntime(
             if (result.status === "ready") {
                 activeData.set(scope.key, result);
                 ensurePreference(scope.key);
-                rebuildCurves();
-                renderCurrentState();
             } else if (result.reason === "facility-context-mismatch") {
                 blockMismatchedContext();
                 return;
             }
         }
+        scopeBatchLoading = false;
+        rebuildCurves();
+        renderCurrentState();
         setRuntimeMarker("mounted-classic-ui");
     }
 
@@ -320,7 +330,9 @@ export function startSalesSettingClassicRuntime(
         const generation = ++rankGeneration;
         rankLoading = true;
         rebuildCurves();
-        renderCurrentState();
+        if (!scopeBatchLoading) {
+            renderCurrentState();
+        }
         void rankStatusDataSource.load(facilityId, stayDate).then((result) => {
             if (
                 stopped
@@ -339,7 +351,9 @@ export function startSalesSettingClassicRuntime(
                 rankLoadError = result.reason;
             }
             rebuildCurves();
-            renderCurrentState();
+            if (!scopeBatchLoading) {
+                renderCurrentState();
+            }
         });
     }
 
@@ -502,13 +516,19 @@ export function startSalesSettingClassicRuntime(
             || activeStayDate === null
             || activeAsOfDate === null
             || state !== "ready"
+            || scopeBatchLoading
             || scheduledDataRefreshTimer !== null
         ) {
             return;
         }
         scheduledDataRefreshTimer = windowHost.setTimeout(() => {
             scheduledDataRefreshTimer = null;
-            if (stopped || activeStayDate === null || activeAsOfDate === null) {
+            if (
+                stopped
+                || activeStayDate === null
+                || activeAsOfDate === null
+                || scopeBatchLoading
+            ) {
                 return;
             }
             startLoadAll(activeStayDate, activeAsOfDate, false);
@@ -520,6 +540,7 @@ export function startSalesSettingClassicRuntime(
         rankGeneration += 1;
         dataSource.cancel();
         rankStatusDataSource.cancel();
+        scopeBatchLoading = false;
         contextBlocked = true;
         removeMountedArtifacts();
         setRuntimeMarker("suspended-facility-context-mismatch");
@@ -542,6 +563,7 @@ export function startSalesSettingClassicRuntime(
         activeRankSnapshot = null;
         rankLoadError = null;
         rankLoading = false;
+        scopeBatchLoading = false;
         contextBlocked = false;
         state = "idle";
         openScopes.clear();
@@ -568,6 +590,7 @@ export function startSalesSettingClassicRuntime(
             activeRankSnapshot = null;
             rankLoadError = null;
             rankLoading = false;
+            scopeBatchLoading = false;
         }
         removeMountedArtifacts();
         setRuntimeMarker(finalState);

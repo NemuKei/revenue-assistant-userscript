@@ -1,4 +1,5 @@
 import { detectLegacyClassicRuntime } from "../runtimeLease";
+import { shouldReconcileForDomMutations } from "../runtimeDomMutation";
 import {
     hasLiveFacilityContextLabel,
     readLiveFacilityContextHints
@@ -108,7 +109,11 @@ export function startCompetitorHistoryRuntime(
     const resolveStayDate = options.resolveStayDate
         ?? ((location: Location) => parseCompetitorHistoryAnalyzeStayDate(location.pathname));
     const abortController = new AbortController();
-    const observer = new MutationObserver(scheduleReconcile);
+    const observer = new MutationObserver((records) => {
+        if (shouldReconcileForDomMutations(records)) {
+            scheduleReconcile();
+        }
+    });
 
     documentHost.addEventListener("click", handleDocumentClick, {
         capture: true,

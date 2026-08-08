@@ -186,13 +186,19 @@ export function createLiveSimilarityLensDataSource(
                 return () => undefined;
             }
             let storedCount = -1;
+            let planning = false;
             return options.acquisition.subscribe((nextState) => {
+                const nextPlanning = nextState.status === "planning";
                 if (storedCount < 0) {
                     storedCount = nextState.storedCount;
+                    planning = nextPlanning;
                     return;
                 }
-                if (nextState.storedCount !== storedCount) {
-                    storedCount = nextState.storedCount;
+                const storedCountChanged = nextState.storedCount !== storedCount;
+                const planningCompleted = planning && !nextPlanning;
+                storedCount = nextState.storedCount;
+                planning = nextPlanning;
+                if (storedCountChanged || planningCompleted) {
                     listener();
                 }
             });
@@ -291,7 +297,6 @@ async function loadLiveSimilarityLensData(options: {
         };
         options.onResolvedContext?.(resolvedContext);
         if (options.acquisition !== undefined) {
-            await options.acquisition.startBackground(acquisitionContext);
             const selectedStayDate = options.selectedStayDate === undefined
                 ? null
                 : normalizeVisibleStayDates([options.selectedStayDate])[0] ?? null;
@@ -304,13 +309,17 @@ async function loadLiveSimilarityLensData(options: {
             }
         }
 
-        return readLiveSimilarityLensStoredData({
+        const storedResult = await readLiveSimilarityLensStoredData({
             ...(options.acquisition === undefined ? {} : { acquisition: options.acquisition }),
             context: resolvedContext,
             indexReader: options.indexReader,
             primaryKeyReader: options.primaryKeyReader,
             signal: options.signal
         });
+        if (options.acquisition !== undefined && !options.signal.aborted) {
+            void options.acquisition.startBackground(acquisitionContext).catch(() => undefined);
+        }
+        return storedResult;
     } catch (error: unknown) {
         return {
             status: "error",
