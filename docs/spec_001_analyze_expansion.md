@@ -79,6 +79,13 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 競合価格履歴は既存のactive列、vertical guide、cursor / 日付追従Tooltip、施設別pointを維持する。TooltipはClassicと同じくcursorまたは選択日付の右へ間隔を空け、panel端を越えてよく、viewport端だけでclampする。
 - 3グラフともmouseだけに依存せず、focus可能なhitbox、aria label、accessible tableを維持する。表示変更を理由に取得対象、API、保存schema、差分補充、retention、Revenue Assistant writeを変更しない。
 
+#### Next rank marker visual / interaction parity (`RAU-UX-168`)
+
+- room scopeのrank変更は、Classicと同じく各panelのcurrent curve上へ小さな丸markerとして置く。markerはpanelのcurrent色と白い縁取りを使い、常時表示の縦破線、菱形、独立したrank凡例は置かない。選択中だけ既存のactive guideと白抜きactive pointを使って位置を示す。
+- 通常のLT hitboxがrank markerと同じ表示区間を指す場合は、current / 直近型 / 季節型のTooltipへ変更前後rankと反映日を追記する。markerを直接mouse、keyboard focus、tapで選んだ場合も同じTooltip構造を使い、LT、該当時点の室数、capacityが確認できる場合の稼働率 / 上限、変更前後rank、反映日を確認できるようにする。
+- Tooltipの位置は`RAU-UX-166` / `RAU-UX-167`の補正を維持し、mouse cursorまたはkeyboard選択位置の右8pxを基準にbrowser viewportだけでclampする。Classicの中央固定配置や、実画面で右へずれた補正前のfixed座標へは戻さない。
+- `reflector_name`は個人名になり得るため、従来のNext境界どおりmodelと表示へ取り込まない。全有効eventのdetails / table、欠損markerの非推測、room ID完全一致、取得・保存・API・retention・Revenue Assistant write 0の契約は変更しない。
+
 ### Candidate: Room-Type Booking Curve
 
 - 対象は analyze 日付ページの `販売設定` タブ内にある各室タイプカードとする

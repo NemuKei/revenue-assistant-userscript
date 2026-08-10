@@ -1,6 +1,6 @@
 import packageJson from "./package.json" with { type: "json" };
 
-const nextCandidateRevision = "167";
+const nextCandidateRevision = "168";
 const nextPublicationRunNumber = process.env.NEXT_PUBLICATION_RUN_NUMBER?.trim();
 const nextPublicationBaseUrl = "https://nemukei.github.io/revenue-assistant-userscript";
 const nextPublicationUrl = `${nextPublicationBaseUrl}/next/revenue-assistant-next.user.js`;

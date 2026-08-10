@@ -49,6 +49,11 @@ const SERIES_STYLE = {
     seasonal: { color: "#c2415d", dash: "2 6", width: 2.4 }
 } as const;
 
+type RenderedBookingCurveReferenceRankMarker = BookingCurveReferenceRankMarker & {
+    x: number;
+    y: number;
+};
+
 export function createBookingCurveReferenceRoot(documentHost: Document): HTMLElement {
     const root = documentHost.createElement("section");
     root.setAttribute(BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE, "");
@@ -362,14 +367,6 @@ function createLegend(documentHost: Document, viewModel: BookingCurveReferenceVi
         item.append(swatch, documentHost.createTextNode(series.visible ? series.label : `${series.label}（非表示）`));
         legend.append(item);
     }
-    if (viewModel.scope.kind === "roomGroup") {
-        const rankItem = documentHost.createElement("span");
-        rankItem.setAttribute("data-ra-next-booking-curve-reference-legend-item", "rank");
-        rankItem.setAttribute("data-series-visible", "true");
-        rankItem.setAttribute("data-ra-next-booking-curve-rank-legend", "");
-        rankItem.textContent = "◆ ランク変更";
-        legend.append(rankItem);
-    }
     return legend;
 }
 
@@ -504,20 +501,42 @@ function createChart(
     activePoint.setAttribute(BOOKING_CURVE_REFERENCE_ACTIVE_POINT_ATTRIBUTE, "");
     svg.append(activeGuide, activePoint);
 
+    const renderedRankMarkers = buildRenderedBookingCurveRankMarkers(
+        panel.rankMarkers,
+        panel.current.points,
+        domain,
+        padding,
+        plotWidth,
+        plotHeight
+    );
+
     for (const [index, point] of panel.current.points.entries()) {
         if (!visibleSeries.some((series) => series.points[index]?.value !== null)) {
             continue;
         }
         const hitbox = documentHost.createElementNS("http://www.w3.org/2000/svg", "rect");
-        const step = plotWidth / Math.max(1, panel.current.points.length - 1);
         const center = scaleX(index, panel.current.points.length, padding.left, plotWidth);
-        hitbox.setAttribute("x", String(Math.max(padding.left, center - Math.max(12, step / 2))));
+        const previousCenter = index > 0
+            ? scaleX(index - 1, panel.current.points.length, padding.left, plotWidth)
+            : null;
+        const nextCenter = index < panel.current.points.length - 1
+            ? scaleX(index + 1, panel.current.points.length, padding.left, plotWidth)
+            : null;
+        const leftEdge = previousCenter === null ? padding.left : (previousCenter + center) / 2;
+        const rightEdge = nextCenter === null ? width - padding.right : (center + nextCenter) / 2;
+        const activeMarker = findBookingCurveRankMarkerInRange(
+            renderedRankMarkers,
+            leftEdge,
+            rightEdge,
+            center
+        );
+        hitbox.setAttribute("x", leftEdge.toFixed(2));
         hitbox.setAttribute("y", String(padding.top));
-        hitbox.setAttribute("width", String(Math.max(24, step)));
+        hitbox.setAttribute("width", Math.max(1, rightEdge - leftEdge).toFixed(2));
         hitbox.setAttribute("height", String(plotHeight));
         hitbox.setAttribute("fill", "transparent");
         hitbox.setAttribute(BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE, String(point.tick));
-        hitbox.setAttribute("aria-label", buildTickAriaLabel(point.tick, visibleSeries, index));
+        hitbox.setAttribute("aria-label", buildTickAriaLabel(point.tick, visibleSeries, index, activeMarker));
         if (displayTicks.has(point.tick as never)) {
             hitbox.setAttribute("tabindex", "0");
         }
@@ -535,7 +554,9 @@ function createChart(
             padding,
             plotHeight,
             width,
-            cursorClientX
+            cursorClientX,
+            activeMarker,
+            viewModel.capacityRooms
         );
         const hide = (): void => hideTooltip(tooltip, activeGuide, activePoint);
         hitbox.addEventListener("mouseenter", (event) => show(event.clientX));
@@ -548,48 +569,31 @@ function createChart(
         hitbox.addEventListener("blur", hide);
         svg.append(hitbox);
     }
-    for (const marker of panel.rankMarkers) {
-        const x = scaleRankMarkerX(
-            marker.daysBeforeStay,
-            panel.current.points,
-            padding.left,
-            plotWidth
-        );
-        if (x === null) {
-            continue;
-        }
-        const y = scaleY(marker.value, domain, padding.top, plotHeight);
-        const guide = documentHost.createElementNS("http://www.w3.org/2000/svg", "line");
-        guide.setAttribute("x1", x.toFixed(2));
-        guide.setAttribute("x2", x.toFixed(2));
-        guide.setAttribute("y1", String(padding.top));
-        guide.setAttribute("y2", String(padding.top + plotHeight));
-        guide.setAttribute("data-ra-next-booking-curve-rank-guide", "");
-        const point = documentHost.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    for (const marker of renderedRankMarkers) {
+        const point = documentHost.createElementNS("http://www.w3.org/2000/svg", "circle");
         point.setAttribute(BOOKING_CURVE_RANK_MARKER_ATTRIBUTE, marker.signature);
-        point.setAttribute("points", [
-            `${x.toFixed(2)},${(y - 5).toFixed(2)}`,
-            `${(x + 5).toFixed(2)},${y.toFixed(2)}`,
-            `${x.toFixed(2)},${(y + 5).toFixed(2)}`,
-            `${(x - 5).toFixed(2)},${y.toFixed(2)}`
-        ].join(" "));
+        point.setAttribute("cx", marker.x.toFixed(2));
+        point.setAttribute("cy", marker.y.toFixed(2));
+        point.setAttribute("r", "3.5");
+        point.setAttribute("fill", currentColor);
+        point.setAttribute("stroke", "#fff");
+        point.setAttribute("stroke-width", "1.5");
         const hitbox = documentHost.createElementNS("http://www.w3.org/2000/svg", "circle");
         hitbox.setAttribute(BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE, marker.signature);
-        hitbox.setAttribute("cx", x.toFixed(2));
-        hitbox.setAttribute("cy", y.toFixed(2));
-        hitbox.setAttribute("r", "22");
+        hitbox.setAttribute("cx", marker.x.toFixed(2));
+        hitbox.setAttribute("cy", marker.y.toFixed(2));
+        hitbox.setAttribute("r", "8");
         hitbox.setAttribute("tabindex", "0");
-        hitbox.setAttribute("role", "img");
-        hitbox.setAttribute("aria-label", buildRankMarkerAriaLabel(marker));
+        hitbox.setAttribute("role", "button");
+        hitbox.setAttribute("aria-label", buildRankMarkerAriaLabel(marker, viewModel.capacityRooms));
         const show = (cursorClientX: number | null): void => showRankMarkerTooltip(
             tooltip,
             activeGuide,
             activePoint,
             marker,
-            x,
-            y,
             width,
-            cursorClientX
+            cursorClientX,
+            viewModel.capacityRooms
         );
         const hide = (): void => hideTooltip(tooltip, activeGuide, activePoint);
         hitbox.addEventListener("mouseenter", (event) => show(event.clientX));
@@ -600,7 +604,7 @@ function createChart(
         });
         hitbox.addEventListener("mouseleave", hide);
         hitbox.addEventListener("blur", hide);
-        svg.append(guide, point, hitbox);
+        svg.append(point, hitbox);
     }
     wrapper.append(svg, tooltip);
     return wrapper;
@@ -832,7 +836,9 @@ function showTooltip(
     padding: { left: number; top: number },
     plotHeight: number,
     chartViewBoxWidth: number,
-    cursorClientX: number | null
+    cursorClientX: number | null,
+    marker: BookingCurveReferenceRankMarker | null,
+    capacityRooms: number | null
 ): void {
     tooltip.replaceChildren();
     const strong = tooltip.ownerDocument.createElement("strong");
@@ -846,6 +852,8 @@ function showTooltip(
             : `${formatRooms(point.value)}室${point.interpolated ? "（表示補間）" : ""}`}`;
         list.append(row);
     }
+    appendCapacityTooltipRow(list, currentValue, capacityRooms);
+    appendRankMarkerTooltipRows(list, marker);
     tooltip.append(strong, list);
     tooltip.hidden = false;
     showActivePosition(
@@ -861,29 +869,56 @@ function showRankMarkerTooltip(
     tooltip: HTMLElement,
     guide: SVGLineElement,
     activePoint: SVGCircleElement,
-    marker: BookingCurveReferenceRankMarker,
-    x: number,
-    y: number,
+    marker: RenderedBookingCurveReferenceRankMarker,
     chartViewBoxWidth: number,
-    cursorClientX: number | null
+    cursorClientX: number | null,
+    capacityRooms: number | null
 ): void {
     tooltip.replaceChildren();
     const strong = tooltip.ownerDocument.createElement("strong");
-    strong.textContent = `${marker.daysBeforeStay}日前 ランク変更`;
+    strong.textContent = `${marker.daysBeforeStay}日前`;
     const list = tooltip.ownerDocument.createElement("ul");
+    const currentRow = tooltip.ownerDocument.createElement("li");
+    currentRow.textContent = `現在: ${formatRooms(marker.value)}室`;
+    list.append(currentRow);
+    appendCapacityTooltipRow(list, marker.value, capacityRooms);
+    appendRankMarkerTooltipRows(list, marker);
+    tooltip.append(strong, list);
+    tooltip.hidden = false;
+    showActivePosition(guide, activePoint, marker.x, marker.y);
+    positionBookingCurveTooltip(tooltip, marker.x, chartViewBoxWidth, cursorClientX);
+}
+
+function appendCapacityTooltipRow(
+    list: HTMLUListElement,
+    value: number | null,
+    capacityRooms: number | null
+): void {
+    if (capacityRooms === null) {
+        return;
+    }
+    const row = list.ownerDocument.createElement("li");
+    row.textContent = value === null
+        ? `上限: ${formatRooms(capacityRooms)}室`
+        : `稼働率: ${formatOccupancyRate(value, capacityRooms)} / 上限: ${formatRooms(capacityRooms)}室`;
+    list.append(row);
+}
+
+function appendRankMarkerTooltipRows(
+    list: HTMLUListElement,
+    marker: BookingCurveReferenceRankMarker | null
+): void {
+    if (marker === null) {
+        return;
+    }
     for (const text of [
-        `ランク: ${formatRankTransition(marker.beforeRankName, marker.afterRankName)}`,
-        `反映日: ${formatDate(marker.reflectedDate)}`,
-        `該当時点: ${formatRooms(marker.value)}室`
+        `ランク変更（${marker.daysBeforeStay}日前）: ${formatRankTransition(marker.beforeRankName, marker.afterRankName)}`,
+        `反映日: ${formatDate(marker.reflectedDate)}`
     ]) {
-        const row = tooltip.ownerDocument.createElement("li");
+        const row = list.ownerDocument.createElement("li");
         row.textContent = text;
         list.append(row);
     }
-    tooltip.append(strong, list);
-    tooltip.hidden = false;
-    showActivePosition(guide, activePoint, x, y);
-    positionBookingCurveTooltip(tooltip, x, chartViewBoxWidth, cursorClientX);
 }
 
 function showActivePosition(
@@ -941,19 +976,26 @@ function resolveCurrentSeriesColor(segment: BookingCurveReferencePanel["segment"
     return SERIES_STYLE.current.color;
 }
 
-function buildRankMarkerAriaLabel(marker: BookingCurveReferenceRankMarker): string {
+function buildRankMarkerAriaLabel(
+    marker: BookingCurveReferenceRankMarker,
+    capacityRooms: number | null
+): string {
     return [
         `${marker.daysBeforeStay}日前 ランク変更`,
         formatRankTransition(marker.beforeRankName, marker.afterRankName),
         `反映日 ${formatDate(marker.reflectedDate)}`,
-        `${formatRooms(marker.value)}室`
-    ].join("、");
+        `${formatRooms(marker.value)}室`,
+        capacityRooms === null
+            ? null
+            : `稼働率 ${formatOccupancyRate(marker.value, capacityRooms)} 上限 ${formatRooms(capacityRooms)}室`
+    ].filter((item): item is string => item !== null).join("、");
 }
 
 function buildTickAriaLabel(
     tick: BookingCurveReferenceSeriesPoint["tick"],
     series: readonly BookingCurveReferenceSeries[],
-    index: number
+    index: number,
+    marker: BookingCurveReferenceRankMarker | null
 ): string {
     return [
         formatTick(tick),
@@ -962,8 +1004,55 @@ function buildTickAriaLabel(
             return `${item.label} ${point?.value === null || point === undefined
                 ? "データなし"
                 : `${formatRooms(point.value)}室${point.interpolated ? " 表示補間" : ""}`}`;
-        })
-    ].join("、");
+        }),
+        marker === null
+            ? null
+            : `ランク変更 ${formatRankTransition(marker.beforeRankName, marker.afterRankName)} 反映日 ${formatDate(marker.reflectedDate)}`
+    ].filter((item): item is string => item !== null).join("、");
+}
+
+function buildRenderedBookingCurveRankMarkers(
+    markers: readonly BookingCurveReferenceRankMarker[],
+    points: readonly BookingCurveReferenceSeriesPoint[],
+    domain: { max: number; min: number },
+    padding: { left: number; top: number },
+    plotWidth: number,
+    plotHeight: number
+): RenderedBookingCurveReferenceRankMarker[] {
+    const renderedMarkers: RenderedBookingCurveReferenceRankMarker[] = [];
+    for (const marker of markers) {
+        const x = scaleRankMarkerX(marker.daysBeforeStay, points, padding.left, plotWidth);
+        if (x === null) {
+            continue;
+        }
+        renderedMarkers.push({
+            ...marker,
+            x,
+            y: scaleY(marker.value, domain, padding.top, plotHeight)
+        });
+    }
+    return renderedMarkers;
+}
+
+function findBookingCurveRankMarkerInRange(
+    renderedMarkers: readonly RenderedBookingCurveReferenceRankMarker[],
+    leftEdge: number,
+    rightEdge: number,
+    targetX: number
+): BookingCurveReferenceRankMarker | null {
+    let matchedMarker: BookingCurveReferenceRankMarker | null = null;
+    let smallestDistance = Number.POSITIVE_INFINITY;
+    for (const marker of renderedMarkers) {
+        if (marker.x < leftEdge || marker.x > rightEdge) {
+            continue;
+        }
+        const distance = Math.abs(marker.x - targetX);
+        if (distance <= smallestDistance) {
+            matchedMarker = marker;
+            smallestDistance = distance;
+        }
+    }
+    return matchedMarker;
 }
 
 function scaleRankMarkerX(
@@ -1097,6 +1186,11 @@ function formatRooms(value: number): string {
     return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
+function formatOccupancyRate(value: number, capacityRooms: number): string {
+    const rate = (value / Math.max(1, capacityRooms)) * 100;
+    return `${rate.toFixed(1).replace(/\.0$/u, "")}%`;
+}
+
 function formatDate(value: string): string {
     const compact = value.replace(/-/g, "");
     return /^\d{8}$/u.test(compact)
@@ -1178,9 +1272,6 @@ export function getBookingCurveReferenceStyles(): string {
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-legend-item] span {
     width: 18px; height: 3px; border-radius: 2px;
 }
-[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-legend] {
-    color: #8b2f6d; font-weight: 800;
-}
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-series-visible="false"] { opacity: .48; }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-history] {
     margin-top: 9px; padding: 9px 10px; border: 1px solid #d8e1e8; border-radius: 7px;
@@ -1228,11 +1319,8 @@ export function getBookingCurveReferenceStyles(): string {
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE}] {
     cursor: crosshair;
 }
-[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-guide] {
-    stroke: #8b2f6d; stroke-width: 1.2; stroke-dasharray: 3 4; opacity: .52;
-}
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_RANK_MARKER_ATTRIBUTE}] {
-    fill: #8b2f6d; stroke: #fff; stroke-width: 1.6;
+    pointer-events: none;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE}] {
     fill: transparent; cursor: pointer;

@@ -622,7 +622,7 @@
 ### RAU-UX-167 実画面でのTooltip右ずれを補正する
 
 - 状態:
-  - source、focused / full check、desktop / 390pxの変形host合成Chrome QA、Next `0.2.0.12`へのmanual publicationまで完了。Tampermonkey更新と通常Chrome実画面QAを待つ。
+  - 完了。source、focused / full check、desktop / 390pxの変形host合成Chrome QA、Next `0.2.0.12`へのmanual publicationを完了し、利用者は更新後の通常ChromeでTooltip位置に問題がないことを確認した。
 - 解決する問題:
   - Next `0.2.0.11`ではTooltipを`position: fixed`のままchart内に置いたため、実画面でviewport座標と親要素の位置基準が重なり、cursorより大きく右へずれる場合がある。
 - 実装境界:
@@ -633,14 +633,37 @@
   - 3グラフともpanel外表示とviewport端clampを維持した。desktopではroot / document overflow 0、390 x 844では価格推移のroot / document overflow 0、booking curveと競合価格は標準fixture由来の既存document overflowを増やさず、console warning / errorは0だった。
   - focused check、`npm run typecheck`、`npm run lint`、`npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.167`、280,855 bytes、SHA-256 `6CC53D4AC9B447BD33D379D2EAF7AC8E737EB2D15250C18CEAABA00FCA65C4AD`、updateURL / downloadURLなしである。
   - 2026-08-10にsource `dc9b030f37ff6d28645dc7ee7a8b5f70ab276a30`をmanual workflow run `31361995854`で公開版`0.2.0.12`へ配信した。公開Nextは281,060 bytes、SHA-256 `93F7747260CDA791534BACDC5EF9CFCCB8FFA468DDED516E7A28F0C85A4766CA`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
-  - 配信後の通常Chrome実画面で3グラフのTooltip位置とguide / 標準UIを確認する。
+  - 利用者は配信後の通常Chrome実画面でTooltipの右ずれが解消し、問題がなさそうであることを確認した。
 - metadata:
   - `spec-impact: no`
   - `spec-checkpoint: not-needed`
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `supersedes-implementation: RAU-UX-166 fixed overlay`
 
-Remaining Task Triage は Now `RAU-UX-167`のTampermonkey更新と通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+### RAU-UX-168 rank変更markerとTooltipをClassicへ揃える
+
+- 状態:
+  - source実装、focused / full check、desktop / 390px合成Chrome QAまで完了。Next manual publication、Tampermonkey更新、通常Chrome実画面QAを待つ。
+- 解決する問題:
+  - Next `0.2.0.12`のrank変更は、ピンクの常時縦破線と菱形、独立凡例、専用Tooltipになっており、Classicで慣れたcurrent curve上の小丸markerと統合Tooltipから外れている。
+- 実装境界:
+  - room scopeのrank markerをcurrent curve色 + 白縁の小丸へ戻し、常時縦破線、菱形、独立rank凡例を外す。通常LT hitboxでも同じ表示区間のrank変更をTooltipへ追記し、marker直接選択では同じTooltip構造でLT、室数、確認可能な稼働率 / 上限、変更前後rank、反映日を示す。
+  - `RAU-UX-167`のcursor / keyboard選択位置から右8pxと変形親要素補正は維持する。`reflector_name`は取り込まず、details表、mouse / keyboard / tap、accessible table、欠損非推測、取得、保存、API、retention、Revenue Assistant writeは変更しない。
+- 合格条件:
+  - 2 panelともrank eventをcurrent curve上の小丸で表示し、常時rank guide / 菱形 / rank凡例が0件である。
+  - 通常LT hitboxとmarker直接選択の両方で同じeventの変更前後rankと反映日を確認でき、選択中だけactive guide / pointを表示する。
+  - desktop / 390pxでTooltip位置、panel外表示、viewport clamp、overflow、mouse / keyboard / tap、標準UI非干渉、console error 0を確認する。
+- 検証:
+  - focused checkでcurrent curve色 + 白縁の半径3.5pxの丸、半径8pxのfocus / tap hitbox、常時rank guide / 菱形 / 独立凡例0件、通常LT Tooltipへのrank統合、`reflector_name`非取得を固定した。
+  - 通常Chromeの合成fixtureではdesktopでmarker 2件、通常LTとmarker直接選択のTooltipに変更前後rank / 反映日、cursor gap約8px、viewport内収容、active guide / point各1、console warning / error 0を確認した。390 x 844では2 panelを1列にし、Next root overflow 0、Tooltipをviewport内へ収め、標準ブッキングカーブを維持した。
+  - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、fixture marker、distribution / booking-curve smoke fixture、candidate / run 13想定publication artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.168`、281,095 bytes、SHA-256 `4A85B534D9F0EE58DB37E0FB457861BBF2EA9D998FA20460059EBC641CAEC3C3`、updateURL / downloadURLなしである。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260810-006`
+
+Remaining Task Triage は Now `RAU-UX-168`のNext manual publication、Tampermonkey更新、通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
