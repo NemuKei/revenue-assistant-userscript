@@ -13,6 +13,7 @@
 - `RAU-UX-166`は、booking curve、競合価格履歴、90日価格推移のTooltipをcursorまたはkeyboard選択位置の右8pxへ置き、panel端ではなくbrowser viewportだけでclampするsource修正、local検証、Next `0.2.0.11`へのmanual publicationまで完了した。更新後の実画面でTooltipの大きな右ずれを確認し、固定座標の実装は`RAU-UX-167`で置き換えた。
 - `RAU-UX-167`は、`0.2.0.11`の実画面でTooltipがcursorより大きく右へずれる問題を、変形済み親要素が作るfixed containing blockの原点と倍率を測ってviewport座標へ補正する形で修正した。focused / full check、desktop / 390pxの変形host合成Chrome QA、Next `0.2.0.12`へのmanual publicationまで完了し、利用者は更新後の通常Chromeで問題がないことを確認した。
 - `RAU-UX-168`は完了した。`0.2.0.12`のrank変更がピンクの常時縦破線と菱形、独立Tooltipになっている問題を、Classicのcurrent curve上の小丸markerと通常LTに統合したTooltipへ戻した。直前に確認済みのTooltip位置補正とNextのdata / API / storage / write境界を維持し、source、focused / full check、desktop / 390px合成Chrome QA、Next `0.2.0.13`へのmanual publicationを完了した。利用者はTampermonkey更新後の通常Chromeで問題がないことを確認した。
+- `RAU-MP-09`を次のGoal Bundleとして開始する。月次実績のClassic `monthlyProgress` sliceにあるLT月次カーブ、比較切替、Tooltip、日次差分を表示baselineとし、Nextへclean-roomで再接続する。標準chartを残し、Classic runtimeや通信・保存責務をimportしない。最初に既存specと現行schema / callerを照合し、Classic snapshotのread-only seedとNext専用保存の境界を固定してから実装する。
 
 ## Current State
 
@@ -48,7 +49,7 @@
 - `RAU-UX-166`では、3グラフのTooltipをpanel内のabsolute配置からbrowser viewport基準のfixed overlayへ変更した。mouse位置または実描画SVG上のkeyboard選択位置から右8pxを基準にし、viewportの左右 / 上下端だけでclampする。panel rootはTooltipをclipせず、既存のchart geometry、series、active guide / point / column、mouse / keyboard / tap、accessible tableを維持する。
 - `RAU-UX-167`ではfixed overlayを維持しつつ、Tooltip自身を`0px`と`1px`へ仮配置して実画面のfixed containing block原点とCSS pixel倍率を測り、cursor / keyboard選択点のviewport座標を実際の配置座標へ変換する。viewportの可視幅は`documentElement.clientWidth`を使い、scrollbar幅を含む`100vw`由来の横overflowを避ける。3グラフの表示契約とdata / API / storage / write境界は変更していない。
 - `RAU-UX-168`ではroom scopeのrank変更をcurrent curve色 + 白縁の小丸へ戻し、常時縦破線、菱形、独立rank凡例を外す。通常LT hitboxとmarker直接選択の双方で同じrank変更をTooltipへ統合するが、`reflector_name`非表示、欠損marker非推測、details表、取得、保存、API、retention、Revenue Assistant write 0を維持する。
-- 月次実績のLT月次カーブ、比較切替、Tooltip、日次差分はClassicの`monthlyProgress` sliceには実装済みだが、公開Next `0.2.0.13`のentryには未接続である。Nextだけを実行する現在の運用では月次実績拡張は表示されず、Nextへの移植は未着手である。
+- 月次実績のLT月次カーブ、比較切替、Tooltip、日次差分はClassicの`monthlyProgress` sliceには実装済みだが、公開Next `0.2.0.13`のentryには未接続である。利用者はNextへの再接続を次の実装対象として選び、`RAU-MP-09`をNowへ置いた。runtime sourceの変更はまだ始めていない。
 - 2026-08-10に利用者の明示承認を受け、`RAU-UX-163`をsource `86bb732c8f28a2e8f1548b708304b0039d8f9ab5`、manual workflow run `31353307101`、公開版`0.2.0.8`として配信した。公開Nextは276,175 bytes、SHA-256 `91019392D4BE7D892B0EDD6EBB2E2BA8BB4B1D378221FD45E44CCCB9ACFC23A4`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
 - 2026-08-10に`RAU-UX-164`をsource `85061f1cfec7b736f4bccc3a35bf5348901ba450`、manual workflow run `31356748421`、公開版`0.2.0.9`として配信した。公開Nextは276,840 bytes、SHA-256 `DD78D2DFCE66EC0445A2D82CC24C972C339B325A4E4CD41A8A4AC592E7E82153`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
 - 2026-08-10に`RAU-UX-165`をsource `d683b9c558c167748aadde86d73cad69c9f96d78`、manual workflow run `31358578449`、公開版`0.2.0.10`として配信した。公開Nextは280,281 bytes、SHA-256 `7BDAC1D59109D63527A02AFDF7400BEBD40608E3E14DAEDC27E599032AAA3F64`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
@@ -65,10 +66,10 @@
 ## Next Re-entry
 
 1. 公開中のNextは`RAU-UX-168`を含む`0.2.0.13`で、sourceは`0ca6a17a05bab53a2f70457f1bb9046c8d302e14`、manual workflow runは`31366500765`である。
-2. `RAU-UX-168`は、利用者によるTampermonkey更新と通常Chrome確認まで完了した。現在進行中のGoal Bundleはない。
-3. 月次実績の月次カーブはClassic sourceには存在するがNextには未接続である。利用者がNext移植を指示した場合は、旧UI契約、取得・保存境界、Next clean-room配置、最小の実画面合格条件を先に固定する。
-4. 現在のinstalled version / 有効状態とbrowser-local source件数はbrowserでfresh確認するまで断定しない。
-5. 今回はrank markerとTooltip表示だけを変更する。直前のTooltip位置補正、取得対象、API、保存、差分補充、session上限、concurrency、retention、Classic再公開、Revenue Assistant writeは含めない。
+2. `RAU-UX-168`は、利用者によるTampermonkey更新と通常Chrome確認まで完了した。次のGoal Bundleは`RAU-MP-09`で、月次実績のClassic UI / interaction contractをNextへclean-roomで再接続する。
+3. 最初に`docs/spec_001_analyze_expansion.md`の月次契約、Classicの`monthlyProgress` 3 module、Next entry / route isolation / storage ownerを照合する。Classic snapshotのread-only seedとNext専用保存の境界をbefore / after、互換、rollbackまで固定し、その後に合成fixtureで最小vertical sliceを実装する。
+4. 月次routeの直開き、F5、route往復、desktop / 390px、標準chart非干渉、request budget、Revenue Assistant write 0を確認する。runtime変更はlocal gateとmain同期後にNext manual publication、公開artifact照合、Tampermonkey更新、通常Chrome確認まで進める。
+5. 現在のinstalled version / 有効状態とbrowser-local source件数はbrowserでfresh確認するまで断定しない。Classic再公開、新規endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeは含めない。
 
 ## Verify / Confirmation State
 
@@ -137,7 +138,7 @@
 
 - 競合履歴は利用者が標準競合価格本文を表示した stay date だけ厚くなる。観測頻度を網羅性や鮮度保証と誤読せず、background prefetchを必要とする場合は別判断にする。
 - Next専用DBの削除UIはまだ持たない。競合履歴は同一施設・stay dateで120観測超過分、価格推移はscopeごとの旧record、当日〜89日先の範囲外、施設単位1,440件超過分だけを各保存成功時に自動削除する。
-- Tampermonkeyの現在の有効 / 無効とinstalled versionは、公開版更新やbrowser reloadで変わり得るため次のlive作業前にfresh確認する。2026-08-10の配信前preflightではNext marker / rootがなく、Tampermonkey状態を確認していないため実行版を断定しない。`RAU-UX-163`は公開済みだが、reference表示、内部欠損追補、Analyze F5、実保存値、request count / write 0はTampermonkey更新後の未実施gateである。
+- Tampermonkeyの現在の有効 / 無効とinstalled versionは、公開版更新やbrowser reloadで変わり得るため次のlive作業前にfresh確認する。最後の利用者確認では公開Next `0.2.0.13`へ更新し、rank変更graphとTooltipに問題がないことを確認した。月次実績画面のNext root、実保存値、request count、Revenue Assistant write 0は`RAU-MP-09`の実装・配信後に確認する別gateである。
 - `RAU-UX-159`の通常Chromeで、保存済み履歴を起点にした不足tailだけの取得、100ms以上の開始間隔、30以下のconcurrency、同日GET 0への収束を確認した。Classic / Nextの保存元別件数はbrowser storageを直接調べておらず、Classic read-through自体の採用条件とlazy promotionはpure / fixture確認を正とする。翌営業日をまたぐ通常利用は、次に新しく増えたsourceだけを補うか継続観察する。
 - 競合 snapshot の room type 対応と freshness は断定しない。保存済み record の存在と取得時刻を、価格判断の十分条件として扱わない。
 - booking curve referenceとrank履歴は接続したが、実画面の対象日ではexact raw cache不足のため、実rank eventをcurrent curve上へ位置づけたmarkerは未確認である。ready marker / source不足 / 0 / stale / errorの表示契約は合成fixtureで確認した。90日価格推移のNext自前取得は部屋指定なし16 scopeに限定し、部屋タイプ別filterの新しい履歴は取得しない。Classicの既存specific-room recordがない場合、部屋タイプ別表示の鮮度や網羅性は保証しない。
