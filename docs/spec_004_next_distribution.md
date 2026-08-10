@@ -47,6 +47,7 @@ GitHub Pages deploymentはsite全体を置き換えるため、Nextだけをuplo
 - `.github/workflows/publish-next-userscript.yml`だけがNextのPages書込を所有する。
 - triggerは`workflow_dispatch`だけとし、`main` pushやpull requestでは公開しない。
 - `main`上で実行し、入力値`PUBLISH_NEXT`による明示確認が一致しない場合は停止する。
+- 利用者がNextの実行内容を変える作業へ「進めて」と指示した場合は、未配信で止める指示がない限り、local gateと`main`同期の通過後に同じ作業内でmanual workflowを実行する。配信直前の再承認は求めず、`PUBLISH_NEXT`入力はworkflow上の監査guardとして維持する。実行内容が変わらない文書・記録だけの更新、Classic再公開、安全境界や外部影響が依頼時の想定を超えた変更はこの継続指示に含めない。
 - lockfileどおりに依存を導入し、Classic / Nextのfull check、publication boundary、公開artifact、Classic live baselineを通してからPages artifactを作る。
 - deploy jobだけに`pages: write`と`id-token: write`を与え、GitHubの`github-pages` environmentを通す。
 - deploy後はNextのuserscriptとrelease manifest、Classicのuserscriptとsource mapをremoteから再取得して照合する。
