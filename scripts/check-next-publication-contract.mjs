@@ -35,6 +35,7 @@ run([
     "publication"
 ], publicationEnv);
 run([path.join(projectRoot, "scripts", "check-next-publication-artifact.mjs")], publicationEnv);
+run([path.join(projectRoot, "scripts", "check-next-publication-run-state.mjs")], candidateEnv);
 run([path.join(projectRoot, "scripts", "check-next-publication-boundary.mjs")], candidateEnv);
 
 console.log(JSON.stringify({

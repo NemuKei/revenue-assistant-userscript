@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
+import { isAllowedNextPublicationRunState } from "./next-publication-run-state.mjs";
 
 const projectRoot = new URL("../", import.meta.url);
 const workflowPath = new URL(".github/workflows/publish-next-userscript.yml", projectRoot);
@@ -136,13 +137,11 @@ async function verifyLivePublication(expected) {
     assert.equal(run.head_branch, "main");
     assert.equal(run.head_sha, expected.expectedSourceSha);
     assert.equal(run.path, ".github/workflows/publish-next-userscript.yml");
-    if (expected.allowInProgress) {
-        assert.ok(["in_progress", "completed"].includes(run.status));
-        assert.ok(run.conclusion === null || run.conclusion === "success");
-    } else {
-        assert.equal(run.status, "completed");
-        assert.equal(run.conclusion, "success");
-    }
+    assert.equal(
+        isAllowedNextPublicationRunState(run, expected.allowInProgress),
+        true,
+        `unexpected publication run state: ${run.status}/${run.conclusion ?? "null"}`
+    );
 
     return {
         sourceCommit: manifest.sourceCommit,
