@@ -643,7 +643,7 @@
 ### RAU-UX-168 rank変更markerとTooltipをClassicへ揃える
 
 - 状態:
-  - source実装、focused / full check、desktop / 390px合成Chrome QAまで完了。Next manual publication、Tampermonkey更新、通常Chrome実画面QAを待つ。
+  - source実装、focused / full check、desktop / 390px合成Chrome QA、Next `0.2.0.13`へのmanual publicationまで完了。Tampermonkey更新、通常Chrome実画面QAを待つ。
 - 解決する問題:
   - Next `0.2.0.12`のrank変更は、ピンクの常時縦破線と菱形、独立凡例、専用Tooltipになっており、Classicで慣れたcurrent curve上の小丸markerと統合Tooltipから外れている。
 - 実装境界:
@@ -657,13 +657,14 @@
   - focused checkでcurrent curve色 + 白縁の半径3.5pxの丸、半径8pxのfocus / tap hitbox、常時rank guide / 菱形 / 独立凡例0件、通常LT Tooltipへのrank統合、`reflector_name`非取得を固定した。
   - 通常Chromeの合成fixtureではdesktopでmarker 2件、通常LTとmarker直接選択のTooltipに変更前後rank / 反映日、cursor gap約8px、viewport内収容、active guide / point各1、console warning / error 0を確認した。390 x 844では2 panelを1列にし、Next root overflow 0、Tooltipをviewport内へ収め、標準ブッキングカーブを維持した。
   - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、fixture marker、distribution / booking-curve smoke fixture、candidate / run 13想定publication artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.168`、281,095 bytes、SHA-256 `4A85B534D9F0EE58DB37E0FB457861BBF2EA9D998FA20460059EBC641CAEC3C3`、updateURL / downloadURLなしである。
+  - 2026-08-10にsource `0ca6a17a05bab53a2f70457f1bb9046c8d302e14`をmanual workflow run `31366500765`で公開版`0.2.0.13`へ配信した。公開Nextは281,300 bytes、SHA-256 `91C9C39C11D61D3D295EEE9989EB02D8427D32533199E11806AAE9E170450C4E`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260810-006`
 
-Remaining Task Triage は Now `RAU-UX-168`のNext manual publication、Tampermonkey更新、通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now `RAU-UX-168`のTampermonkey更新と通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
