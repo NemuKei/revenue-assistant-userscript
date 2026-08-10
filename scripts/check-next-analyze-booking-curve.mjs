@@ -193,13 +193,16 @@ assert.equal(built.viewModel.currentSummary.group.currentValue, 1);
 assert.equal(built.viewModel.panels[0].current.points.find((point) => point.tick === 20).value, 8);
 assert.equal(built.viewModel.panels[0].current.points.find((point) => point.tick === 14).value, null);
 assert.equal(built.viewModel.panels[0].current.points.find((point) => point.tick === "ACT").value, null);
+assert.deepEqual(built.viewModel.visibility, { recent: true, seasonal: true });
 assert.equal(built.viewModel.panels[0].recent.sourceStayDateCount >= 1, true);
 assert.equal(built.viewModel.panels[0].seasonal.sourceStayDateCount >= 1, true);
-assert.equal(
-    built.viewModel.panels[0].seasonal.points.find((point) => point.tick === 0).value,
+const seasonalZeroPoint = built.viewModel.panels[0].seasonal.points.find((point) => point.tick === 0);
+assert.notEqual(
+    seasonalZeroPoint.value,
     null,
-    "a post-stay seasonal source must not reconstruct zero-day from an earlier point"
+    "the seasonal model's own zero-day estimate must remain visible"
 );
+assert.equal(seasonalZeroPoint.interpolated, false);
 assert.equal(
     built.viewModel.panels[0].seasonal.points.find((point) => point.tick === "ACT").value,
     20,
@@ -248,8 +251,14 @@ assert.equal(landingReferenceBuilt.status, "ready");
 assert.equal(
     landingReferenceBuilt.viewModel.panels[0].recent.points
         .find((point) => point.tick === 0).value,
-    null,
-    "recent zero-day remains missing without an exact day-zero observation"
+    7,
+    "a reference-only zero-day display point bridges one-day and ACT when both exist"
+);
+assert.equal(
+    landingReferenceBuilt.viewModel.panels[0].recent.points
+        .find((point) => point.tick === 0).interpolated,
+    true,
+    "a display-only reference bridge must remain distinguishable from an observation"
 );
 assert.equal(
     landingReferenceBuilt.viewModel.panels[0].recent.points
@@ -444,6 +453,12 @@ assert.equal(
         .find((point) => point.tick === 0).value,
     6,
     "recent zero-day uses the exact preserved day-zero observation"
+);
+assert.equal(
+    separatedReferenceBuilt.viewModel.panels[0].recent.points
+        .find((point) => point.tick === 0).interpolated,
+    false,
+    "an exact reference zero-day must not be labelled as display interpolation"
 );
 assert.equal(
     separatedReferenceBuilt.viewModel.panels[0].recent.points
@@ -651,12 +666,18 @@ assert.match(viewSource, /export function createEmbeddedBookingCurveReference/u)
 assert.match(viewSource, /createControls\(documentHost, viewModel, false\)/u);
 assert.match(viewSource, /root\.replaceChildren\(header, legend, grid, details\)/u);
 assert.match(viewSource, /body\.append\(meta, note, diagnostics, rankHistory\)/u);
+assert.match(viewSource, /（補間）/u);
+assert.match(viewSource, /（表示補間）/u);
+assert.match(viewSource, /表示補間/u);
 assert.doesNotMatch(viewSource, /閲覧のみ|booking-curve-reference-badge/u);
 assert.doesNotMatch(viewSource, /element\.append\(\s*title,\s*diagnostics,/u);
 assert.match(entrySource, /startBookingCurveReferenceRuntime\(document, window, \{/u);
 assert.match(entrySource, /createBookingCurveReferenceDataSource\(\{[\s\S]*acquisition: bookingCurveAcquisition/u);
 assert.match(runtimeSource, /booking-curve-main-chart-header/u);
 assert.match(runtimeSource, /booking-curve-sub-chart-header/u);
+assert.match(runtimeSource, /addEventListener\("load", scheduleReconcile/u);
+assert.match(runtimeSource, /addEventListener\("pageshow", scheduleReconcile/u);
+assert.doesNotMatch(runtimeSource, /seasonal:\s*false/u);
 assert.match(dataSourceSource, /readExistingIndexedDbRecordsByPrimaryKeys/u);
 assert.doesNotMatch(dataSourceSource, /rank|lincoln\/suggest\/status|booking_curve\?date/u);
 assert.match(rankDataSourceSource, /kind: "rank-status"/u);

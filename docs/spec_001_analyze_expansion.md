@@ -195,6 +195,7 @@ BCL-tuned first wave の定義:
 - `個人 / 団体` toggle の既定は `個人` とする。`団体` 選択時は、current、`直近型カーブ`、`季節型カーブ`、rank marker tooltip の対象 segment を `group` に切り替える。`全体` panel は常時表示のまま維持する。
 - `個人 / 団体` toggle 状態は、初期実装では画面内 memory に保持する。Revenue Assistant 側の再描画や本 userscript の再同期では維持するが、ページ再読み込みや別タブをまたぐ永続化は必須要件にしない。
 - `RAU-AF-11` 以降、`個人 / 団体` toggle の切り替え直後は、保持済みの最新 `SalesSettingPreparedData` と rank status snapshot から Analyze 側の booking curve 表示を即時再描画し、その後に通常の calendar sync を強制実行する。これにより、切り替え直後から通常再同期完了までの間に、全体 panel または室タイプ別 panel が空表示のまま残らないようにする。
+- Analyzeの日付URLを直接開いた場合とF5で再読み込みした場合も、標準の販売設定 / booking curve surfaceが遅れて描画された時点でNext runtimeを再同期する。`load`、`pageshow`、標準DOM mutationのいずれから再同期してもNext rootは各surfaceに1件だけとし、SPA内遷移を経由しないことを未描画理由にしない。再同期自体はbooking curveのrequest対象、due判定、session上限、Revenue Assistant write境界を広げない。
 - reference curve の表示範囲は、current の booking curve と同じ LT 軸に揃える。標準の横軸は `0〜360日前` と `ACT` を対象にし、表示ラベルは既存の間引きルールを使う。
 - request 数が問題になる場合でも、仕様上の目標表示範囲は `0〜360日前` と `ACT` のままとする。短期の性能対策で一時的に取得範囲を狭める場合は、取得中、未取得、算出不能を区別して表示する。
 - 初期表示では `現在 / 直近型 / 季節型` を比較できる状態にする。ただし表示密度が上がるため、`直近型カーブ` と `季節型カーブ` は個別に表示切替できるようにする。
@@ -203,8 +204,8 @@ BCL-tuned first wave の定義:
 - `0日前` と `ACT` は、current と reference curve の両方で別 tick として扱う。`0日前` は宿泊日当日時点の観測値、`ACT` は宿泊日後に確定した最終実績を指す。
 - Revenue Assistant API が過去 stay_date の `0日前` 値を実績確定後の値で上書きして返す場合、raw source 保存開始前の過去日程については本当の `0日前` と `ACT` を後から分離できない。この制約は仕様上の欠損として扱い、推測で補完しない。
 - `直近型カーブ` と `季節型カーブ` の `ACT` がどの入力値から作られているかを diagnostics または調査ログで確認できるようにする。`0日前` と `ACT` が同じ値から作られているなら、`0日前` から `ACT` への線は平坦になるはずである。値が下がる、または不自然に跳ねる場合は、算出ロジック、入力 source の混在、segment 解決、API response の上書き仕様を調査対象にする。
-- reference curve の `0日前` は、core logic と IndexedDB の derived reference curve cache では推測補完しない。真の `0日前` を分離できない場合は、算出値としては欠損または diagnostics 上の制約として扱う。
-- この旧一般節で許容していた`1日前`と`ACT`からの表示補間はClassicの履歴説明に限定する。Nextでは後発の`D-20260723-009`と本specの`Next Booking Curve Bootstrap / Daily Delta`を優先し、欠けた`0日前`を表示層でも補間しない。
+- reference curve の `0日前` は、core logic と IndexedDB の derived reference curve cache へ表示専用の推測値を保存しない。Nextの表示層では、trusted exact aggregate、coreが返す数値、`1日前`とACTの中間を整数へ丸めた表示専用補間の順で解決する。表示専用補間はreferenceだけに限定し、tooltip、全値表、aria labelで補間と分かるようにする。
+- currentの欠けた`0日前`は、`1日前`、reference、ACTのいずれからも表示補間しない。referenceの表示専用補間は、比較線を実観測と誤読させず連続して読めるようにする表示モデルであり、宿泊日当日の観測証拠には使わない。
 
 同曜日補助線:
 
@@ -234,8 +235,8 @@ BCL-tuned first wave の定義:
 ### 初回bootstrapと日々の差分
 
 - Next storeと互換Classic sourceの両方に有効sourceがない施設ではbootstrap modeとする。必要sourceに対する有効source coverageが80%未満の間は、最大800 request / sessionで止め、未完了分を保存済みsourceから次の可視sessionで再開する。したがってbootstrapは初回の1 sessionだけとは限らない。
-- 有効source coverageが80%以上に達した後はdaily delta modeとし、新しく表示範囲へ入ったstay date、未保存source、前回取得後にcurrent tailが新しく観測可能になったsource、または直近型で次のlead-time目盛りが観測可能になったsourceだけを最大200 request / sessionで補う。APIがcumulative responseだけを返す場合もrequest自体を部分responseへ変えたとはみなさず、local mergeでは最後に保存したbooking curve pointの日付より後のpointだけを追加する。前回source as-ofよりpoint終端が遅れていた場合も、次のresponseでその遅延tailを取り込む。
-- 保存済みpointには取得後の日数による期限を設けない。後続responseが同じ`booking_curve[].date`へ異なるroomsを返しても、先に保存したpointを置き換えず、差分補充の対象をその観測日より後へ限定する。
+- 有効source coverageが80%以上に達した後はdaily delta modeとし、新しく表示範囲へ入ったstay date、未保存source、前回取得後にcurrent tailが新しく観測可能になったsource、または直近型で次のlead-time目盛りが観測可能になったsourceだけを最大200 request / sessionで補う。APIがcumulative responseだけを返す場合もrequest自体を部分responseへ変えたとはみなさない。local mergeでは、既存recordにない有効日付をtailと内部欠損のどちらにも追加できるが、この穴埋めだけを理由に新しいrequestやdue taskを増やさない。前回source as-ofよりpoint終端が遅れていた場合も、次のresponseでその遅延tailを取り込む。
+- 保存済みpointには取得後の日数による期限を設けない。後続responseが同じ`booking_curve[].date`へ異なるroomsを返しても、先に保存したpointを置き換えない。後続responseから追加できるのは未保存日だけとし、宿泊日後に初めて返ったstay-date pointを`0日前`へ戻さない。
 - current taskは、future / 当日stay dateなら現在の`as_of_date`までのtailが未観測の場合にdueとする。past stay dateは、分離したlandingを1回保存できた時点で完了し、その後は年齢を理由に再取得しない。
 - 直近型reference taskは、そのsourceが新しいlead-time目盛りへ到達した場合、またはpast stay dateのlandingが未保存の場合だけdueとする。固定7〜13日refreshや14日expiryを設けず、まだ必要な目盛りが増えていないfuture sourceを毎日再取得しない。
 - 類似比較のcurrent根拠は当日`as_of_date`まで揃ったsourceだけをreadyとする。過去prefixは破棄せず差分補充の起点として保持するが、本日のtailに見せない。直近型referenceは必要な観測点が保存済みならsource取得日の古さにかかわらず再利用できる。
@@ -251,8 +252,8 @@ BCL-tuned first wave の定義:
 
 - `0日前`は宿泊日当日までに保存できたpointだけを使う。宿泊日後に初めてsourceを取得した場合、そのresponse内のstay date pointを過去の`0日前`として採用しない。
 - `ACT`は宿泊日後の初回観測時に、`all` / `transient` / `group`の着地roomsを`landing`としてbooking curve pointとは別に保存し、この着地証拠だけから表示する。保存済み`0日前`をlandingで上書きせず、同じ数値でも別概念として維持する。
-- bootstrap時点ですでにpastのstay dateは、LT 1以上の履歴pointと着地を利用できるが、真の`0日前`を復元できない場合は`0日前`を欠損にする。着地値を`0日前`へ複製せず、`1日前`とACTから作った補間値も表示またはcore inputへ入れない。
-- currentだけでなく直近型 / 季節型referenceも、`0日前`は宿泊日当日に保存したexact pointだけ、ACTは分離したlandingだけから集計する。直近型ACTの対象sourceは直近型coreが比較する対象日集合と揃え、別曜日のlandingを混ぜない。
+- bootstrap時点ですでにpastのstay dateは、LT 1以上の履歴pointと着地を利用できるが、真のcurrent `0日前`を復元できない場合はcurrentを欠損にする。着地値をcurrent `0日前`へ複製せず、`1日前`とACTから作った値をcurrentの表示またはcore inputへ入れない。
+- 直近型 / 季節型referenceの`0日前`は、宿泊日当日に保存したexact pointのaggregateを優先し、それがなければcoreが返す数値、さらに数値がなければ`1日前`と分離したACTの表示専用補間を使える。ACTは引き続きlandingだけから集計し、直近型ACTの対象sourceは直近型coreが比較する対象日集合と揃えて別曜日のlandingを混ぜない。表示専用補間は保存せず、補間表示を明示する。
 
 ### 負荷、停止、再開
 
@@ -499,7 +500,7 @@ Next booking curve clean-room contract (`RAU-UX-150` 第三段階A):
 - facility identity は既存の `GET /api/v2/yad/info`、room-group mapping は既存の `GET /api/v1/suggest/output/current_settings` を、表示中stay dateに対して各最大1回だけ使う。画面の最終データ更新日を読めない、facility labelが一致しない、stay dateまたはroom-group idが一致しない場合は推測や名称fallbackで補わない。
 - current / reference の入力は既存 `revenue-assistant-booking-curve-sources` database、`booking-curve-raw-sources` storeの `booking_curve_raw_source:v2` recordに限定する。選択中scopeの current stay date、直近型候補日、季節型候補日のdeterministic primary keyだけを1回の `readonly` transactionで読み、database upgrade、cursor scan、`GET /api/v4/booking_curve`、隣接日や他room-groupのbackground prefetch、derived cache write、storage writeを追加しない。
 - 初期scopeはホテル全体とし、room-groupは確認済みidを持つtoggleで利用者が選んだ場合だけ遅延読込する。同一stay date内で読み終えたscopeはmemory cacheしてよいが、route / stay date離脱後へ持ち越さない。room-group名だけからidを推測せず、全room-groupのreferenceを先読みしない。
-- 選択中scopeは `全体` と `個人` の2 panelを標準表示し、second panelだけを `個人 / 団体` toggleで切り替える。個人は`transient`、団体は`group`の直接値だけを使い、`all - group`で欠損を推測しない。current、`直近型`、`季節型` は同じ `360日前 ... 0日前 / ACT` 軸と共通の室数目盛を使い、reference系列は個別toggleで表示を切り替える。`0` は有効値、`null` は欠損として線を分断し、未着地stay dateの `ACT` は空のまま扱う。Nextではreferenceの`0日前`も宿泊日当日の実観測だけを使い、欠損時は線を分断して補間しない。
+- 選択中scopeは `全体` と `個人` の2 panelを標準表示し、second panelだけを `個人 / 団体` toggleで切り替える。個人は`transient`、団体は`group`の直接値だけを使い、`all - group`で欠損を推測しない。current、`直近型`、`季節型` は同じ `360日前 ... 0日前 / ACT` 軸と共通の室数目盛を使い、reference系列は個別toggleで表示を切り替える。`0` は有効値、`null` は欠損として線を分断し、未着地stay dateの `ACT` は空のまま扱う。currentの`0日前`は宿泊日当日の実観測だけを使い、欠損時は線を分断する。referenceの`0日前`は本specの表示優先順に従い、表示専用補間を使う場合は実観測と区別して明示する。
 - `D-20260808-002`以降の補助表示は、Classicで定着した可視UI全体をbaselineとする。対象scopeを含む見出し、短いdata source note、scope / `個人・団体` / 参考線のcompact toggleを同じheader内へ置き、toggle group名は画面上へ常時表示せずaccessible nameとして残す。その直後に凡例、`全体`と選択中の`個人 / 団体` chartを置き、Next固有の`閲覧のみ`badgeとpanel前の診断文は置かない。取得条件、系列診断、欠損説明、rank変更履歴はchart後の`データ条件とランク履歴`へ初期折りたたみで残し、情報自体は削除しない。
 - 680px以下では全pointと`0日前` / `ACT`の区別、tooltip、accessible tableを維持したまま、横軸の表示labelだけを`360 / 180 / 90 / 30 / 7 / ACT`へ間引く。横軸から`0日前`のlabelを省いても`0日前`と`ACT`は別pointのまま扱い、同じ表示labelへまとめない。狭幅でもNext root自身の横overflowを0、toggleのtap targetを44px以上とする。
 - SVG pointはmouseとkeyboard focusの双方で `何日前 / current / 直近型 / 季節型` を確認できる。凡例、最終データ更新日、reference source日数、欠損理由はhoverに依存させず表示し、current cacheなし、reference source不足、as-of不一致、IndexedDB unavailable / errorを同じ空表示へ潰さない。680px以下では2 panelを縦積みにし、toggleは44px以上、Next root自身の横overflowは0とする。

@@ -107,7 +107,7 @@ export function startBookingCurveReferenceRuntime(
     let rankLoading = false;
     let selectedScopeKey = "hotel";
     let secondarySegment: BookingCurveReferenceSecondarySegment = "transient";
-    let visibility: BookingCurveReferenceVisibility = { recent: true, seasonal: false };
+    let visibility: BookingCurveReferenceVisibility = { recent: true, seasonal: true };
     let root: HTMLElement | null = null;
     let mountTarget: HTMLElement | null = null;
     let contextBlocked = false;
@@ -130,6 +130,8 @@ export function startBookingCurveReferenceRuntime(
         capture: true,
         signal: abortController.signal
     });
+    windowHost.addEventListener("load", scheduleReconcile, { signal: abortController.signal });
+    windowHost.addEventListener("pageshow", scheduleReconcile, { signal: abortController.signal });
     windowHost.addEventListener("popstate", scheduleReconcile, { signal: abortController.signal });
     windowHost.addEventListener("resize", handleResize, { signal: abortController.signal });
     documentHost.addEventListener("visibilitychange", scheduleReconcile, { signal: abortController.signal });
@@ -200,7 +202,7 @@ export function startBookingCurveReferenceRuntime(
         contextBlocked = false;
         selectedScopeKey = "hotel";
         secondarySegment = "transient";
-        visibility = { recent: true, seasonal: false };
+        visibility = { recent: true, seasonal: true };
         state = { status: "idle" };
         removeMountedRoot();
     }
@@ -486,7 +488,7 @@ export function startBookingCurveReferenceRuntime(
         activeAsOfDate = null;
         selectedScopeKey = "hotel";
         secondarySegment = "transient";
-        visibility = { recent: true, seasonal: false };
+        visibility = { recent: true, seasonal: true };
         state = { status: "idle" };
         removeBookingCurveReferenceArtifacts(documentHost);
         root = null;

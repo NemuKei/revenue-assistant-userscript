@@ -454,6 +454,56 @@ assert.deepEqual(
     "a late-arriving tail is appended after the last stored observation date, not the prior source as-of"
 );
 
+const interiorGapRecord = {
+    ...appendedFutureRecord,
+    response: {
+        ...appendedFutureRecord.response,
+        booking_curve: appendedFutureRecord.response.booking_curve?.filter((point) => point.date !== "2026-07-23")
+    }
+};
+const filledInteriorGapRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: "20260724",
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-24T02:00:00.000Z",
+    previousRecord: interiorGapRecord,
+    response: {
+        stay_date: "20260725",
+        booking_curve: [
+            {
+                date: "2026-07-22",
+                all: { this_year_room_sum: 99 },
+                transient: { this_year_room_sum: 99 },
+                group: { this_year_room_sum: 99 }
+            },
+            {
+                date: "2026-07-23",
+                all: { this_year_room_sum: 5 },
+                transient: { this_year_room_sum: 4 },
+                group: { this_year_room_sum: 1 }
+            },
+            {
+                date: "2026-07-24",
+                all: { this_year_room_sum: 98 },
+                transient: { this_year_room_sum: 98 },
+                group: { this_year_room_sum: 98 }
+            }
+        ]
+    },
+    task: futureTask
+});
+assert.deepEqual(
+    filledInteriorGapRecord.response.booking_curve?.map((point) => [
+        point.date,
+        point.all?.this_year_room_sum
+    ]),
+    [
+        ["2026-07-22", 4],
+        ["2026-07-23", 5],
+        ["2026-07-24", 7]
+    ],
+    "a later cumulative response fills an interior gap without overwriting stored observations"
+);
+
 const longLeadReferenceTask = model.buildNextBookingCurveReferenceTasks({
     context,
     scopeKey: "room:a",

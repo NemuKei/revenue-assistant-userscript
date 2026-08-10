@@ -90,6 +90,9 @@ assert.match(entrySource, /startSalesSettingClassicRuntime[\s\S]*acquisition: bo
 assert.match(runtimeSource, /for \(const scope of activeScopes\)[\s\S]*await dataSource\.load/u);
 assert.doesNotMatch(runtimeSource, /Promise\.all\([\s\S]*dataSource\.load/u);
 assert.match(runtimeSource, /dataSource\.cancel\(\);\s*scopeBatchLoading = true;/u);
+assert.match(runtimeSource, /addEventListener\("load", scheduleReconcile/u);
+assert.match(runtimeSource, /addEventListener\("pageshow", scheduleReconcile/u);
+assert.doesNotMatch(runtimeSource, /seasonal:\s*false/u);
 const roomScopeLoop = runtimeSource.match(
     /scopeBatchLoading = true;[\s\S]*for \(const scope of activeScopes\) \{([\s\S]*?)\n {8}\}\n {8}scopeBatchLoading = false;/u
 );
@@ -173,6 +176,6 @@ function curve(scope, capacityRooms, currentSummary, marker) {
         sourceRecordCount: 4,
         futureRecordCount: 0,
         stayDate: "20260812",
-        visibility: { recent: true, seasonal: false }
+        visibility: { recent: true, seasonal: true }
     };
 }

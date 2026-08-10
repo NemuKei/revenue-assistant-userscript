@@ -121,6 +121,8 @@ export function startSalesSettingClassicRuntime(
         capture: true,
         signal: abortController.signal
     });
+    windowHost.addEventListener("load", scheduleReconcile, { signal: abortController.signal });
+    windowHost.addEventListener("pageshow", scheduleReconcile, { signal: abortController.signal });
     windowHost.addEventListener("popstate", scheduleReconcile, { signal: abortController.signal });
     windowHost.addEventListener("resize", handleResize, { signal: abortController.signal });
     documentHost.addEventListener("visibilitychange", scheduleReconcile, { signal: abortController.signal });
@@ -283,7 +285,7 @@ export function startSalesSettingClassicRuntime(
             secondarySegments.set(scopeKey, "transient");
         }
         if (!visibilities.has(scopeKey)) {
-            visibilities.set(scopeKey, { recent: true, seasonal: false });
+            visibilities.set(scopeKey, { recent: true, seasonal: true });
         }
     }
 
@@ -301,7 +303,7 @@ export function startSalesSettingClassicRuntime(
                 scopes: data.scopes,
                 secondarySegment: secondarySegments.get(scopeKey) ?? "transient",
                 stayDate: data.stayDate,
-                visibility: visibilities.get(scopeKey) ?? { recent: true, seasonal: false }
+                visibility: visibilities.get(scopeKey) ?? { recent: true, seasonal: true }
             });
             if (result.status === "ready") {
                 curves.set(scopeKey, result.viewModel);
@@ -464,7 +466,7 @@ export function startSalesSettingClassicRuntime(
             return;
         }
         event.preventDefault();
-        const current = visibilities.get(scopeKey) ?? { recent: true, seasonal: false };
+        const current = visibilities.get(scopeKey) ?? { recent: true, seasonal: true };
         visibilities.set(scopeKey, { ...current, [value]: !current[value] });
         rebuildCurves();
         renderCurrentState();

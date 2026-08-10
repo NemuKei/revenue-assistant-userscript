@@ -531,7 +531,28 @@
   - `target-spec: docs/spec_003_rank_recommendation_signal.md`
   - `decision: D-20260808-008`
 
-Remaining Task Triage は Now 公開済みNext `0.2.0.7`へTampermonkeyを更新し、`RAU-UX-161` / `RAU-UX-162`の通常Chrome live QAを行うこと、After Next / Laterなしとする。manual publicationは完了しており再実行しない。`main` pushは公開を開始しない。Classic再公開、新規endpoint、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+### RAU-UX-163 booking curveの欠損表示とAnalyze再読込を補正する
+
+- 状態:
+  - source、spec、focused / full check、合成ChromeのF5 QAまで完了。local candidate `0.1.0.161`を作成した。manual publication、Tampermonkey更新、Revenue Assistant実画面QAは別gateである。
+- 解決する問題:
+  - 宿泊日当日に取得できなかったcurrentの`0日前`が欠損すること自体は正しいが、referenceまで`0日前`で途切れ、季節型も初期非表示だった。後続のcumulative responseが内部の未観測日を返しても、tail-only mergeが保存済み終端以前を捨てていた。
+  - Analyzeの日付URLを直接開く、またはF5更新する経路では、標準surfaceの遅延描画後にNext表示が再同期されない可能性があった。
+- 実装境界:
+  - currentの`0日前`は宿泊日当日までのexact observationだけ、ACTは分離したlandingだけを使う。referenceの`0日前`はtrusted exact、core値、`1日前`とACTの表示専用補間の順で解決し、補間はtooltip / table / ariaで明示して保存しない。季節型は直近型とともに初期表示する。
+  - 後続responseから追加するのは既存recordにない有効日付だけとし、保存済みpointを上書きしない。宿泊後に初めて返ったstay-date pointを`0日前`へ戻さない。内部欠損だけを理由にrequest、due task、取得範囲、session上限、concurrencyを増やさない。
+  - Analyzeの販売設定とbooking curve runtimeを`load` / `pageshow`でも再同期し、既存の標準DOM監視と重複root除去を維持する。
+- 合格条件と結果:
+  - focused checkで、referenceのexact / core / 表示専用補間の優先順、current非補間、seasonal初期表示、内部欠損追加と既存point不変、post-stay `0日前`非復元、F5再同期listenerを固定した。
+  - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.161`、275,971 bytes、SHA-256 `2FEF7351C8C2D37439D04A91161A5D565ED88A807D8426DE25B2092766D64E81`、updateURL / downloadURLなしである。
+  - 合成Chromeでは販売設定とbooking curveのF5前後でNext root各1件、季節型初期表示、販売設定supplement 2件を維持した。既存ChromeのRevenue Assistant preflightではNext marker / rootが0だったがTampermonkey状態を未確認のため、修正後のlive証拠には使わない。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_002_curve_core.md`
+  - `decision: D-20260810-001`
+
+Remaining Task Triage は Now `RAU-UX-163`のmanual publication判断、配信後のTampermonkey更新と通常Chrome live QA、ならびに公開済み`RAU-UX-161` / `RAU-UX-162`の未確認項目を同じ実画面で確認すること、After Next / Laterなしとする。`main` pushは公開を開始しない。Classic再公開、新規endpoint、穴埋め専用の追加request、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

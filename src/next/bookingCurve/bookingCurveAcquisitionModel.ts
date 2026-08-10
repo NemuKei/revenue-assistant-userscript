@@ -379,18 +379,10 @@ function mergeNextBookingCurveResponse(options: {
     stayDate: string;
 }): BookingCurveApiResponse {
     const pointByDate = new Map<string, BookingCurveApiPoint>();
-    let latestStoredObservationDate = "";
     for (const point of options.previousRecord?.response.booking_curve ?? []) {
         const pointDate = normalizeDateKey(point.date);
         if (pointDate !== null && !pointByDate.has(pointDate)) {
             pointByDate.set(pointDate, point);
-            const compactPointDate = toCompactDateKey(pointDate);
-            if (
-                compactPointDate !== null
-                && compactPointDate > latestStoredObservationDate
-            ) {
-                latestStoredObservationDate = compactPointDate;
-            }
         }
     }
     for (const point of options.response.booking_curve ?? []) {
@@ -405,10 +397,6 @@ function mergeNextBookingCurveResponse(options: {
                 compactPointDate === options.stayDate
                 && options.asOfDate > options.stayDate
                 && !pointByDate.has(pointDate)
-            )
-            || (
-                latestStoredObservationDate !== ""
-                && compactPointDate <= latestStoredObservationDate
             )
             || pointByDate.has(pointDate)
         ) {

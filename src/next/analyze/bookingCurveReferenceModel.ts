@@ -438,10 +438,20 @@ function buildReferenceSeries(
     landing: { sourceCount: number; value: number | null }
 ): BookingCurveReferenceSeries {
     const valueByTick = new Map(result.points.map((point) => [point.lt, point.rooms]));
-    valueByTick.set(0, zeroDay.value);
-    valueByTick.set("ACT", landing.value);
+    const exactZeroDayValue = normalizeNonNegativeNumber(zeroDay.value);
+    const coreZeroDayValue = normalizeNonNegativeNumber(valueByTick.get(0));
+    const oneDayValue = normalizeNonNegativeNumber(valueByTick.get(1));
+    const landingValue = normalizeNonNegativeNumber(landing.value);
+    let displayedZeroDayValue = exactZeroDayValue ?? coreZeroDayValue;
+    let zeroDayInterpolated = false;
+    if (displayedZeroDayValue === null && oneDayValue !== null && landingValue !== null) {
+        displayedZeroDayValue = Math.max(0, Math.round(oneDayValue + ((landingValue - oneDayValue) / 2)));
+        zeroDayInterpolated = true;
+    }
+    valueByTick.set(0, displayedZeroDayValue);
+    valueByTick.set("ACT", landingValue);
     const points = LEAD_TIME_BUCKET_TICKS.map((tick): BookingCurveReferenceSeriesPoint => ({
-        interpolated: false,
+        interpolated: tick === 0 && zeroDayInterpolated,
         tick,
         value: normalizeNonNegativeNumber(valueByTick.get(tick))
     }));
