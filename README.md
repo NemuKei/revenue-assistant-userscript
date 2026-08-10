@@ -17,7 +17,7 @@
 - Classic と Next を同じ Revenue Assistant tab で同時に実行しない。初期 Next QA は Tampermonkey で Classic を無効化してから reload する。Next は既に描画済みの Classic DOM を検出すると停止するが、現公開 Classic が後から起動する競合までは防げない。
 - Next のcalendar entryは、表示中カレンダーだけへ接続するread-onlyな基準日レンズである。利用者が`基準日を選ぶ`を押した後だけ確認済み2 endpointを各1回GETし、OHはcurrent settings、個人 / 団体は既存booking curve raw cache、競合は既存snapshot cacheから読む。facility、room type、source、current as-of、stay dateのguardを満たさない値を採用せず、競合snapshotの取得時刻を最新性保証や類似判定に使わない。
 - Next のAnalyze entryは、可視な標準競合価格本文の末尾へClassic / Nextのbrowser-local履歴を統合表示する。facility labelが一致する未保存日の現在stay dateだけ、既存の競合一覧 / 競合価格GETを各最大1回使い、部屋 / 食事指定なし・1〜6名のsnapshotをJST日単位でNext専用IndexedDBへ最大1件保存する。週・月・周辺日程のbackground prefetch、raw response保存、Classic DB変更、Revenue Assistant write操作は行わない。
-- Next公開版`0.2.0.13`は`RAU-UX-168`を含めて配信済みである。installed version / 有効状態はmutable stateなので次のlive作業前にもfresh確認し、Classic再公開は引き続き別gateとする。
+- Next公開版`0.2.0.14`は`RAU-MP-09`の月次実績拡張を含めて配信済みである。installed version / 有効状態はmutable stateなので次のlive作業前にもfresh確認し、Classic再公開は引き続き別gateとする。
 
 ## 前提
 
@@ -283,3 +283,5 @@ localの `.github/workflows/publish-userscript.yml` は、`main` pushによるCl
 2026-08-10にsource `dc9b030f37ff6d28645dc7ee7a8b5f70ab276a30`をmanual workflow run `31361995854`で公開版`0.2.0.12`へ配信しました。公開Nextは281,060 bytes、SHA-256 `93F7747260CDA791534BACDC5EF9CFCCB8FFA468DDED516E7A28F0C85A4766CA`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。
 
 2026-08-10にsource `0ca6a17a05bab53a2f70457f1bb9046c8d302e14`をmanual workflow run `31366500765`で公開版`0.2.0.13`へ配信しました。公開Nextは281,300 bytes、SHA-256 `91C9C39C11D61D3D295EEE9989EB02D8427D32533199E11806AAE9E170450C4E`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。
+
+2026-08-10にsource `781a357195912b66e7c2f32ccd081f649f6fc882`をmanual workflow run `31372836965`で公開版`0.2.0.14`へ配信しました。公開Nextは326,862 bytes、SHA-256 `8DCB35B956EC0943F7C3AC5829D2154CB1926CA1BE23389A52753C1F09708C46`、source mapは1,257,414 bytes、SHA-256 `214B705D30CCBC11DA9FF625AE3399BCFAFFAA134256A2C0933B723FB8D8D8F7`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。Tampermonkey更新と通常Chromeの月次実画面QAは未実施です。

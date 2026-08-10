@@ -668,7 +668,7 @@
 ### RAU-MP-09 Classic月次カーブをNextへclean-roomで再接続する
 
 - 状態:
-  - Now。source実装とlocal検証は完了し、main同期後のNext manual publication、公開artifact照合、利用者のTampermonkey更新、通常Chrome実画面QAを残す。公開Next `0.2.0.13`にはまだ未反映である。
+  - Now。source実装、local検証、main同期、Next `0.2.0.14`へのmanual publication、公開artifact照合は完了した。利用者のTampermonkey更新と通常Chrome実画面QAを残す。
 - 目的:
   - 月次実績画面でも、Classicで使い慣れたLT月次カーブ、比較切替、Tooltip、日次差分をNextで確認できるようにする。
 - 実装境界:
@@ -684,6 +684,7 @@
   - focused checkでcurrent-first、初期最大5 GET、比較切替を含むunique yearMonth最大15、100ms以上 / 直列、3連続error停止、auth / rate-limit即停止、可視施設 / batch date guard、Next add-only保存、Classic exact-key read-only seed、store failure / duplicate addのfail-closedを確認した。
   - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.168`、326,657 bytes、SHA-256 `672EF6E09B94CF0975FC150A29CF1F599EA99629668B78AF4BECAA62DCD989D3`、updateURL / downloadURLなしである。
   - 合成Browser QAではdesktop / 390pxで標準chart 1件、Next root 1件、2 panel / SVG、Tooltip、日次差分、F5 / route往復、loading / empty / current-only / comparison shortage / partial failure、document overflow 0、console warning / error 0を確認した。fixtureの月次API requestとRevenue Assistant writeは0である。
+  - manual workflow run `31372836965`はsource `781a357195912b66e7c2f32ccd081f649f6fc882`を公開版`0.2.0.14`としてbuild / deploy / verifyし、すべてsuccessだった。公開Nextは326,862 bytes、SHA-256 `8DCB35B956EC0943F7C3AC5829D2154CB1926CA1BE23389A52753C1F09708C46`でrelease manifestと一致し、Classic公開baselineは不変だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: after-impl`
