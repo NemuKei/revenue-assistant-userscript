@@ -601,7 +601,7 @@
 ### RAU-UX-166 Analyze Tooltipのpanel clampをClassicへ揃える
 
 - 状態:
-  - source、spec、focused / full check、desktop / 390px合成Chrome QAまで完了。Next manual publicationと更新後の通常Chrome実画面QAを待つ。
+  - source、spec、focused / full check、desktop / 390px合成Chrome QA、Next `0.2.0.11`へのmanual publicationまで完了。Tampermonkey更新後の通常Chrome実画面QAを待つ。
 - 解決する問題:
   - Tooltipがchart panel内へ限定されるため、選択位置の近くでcursorやguideへ重なりやすい。
 - 実装境界:
@@ -611,6 +611,7 @@
   - 左側または中央の選択ではTooltip左端を選択位置の右8pxへ置き、desktop合成Chromeで3グラフすべてがpanel右端を越えて表示できることを確認した。
   - viewport端ではTooltip全体をviewport内へ収める。390 x 844で3種すべてのviewport内収容を確認し、価格推移はroot / document overflow 0、booking curveと競合価格は標準fixture由来の既存document overflowを増やさなかった。
   - focused check、`npm run typecheck`、`npm run lint`、`npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.166`、280,806 bytes、SHA-256 `D3FE4B11B0E801F1289E7B6EF91CB28A640FB6137A14F647FEEDAC0979A1CEA4`、updateURL / downloadURLなしである。
+  - 2026-08-10にsource `6cfd82ad222c70537151eae96991e68ad6344480`をmanual workflow run `31360100862`で公開版`0.2.0.11`へ配信した。公開Nextは281,011 bytes、SHA-256 `8D9E978273FBED7AB8C751877D3A65DD633F10D18214F3A3C1C4A4538CCEFBC3`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
   - 配信後の通常Chrome実画面で3グラフのguide / Tooltip / 標準UIを確認する。
 - metadata:
   - `spec-impact: yes`
@@ -618,7 +619,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260810-005`
 
-Remaining Task Triage は Now `RAU-UX-166`のNext manual publication、Tampermonkey更新、通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now `RAU-UX-166`のTampermonkey更新と通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
