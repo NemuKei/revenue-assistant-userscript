@@ -71,6 +71,14 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 全体 / 部屋別booking curveはClassicと同じ`全体`と`個人 / 団体`の2 panel、reference toggle、共通凡例、room scopeだけのrank markerを維持する。全体blockは常時展開、部屋別blockは必要なcardだけ開く操作を既定とする。
 - summaryとcurveの入力はNextの保存済みsource、Classic read-through seed、必要な不足tailだけに限定する。`販売設定`表示を理由に過去sourceを毎回全件取得せず、欠損scope / tickを0や`類似日なし`へ読み替えず`比較準備中`とする。API、IndexedDB、session上限、重複防止、停止条件、`0日前` / `ACT`分離は既存Next契約を変えない。
 
+#### Next chart visual / interaction parity (`RAU-UX-165`)
+
+- booking curveは、現在値を太い実線と薄い面で主系列として示し、直近型を`8 5`、季節型を`2 6`の異なる破線で示す。凡例も同じ線種を表示し、色だけを見分けの根拠にしない。通常時に全pointへ丸を並べず、hover / keyboard focus中の選択点だけを白抜き丸で強調する。
+- booking curveのhover / keyboard focusでは、選択LTを示すvertical guideと現在値のactive pointを表示する。currentが欠損するLTではguideは表示し、active pointだけを隠す。Tooltipはchart中央へ固定せず、mouseではcursor、keyboardでは選択LTの近くへ移動し、左右端とviewport内へ収める。rank markerのTooltipもmarker位置へ追従し、離脱時はTooltip、guide、active pointを同時に隠す。
+- 90日価格推移はClassicと同じく通常時は施設別lineを主役とし、全pointの常時markerは置かない。hover / keyboard focusでは選択lead time列を薄く着色し、vertical guideを表示し、Tooltipをcursorまたは選択lead timeの近くへ収める。
+- 競合価格履歴は既存のactive列、vertical guide、cursor / 日付追従Tooltip、施設別pointを維持する。今回の共通点検でこの契約を別の表示方式へ変更しない。
+- 3グラフともmouseだけに依存せず、focus可能なhitbox、aria label、accessible tableを維持する。表示変更を理由に取得対象、API、保存schema、差分補充、retention、Revenue Assistant writeを変更しない。
+
 ### Candidate: Room-Type Booking Curve
 
 - 対象は analyze 日付ページの `販売設定` タブ内にある各室タイプカードとする

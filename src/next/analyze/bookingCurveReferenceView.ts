@@ -17,6 +17,10 @@ export const BOOKING_CURVE_REFERENCE_PANEL_ATTRIBUTE = "data-ra-next-booking-cur
 export const BOOKING_CURVE_REFERENCE_SVG_ATTRIBUTE = "data-ra-next-booking-curve-reference-svg";
 export const BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-reference-hitbox";
 export const BOOKING_CURVE_REFERENCE_COMPONENT_ATTRIBUTE = "data-ra-next-booking-curve-reference-component";
+export const BOOKING_CURVE_REFERENCE_SERIES_ATTRIBUTE = "data-ra-next-booking-curve-reference-series";
+export const BOOKING_CURVE_REFERENCE_AREA_ATTRIBUTE = "data-ra-next-booking-curve-reference-area";
+export const BOOKING_CURVE_REFERENCE_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-next-booking-curve-reference-active-guide";
+export const BOOKING_CURVE_REFERENCE_ACTIVE_POINT_ATTRIBUTE = "data-ra-next-booking-curve-reference-active-point";
 export const BOOKING_CURVE_RANK_MARKER_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker";
 export const BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker-hitbox";
 
@@ -39,9 +43,9 @@ export type BookingCurveReferenceRenderState =
 const DISPLAY_TICKS = new Set([...LEAD_TIME_BUCKET_VISIBLE_TICKS, 0]);
 const NARROW_DISPLAY_TICKS = new Set([360, 180, 90, 30, 7, "ACT"]);
 const SERIES_STYLE = {
-    current: { color: "#176da5", dash: "", width: 3 },
-    recent: { color: "#d98200", dash: "8 5", width: 2.3 },
-    seasonal: { color: "#17806f", dash: "3 5", width: 2.3 }
+    current: { color: "#1f5fbf", dash: "", width: 3 },
+    recent: { color: "#b7791f", dash: "8 5", width: 2.4 },
+    seasonal: { color: "#c2415d", dash: "2 6", width: 2.4 }
 } as const;
 
 export function createBookingCurveReferenceRoot(documentHost: Document): HTMLElement {
@@ -345,7 +349,15 @@ function createLegend(documentHost: Document, viewModel: BookingCurveReferenceVi
         item.setAttribute("data-ra-next-booking-curve-reference-legend-item", series.id);
         item.setAttribute("data-series-visible", String(series.visible));
         const swatch = documentHost.createElement("span");
-        swatch.style.backgroundColor = SERIES_STYLE[series.id].color;
+        const style = SERIES_STYLE[series.id];
+        if (style.dash === "") {
+            swatch.style.backgroundColor = style.color;
+        } else {
+            const dashLength = series.id === "recent" ? 8 : 2;
+            const gapLength = series.id === "recent" ? 5 : 6;
+            swatch.style.backgroundColor = "transparent";
+            swatch.style.backgroundImage = `repeating-linear-gradient(90deg, ${style.color} 0 ${dashLength}px, transparent ${dashLength}px ${dashLength + gapLength}px)`;
+        }
         item.append(swatch, documentHost.createTextNode(series.visible ? series.label : `${series.label}（非表示）`));
         legend.append(item);
     }
@@ -447,10 +459,25 @@ function createChart(
     }
 
     const visibleSeries = resolveVisibleSeries(panel, viewModel);
+    const currentColor = resolveCurrentSeriesColor(panel.segment);
+    const currentArea = documentHost.createElementNS("http://www.w3.org/2000/svg", "path");
+    currentArea.setAttribute(
+        "d",
+        buildAreaPath(panel.current.points, domain, padding, plotWidth, plotHeight)
+    );
+    currentArea.setAttribute(
+        "fill",
+        panel.segment === "all" ? "rgba(31, 95, 191, 0.08)" : "rgba(67, 160, 71, 0.10)"
+    );
+    currentArea.setAttribute(BOOKING_CURVE_REFERENCE_AREA_ATTRIBUTE, panel.segment);
+    svg.append(currentArea);
     for (const series of visibleSeries) {
-        const style = SERIES_STYLE[series.id];
+        const style = series.id === "current"
+            ? { ...SERIES_STYLE.current, color: currentColor }
+            : SERIES_STYLE[series.id];
         const path = documentHost.createElementNS("http://www.w3.org/2000/svg", "path");
         path.setAttribute("d", buildLinePath(series.points, domain, padding, plotWidth, plotHeight));
+        path.setAttribute(BOOKING_CURVE_REFERENCE_SERIES_ATTRIBUTE, series.id);
         path.setAttribute("fill", "none");
         path.setAttribute("stroke", style.color);
         path.setAttribute("stroke-width", String(style.width));
@@ -460,18 +487,21 @@ function createChart(
             path.setAttribute("stroke-dasharray", style.dash);
         }
         svg.append(path);
-        for (const [index, point] of series.points.entries()) {
-            if (point.value === null) {
-                continue;
-            }
-            const circle = documentHost.createElementNS("http://www.w3.org/2000/svg", "circle");
-            circle.setAttribute("cx", scaleX(index, series.points.length, padding.left, plotWidth).toFixed(2));
-            circle.setAttribute("cy", scaleY(point.value, domain, padding.top, plotHeight).toFixed(2));
-            circle.setAttribute("r", series.id === "current" ? "3" : "2.4");
-            circle.setAttribute("fill", style.color);
-            svg.append(circle);
-        }
     }
+
+    const activeGuide = documentHost.createElementNS("http://www.w3.org/2000/svg", "line");
+    activeGuide.setAttribute("x1", String(padding.left));
+    activeGuide.setAttribute("x2", String(padding.left));
+    activeGuide.setAttribute("y1", String(padding.top));
+    activeGuide.setAttribute("y2", String(padding.top + plotHeight));
+    activeGuide.setAttribute("visibility", "hidden");
+    activeGuide.setAttribute(BOOKING_CURVE_REFERENCE_ACTIVE_GUIDE_ATTRIBUTE, "");
+    const activePoint = documentHost.createElementNS("http://www.w3.org/2000/svg", "circle");
+    activePoint.setAttribute("r", "4.5");
+    activePoint.setAttribute("stroke", currentColor);
+    activePoint.setAttribute("visibility", "hidden");
+    activePoint.setAttribute(BOOKING_CURVE_REFERENCE_ACTIVE_POINT_ATTRIBUTE, "");
+    svg.append(activeGuide, activePoint);
 
     for (const [index, point] of panel.current.points.entries()) {
         if (!visibleSeries.some((series) => series.points[index]?.value !== null)) {
@@ -490,10 +520,29 @@ function createChart(
         if (displayTicks.has(point.tick as never)) {
             hitbox.setAttribute("tabindex", "0");
         }
-        const show = (): void => showTooltip(tooltip, point.tick, visibleSeries, index);
-        const hide = (): void => { tooltip.hidden = true; };
-        hitbox.addEventListener("mouseenter", show);
-        hitbox.addEventListener("focus", show);
+        const currentValue = panel.current.points[index]?.value ?? null;
+        const show = (cursorClientX: number | null): void => showTooltip(
+            tooltip,
+            activeGuide,
+            activePoint,
+            point.tick,
+            visibleSeries,
+            index,
+            center,
+            currentValue,
+            domain,
+            padding,
+            plotHeight,
+            width,
+            cursorClientX
+        );
+        const hide = (): void => hideTooltip(tooltip, activeGuide, activePoint);
+        hitbox.addEventListener("mouseenter", (event) => show(event.clientX));
+        hitbox.addEventListener("focus", () => show(null));
+        hitbox.addEventListener("click", () => {
+            (hitbox as SVGRectElement & { focus: () => void }).focus();
+            show(null);
+        });
         hitbox.addEventListener("mouseleave", hide);
         hitbox.addEventListener("blur", hide);
         svg.append(hitbox);
@@ -531,13 +580,22 @@ function createChart(
         hitbox.setAttribute("tabindex", "0");
         hitbox.setAttribute("role", "img");
         hitbox.setAttribute("aria-label", buildRankMarkerAriaLabel(marker));
-        const show = (): void => showRankMarkerTooltip(tooltip, marker);
-        const hide = (): void => { tooltip.hidden = true; };
-        hitbox.addEventListener("mouseenter", show);
-        hitbox.addEventListener("focus", show);
+        const show = (cursorClientX: number | null): void => showRankMarkerTooltip(
+            tooltip,
+            activeGuide,
+            activePoint,
+            marker,
+            x,
+            y,
+            width,
+            cursorClientX
+        );
+        const hide = (): void => hideTooltip(tooltip, activeGuide, activePoint);
+        hitbox.addEventListener("mouseenter", (event) => show(event.clientX));
+        hitbox.addEventListener("focus", () => show(null));
         hitbox.addEventListener("click", () => {
             (hitbox as SVGCircleElement & { focus: () => void }).focus();
-            show();
+            show(null);
         });
         hitbox.addEventListener("mouseleave", hide);
         hitbox.addEventListener("blur", hide);
@@ -722,11 +780,58 @@ function buildLinePath(
     return commands.join(" ");
 }
 
+function buildAreaPath(
+    points: readonly BookingCurveReferenceSeriesPoint[],
+    domain: { max: number; min: number },
+    padding: { left: number; top: number },
+    plotWidth: number,
+    plotHeight: number
+): string {
+    const commands: string[] = [];
+    let segment: Array<{ x: number; y: number }> = [];
+    const closeSegment = (): void => {
+        const first = segment[0];
+        const last = segment[segment.length - 1];
+        if (first === undefined || last === undefined) {
+            segment = [];
+            return;
+        }
+        const baseline = padding.top + plotHeight;
+        commands.push(
+            `M ${first.x.toFixed(2)} ${baseline.toFixed(2)}`,
+            ...segment.map((point) => `L ${point.x.toFixed(2)} ${point.y.toFixed(2)}`),
+            `L ${last.x.toFixed(2)} ${baseline.toFixed(2)} Z`
+        );
+        segment = [];
+    };
+    for (const [index, point] of points.entries()) {
+        if (point.value === null) {
+            closeSegment();
+            continue;
+        }
+        segment.push({
+            x: scaleX(index, points.length, padding.left, plotWidth),
+            y: scaleY(point.value, domain, padding.top, plotHeight)
+        });
+    }
+    closeSegment();
+    return commands.join(" ");
+}
+
 function showTooltip(
     tooltip: HTMLElement,
+    guide: SVGLineElement,
+    activePoint: SVGCircleElement,
     tick: BookingCurveReferenceSeriesPoint["tick"],
     series: readonly BookingCurveReferenceSeries[],
-    index: number
+    index: number,
+    x: number,
+    currentValue: number | null,
+    domain: { max: number; min: number },
+    padding: { left: number; top: number },
+    plotHeight: number,
+    chartViewBoxWidth: number,
+    cursorClientX: number | null
 ): void {
     tooltip.replaceChildren();
     const strong = tooltip.ownerDocument.createElement("strong");
@@ -742,11 +847,24 @@ function showTooltip(
     }
     tooltip.append(strong, list);
     tooltip.hidden = false;
+    showActivePosition(
+        guide,
+        activePoint,
+        x,
+        currentValue === null ? null : scaleY(currentValue, domain, padding.top, plotHeight)
+    );
+    positionBookingCurveTooltip(tooltip, x, chartViewBoxWidth, cursorClientX);
 }
 
 function showRankMarkerTooltip(
     tooltip: HTMLElement,
-    marker: BookingCurveReferenceRankMarker
+    guide: SVGLineElement,
+    activePoint: SVGCircleElement,
+    marker: BookingCurveReferenceRankMarker,
+    x: number,
+    y: number,
+    chartViewBoxWidth: number,
+    cursorClientX: number | null
 ): void {
     tooltip.replaceChildren();
     const strong = tooltip.ownerDocument.createElement("strong");
@@ -763,6 +881,67 @@ function showRankMarkerTooltip(
     }
     tooltip.append(strong, list);
     tooltip.hidden = false;
+    showActivePosition(guide, activePoint, x, y);
+    positionBookingCurveTooltip(tooltip, x, chartViewBoxWidth, cursorClientX);
+}
+
+function showActivePosition(
+    guide: SVGLineElement,
+    activePoint: SVGCircleElement,
+    x: number,
+    y: number | null
+): void {
+    guide.setAttribute("visibility", "visible");
+    guide.setAttribute("x1", x.toFixed(2));
+    guide.setAttribute("x2", x.toFixed(2));
+    if (y === null) {
+        activePoint.setAttribute("visibility", "hidden");
+        return;
+    }
+    activePoint.setAttribute("visibility", "visible");
+    activePoint.setAttribute("cx", x.toFixed(2));
+    activePoint.setAttribute("cy", y.toFixed(2));
+}
+
+function hideTooltip(
+    tooltip: HTMLElement,
+    guide: SVGLineElement,
+    activePoint: SVGCircleElement
+): void {
+    tooltip.hidden = true;
+    guide.setAttribute("visibility", "hidden");
+    activePoint.setAttribute("visibility", "hidden");
+}
+
+function positionBookingCurveTooltip(
+    tooltip: HTMLElement,
+    x: number,
+    chartViewBoxWidth: number,
+    cursorClientX: number | null
+): void {
+    const panelRect = tooltip.parentElement?.getBoundingClientRect();
+    const panelWidth = panelRect?.width ?? chartViewBoxWidth;
+    const scale = chartViewBoxWidth > 0 ? panelWidth / chartViewBoxWidth : 1;
+    const panelViewportLeft = panelRect?.left ?? 0;
+    const xInPanel = cursorClientX === null ? x * scale : cursorClientX - panelViewportLeft;
+    const tooltipHalfWidth = Math.min(
+        Math.max(0, panelWidth / 2 - 4),
+        Math.max(48, tooltip.offsetWidth / 2)
+    );
+    tooltip.style.left = `${Math.max(
+        tooltipHalfWidth + 4,
+        Math.min(xInPanel, panelWidth - tooltipHalfWidth - 4)
+    )}px`;
+}
+
+function resolveCurrentSeriesColor(segment: BookingCurveReferencePanel["segment"]): string {
+    if (segment === "transient") {
+        return "#2f8f5b";
+    }
+    if (segment === "group") {
+        return "#8b6f2a";
+    }
+    return SERIES_STYLE.current.color;
 }
 
 function buildRankMarkerAriaLabel(marker: BookingCurveReferenceRankMarker): string {
@@ -1043,6 +1222,15 @@ export function getBookingCurveReferenceStyles(): string {
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-capacity] {
     stroke: #7b8791; stroke-width: 1.2; stroke-dasharray: 2 4;
 }
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_ACTIVE_GUIDE_ATTRIBUTE}] {
+    stroke: rgba(95, 118, 148, .42); stroke-width: 1.5; stroke-dasharray: 4 4;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_ACTIVE_POINT_ATTRIBUTE}] {
+    fill: #fff; stroke-width: 2.5;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE}] {
+    cursor: crosshair;
+}
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-guide] {
     stroke: #8b2f6d; stroke-width: 1.2; stroke-dasharray: 3 4; opacity: .52;
 }
@@ -1053,10 +1241,11 @@ export function getBookingCurveReferenceStyles(): string {
     fill: transparent; cursor: pointer;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-tooltip] {
-    position: absolute; z-index: 2; top: 10px; left: 50%;
+    position: absolute; z-index: 2; top: 10px;
     width: min(300px, calc(100% - 8px)); transform: translateX(-50%);
     padding: 7px 9px; border: 1px solid #d7e0ef; border-radius: 10px; background: rgba(255,255,255,.96);
     box-shadow: 0 8px 24px rgba(80,98,122,.12); color: #243447; font-size: 11px; line-height: 1.5;
+    pointer-events: none;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-tooltip][hidden] { display: none; }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-tooltip] ul {

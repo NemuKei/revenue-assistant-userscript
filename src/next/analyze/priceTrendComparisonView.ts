@@ -13,6 +13,8 @@ export const PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE = "data-ra-next-price-
 export const PRICE_TREND_COMPARISON_FILTER_VALUE_ATTRIBUTE = "data-ra-next-price-trend-filter-value";
 export const PRICE_TREND_COMPARISON_SVG_ATTRIBUTE = "data-ra-next-price-trend-svg";
 export const PRICE_TREND_COMPARISON_HITBOX_ATTRIBUTE = "data-ra-next-price-trend-hitbox";
+export const PRICE_TREND_COMPARISON_GUIDE_ATTRIBUTE = "data-ra-next-price-trend-guide";
+export const PRICE_TREND_COMPARISON_HITBOX_ACTIVE_ATTRIBUTE = "data-ra-next-price-trend-hitbox-active";
 
 const PRICE_TREND_COMPARISON_STYLE_ID = "ra-next-price-trend-comparison-styles";
 
@@ -249,7 +251,7 @@ export function getPriceTrendComparisonStyles(): string {
     flex: 0 0 auto;
     border-radius: 2px;
 }
-[data-ra-next-price-trend-chart-wrap] { position: relative; min-width: 0; overflow: hidden; }
+[data-ra-next-price-trend-chart-wrap] { position: relative; min-width: 0; }
 [${PRICE_TREND_COMPARISON_SVG_ATTRIBUTE}] {
     display: block;
     width: 100%;
@@ -263,17 +265,25 @@ export function getPriceTrendComparisonStyles(): string {
     font-size: 10px;
 }
 [data-ra-next-price-trend-grid] { stroke: #dbe3e9; stroke-width: 1; }
+[${PRICE_TREND_COMPARISON_GUIDE_ATTRIBUTE}] {
+    stroke: #8fa1b8;
+    stroke-width: 1.5;
+    stroke-dasharray: 3 3;
+    pointer-events: none;
+}
+[${PRICE_TREND_COMPARISON_HITBOX_ATTRIBUTE}] { cursor: crosshair; }
+[${PRICE_TREND_COMPARISON_HITBOX_ATTRIBUTE}][${PRICE_TREND_COMPARISON_HITBOX_ACTIVE_ATTRIBUTE}="true"] {
+    fill: rgba(47, 111, 187, .08);
+}
 [data-ra-next-price-trend-tooltip] {
     position: absolute;
     z-index: 2;
     top: 28px;
-    left: 50%;
     width: max-content;
     min-width: 220px;
     max-width: min(560px, calc(100% - 16px));
     max-height: 220px;
     overflow: auto;
-    transform: translateX(-50%);
     padding: 6px 8px;
     border: 1px solid #cbd7e8;
     border-radius: 6px;
@@ -631,6 +641,14 @@ function createChart(
     }
 
     const facilityById = new Map(facilities.map((facility) => [facility.id, facility]));
+    const guide = documentHost.createElementNS("http://www.w3.org/2000/svg", "line");
+    guide.setAttribute("x1", String(padding.left));
+    guide.setAttribute("x2", String(padding.left));
+    guide.setAttribute("y1", String(padding.top));
+    guide.setAttribute("y2", String(height - padding.bottom));
+    guide.setAttribute("visibility", "hidden");
+    guide.setAttribute(PRICE_TREND_COMPARISON_GUIDE_ATTRIBUTE, "");
+    svg.append(guide);
     for (const facility of facilities) {
         const points = comparison.points
             .filter((point) => point.facilityId === facility.id)
@@ -650,23 +668,10 @@ function createChart(
         path.setAttribute("stroke-linejoin", "round");
         path.setAttribute("stroke-linecap", "round");
         svg.append(path);
-        for (const point of points) {
-            const circle = documentHost.createElementNS("http://www.w3.org/2000/svg", "circle");
-            circle.setAttribute(
-                "cx",
-                scaleX(point.leadTimeDays, maxLeadTime, minLeadTime, padding.left, plotWidth).toFixed(2)
-            );
-            circle.setAttribute(
-                "cy",
-                scaleY(point.price, domain, padding.top, plotHeight).toFixed(2)
-            );
-            circle.setAttribute("r", facility.isOwn ? "3.4" : "2.7");
-            circle.setAttribute("fill", facility.color);
-            svg.append(circle);
-        }
     }
 
     const hitWidth = Math.max(28, plotWidth / Math.max(1, leadTimeDays.length));
+    const hitboxes: SVGRectElement[] = [];
     for (const leadTime of leadTimeDays) {
         const x = scaleX(leadTime, maxLeadTime, minLeadTime, padding.left, plotWidth);
         const hitbox = documentHost.createElementNS("http://www.w3.org/2000/svg", "rect");
@@ -680,19 +685,29 @@ function createChart(
         hitbox.setAttribute("fill", "transparent");
         hitbox.setAttribute("tabindex", "0");
         hitbox.setAttribute(PRICE_TREND_COMPARISON_HITBOX_ATTRIBUTE, String(leadTime));
+        hitbox.setAttribute(PRICE_TREND_COMPARISON_HITBOX_ACTIVE_ATTRIBUTE, "false");
         hitbox.setAttribute(
             "aria-label",
             buildLeadTimeAriaLabel(leadTime, comparison.points, facilityById)
         );
-        const show = (): void => showLeadTimeTooltip(
-            tooltip,
-            leadTime,
-            comparison.points,
-            facilityById
-        );
-        const hide = (): void => { tooltip.hidden = true; };
-        hitbox.addEventListener("mouseenter", show);
-        hitbox.addEventListener("focus", show);
+        hitboxes.push(hitbox);
+        hitbox.addEventListener("mouseenter", (event) => {
+            setActiveHitbox(hitboxes, hitbox);
+            showLeadTimeTooltip(tooltip, leadTime, comparison.points, facilityById);
+            showGuide(guide, x);
+            positionTooltip(tooltip, x, width, event.clientX);
+        });
+        hitbox.addEventListener("focus", () => {
+            setActiveHitbox(hitboxes, hitbox);
+            showLeadTimeTooltip(tooltip, leadTime, comparison.points, facilityById);
+            showGuide(guide, x);
+            positionTooltip(tooltip, x, width, null);
+        });
+        const hide = (): void => {
+            tooltip.hidden = true;
+            guide.setAttribute("visibility", "hidden");
+            clearActiveHitboxes(hitboxes);
+        };
         hitbox.addEventListener("mouseleave", hide);
         hitbox.addEventListener("blur", hide);
         svg.append(hitbox);
@@ -814,6 +829,52 @@ function showLeadTimeTooltip(
     table.append(head, body);
     tooltip.replaceChildren(title, table);
     tooltip.hidden = false;
+}
+
+function setActiveHitbox(hitboxes: readonly SVGRectElement[], active: SVGRectElement): void {
+    for (const hitbox of hitboxes) {
+        hitbox.setAttribute(
+            PRICE_TREND_COMPARISON_HITBOX_ACTIVE_ATTRIBUTE,
+            String(hitbox === active)
+        );
+    }
+}
+
+function clearActiveHitboxes(hitboxes: readonly SVGRectElement[]): void {
+    for (const hitbox of hitboxes) {
+        hitbox.setAttribute(PRICE_TREND_COMPARISON_HITBOX_ACTIVE_ATTRIBUTE, "false");
+    }
+}
+
+function showGuide(guide: SVGLineElement, x: number): void {
+    guide.setAttribute("visibility", "visible");
+    guide.setAttribute("x1", x.toFixed(2));
+    guide.setAttribute("x2", x.toFixed(2));
+}
+
+function positionTooltip(
+    tooltip: HTMLElement,
+    x: number,
+    chartViewBoxWidth: number,
+    cursorClientX: number | null
+): void {
+    const panelRect = tooltip.parentElement?.getBoundingClientRect();
+    const panelWidth = panelRect?.width ?? chartViewBoxWidth;
+    const scale = chartViewBoxWidth > 0 ? panelWidth / chartViewBoxWidth : 1;
+    const panelViewportLeft = panelRect?.left ?? 0;
+    const xInPanel = cursorClientX === null ? x * scale : cursorClientX - panelViewportLeft;
+    const tooltipOffset = 8;
+    const rightSideLeft = xInPanel + tooltipOffset;
+    const viewportWidth = tooltip.ownerDocument.defaultView?.innerWidth ?? panelViewportLeft + panelWidth;
+    const panelConstrainedLeft = panelWidth - tooltipOffset - tooltip.offsetWidth;
+    const viewportConstrainedLeft = viewportWidth
+        - tooltipOffset
+        - tooltip.offsetWidth
+        - panelViewportLeft;
+    tooltip.style.left = `${Math.max(
+        tooltipOffset,
+        Math.min(rightSideLeft, panelConstrainedLeft, viewportConstrainedLeft)
+    )}px`;
 }
 
 function buildLeadTimeAriaLabel(

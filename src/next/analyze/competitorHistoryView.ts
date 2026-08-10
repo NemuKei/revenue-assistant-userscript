@@ -310,7 +310,7 @@ export function getCompetitorHistoryStyles(): string {
     top: 28px;
     width: max-content;
     min-width: 220px;
-    max-width: min(560px, 90vw);
+    max-width: min(560px, calc(100% - 16px));
     max-height: 220px;
     overflow: auto;
     padding: 6px 8px;
@@ -957,13 +957,15 @@ function positionTooltip(
     const xInPanel = cursorClientX === null ? x * scale : cursorClientX - panelViewportLeft;
     const tooltipOffset = 8;
     const rightSideLeft = xInPanel + tooltipOffset;
-    const viewportConstrainedLeft = window.innerWidth
+    const viewportWidth = tooltip.ownerDocument.defaultView?.innerWidth ?? panelViewportLeft + panelWidth;
+    const panelConstrainedLeft = panelWidth - tooltipOffset - tooltip.offsetWidth;
+    const viewportConstrainedLeft = viewportWidth
         - tooltipOffset
         - tooltip.offsetWidth
         - panelViewportLeft;
     tooltip.style.left = `${Math.max(
         tooltipOffset,
-        Math.min(rightSideLeft, viewportConstrainedLeft)
+        Math.min(rightSideLeft, panelConstrainedLeft, viewportConstrainedLeft)
     )}px`;
 }
 

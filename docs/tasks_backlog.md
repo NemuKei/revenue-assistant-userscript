@@ -558,7 +558,7 @@
 ### RAU-UX-164 直近型終端と季節型source取得を補正する
 
 - 状態:
-  - source、spec、focused / full check、合成Chrome QAまで完了。Next manual publication、Tampermonkey更新、Revenue Assistant実画面QAは別gateである。
+  - source、spec、focused / full check、合成Chrome QA、Next `0.2.0.9`へのmanual publicationまで完了。利用者は更新後実画面で参考線表示を確認した。
 - 解決する問題:
   - Next `0.2.0.8`実画面では、直近型の`0日前`が少数のexact source、ACTが別のlanding集合から作られ、終端に不自然な山が出た。季節型はtoggleがONでも、取得計画が季節型sourceを対象外にしていたため`着地source不足`で線がなかった。
 - 実装境界:
@@ -569,13 +569,35 @@
   - focused checkで、不一致母集団の終端補間、一致母集団のexact維持、post-stay seasonal landing、前年・前々年同月同曜日だけのtask、calendar backgroundへのseasonal 0件、landing後の年齢再取得0件を固定した。
   - 合成ChromeではNext root 1、2 panel、季節型8日、緑path 2本、直近型0日前の表示補間、0日前とACTの終端差1室未満、console log 0件を確認した。
   - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.164`、276,636 bytes、SHA-256 `86384D6DE02AC95ADCAF455F5E561233ABC0572D3A9B3CCC4418E9944F7E5F9E`、updateURL / downloadURLなしである。
+- 配信確認:
+  - 2026-08-10にsource `85061f1cfec7b736f4bccc3a35bf5348901ba450`をmanual workflow run `31356748421`で公開版`0.2.0.9`へ配信した。公開Nextは276,840 bytes、SHA-256 `DD78D2DFCE66EC0445A2D82CC24C972C339B325A4E4CD41A8A4AC592E7E82153`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_002_curve_core.md`
   - `decision: D-20260810-002`
 
-Remaining Task Triage は Now `RAU-UX-164`のNext manual publicationと更新後の通常Chrome live QA、ならびに`RAU-UX-161` / `RAU-UX-162`の未確認項目を同じ実画面で確認すること、After Next / Laterなしとする。`main` pushは公開を開始しない。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+### RAU-UX-165 Analyzeグラフの線種とTooltip操作をClassicへ揃える
+
+- 状態:
+  - source、spec、focused / full check、desktop / 390px合成Chrome QAまで完了。Next manual publicationと更新後の通常Chrome実画面QAを待つ。
+- 解決する問題:
+  - booking curveの現在 / referenceが主に色違いで、通常pointが線を埋め、固定位置Tooltipでは選択LTが分かりにくい。90日価格推移も固定Tooltipと選択guide欠落が同じ問題を持つ。
+  - 競合価格履歴も同じ基準で点検し、既存のClassic同等挙動を退行させない。
+- 実装境界:
+  - booking curveは現在の面 / 太実線、reference別破線、線種を示す凡例、active guide / point、追従Tooltipへ揃える。90日価格推移は通常pointを外し、active列 / guide / 追従Tooltipを戻す。競合価格履歴は既存挙動を維持する。
+  - 取得、保存、差分補充、API、retention、Revenue Assistant writeは変更しない。
+- 合格条件と結果:
+  - booking curveは現在area / 太実線、直近型`8 5` / 季節型`2 6`、線種凡例、通常pointなし、active guide / point、cursor / focus追従Tooltipを確認した。current欠損のACTではguideを残しactive pointだけを隠す。
+  - 90日価格推移は通常pointなし、active列 / guide / 追従Tooltip、競合価格履歴は既存point / active列 / guide / 追従Tooltipを確認した。390 x 844で3 rootともoverflow 0、Tooltipはchart / viewport内へ収まった。
+  - focused check、`npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、`git diff --check`が通過した。local candidateはversion `0.1.0.165`、280,076 bytes、SHA-256 `48A4813D66146C9C44DDC6FC2FEBA5A35D7FFD3F39FCE14442E4486011DAAB46`、updateURL / downloadURLなしである。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260810-004`
+
+Remaining Task Triage は Now `RAU-UX-165`のNext manual publicationと更新後の通常Chrome live QAとし、`RAU-UX-161` / `RAU-UX-162`の未確認項目も可能なら同じ実画面で確認する。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
