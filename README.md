@@ -229,6 +229,8 @@ version の扱いは `--version-policy warn | fail` で指定します。既定�
 
 ### 月次実績画面
 
+この節の月次実績拡張はClassic source / runtimeに実装済みの機能です。公開中のNext `0.2.0.13`のentryにはまだ接続していないため、Classicを無効にしてNextだけを実行している場合は表示されません。
+
 月次実績画面向けには、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。
 
 `/api/v1/booking_curve/monthly` の結果は、`facilityCacheKey + yearMonth + batchDateKey` ごとの IndexedDB snapshot として保存します。現在の preview は、同じ batch date の snapshot がなければ API 取得して保存し、その後に保存済み snapshot を読んで表示します。過去 batch の履歴比較にはまだ使っていません。
