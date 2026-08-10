@@ -176,7 +176,11 @@ assert.match(viewSource, /positionTooltip\(tooltip, center, width, event\.client
 assert.match(viewSource, /setActiveHitbox\(hitboxes, hitbox\)/u);
 assert.match(viewSource, /showGuide\(guide, center\)/u);
 assert.match(viewSource, /positionTooltip\(tooltip, center, width, null\)/u);
-assert.match(viewSource, /panelConstrainedLeft/u);
+assert.match(viewSource, /const rightSideLeft = xInViewport \+ tooltipOffset/u);
+assert.match(viewSource, /Math\.min\(rightSideLeft, viewportConstrainedLeft\)/u);
+assert.doesNotMatch(viewSource, /panelConstrainedLeft/u);
+assert.match(viewSource, /max-width: min\(560px, calc\(100vw - 16px\)\)/u);
+assert.match(viewSource, /position: fixed/u);
 assert.equal(model.formatCompetitorHistoryRoomType("FOUR_BEDS"), "フォース");
 assert.equal(model.formatCompetitorHistoryRoomType("SEMI_DOUBLE"), "セミダブル");
 assert.equal(model.formatCompetitorHistoryMealType("NONE"), "素泊まり");

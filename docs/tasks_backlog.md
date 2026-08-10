@@ -580,7 +580,7 @@
 ### RAU-UX-165 Analyzeグラフの線種とTooltip操作をClassicへ揃える
 
 - 状態:
-  - source、spec、focused / full check、desktop / 390px合成Chrome QA、Next `0.2.0.10`へのmanual publicationまで完了。更新後の通常Chrome実画面QAを待つ。
+  - source、spec、focused / full check、desktop / 390px合成Chrome QA、Next `0.2.0.10`へのmanual publicationまで完了。利用者は更新後の通常Chrome実画面でグラフ色と線種を確認し、Tooltipのpanel clampだけを`RAU-UX-166`へ切り分けた。
 - 解決する問題:
   - booking curveの現在 / referenceが主に色違いで、通常pointが線を埋め、固定位置Tooltipでは選択LTが分かりにくい。90日価格推移も固定Tooltipと選択guide欠落が同じ問題を持つ。
   - 競合価格履歴も同じ基準で点検し、既存のClassic同等挙動を退行させない。
@@ -598,7 +598,27 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260810-004`
 
-Remaining Task Triage は Now `RAU-UX-165`更新後の通常Chrome live QAとし、`RAU-UX-161` / `RAU-UX-162`の未確認項目も可能なら同じ実画面で確認する。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+### RAU-UX-166 Analyze Tooltipのpanel clampをClassicへ揃える
+
+- 状態:
+  - source、spec、focused / full check、desktop / 390px合成Chrome QAまで完了。Next manual publicationと更新後の通常Chrome実画面QAを待つ。
+- 解決する問題:
+  - Tooltipがchart panel内へ限定されるため、選択位置の近くでcursorやguideへ重なりやすい。
+- 実装境界:
+  - booking curve、競合価格履歴、90日価格推移のTooltipをcursorまたはkeyboard選択位置の右へ8px空け、panel端を越えてよく、viewport端だけでclampする。booking curveの中央寄せtransformは外す。
+  - 色 / 線種、active guide / point / column、mouse / keyboard / tap、accessible table、panel layout、標準UI、取得、保存、API、retention、Revenue Assistant writeは変更しない。
+- 合格条件とlocal結果:
+  - 左側または中央の選択ではTooltip左端を選択位置の右8pxへ置き、desktop合成Chromeで3グラフすべてがpanel右端を越えて表示できることを確認した。
+  - viewport端ではTooltip全体をviewport内へ収める。390 x 844で3種すべてのviewport内収容を確認し、価格推移はroot / document overflow 0、booking curveと競合価格は標準fixture由来の既存document overflowを増やさなかった。
+  - focused check、`npm run typecheck`、`npm run lint`、`npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.166`、280,806 bytes、SHA-256 `D3FE4B11B0E801F1289E7B6EF91CB28A640FB6137A14F647FEEDAC0979A1CEA4`、updateURL / downloadURLなしである。
+  - 配信後の通常Chrome実画面で3グラフのguide / Tooltip / 標準UIを確認する。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260810-005`
+
+Remaining Task Triage は Now `RAU-UX-166`のNext manual publication、Tampermonkey更新、通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

@@ -305,12 +305,11 @@ export function getCompetitorHistoryStyles(): string {
     fill: rgba(47, 111, 187, 0.08);
 }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-tooltip] {
-    position: absolute;
-    z-index: 2;
-    top: 28px;
+    position: fixed;
+    z-index: 10;
     width: max-content;
     min-width: 220px;
-    max-width: min(560px, calc(100% - 16px));
+    max-width: min(560px, calc(100vw - 16px));
     max-height: 220px;
     overflow: auto;
     padding: 6px 8px;
@@ -951,21 +950,28 @@ function positionTooltip(
     cursorClientX: number | null
 ): void {
     const panelRect = tooltip.parentElement?.getBoundingClientRect();
-    const panelWidth = panelRect?.width ?? chartViewBoxWidth;
-    const scale = chartViewBoxWidth > 0 ? panelWidth / chartViewBoxWidth : 1;
-    const panelViewportLeft = panelRect?.left ?? 0;
-    const xInPanel = cursorClientX === null ? x * scale : cursorClientX - panelViewportLeft;
+    const chartRect = tooltip.parentElement?.querySelector("svg")?.getBoundingClientRect();
+    const renderedChartWidth = chartRect?.width ?? panelRect?.width ?? chartViewBoxWidth;
+    const chartViewportLeft = chartRect?.left ?? panelRect?.left ?? 0;
+    const scale = chartViewBoxWidth > 0 ? renderedChartWidth / chartViewBoxWidth : 1;
+    const xInViewport = cursorClientX ?? chartViewportLeft + x * scale;
     const tooltipOffset = 8;
-    const rightSideLeft = xInPanel + tooltipOffset;
-    const viewportWidth = tooltip.ownerDocument.defaultView?.innerWidth ?? panelViewportLeft + panelWidth;
-    const panelConstrainedLeft = panelWidth - tooltipOffset - tooltip.offsetWidth;
+    const rightSideLeft = xInViewport + tooltipOffset;
+    const viewport = tooltip.ownerDocument.defaultView;
+    const viewportWidth = viewport?.innerWidth ?? tooltip.ownerDocument.documentElement.clientWidth;
+    const viewportHeight = viewport?.innerHeight ?? tooltip.ownerDocument.documentElement.clientHeight;
     const viewportConstrainedLeft = viewportWidth
         - tooltipOffset
-        - tooltip.offsetWidth
-        - panelViewportLeft;
+        - tooltip.offsetWidth;
+    const desiredTop = (chartRect?.top ?? panelRect?.top ?? 0) + 28;
+    const viewportConstrainedTop = viewportHeight - tooltipOffset - tooltip.offsetHeight;
     tooltip.style.left = `${Math.max(
         tooltipOffset,
-        Math.min(rightSideLeft, panelConstrainedLeft, viewportConstrainedLeft)
+        Math.min(rightSideLeft, viewportConstrainedLeft)
+    )}px`;
+    tooltip.style.top = `${Math.max(
+        tooltipOffset,
+        Math.min(desiredTop, viewportConstrainedTop)
     )}px`;
 }
 

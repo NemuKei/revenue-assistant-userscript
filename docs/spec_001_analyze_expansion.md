@@ -74,9 +74,9 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 #### Next chart visual / interaction parity (`RAU-UX-165`)
 
 - booking curveは、現在値を太い実線と薄い面で主系列として示し、直近型を`8 5`、季節型を`2 6`の異なる破線で示す。凡例も同じ線種を表示し、色だけを見分けの根拠にしない。通常時に全pointへ丸を並べず、hover / keyboard focus中の選択点だけを白抜き丸で強調する。
-- booking curveのhover / keyboard focusでは、選択LTを示すvertical guideと現在値のactive pointを表示する。currentが欠損するLTではguideは表示し、active pointだけを隠す。Tooltipはchart中央へ固定せず、mouseではcursor、keyboardでは選択LTの近くへ移動し、左右端とviewport内へ収める。rank markerのTooltipもmarker位置へ追従し、離脱時はTooltip、guide、active pointを同時に隠す。
-- 90日価格推移はClassicと同じく通常時は施設別lineを主役とし、全pointの常時markerは置かない。hover / keyboard focusでは選択lead time列を薄く着色し、vertical guideを表示し、Tooltipをcursorまたは選択lead timeの近くへ収める。
-- 競合価格履歴は既存のactive列、vertical guide、cursor / 日付追従Tooltip、施設別pointを維持する。今回の共通点検でこの契約を別の表示方式へ変更しない。
+- booking curveのhover / keyboard focusでは、選択LTを示すvertical guideと現在値のactive pointを表示する。currentが欠損するLTではguideは表示し、active pointだけを隠す。Tooltipはchart中央へ固定せず、mouseではcursor、keyboardでは選択LTの右へ間隔を空けて置く。chart panelの端は表示境界にせず隣のpanel側へ出してよく、browser viewportの端だけでclampする。rank markerのTooltipも同じ配置でmarker位置へ追従し、離脱時はTooltip、guide、active pointを同時に隠す。
+- 90日価格推移はClassicと同じく通常時は施設別lineを主役とし、全pointの常時markerは置かない。hover / keyboard focusでは選択lead time列を薄く着色し、vertical guideを表示し、Tooltipをcursorまたは選択lead timeの右へ間隔を空けて置く。panel端では押し戻さず、viewport端だけでclampする。
+- 競合価格履歴は既存のactive列、vertical guide、cursor / 日付追従Tooltip、施設別pointを維持する。TooltipはClassicと同じくcursorまたは選択日付の右へ間隔を空け、panel端を越えてよく、viewport端だけでclampする。
 - 3グラフともmouseだけに依存せず、focus可能なhitbox、aria label、accessible tableを維持する。表示変更を理由に取得対象、API、保存schema、差分補充、retention、Revenue Assistant writeを変更しない。
 
 ### Candidate: Room-Type Booking Curve

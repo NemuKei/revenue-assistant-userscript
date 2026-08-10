@@ -920,17 +920,28 @@ function positionBookingCurveTooltip(
     cursorClientX: number | null
 ): void {
     const panelRect = tooltip.parentElement?.getBoundingClientRect();
-    const panelWidth = panelRect?.width ?? chartViewBoxWidth;
-    const scale = chartViewBoxWidth > 0 ? panelWidth / chartViewBoxWidth : 1;
-    const panelViewportLeft = panelRect?.left ?? 0;
-    const xInPanel = cursorClientX === null ? x * scale : cursorClientX - panelViewportLeft;
-    const tooltipHalfWidth = Math.min(
-        Math.max(0, panelWidth / 2 - 4),
-        Math.max(48, tooltip.offsetWidth / 2)
-    );
+    const chartRect = tooltip.parentElement?.querySelector("svg")?.getBoundingClientRect();
+    const renderedChartWidth = chartRect?.width ?? panelRect?.width ?? chartViewBoxWidth;
+    const chartViewportLeft = chartRect?.left ?? panelRect?.left ?? 0;
+    const scale = chartViewBoxWidth > 0 ? renderedChartWidth / chartViewBoxWidth : 1;
+    const xInViewport = cursorClientX ?? chartViewportLeft + x * scale;
+    const tooltipOffset = 8;
+    const rightSideLeft = xInViewport + tooltipOffset;
+    const viewport = tooltip.ownerDocument.defaultView;
+    const viewportWidth = viewport?.innerWidth ?? tooltip.ownerDocument.documentElement.clientWidth;
+    const viewportHeight = viewport?.innerHeight ?? tooltip.ownerDocument.documentElement.clientHeight;
+    const viewportConstrainedLeft = viewportWidth
+        - tooltipOffset
+        - tooltip.offsetWidth;
+    const desiredTop = (chartRect?.top ?? panelRect?.top ?? 0) + 10;
+    const viewportConstrainedTop = viewportHeight - tooltipOffset - tooltip.offsetHeight;
     tooltip.style.left = `${Math.max(
-        tooltipHalfWidth + 4,
-        Math.min(xInPanel, panelWidth - tooltipHalfWidth - 4)
+        tooltipOffset,
+        Math.min(rightSideLeft, viewportConstrainedLeft)
+    )}px`;
+    tooltip.style.top = `${Math.max(
+        tooltipOffset,
+        Math.min(desiredTop, viewportConstrainedTop)
     )}px`;
 }
 
@@ -1119,7 +1130,7 @@ export function getBookingCurveReferenceStyles(): string {
     min-width: 0;
     margin: 0 0 14px;
     padding: 10px 12px 12px;
-    overflow-x: hidden;
+    overflow: visible;
     border: 1px solid #dfe7f5;
     border-radius: 12px;
     background: #fafcff;
@@ -1241,8 +1252,8 @@ export function getBookingCurveReferenceStyles(): string {
     fill: transparent; cursor: pointer;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-tooltip] {
-    position: absolute; z-index: 2; top: 10px;
-    width: min(300px, calc(100% - 8px)); transform: translateX(-50%);
+    position: fixed; z-index: 10;
+    width: max-content; max-width: min(300px, calc(100vw - 16px));
     padding: 7px 9px; border: 1px solid #d7e0ef; border-radius: 10px; background: rgba(255,255,255,.96);
     box-shadow: 0 8px 24px rgba(80,98,122,.12); color: #243447; font-size: 11px; line-height: 1.5;
     pointer-events: none;
