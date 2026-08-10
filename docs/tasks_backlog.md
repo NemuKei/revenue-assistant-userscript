@@ -580,7 +580,7 @@
 ### RAU-UX-165 Analyzeグラフの線種とTooltip操作をClassicへ揃える
 
 - 状態:
-  - source、spec、focused / full check、desktop / 390px合成Chrome QAまで完了。Next manual publicationと更新後の通常Chrome実画面QAを待つ。
+  - source、spec、focused / full check、desktop / 390px合成Chrome QA、Next `0.2.0.10`へのmanual publicationまで完了。更新後の通常Chrome実画面QAを待つ。
 - 解決する問題:
   - booking curveの現在 / referenceが主に色違いで、通常pointが線を埋め、固定位置Tooltipでは選択LTが分かりにくい。90日価格推移も固定Tooltipと選択guide欠落が同じ問題を持つ。
   - 競合価格履歴も同じ基準で点検し、既存のClassic同等挙動を退行させない。
@@ -591,13 +591,14 @@
   - booking curveは現在area / 太実線、直近型`8 5` / 季節型`2 6`、線種凡例、通常pointなし、active guide / point、cursor / focus追従Tooltipを確認した。current欠損のACTではguideを残しactive pointだけを隠す。
   - 90日価格推移は通常pointなし、active列 / guide / 追従Tooltip、競合価格履歴は既存point / active列 / guide / 追従Tooltipを確認した。390 x 844で3 rootともoverflow 0、Tooltipはchart / viewport内へ収まった。
   - focused check、`npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、`git diff --check`が通過した。local candidateはversion `0.1.0.165`、280,076 bytes、SHA-256 `48A4813D66146C9C44DDC6FC2FEBA5A35D7FFD3F39FCE14442E4486011DAAB46`、updateURL / downloadURLなしである。
+  - 2026-08-10にsource `d683b9c558c167748aadde86d73cad69c9f96d78`をmanual workflow run `31358578449`で公開版`0.2.0.10`へ配信した。公開Nextは280,281 bytes、SHA-256 `7BDAC1D59109D63527A02AFDF7400BEBD40608E3E14DAEDC27E599032AAA3F64`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260810-004`
 
-Remaining Task Triage は Now `RAU-UX-165`のNext manual publicationと更新後の通常Chrome live QAとし、`RAU-UX-161` / `RAU-UX-162`の未確認項目も可能なら同じ実画面で確認する。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now `RAU-UX-165`更新後の通常Chrome live QAとし、`RAU-UX-161` / `RAU-UX-162`の未確認項目も可能なら同じ実画面で確認する。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
