@@ -622,7 +622,7 @@
 ### RAU-UX-167 実画面でのTooltip右ずれを補正する
 
 - 状態:
-  - source、focused / full check、desktop / 390pxの変形host合成Chrome QAまで完了。Next manual publication、Tampermonkey更新、通常Chrome実画面QAを待つ。
+  - source、focused / full check、desktop / 390pxの変形host合成Chrome QA、Next `0.2.0.12`へのmanual publicationまで完了。Tampermonkey更新と通常Chrome実画面QAを待つ。
 - 解決する問題:
   - Next `0.2.0.11`ではTooltipを`position: fixed`のままchart内に置いたため、実画面でviewport座標と親要素の位置基準が重なり、cursorより大きく右へずれる場合がある。
 - 実装境界:
@@ -632,6 +632,7 @@
   - 変形済み親要素の内側でもTooltip左端が選択位置の右8pxとなり、親要素の左位置を二重加算しない。desktop合成Chromeの実測はbooking curve 7.99px、競合価格7.99px、価格推移8pxだった。
   - 3グラフともpanel外表示とviewport端clampを維持した。desktopではroot / document overflow 0、390 x 844では価格推移のroot / document overflow 0、booking curveと競合価格は標準fixture由来の既存document overflowを増やさず、console warning / errorは0だった。
   - focused check、`npm run typecheck`、`npm run lint`、`npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.167`、280,855 bytes、SHA-256 `6CC53D4AC9B447BD33D379D2EAF7AC8E737EB2D15250C18CEAABA00FCA65C4AD`、updateURL / downloadURLなしである。
+  - 2026-08-10にsource `dc9b030f37ff6d28645dc7ee7a8b5f70ab276a30`をmanual workflow run `31361995854`で公開版`0.2.0.12`へ配信した。公開Nextは281,060 bytes、SHA-256 `93F7747260CDA791534BACDC5EF9CFCCB8FFA468DDED516E7A28F0C85A4766CA`でrelease manifestと一致し、build / deploy / post-deploy verifyはすべてsuccess、Classic公開baselineは不変だった。
   - 配信後の通常Chrome実画面で3グラフのTooltip位置とguide / 標準UIを確認する。
 - metadata:
   - `spec-impact: no`
@@ -639,7 +640,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `supersedes-implementation: RAU-UX-166 fixed overlay`
 
-Remaining Task Triage は Now `RAU-UX-167`のNext manual publication、Tampermonkey更新、通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now `RAU-UX-167`のTampermonkey更新と通常Chrome live QAとする。After Next / Laterなしとする。Classic再公開、新規endpoint、calendar backgroundの季節型取得、全room一括reference、別曜日 / 周辺月取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
