@@ -6,6 +6,7 @@ import {
     type CompetitorHistoryPoint,
     type CompetitorHistoryViewModel
 } from "./competitorHistoryModel";
+import { positionViewportTooltip } from "./viewportTooltipPosition";
 
 export const COMPETITOR_HISTORY_ROOT_ATTRIBUTE = "data-ra-next-competitor-history-root";
 export const COMPETITOR_HISTORY_STYLE_ATTRIBUTE = "data-ra-next-competitor-history-style";
@@ -954,25 +955,10 @@ function positionTooltip(
     const renderedChartWidth = chartRect?.width ?? panelRect?.width ?? chartViewBoxWidth;
     const chartViewportLeft = chartRect?.left ?? panelRect?.left ?? 0;
     const scale = chartViewBoxWidth > 0 ? renderedChartWidth / chartViewBoxWidth : 1;
-    const xInViewport = cursorClientX ?? chartViewportLeft + x * scale;
-    const tooltipOffset = 8;
-    const rightSideLeft = xInViewport + tooltipOffset;
-    const viewport = tooltip.ownerDocument.defaultView;
-    const viewportWidth = viewport?.innerWidth ?? tooltip.ownerDocument.documentElement.clientWidth;
-    const viewportHeight = viewport?.innerHeight ?? tooltip.ownerDocument.documentElement.clientHeight;
-    const viewportConstrainedLeft = viewportWidth
-        - tooltipOffset
-        - tooltip.offsetWidth;
-    const desiredTop = (chartRect?.top ?? panelRect?.top ?? 0) + 28;
-    const viewportConstrainedTop = viewportHeight - tooltipOffset - tooltip.offsetHeight;
-    tooltip.style.left = `${Math.max(
-        tooltipOffset,
-        Math.min(rightSideLeft, viewportConstrainedLeft)
-    )}px`;
-    tooltip.style.top = `${Math.max(
-        tooltipOffset,
-        Math.min(desiredTop, viewportConstrainedTop)
-    )}px`;
+    positionViewportTooltip(tooltip, {
+        anchorClientX: cursorClientX ?? chartViewportLeft + x * scale,
+        preferredClientTop: (chartRect?.top ?? panelRect?.top ?? 0) + 28
+    });
 }
 
 function formatPrice(value: number): string {

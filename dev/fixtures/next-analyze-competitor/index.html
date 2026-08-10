@@ -14,6 +14,7 @@
         [data-mock-tabs] { display: flex; gap: 2px; margin-bottom: 16px; }
         [data-mock-tabs] button { min-height: 42px; padding: 8px 18px; border: 1px solid #c5d0d9; background: #fff; color: inherit; font: inherit; }
         [data-mock-competitor-section] { min-width: 0; padding: 18px 0 60px; }
+        [data-mock-competitor-section][data-transformed-host] { transform: translateZ(0); }
         [data-mock-filter] { width: min(760px, 100%); height: 58px; border: 1px solid #d3dce4; border-radius: 8px; background: #fff; }
         [data-testid="competitor-price-tax-included-text"] { margin-top: 10px; color: #5d7182; font-size: 12px; }
         [data-mock-native-table] { display: grid; grid-template-columns: repeat(5, minmax(100px, 1fr)); width: 100%; min-height: 230px; margin-top: 8px; border: 1px solid #d2dce4; border-radius: 7px; background: #fff; overflow: hidden; }
@@ -61,6 +62,9 @@
         (() => {
             const content = document.querySelector("[data-mock-competitor-section]");
             const away = document.querySelector("[data-mock-away]");
+            if (new URLSearchParams(window.location.search).get("transformed-host") === "1") {
+                content.setAttribute("data-transformed-host", "");
+            }
             document.querySelector("[data-mock-show]").addEventListener("click", () => { content.hidden = false; });
             document.querySelector("[data-mock-hide]").addEventListener("click", () => { content.hidden = true; });
             document.querySelector("[data-mock-route-away]").addEventListener("click", () => {

@@ -46,6 +46,7 @@ const expectedSources = [
     "src/next/analyze/priceTrendComparisonView.ts",
     "src/next/analyze/priceTrendCaptureStore.ts",
     "src/next/analyze/priceTrendCaptureWriter.ts",
+    "src/next/analyze/viewportTooltipPosition.ts",
     "src/next/analyze/salesSettingClassicModel.ts",
     "src/next/analyze/salesSettingClassicRuntime.ts",
     "src/next/analyze/salesSettingClassicView.ts",

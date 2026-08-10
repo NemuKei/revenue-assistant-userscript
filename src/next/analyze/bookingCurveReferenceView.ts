@@ -7,6 +7,7 @@ import type {
     BookingCurveReferenceViewModel
 } from "./bookingCurveReferenceModel";
 import type { BookingCurveRankHistoryViewState } from "./bookingCurveRankMarkerModel";
+import { positionViewportTooltip } from "./viewportTooltipPosition";
 
 export const BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE = "data-ra-next-booking-curve-reference-root";
 export const BOOKING_CURVE_REFERENCE_STYLE_ATTRIBUTE = "data-ra-next-booking-curve-reference-style";
@@ -924,25 +925,10 @@ function positionBookingCurveTooltip(
     const renderedChartWidth = chartRect?.width ?? panelRect?.width ?? chartViewBoxWidth;
     const chartViewportLeft = chartRect?.left ?? panelRect?.left ?? 0;
     const scale = chartViewBoxWidth > 0 ? renderedChartWidth / chartViewBoxWidth : 1;
-    const xInViewport = cursorClientX ?? chartViewportLeft + x * scale;
-    const tooltipOffset = 8;
-    const rightSideLeft = xInViewport + tooltipOffset;
-    const viewport = tooltip.ownerDocument.defaultView;
-    const viewportWidth = viewport?.innerWidth ?? tooltip.ownerDocument.documentElement.clientWidth;
-    const viewportHeight = viewport?.innerHeight ?? tooltip.ownerDocument.documentElement.clientHeight;
-    const viewportConstrainedLeft = viewportWidth
-        - tooltipOffset
-        - tooltip.offsetWidth;
-    const desiredTop = (chartRect?.top ?? panelRect?.top ?? 0) + 10;
-    const viewportConstrainedTop = viewportHeight - tooltipOffset - tooltip.offsetHeight;
-    tooltip.style.left = `${Math.max(
-        tooltipOffset,
-        Math.min(rightSideLeft, viewportConstrainedLeft)
-    )}px`;
-    tooltip.style.top = `${Math.max(
-        tooltipOffset,
-        Math.min(desiredTop, viewportConstrainedTop)
-    )}px`;
+    positionViewportTooltip(tooltip, {
+        anchorClientX: cursorClientX ?? chartViewportLeft + x * scale,
+        preferredClientTop: (chartRect?.top ?? panelRect?.top ?? 0) + 10
+    });
 }
 
 function resolveCurrentSeriesColor(segment: BookingCurveReferencePanel["segment"]): string {

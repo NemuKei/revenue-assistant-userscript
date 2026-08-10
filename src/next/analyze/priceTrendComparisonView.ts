@@ -7,6 +7,7 @@ import {
     type PriceTrendComparisonViewModel,
     type PriceTrendGuestComparison
 } from "./priceTrendComparisonModel";
+import { positionViewportTooltip } from "./viewportTooltipPosition";
 
 export const PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE = "data-ra-next-price-trend-comparison-root";
 export const PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE = "data-ra-next-price-trend-filter-kind";
@@ -862,25 +863,10 @@ function positionTooltip(
     const renderedChartWidth = chartRect?.width ?? panelRect?.width ?? chartViewBoxWidth;
     const chartViewportLeft = chartRect?.left ?? panelRect?.left ?? 0;
     const scale = chartViewBoxWidth > 0 ? renderedChartWidth / chartViewBoxWidth : 1;
-    const xInViewport = cursorClientX ?? chartViewportLeft + x * scale;
-    const tooltipOffset = 8;
-    const rightSideLeft = xInViewport + tooltipOffset;
-    const viewport = tooltip.ownerDocument.defaultView;
-    const viewportWidth = viewport?.innerWidth ?? tooltip.ownerDocument.documentElement.clientWidth;
-    const viewportHeight = viewport?.innerHeight ?? tooltip.ownerDocument.documentElement.clientHeight;
-    const viewportConstrainedLeft = viewportWidth
-        - tooltipOffset
-        - tooltip.offsetWidth;
-    const desiredTop = (chartRect?.top ?? panelRect?.top ?? 0) + 28;
-    const viewportConstrainedTop = viewportHeight - tooltipOffset - tooltip.offsetHeight;
-    tooltip.style.left = `${Math.max(
-        tooltipOffset,
-        Math.min(rightSideLeft, viewportConstrainedLeft)
-    )}px`;
-    tooltip.style.top = `${Math.max(
-        tooltipOffset,
-        Math.min(desiredTop, viewportConstrainedTop)
-    )}px`;
+    positionViewportTooltip(tooltip, {
+        anchorClientX: cursorClientX ?? chartViewportLeft + x * scale,
+        preferredClientTop: (chartRect?.top ?? panelRect?.top ?? 0) + 28
+    });
 }
 
 function buildLeadTimeAriaLabel(

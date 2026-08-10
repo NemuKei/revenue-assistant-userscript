@@ -30,6 +30,10 @@ const view = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveReferenceView.ts",
     import.meta.url
 );
+const tooltipPosition = await importBundledTypeScript(
+    "../src/next/analyze/viewportTooltipPosition.ts",
+    import.meta.url
+);
 const transport = await importBundledTypeScript(
     "../src/next/live/liveSimilarityLensTransport.ts",
     import.meta.url
@@ -809,12 +813,17 @@ assert.match(viewSource, /buildAreaPath\(panel\.current\.points/u);
 assert.match(viewSource, /BOOKING_CURVE_REFERENCE_AREA_ATTRIBUTE/u);
 assert.match(viewSource, /showActivePosition\(/u);
 assert.match(viewSource, /positionBookingCurveTooltip\(tooltip, x, chartViewBoxWidth, cursorClientX\)/u);
-assert.match(viewSource, /const rightSideLeft = xInViewport \+ tooltipOffset/u);
-assert.match(viewSource, /Math\.min\(rightSideLeft, viewportConstrainedLeft\)/u);
-assert.doesNotMatch(viewSource, /tooltipHalfWidth|panelConstrainedLeft/u);
+assert.match(viewSource, /positionViewportTooltip\(tooltip, \{/u);
+assert.match(viewSource, /anchorClientX: cursorClientX \?\? chartViewportLeft \+ x \* scale/u);
+assert.match(viewSource, /preferredClientTop: \(chartRect\?\.top \?\? panelRect\?\.top \?\? 0\) \+ 10/u);
+assert.doesNotMatch(viewSource, /tooltipHalfWidth|panelConstrainedLeft|const xInPanel/u);
 assert.match(styles, /max-width: min\(300px, calc\(100vw - 16px\)\)/u);
 assert.match(styles, /position: fixed; z-index: 10/u);
 assert.doesNotMatch(styles, /translateX\(-50%\)/u);
+assert.match(fixture, /data-transformed-host/u);
+assert.equal(tooltipPosition.resolveFixedCssCoordinate(500, 80, 1), 420);
+assert.equal(tooltipPosition.resolveFixedCssCoordinate(500, 80, 0.8), 525);
+assert.equal(tooltipPosition.resolveFixedCssCoordinate(500, 80, 0), 420);
 assert.match(viewSource, /show\(event\.clientX\)/u);
 assert.doesNotMatch(viewSource, /circle\.setAttribute\("r", series\.id === "current"/u);
 assert.doesNotMatch(viewSource, /閲覧のみ|booking-curve-reference-badge/u);

@@ -14,6 +14,7 @@
         [data-mock-tabs] { display: flex; gap: 2px; margin-bottom: 16px; }
         [data-mock-tabs] button { min-height: 42px; padding: 8px 18px; border: 1px solid #c5d0d9; background: #fff; color: inherit; font: inherit; }
         [data-mock-booking-content] { min-width: 0; padding: 18px; border: 1px solid #d2dce4; border-radius: 8px; background: #fff; }
+        [data-mock-booking-content][data-transformed-host] { transform: translateZ(0); }
         [data-mock-filters] { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; }
         [data-mock-filter] { height: 54px; border: 1px solid #d3dce4; border-radius: 6px; background: #f8fafb; }
         [data-testid="booking-curve-rm-room-group-list"] { display: flex; gap: 8px; margin: 16px 0; }
@@ -66,6 +67,9 @@
         (() => {
             const content = document.querySelector("[data-mock-booking-content]");
             const away = document.querySelector("[data-mock-away]");
+            if (new URLSearchParams(window.location.search).get("transformed-host") === "1") {
+                content.setAttribute("data-transformed-host", "");
+            }
             document.querySelector("[data-mock-show]").addEventListener("click", () => { content.hidden = false; });
             document.querySelector("[data-mock-hide]").addEventListener("click", () => { content.hidden = true; });
             document.querySelector("[data-mock-route-away]").addEventListener("click", () => {

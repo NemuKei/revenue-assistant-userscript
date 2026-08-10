@@ -12,6 +12,7 @@
         [data-mock-toolbar] button { min-height: 38px; padding: 7px 10px; border: 1px solid rgba(255,255,255,.75); border-radius: 6px; background: transparent; color: #fff; font: inherit; font-weight: 700; }
         [data-mock-host] { width: min(1180px, calc(100% - 32px)); margin: 22px auto; }
         [data-mock-host][data-fixed-host] { width: 1200px; min-width: 1200px; margin-left: 18px; }
+        [data-mock-host][data-transformed-host] { transform: translateZ(0); }
         [data-mock-tabs] { display: flex; gap: 8px; margin-bottom: 10px; }
         [data-mock-tabs] button { min-height: 40px; padding: 8px 15px; border: 1px solid #aebdca; border-radius: 6px; background: #fff; color: inherit; font: inherit; }
         [data-mock-tabs] [aria-selected="true"] { border-color: #2378b8; color: #1268a6; font-weight: 800; }
@@ -68,6 +69,9 @@
             const host = document.querySelector("[data-mock-host]");
             if (params.get("fixed-host") === "1") {
                 host.setAttribute("data-fixed-host", "");
+            }
+            if (params.get("transformed-host") === "1") {
+                host.setAttribute("data-transformed-host", "");
             }
             document.querySelector("[data-mock-facility-context]").addEventListener("click", (event) => {
                 event.currentTarget.textContent = event.currentTarget.textContent.includes("A")
