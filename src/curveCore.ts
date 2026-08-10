@@ -7,7 +7,7 @@ export type UnitPriceForecastModelId = "api_current_adr_baseline";
 export type SalesForecastModelId = "rooms_x_unit_price";
 
 export const RECENT_WEIGHTED_90_ALGORITHM_VERSION = "recent_weighted_90:v3";
-export const SEASONAL_COMPONENT_ALGORITHM_VERSION = "seasonal_component:v2";
+export const SEASONAL_COMPONENT_ALGORITHM_VERSION = "seasonal_component:v3";
 export const SEASONAL_RATIO_BASELINE_FORECAST_VERSION = "seasonal_ratio_baseline:v1";
 export const RECENT_DEVIATION_ADJUSTED_SEASONAL_FORECAST_VERSION = "recent_deviation_adjusted_seasonal:v1";
 export const API_CURRENT_ADR_BASELINE_FORECAST_VERSION = "api_current_adr_baseline:v1";
@@ -346,6 +346,12 @@ export interface SeasonalComponentOptions extends ReferenceCurveBaseOptions {
     targetMonth: string;
     weekday: number;
     asOfDate: string;
+    finalRooms?: readonly SeasonalFinalRoomsObservation[];
+}
+
+export interface SeasonalFinalRoomsObservation {
+    rooms: number;
+    stayDate: string;
 }
 
 interface WeightedSample {
@@ -627,7 +633,13 @@ export function buildSeasonalComponentReferenceCurve(input: CurveInput, options:
         && getUtcWeekday(observation.stayDate) === options.weekday
     ));
     const observationsByStayDate = groupObservationsByStayDate(scopedObservations);
-    const finalRoomsByStayDate = resolveFinalRoomsByStayDate(observationsByStayDate);
+    const finalRoomsByStayDate = options.finalRooms === undefined
+        ? resolveFinalRoomsByStayDate(observationsByStayDate)
+        : resolveProvidedFinalRoomsByStayDate(
+            options.finalRooms,
+            seasonalMonths,
+            options.weekday
+        );
     const finalRooms = Array.from(finalRoomsByStayDate.values());
     const finalEstimate = average(finalRooms);
 
@@ -1524,6 +1536,29 @@ function resolveFinalRoomsByStayDate(observationsByStayDate: Map<string, CurveOb
         }
     }
 
+    return finalRoomsByStayDate;
+}
+
+function resolveProvidedFinalRoomsByStayDate(
+    observations: readonly SeasonalFinalRoomsObservation[],
+    seasonalMonths: ReadonlySet<string>,
+    weekday: number
+): Map<string, number> {
+    const finalRoomsByStayDate = new Map<string, number>();
+    for (const observation of observations) {
+        const stayDate = normalizeDateKey(observation.stayDate);
+        const rooms = normalizeNonNegativeNumber(observation.rooms);
+        if (
+            stayDate === null
+            || rooms === null
+            || rooms === 0
+            || !seasonalMonths.has(stayDate.slice(0, 7))
+            || getUtcWeekday(stayDate) !== weekday
+        ) {
+            continue;
+        }
+        finalRoomsByStayDate.set(stayDate, rooms);
+    }
     return finalRoomsByStayDate;
 }
 

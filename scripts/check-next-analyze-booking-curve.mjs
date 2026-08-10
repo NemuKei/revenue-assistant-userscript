@@ -209,6 +209,74 @@ assert.equal(
     "seasonal ACT uses the distinct post-stay landing"
 );
 
+const nextSeasonalRecords = [
+    {
+        ...createRecord({
+            asOfDate: "20260723",
+            scope: hotelScope,
+            stayDate: "20250813",
+            points: [
+                ["2025-08-12", 18, 15, 3],
+                ["2025-08-13", 20, 17, 3]
+            ]
+        }),
+        firstObservedAsOfDate: "20260723",
+        landing: {
+            all: 20,
+            transient: 17,
+            group: 3,
+            observedAsOfDate: "20260723"
+        },
+        source: "next-bounded-booking-curve"
+    },
+    {
+        ...createRecord({
+            asOfDate: "20260723",
+            scope: hotelScope,
+            stayDate: "20240814",
+            points: [
+                ["2024-08-13", 24, 20, 4],
+                ["2024-08-14", 30, 25, 5]
+            ]
+        }),
+        firstObservedAsOfDate: "20260723",
+        landing: {
+            all: 30,
+            transient: 25,
+            group: 5,
+            observedAsOfDate: "20260723"
+        },
+        source: "next-bounded-booking-curve"
+    }
+];
+const nextSeasonalBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: { status: "ready", records: [records[0], ...nextSeasonalRecords] },
+    records: [records[0], ...nextSeasonalRecords],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260812"
+});
+assert.equal(nextSeasonalBuilt.status, "ready");
+const nextSeasonalPanel = nextSeasonalBuilt.viewModel.panels[0].seasonal;
+assert.equal(nextSeasonalPanel.missingReason, null);
+assert.equal(
+    nextSeasonalPanel.points.find((point) => point.tick === 0).value,
+    25,
+    "Next seasonal zero-day uses the landing-based final rooms estimate"
+);
+assert.equal(
+    nextSeasonalPanel.points.find((point) => point.tick === "ACT").value,
+    25,
+    "Next seasonal zero-day and ACT stay aligned to the same landing cohort"
+);
+assert.equal(
+    nextSeasonalPanel.points.find((point) => point.tick === 1).value < 25,
+    true,
+    "Next seasonal prefix keeps its historical pace ratio below the landing estimate"
+);
+
 const sameWeekdayLandingOnlyReference = createRecord({
     asOfDate: "20260723",
     scope: hotelScope,
@@ -465,6 +533,68 @@ assert.equal(
         .find((point) => point.tick === "ACT").value,
     8,
     "recent ACT remains distinct from preserved zero-day"
+);
+
+const unmatchedZeroDayRecord = {
+    ...createRecord({
+        asOfDate: "20260715",
+        scope: hotelScope,
+        stayDate: "20260715",
+        points: [
+            ["2026-07-14", 120, 105, 15],
+            ["2026-07-15", 153, 138, 15]
+        ]
+    }),
+    firstObservedAsOfDate: "20260715",
+    landing: null,
+    source: "next-bounded-booking-curve"
+};
+const unmatchedLandingRecord = {
+    ...createRecord({
+        asOfDate: "20260723",
+        scope: hotelScope,
+        stayDate: "20260722",
+        points: [
+            ["2026-07-21", 127, 112, 15],
+            ["2026-07-22", 128, 113, 15]
+        ]
+    }),
+    firstObservedAsOfDate: "20260723",
+    landing: {
+        all: 128,
+        transient: 113,
+        group: 15,
+        observedAsOfDate: "20260723"
+    },
+    source: "next-bounded-booking-curve"
+};
+const unmatchedTerminalBuilt = model.buildBookingCurveReferenceViewModel({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readStatus: {
+        status: "ready",
+        records: [records[0], unmatchedZeroDayRecord, unmatchedLandingRecord]
+    },
+    records: [records[0], unmatchedZeroDayRecord, unmatchedLandingRecord],
+    scope: hotelScope,
+    scopes,
+    stayDate: "20260812"
+});
+assert.equal(unmatchedTerminalBuilt.status, "ready");
+const unmatchedRecent = unmatchedTerminalBuilt.viewModel.panels[0].recent;
+const unmatchedRecentOneDay = unmatchedRecent.points.find((point) => point.tick === 1).value;
+const unmatchedRecentZeroDay = unmatchedRecent.points.find((point) => point.tick === 0);
+const unmatchedRecentAct = unmatchedRecent.points.find((point) => point.tick === "ACT").value;
+assert.equal(unmatchedRecentZeroDay.interpolated, true);
+assert.equal(
+    unmatchedRecentZeroDay.value,
+    Math.round(unmatchedRecentOneDay + ((unmatchedRecentAct - unmatchedRecentOneDay) / 2)),
+    "a zero-day aggregate from a different stay-date cohort must not create a terminal spike"
+);
+assert.notEqual(
+    unmatchedRecentZeroDay.value,
+    153,
+    "the unmatched sparse zero-day observation must not override the reference line"
 );
 
 const landingOnlyRecord = createRecord({

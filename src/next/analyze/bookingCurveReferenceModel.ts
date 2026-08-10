@@ -18,7 +18,8 @@ import {
     type BookingCurveResponseSource,
     type CurveSegment,
     type CurveTick,
-    type ReferenceCurveResult
+    type ReferenceCurveResult,
+    type SeasonalFinalRoomsObservation
 } from "../../curveCore";
 import type { ExistingIndexedDbReadResult } from "../../indexedDbReadOnly";
 import { LEAD_TIME_BUCKET_TICKS } from "../../leadTimeBuckets";
@@ -30,6 +31,16 @@ import type { BookingCurveReferenceScope } from "./bookingCurveReferenceDataSour
 import type { BookingCurveRankStatusEvent } from "./bookingCurveRankMarkerModel";
 
 export type BookingCurveReferenceSecondarySegment = "transient" | "group";
+
+interface ReferenceValueAggregate {
+    sourceCount: number;
+    sourceStayDates: readonly string[];
+    value: number | null;
+}
+
+interface SeasonalLandingAggregate extends ReferenceValueAggregate {
+    finalRooms: readonly SeasonalFinalRoomsObservation[];
+}
 
 export interface BookingCurveReferenceVisibility {
     recent: boolean;
@@ -240,6 +251,24 @@ export function buildBookingCurveReferenceViewModel(options: {
     const visibility = options.visibility ?? { recent: true, seasonal: true };
     const panels = (["all", secondarySegment] as const).map((segment): BookingCurveReferencePanel => {
         const current = buildCurrentSeries(currentRecord, normalizedStayDate, normalizedAsOfDate, segment);
+        const recentZeroDay = buildRecentZeroDayReference(
+            records,
+            segment,
+            normalizedStayDate,
+            normalizedAsOfDate
+        );
+        const recentLanding = buildRecentLandingReference(
+            records,
+            segment,
+            normalizedStayDate,
+            normalizedAsOfDate
+        );
+        const seasonalLanding = buildSeasonalLandingReference(
+            records,
+            segment,
+            normalizedStayDate.slice(0, 7),
+            weekday
+        );
         const recentResult = buildRecentWeighted90ReferenceCurve(input, {
             scope: options.scope.kind,
             ...(options.scope.roomGroupId === null ? {} : { roomGroupId: options.scope.roomGroupId }),
@@ -255,32 +284,9 @@ export function buildBookingCurveReferenceViewModel(options: {
             ticks: LEAD_TIME_BUCKET_TICKS,
             targetMonth: normalizedStayDate.slice(0, 7),
             weekday,
-            asOfDate: normalizedAsOfDate
+            asOfDate: normalizedAsOfDate,
+            finalRooms: seasonalLanding.finalRooms
         });
-        const recentZeroDay = buildRecentZeroDayReference(
-            records,
-            segment,
-            normalizedStayDate,
-            normalizedAsOfDate
-        );
-        const recentLanding = buildRecentLandingReference(
-            records,
-            segment,
-            normalizedStayDate,
-            normalizedAsOfDate
-        );
-        const seasonalZeroDay = buildSeasonalZeroDayReference(
-            records,
-            segment,
-            normalizedStayDate.slice(0, 7),
-            weekday
-        );
-        const seasonalLanding = buildSeasonalLandingReference(
-            records,
-            segment,
-            normalizedStayDate.slice(0, 7),
-            weekday
-        );
         return {
             current,
             rankMarkers: buildBookingCurveRankMarkers(
@@ -299,7 +305,7 @@ export function buildBookingCurveReferenceViewModel(options: {
                 seasonalResult,
                 "seasonal",
                 "季節型",
-                seasonalZeroDay,
+                null,
                 seasonalLanding
             ),
             segment,
@@ -434,15 +440,21 @@ function buildReferenceSeries(
     result: ReferenceCurveResult,
     id: "recent" | "seasonal",
     label: string,
-    zeroDay: { sourceCount: number; value: number | null },
-    landing: { sourceCount: number; value: number | null }
+    zeroDay: ReferenceValueAggregate | null,
+    landing: ReferenceValueAggregate
 ): BookingCurveReferenceSeries {
     const valueByTick = new Map(result.points.map((point) => [point.lt, point.rooms]));
-    const exactZeroDayValue = normalizeNonNegativeNumber(zeroDay.value);
+    const exactZeroDayValue = normalizeNonNegativeNumber(zeroDay?.value);
     const coreZeroDayValue = normalizeNonNegativeNumber(valueByTick.get(0));
     const oneDayValue = normalizeNonNegativeNumber(valueByTick.get(1));
     const landingValue = normalizeNonNegativeNumber(landing.value);
-    let displayedZeroDayValue = exactZeroDayValue ?? coreZeroDayValue;
+    const recentTerminalCohortMatches = zeroDay !== null
+        && haveSameSourceStayDates(zeroDay.sourceStayDates, landing.sourceStayDates);
+    let displayedZeroDayValue = id === "seasonal"
+        ? coreZeroDayValue
+        : landingValue === null || recentTerminalCohortMatches
+            ? exactZeroDayValue ?? coreZeroDayValue
+            : null;
     let zeroDayInterpolated = false;
     if (displayedZeroDayValue === null && oneDayValue !== null && landingValue !== null) {
         displayedZeroDayValue = Math.max(0, Math.round(oneDayValue + ((landingValue - oneDayValue) / 2)));
@@ -462,10 +474,21 @@ function buildReferenceSeries(
         points,
         sourceStayDateCount: Math.max(
             result.diagnostics.sourceStayDateCount,
-            zeroDay.sourceCount,
+            zeroDay?.sourceCount ?? 0,
             landing.sourceCount
         )
     };
+}
+
+function haveSameSourceStayDates(
+    left: readonly string[],
+    right: readonly string[]
+): boolean {
+    if (left.length === 0 || left.length !== right.length) {
+        return false;
+    }
+    const rightSet = new Set(right);
+    return left.every((stayDate) => rightSet.has(stayDate));
 }
 
 function buildReferenceResponse(
@@ -526,14 +549,14 @@ function buildRecentLandingReference(
     segment: CurveSegment,
     targetStayDate: string,
     asOfDate: string
-): { sourceCount: number; value: number | null } {
+): ReferenceValueAggregate {
     const targetWeekday = getUtcWeekday(targetStayDate);
     if (targetWeekday === null) {
-        return { sourceCount: 0, value: null };
+        return { sourceCount: 0, sourceStayDates: [], value: null };
     }
     let weightedTotal = 0;
     let totalWeight = 0;
-    let sourceCount = 0;
+    const sourceStayDates: string[] = [];
     for (const record of records) {
         const stayDate = normalizeDateKey(record.stayDate);
         if (stayDate === null || getUtcWeekday(stayDate) !== targetWeekday) {
@@ -550,10 +573,11 @@ function buildRecentLandingReference(
         }
         weightedTotal += value * weight;
         totalWeight += weight;
-        sourceCount += 1;
+        sourceStayDates.push(stayDate);
     }
     return {
-        sourceCount,
+        sourceCount: sourceStayDates.length,
+        sourceStayDates,
         value: totalWeight === 0 ? null : weightedTotal / totalWeight
     };
 }
@@ -563,14 +587,14 @@ function buildRecentZeroDayReference(
     segment: CurveSegment,
     targetStayDate: string,
     asOfDate: string
-): { sourceCount: number; value: number | null } {
+): ReferenceValueAggregate {
     const targetWeekday = getUtcWeekday(targetStayDate);
     if (targetWeekday === null) {
-        return { sourceCount: 0, value: null };
+        return { sourceCount: 0, sourceStayDates: [], value: null };
     }
     let weightedTotal = 0;
     let totalWeight = 0;
-    let sourceCount = 0;
+    const sourceStayDates: string[] = [];
     for (const record of records) {
         const stayDate = normalizeDateKey(record.stayDate);
         if (
@@ -591,10 +615,11 @@ function buildRecentZeroDayReference(
         }
         weightedTotal += value * weight;
         totalWeight += weight;
-        sourceCount += 1;
+        sourceStayDates.push(stayDate);
     }
     return {
-        sourceCount,
+        sourceCount: sourceStayDates.length,
+        sourceStayDates,
         value: totalWeight === 0 ? null : weightedTotal / totalWeight
     };
 }
@@ -604,10 +629,10 @@ function buildSeasonalLandingReference(
     segment: CurveSegment,
     targetMonth: string,
     weekday: number
-): { sourceCount: number; value: number | null } {
+): SeasonalLandingAggregate {
     const match = /^(\d{4})-(\d{2})$/u.exec(targetMonth);
     if (match === null) {
-        return { sourceCount: 0, value: null };
+        return { finalRooms: [], sourceCount: 0, sourceStayDates: [], value: null };
     }
     const targetYear = Number(match[1]);
     const targetMonthNumber = match[2];
@@ -615,7 +640,7 @@ function buildSeasonalLandingReference(
         `${targetYear - 1}-${targetMonthNumber}`,
         `${targetYear - 2}-${targetMonthNumber}`
     ]);
-    const values: number[] = [];
+    const finalRooms: SeasonalFinalRoomsObservation[] = [];
     for (const record of records) {
         const stayDate = normalizeDateKey(record.stayDate);
         if (
@@ -627,51 +652,14 @@ function buildSeasonalLandingReference(
         }
         const value = resolveLandingRooms(record, segment);
         if (value !== null) {
-            values.push(value);
+            finalRooms.push({ rooms: value, stayDate });
         }
     }
+    const values = finalRooms.map((observation) => observation.rooms);
     return {
+        finalRooms,
         sourceCount: values.length,
-        value: values.length === 0
-            ? null
-            : values.reduce((sum, value) => sum + value, 0) / values.length
-    };
-}
-
-function buildSeasonalZeroDayReference(
-    records: readonly BookingCurveRawSourceRecord[],
-    segment: CurveSegment,
-    targetMonth: string,
-    weekday: number
-): { sourceCount: number; value: number | null } {
-    const match = /^(\d{4})-(\d{2})$/u.exec(targetMonth);
-    if (match === null) {
-        return { sourceCount: 0, value: null };
-    }
-    const targetYear = Number(match[1]);
-    const targetMonthNumber = match[2];
-    const seasonalMonths = new Set([
-        `${targetYear - 1}-${targetMonthNumber}`,
-        `${targetYear - 2}-${targetMonthNumber}`
-    ]);
-    const values: number[] = [];
-    for (const record of records) {
-        const stayDate = normalizeDateKey(record.stayDate);
-        if (
-            stayDate === null
-            || !seasonalMonths.has(stayDate.slice(0, 7))
-            || getUtcWeekday(stayDate) !== weekday
-            || !isZeroDayObservationTrusted(record)
-        ) {
-            continue;
-        }
-        const value = resolveMetricAtDate(record.response, stayDate, segment, true);
-        if (value !== null) {
-            values.push(value);
-        }
-    }
-    return {
-        sourceCount: values.length,
+        sourceStayDates: finalRooms.map((observation) => observation.stayDate),
         value: values.length === 0
             ? null
             : values.reduce((sum, value) => sum + value, 0) / values.length

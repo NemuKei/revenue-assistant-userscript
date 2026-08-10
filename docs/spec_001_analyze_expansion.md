@@ -204,7 +204,7 @@ BCL-tuned first wave の定義:
 - `0日前` と `ACT` は、current と reference curve の両方で別 tick として扱う。`0日前` は宿泊日当日時点の観測値、`ACT` は宿泊日後に確定した最終実績を指す。
 - Revenue Assistant API が過去 stay_date の `0日前` 値を実績確定後の値で上書きして返す場合、raw source 保存開始前の過去日程については本当の `0日前` と `ACT` を後から分離できない。この制約は仕様上の欠損として扱い、推測で補完しない。
 - `直近型カーブ` と `季節型カーブ` の `ACT` がどの入力値から作られているかを diagnostics または調査ログで確認できるようにする。`0日前` と `ACT` が同じ値から作られているなら、`0日前` から `ACT` への線は平坦になるはずである。値が下がる、または不自然に跳ねる場合は、算出ロジック、入力 source の混在、segment 解決、API response の上書き仕様を調査対象にする。
-- reference curve の `0日前` は、core logic と IndexedDB の derived reference curve cache へ表示専用の推測値を保存しない。Nextの表示層では、trusted exact aggregate、coreが返す数値、`1日前`とACTの中間を整数へ丸めた表示専用補間の順で解決する。表示専用補間はreferenceだけに限定し、tooltip、全値表、aria labelで補間と分かるようにする。
+- reference curve の `0日前` は、core logic と IndexedDB の derived reference curve cache へ表示専用の推測値を保存しない。Nextの`直近型`表示では、trusted exact aggregateとACTの対象stay date集合が一致する場合だけexactを採用し、集合が異なる場合は母集団を混ぜず`1日前`とACTの中間を整数へ丸めた表示専用補間へ切り替える。`季節型`は分離保存したlandingをfinal roomsとしてcoreへ渡し、coreの比率1.0である`0日前`とACTを同じfinal rooms推定値に揃える。表示専用補間はreferenceだけに限定し、tooltip、全値表、aria labelで補間と分かるようにする。
 - currentの欠けた`0日前`は、`1日前`、reference、ACTのいずれからも表示補間しない。referenceの表示専用補間は、比較線を実観測と誤読させず連続して読めるようにする表示モデルであり、宿泊日当日の観測証拠には使わない。
 
 同曜日補助線:
@@ -220,7 +220,7 @@ BCL-tuned first wave の定義:
 
 ## Next Booking Curve Bootstrap / Daily Delta
 
-このsectionはClassicの全件warm cacheを延命するものではなく、Nextでcurrent、直近型reference、基準日レンズに必要なrooms-only sourceを保存済みデータから差分補充する独立契約である。Classicの同曜日 / 季節型 / 全room reference一括queueは移植しない。取得開始の速度は旧実運用範囲を使えるが、対象source、session上限、差分判定、停止条件はNextのbounded contractを正とする。
+このsectionはClassicの全件warm cacheを延命するものではなく、Nextでcurrent、直近型reference、季節型reference、基準日レンズに必要なrooms-only sourceを保存済みデータから差分補充する独立契約である。Classicの同曜日 / 全room reference一括queueは移植せず、季節型はAnalyzeで実際に表示するscopeだけを遅延取得する。取得開始の速度は旧実運用範囲を使えるが、対象source、session上限、差分判定、停止条件はNextのbounded contractを正とする。
 
 ### 取得対象と優先順
 
@@ -228,8 +228,8 @@ BCL-tuned first wave の定義:
 - 初回bootstrapは、表示中stay dateのホテル全体と全room groupのcurrent source、およびホテル全体の直近型reference coreが各lead-time目盛りに必要とするsourceを対象にする。現在の360〜0日前目盛りでは`as_of_date - 90日`から最大`as_of_date + 360日`のうちcoreが返すtarget weekdayだけであり、任意の連続日prefetchではない。同じsourceは1 taskへdedupeする。
 - 選択中Analyze stay date、または基準日レンズの選択stay dateのcurrent sourceを最優先にする。currentはホテル全体と確認済みroom groupを対象にし、当日`as_of_date`と一致するrecordを優先する。
 - 基準日レンズでstay dateを選んだ場合は、選択日のcurrent taskを完了し、保存済み根拠を画面へ投影してから、表示期間全体のbackground計画を開始する。全期間のcoverage確認やreference補充を、青い`団n`と選択日の根拠表示のbarrierにしない。この順序変更でrequest対象、due判定、開始間隔、concurrency、session上限は変えない。
-- room groupの直近型reference sourceは、そのroom groupをAnalyzeで選択したときに不足分だけ段階取得し、選択中currentの次にbackground backlogより優先する。全部屋タイプ分のreference sourceを初回bootstrapで一括取得しない。
-- 独立した`-14日 / -7日 / +7日 / +14日`同曜日補助線、季節型reference用source、表示範囲外の週 / 月 / 隣接日prefetchは対象外とする。直近型coreがtarget weekdayと同じsourceを選ぶ既存算出意味は維持するが、別の同曜日線や別queueは作らない。
+- Analyzeで表示中scopeのreference sourceは、ホテル全体を初期scopeとして、room groupはそのroom groupを選択したときに不足分だけ段階取得し、選択中currentの次にbackground backlogより優先する。直近型はcoreが必要とする同曜日source、季節型は前年同月と2年前同月のtarget weekdayだけを対象とし、全部屋タイプ分を初回bootstrapで一括取得しない。
+- 独立した`-14日 / -7日 / +7日 / +14日`同曜日補助線、表示中scope以外の季節型reference、表示範囲外の週 / 月 / 隣接日prefetchは対象外とする。直近型coreがtarget weekdayと同じsourceを選ぶ既存算出意味は維持するが、別の同曜日線や別queueは作らない。
 - current lineは選択日のcurrent sourceが保存できた時点で先に描画し、直近型referenceはsource coverageの増加に合わせて段階更新する。reference完了をcurrent描画のbarrierにしない。
 
 ### 初回bootstrapと日々の差分
@@ -238,7 +238,7 @@ BCL-tuned first wave の定義:
 - 有効source coverageが80%以上に達した後はdaily delta modeとし、新しく表示範囲へ入ったstay date、未保存source、前回取得後にcurrent tailが新しく観測可能になったsource、または直近型で次のlead-time目盛りが観測可能になったsourceだけを最大200 request / sessionで補う。APIがcumulative responseだけを返す場合もrequest自体を部分responseへ変えたとはみなさない。local mergeでは、既存recordにない有効日付をtailと内部欠損のどちらにも追加できるが、この穴埋めだけを理由に新しいrequestやdue taskを増やさない。前回source as-ofよりpoint終端が遅れていた場合も、次のresponseでその遅延tailを取り込む。
 - 保存済みpointには取得後の日数による期限を設けない。後続responseが同じ`booking_curve[].date`へ異なるroomsを返しても、先に保存したpointを置き換えない。後続responseから追加できるのは未保存日だけとし、宿泊日後に初めて返ったstay-date pointを`0日前`へ戻さない。
 - current taskは、future / 当日stay dateなら現在の`as_of_date`までのtailが未観測の場合にdueとする。past stay dateは、分離したlandingを1回保存できた時点で完了し、その後は年齢を理由に再取得しない。
-- 直近型reference taskは、そのsourceが新しいlead-time目盛りへ到達した場合、またはpast stay dateのlandingが未保存の場合だけdueとする。固定7〜13日refreshや14日expiryを設けず、まだ必要な目盛りが増えていないfuture sourceを毎日再取得しない。
+- 直近型reference taskは、そのsourceが新しいlead-time目盛りへ到達した場合、またはpast stay dateのlandingが未保存の場合だけdueとする。季節型のpast stay dateはlandingを保存できた時点で完了とし、同じsourceを年齢だけで再取得しない。固定7〜13日refreshや14日expiryを設けず、まだ必要な目盛りが増えていないfuture sourceを毎日再取得しない。
 - 類似比較のcurrent根拠は当日`as_of_date`まで揃ったsourceだけをreadyとする。過去prefixは破棄せず差分補充の起点として保持するが、本日のtailに見せない。直近型referenceは必要な観測点が保存済みならsource取得日の古さにかかわらず再利用できる。
 
 ### Classic保存済みsourceのread-through
@@ -253,7 +253,8 @@ BCL-tuned first wave の定義:
 - `0日前`は宿泊日当日までに保存できたpointだけを使う。宿泊日後に初めてsourceを取得した場合、そのresponse内のstay date pointを過去の`0日前`として採用しない。
 - `ACT`は宿泊日後の初回観測時に、`all` / `transient` / `group`の着地roomsを`landing`としてbooking curve pointとは別に保存し、この着地証拠だけから表示する。保存済み`0日前`をlandingで上書きせず、同じ数値でも別概念として維持する。
 - bootstrap時点ですでにpastのstay dateは、LT 1以上の履歴pointと着地を利用できるが、真のcurrent `0日前`を復元できない場合はcurrentを欠損にする。着地値をcurrent `0日前`へ複製せず、`1日前`とACTから作った値をcurrentの表示またはcore inputへ入れない。
-- 直近型 / 季節型referenceの`0日前`は、宿泊日当日に保存したexact pointのaggregateを優先し、それがなければcoreが返す数値、さらに数値がなければ`1日前`と分離したACTの表示専用補間を使える。ACTは引き続きlandingだけから集計し、直近型ACTの対象sourceは直近型coreが比較する対象日集合と揃えて別曜日のlandingを混ぜない。表示専用補間は保存せず、補間表示を明示する。
+- 直近型referenceの`0日前`は、宿泊日当日に保存したexact pointの対象stay date集合がACTのlanding集合と一致する場合だけexact aggregateを使う。集合が異なる場合はexactまたは同じ不揃いなsourceから作られたcore値を採用せず、`1日前`とACTの表示専用補間へ切り替える。ACTは引き続きlandingだけから集計し、直近型coreが比較する同曜日集合以外を混ぜない。
+- 季節型referenceは、前年同月と2年前同月のtarget weekdayに属するlandingをfinal rooms証拠としてcoreへ渡し、各LTの比率とfinal rooms推定値を作る。`0日前`は比率1.0、ACTは同じfinal rooms推定値とし、別母集団のexact aggregateで`0日前`だけを上書きしない。表示専用補間は保存せず、使用時は補間表示を明示する。
 
 ### 負荷、停止、再開
 

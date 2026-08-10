@@ -6,6 +6,8 @@ import {
 import {
     getRecentWeighted90CandidateStayDates,
     getDaysBetweenDateKeys,
+    getSeasonalComponentCandidateStayDates,
+    getUtcWeekday,
     normalizeDateKey,
     shiftDate,
     toCompactDateKey,
@@ -43,7 +45,7 @@ export interface NextBookingCurveAcquisitionContext {
 
 export interface NextBookingCurveAcquisitionTask {
     query: string;
-    role: "current" | "recent-reference";
+    role: "current" | "recent-reference" | "seasonal-reference";
     roomGroupId: string | null;
     scope: "hotel" | "roomGroup";
     sourceKey: string;
@@ -135,15 +137,33 @@ export function buildNextBookingCurveReferenceTasks(options: {
     if (scope === undefined) {
         return [];
     }
-    return getNextRecentReferenceCandidateStayDates(
+    const tasks = new Map<string, NextBookingCurveAcquisitionTask>();
+    for (const stayDate of getNextRecentReferenceCandidateStayDates(
         options.targetStayDate,
         options.context.asOfDate
-    ).map((stayDate) => buildTask(
-        options.context.facilityId,
-        stayDate,
-        scope,
-        "recent-reference"
-    )).sort(compareTaskOrder);
+    )) {
+        const task = buildTask(
+            options.context.facilityId,
+            stayDate,
+            scope,
+            "recent-reference"
+        );
+        tasks.set(task.sourceKey, task);
+    }
+    for (const stayDate of getNextSeasonalReferenceCandidateStayDates(
+        options.targetStayDate
+    )) {
+        const task = buildTask(
+            options.context.facilityId,
+            stayDate,
+            scope,
+            "seasonal-reference"
+        );
+        if (!tasks.has(task.sourceKey)) {
+            tasks.set(task.sourceKey, task);
+        }
+    }
+    return Array.from(tasks.values()).sort(compareTaskOrder);
 }
 
 export function selectNextBookingCurveDueTasks(options: {
@@ -193,6 +213,24 @@ export function getNextRecentReferenceCandidateStayDates(
         targetStayDate,
         asOfDate,
         ticks: LEAD_TIME_BUCKET_TICKS
+    })
+        .map(toCompactDateKey)
+        .filter((value): value is string => value !== null);
+}
+
+export function getNextSeasonalReferenceCandidateStayDates(
+    targetStayDate: string
+): string[] {
+    const normalizedTargetStayDate = normalizeDateKey(targetStayDate);
+    const weekday = normalizedTargetStayDate === null
+        ? null
+        : getUtcWeekday(normalizedTargetStayDate);
+    if (normalizedTargetStayDate === null || weekday === null) {
+        return [];
+    }
+    return getSeasonalComponentCandidateStayDates({
+        targetMonth: normalizedTargetStayDate.slice(0, 7),
+        weekday
     })
         .map(toCompactDateKey)
         .filter((value): value is string => value !== null);

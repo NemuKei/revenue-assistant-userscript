@@ -348,7 +348,7 @@ type ReferenceCurveResult = {
 - `ACT` を出力する場合は、各履歴 stay_date の final rooms に相当する観測値から作る。
 - Revenue Assistant API response 上で `0日前` と final rooms の区別ができない履歴 stay_date は、diagnostics で区別不能として数えられるようにする。
 - `0日前` と `ACT` の値が同じ履歴だけで構成される場合、`0日前` から `ACT` への線は平坦になるはずである。値が下がる、または不自然に跳ねる場合は、final rooms 解決、source stay_date の混在、segment 解決、または API response の上書き仕様を調査対象にする。
-- `0日前` に Revenue Assistant API 側の実績上書きが混入している疑いがある場合でも、core logic 内で中間補完値へ置き換えない。表示層はtrusted exact aggregate、coreの数値を順に優先し、どちらもない場合だけ`1日前`とACTの中間を表示専用補間として描画できる。補間値はcore outputやderived cacheへ戻さず、tooltip、全値表、aria labelで明示する。
+- `0日前` に Revenue Assistant API 側の実績上書きが混入している疑いがある場合でも、core logic 内で中間補完値へ置き換えない。表示層でtrusted exact aggregateを使えるのは、exactとACTの対象stay date集合が一致する場合に限る。集合が異なる場合は母集団の異なるcore数値も終端表示へ採用せず、`1日前`とACTの中間を表示専用補間として描画できる。補間値はcore outputやderived cacheへ戻さず、tooltip、全値表、aria labelで明示する。
 
 ### Seasonal Component
 
@@ -392,7 +392,8 @@ BCL 側の outlier row weights に相当する補正は、Revenue Assistant か�
 - `0日前` は final rooms 推定値に対する比率 1.0 の LT point として扱う。
 - `0日前` と `ACT` は結果として同じ値になる場合があるが、意味は分ける。
 - `0日前` と `ACT` の間に不自然な段差が出る場合は、final rooms 推定値、`0日前` 比率の固定、履歴 stay_date の final rooms 解決方法を調査対象にする。
-- `seasonal_component` の表示では、coreが返す`0日前`の数値をtrusted exact aggregateに次ぐ表示値として維持する。coreの`0日前`も欠損する場合だけ、表示層が`1日前`とACTから補間値を作れる。core outputは変更せず、補間値であることを明示する。
+- `seasonal_component` は、呼び出し側が宿泊後のlandingをstay date別final roomsとして渡せる場合、その値を比率の分母とfinal rooms推定値に使う。landingが渡されない従来callerでは、各stay dateの最小非負LTの観測値を従来どおりfinal rooms候補にする。
+- `seasonal_component` の表示では、coreが返す比率1.0の`0日前`とACTを同じfinal rooms推定値として維持し、別母集団のexact aggregateで`0日前`だけを上書きしない。coreの`0日前`が欠損する場合だけ、表示層が`1日前`とACTから補間値を作れる。補間値はcore outputへ戻さず、補間であることを明示する。
 
 ## Forecast Extension
 

@@ -117,6 +117,37 @@ assert.equal(
     true,
     "recent reference keeps the target weekday without a separate +/-7 or +/-14 queue"
 );
+const seasonalCandidates = model.getNextSeasonalReferenceCandidateStayDates("20260812");
+assert.equal(seasonalCandidates.length, 8);
+assert.equal(
+    seasonalCandidates.every((stayDate) => (
+        (stayDate.startsWith("202508") || stayDate.startsWith("202408"))
+        && new Date(
+            Date.UTC(
+                Number(stayDate.slice(0, 4)),
+                Number(stayDate.slice(4, 6)) - 1,
+                Number(stayDate.slice(6, 8))
+            )
+        ).getUTCDay() === 3
+    )),
+    true,
+    "seasonal reference is limited to the target weekday in the previous two matching months"
+);
+const selectedRoomReferenceTasks = model.buildNextBookingCurveReferenceTasks({
+    context,
+    scopeKey: "room:a",
+    targetStayDate: "20260812"
+});
+assert.equal(
+    selectedRoomReferenceTasks.filter((task) => task.role === "seasonal-reference").length,
+    seasonalCandidates.length,
+    "the selected Analyze scope lazily adds only its bounded seasonal sources"
+);
+assert.equal(
+    backgroundTasks.some((task) => task.role === "seasonal-reference"),
+    false,
+    "calendar background bootstrap must not prefetch seasonal sources"
+);
 
 const compactResponse = model.compactNextBookingCurveResponse({
     stay_date: "2026-07-23",
@@ -510,6 +541,7 @@ const longLeadReferenceTask = model.buildNextBookingCurveReferenceTasks({
     targetStayDate: "20260812"
 }).at(-1);
 assert.notEqual(longLeadReferenceTask, undefined);
+assert.equal(longLeadReferenceTask.role, "recent-reference");
 const longLeadReferenceRecord = model.createNextBookingCurveSourceRecord({
     asOfDate: "20260723",
     facilityId: context.facilityId,
@@ -539,6 +571,37 @@ assert.equal(
     }).length,
     1,
     "a reference source becomes due when the next configured lead-time tick is observable"
+);
+
+const seasonalReferenceTask = selectedRoomReferenceTasks.find((task) => (
+    task.role === "seasonal-reference"
+));
+assert.notEqual(seasonalReferenceTask, undefined);
+const completedSeasonalReferenceRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-23T01:00:00.000Z",
+    response: {
+        stay_date: seasonalReferenceTask.stayDate,
+        booking_curve: [{
+            date: seasonalReferenceTask.stayDate,
+            all: { this_year_room_sum: 9 },
+            transient: { this_year_room_sum: 7 },
+            group: { this_year_room_sum: 2 }
+        }]
+    },
+    task: seasonalReferenceTask
+});
+assert.notEqual(completedSeasonalReferenceRecord.landing, null);
+assert.equal(
+    model.selectNextBookingCurveDueTasks({
+        asOfDate: "20260820",
+        existingRecords: [completedSeasonalReferenceRecord],
+        limit: 10,
+        tasks: [seasonalReferenceTask]
+    }).length,
+    0,
+    "a seasonal past source with landing evidence is reused without age-based refresh"
 );
 
 const olderSameSource = {
