@@ -5,7 +5,8 @@ const NEXT_RUNTIME_OWNED_SELECTOR = [
     "[data-ra-next-booking-curve-reference-root]",
     "[data-ra-next-competitor-history-root]",
     "[data-ra-next-price-trend-comparison-root]",
-    "[data-ra-next-booking-curve-acquisition-root]"
+    "[data-ra-next-booking-curve-acquisition-root]",
+    "[data-ra-next-monthly-progress-root]"
 ].join(", ");
 
 type MutationTarget = Pick<Node, "parentElement"> & Partial<Pick<Element, "closest">>;

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAU Next monthly progress fixture</title>
+    <style>
+        :root { font-family: "Segoe UI", "Yu Gothic UI", Meiryo, sans-serif; color: #25384b; background: #f2f5f8; }
+        * { box-sizing: border-box; }
+        body { margin: 0; }
+        header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 20px; background: #fff; border-bottom: 1px solid #dbe3ea; }
+        header button { min-height: 40px; border: 1px solid #cbd7e3; border-radius: 8px; background: #fff; }
+        main { width: min(1180px, calc(100vw - 32px)); margin: 20px auto; }
+        [data-fixture-actions] { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+        [data-fixture-actions] button { min-height: 40px; padding: 6px 10px; }
+        [data-transformed-host] { transform: translateZ(0); }
+        [data-native-chart-group] { padding: 14px; border-radius: 12px; background: #fff; box-shadow: 0 4px 18px rgba(58,76,95,.08); }
+        [data-native-chart-host] { padding: 12px; border: 1px solid #d9e1e8; border-radius: 10px; }
+        [data-testid="chart-content-numberOfRoomsSold-dateOfReservationBasis"] { height: 220px; border-radius: 8px; background: linear-gradient(#f7fafc 1px, transparent 1px), linear-gradient(90deg, #f7fafc 1px, transparent 1px); background-size: 32px 32px; position: relative; }
+        [data-testid="chart-content-numberOfRoomsSold-dateOfReservationBasis"]::after { content: "Revenue Assistant 標準chart（fixture）"; position: absolute; inset: 50% auto auto 50%; transform: translate(-50%,-50%); color: #718297; }
+        @media (max-width: 680px) { main { width: calc(100vw - 16px); margin-top: 10px; } header { padding: 10px; } }
+    </style>
+</head>
+<body>
+    <header>
+        <strong>月次実績</strong>
+        <button type="button"><span>施設A（mock）</span></button>
+    </header>
+    <main data-transformed-host>
+        <div data-fixture-actions>
+            <button type="button" data-mock-rerender-native>標準chartを再描画</button>
+            <button type="button" data-mock-route-away>route away</button>
+            <button type="button" data-mock-route-back>route back</button>
+        </div>
+        <p>最終データ更新: 2026年8月10日</p>
+        <section data-native-chart-group>
+            <div data-testid="chart-tabs">販売客室数 / 売上</div>
+            <div data-native-chart-host>
+                <div data-testid="chart-content-numberOfRoomsSold-dateOfReservationBasis"></div>
+            </div>
+        </section>
+    </main>
+    <script type="module" src="/src/next/dev/monthlyProgressFixtureEntry.ts"></script>
+</body>
+</html>

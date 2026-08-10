@@ -13,6 +13,7 @@ import { startPriceTrendComparisonRuntime } from "./analyze/priceTrendComparison
 import { createNextBookingCurveAcquisitionCoordinator } from "./bookingCurve/bookingCurveAcquisitionCoordinator";
 import { startBookingCurveAcquisitionRuntime } from "./bookingCurve/bookingCurveAcquisitionRuntime";
 import { createLiveCalendarSummaryDataSource } from "./live/liveCalendarSummaryDataSource";
+import { startNextMonthlyProgressRuntime } from "./monthlyProgress/monthlyProgressRuntime";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -75,6 +76,7 @@ function startNextCandidateRuntime(): void {
         calendarSummary: liveCalendarSummary,
         coordinator: bookingCurveAcquisition
     });
+    startNextMonthlyProgressRuntime(document, window);
     console.info(`[${SCRIPT_NAME}] candidate runtime ready`, {
         href: window.location.href,
         mode: "server-read-only/local-bounded-history",

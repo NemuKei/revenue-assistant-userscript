@@ -42,9 +42,9 @@ npm run check
 - `npm run build:vite:fixture`: Vite fixture preview を build
 - `npm run build:vite:candidate`: 正規 `dist` を上書きしない Vite candidate userscript build を `.tmp/vite-candidate/` に生成
 - `npm run build:next:candidate`: Next の独立 userscript candidate を `.tmp/vite-next-candidate/` に生成
-- `npm run dev:next:fixture`: Next の類似度モデル、実画面接続shell、Analyze競合履歴 / booking curve / 価格推移の合成fixtureを `http://127.0.0.1:5173/dev/fixtures/` 以下でpreview
-- `npm run build:next:fixture`: Next の基準日レンズ / Analyze競合履歴 / booking curve / 価格推移fixtureを `.tmp/vite-next-fixture/` に生成
-- `npm run check:next`: Next の型、lint、runtime lease、live shell、Analyze parity / 競合履歴 / booking curve / 価格推移、類似度model、live evidence、data source、GET allowlist、readonly owner / bounded writer owner、artifact metadata、candidate / fixture buildをまとめて確認。DOM interactionとログイン済み実画面の取得結果はBrowser QAで別途確認する
+- `npm run dev:next:fixture`: Next の類似度モデル、実画面接続shell、Analyze競合履歴 / booking curve / 価格推移、月次実績の合成fixtureを `http://127.0.0.1:5173/dev/fixtures/` 以下でpreview
+- `npm run build:next:fixture`: Next の基準日レンズ / Analyze競合履歴 / booking curve / 価格推移 / 月次実績fixtureを `.tmp/vite-next-fixture/` に生成
+- `npm run check:next`: Next の型、lint、runtime lease、live shell、Analyze parity / 競合履歴 / booking curve / 価格推移、月次実績、類似度model、live evidence、data source、GET allowlist、readonly owner / bounded writer owner、artifact metadata、candidate / fixture buildをまとめて確認。DOM interactionとログイン済み実画面の取得結果はBrowser QAで別途確認する
 - `npm run check:classic-publication`: Classicの公開baseline manifest、workflow allowlist、公開権限もdeploy処理も持たないverify-only workflowの完全一致をoffline検査。`-- --live` を付けると公開URLのmetadata、bytes、SHA-256とGitHub Actions run provenanceも照合する
 - `npm run build:compare:vite`: 正規 `dist` と Vite candidate の userscript metadata、size、entry line を比較
 - `npm run check:fixture-markers`: Revenue Assistant 認証、Tampermonkey、通常 Chrome profile を使わず、fixture の合成 data だけで top のカレンダー連携型判断 workspace の主要 UI marker を確認
@@ -229,13 +229,13 @@ version の扱いは `--version-policy warn | fail` で指定します。既定�
 
 ### 月次実績画面
 
-この節の月次実績拡張はClassic source / runtimeに実装済みの機能です。公開中のNext `0.2.0.13`のentryにはまだ接続していないため、Classicを無効にしてNextだけを実行している場合は表示されません。
+ClassicとNextは別runtimeとして月次実績拡張を持ちます。NextはClassicの見出し、panel順、月別色、現年実線 / 比較年破線、比較切替、metric切替、Tooltip、日次差分という表示・操作契約だけを引き継ぎ、Classicの`src/main.ts`、DOM root、通信、保存処理はimportしません。公開版の現在地は`docs/context/STATUS.md`を正とします。
 
-月次実績画面向けには、`/monthly-progress/YYYY-MM` を既存 top / analyze の同期系から切り離す route-scoped scaffold を追加済みです。monthly-progress 側は専用 storage namespace を先に持ち、`localStorage["revenue-assistant:feature:monthly-progress:enabled"] = "0"` で kill switch を入れられます。
+Nextは`/monthly-progress/YYYY-MM`だけで起動し、既存top / analyzeの同期系とは分離します。標準の予約日基準chartを残し、その直下にNextの独立sectionを1件だけ追加します。可視な施設名がfacility responseと一致し、画面上の`最終データ更新`を観測できる場合だけ取得を始めます。施設や更新日を確認できない場合は値を推測せず、月次GETと保存を開始しません。
 
-`/api/v1/booking_curve/monthly` の結果は、`facilityCacheKey + yearMonth + batchDateKey` ごとの IndexedDB snapshot として保存します。現在の preview は、同じ batch date の snapshot がなければ API 取得して保存し、その後に保存済み snapshot を読んで表示します。過去 batch の履歴比較にはまだ使っていません。
+既存read-only `GET /api/v1/booking_curve/monthly`のruntime validation後の最小snapshotは、Next専用IndexedDB `revenue-assistant-next-monthly-progress`へ`facilityId + yearMonth + batchDateKey`のdeterministic keyと`add` constraintで保存します。Next側に同じbatchがない場合だけClassic DBの完全一致recordをread-only memory seedにでき、Classic DBの作成、更新、削除、一括copy、過去batchの再解釈は行いません。
 
-予約日基準 chart 直下には、month-end anchor の LT バケット集約 chart を独立 section で差し込んでいます。現在は `販売客室数` panel、`販売単価 / 売上` 切替 panel、対象月から未来 4 か月の同時表示、`前年 / 前々年 / 3年前` compare 切替、hover tooltip、販売客室数の隣接 LT bucket 差分を読む日次差分 table まで入っています。日次差分 table は、増加、減少、変化なし、未観測、比較前 bucket なしを表示します。
+独立sectionには`販売客室数` panel、`販売単価 / 売上`切替panel、対象月から未来4か月、`前年 / 前々年 / 3年前`の単一比較切替、mouse / keyboard / tap Tooltip、現在月の販売客室数を読む日次差分tableを表示します。欠損区間を0で補わず、loading、empty、比較不足、一部失敗を区別します。合成確認は`dev/fixtures/next-monthly-progress/?state=loading|empty|current-only|compare-shortage|partial-failure`を使い、fixtureからnetwork取得やIndexedDB writeは行いません。
 
 ## ドキュメントの正本
 

@@ -668,23 +668,27 @@
 ### RAU-MP-09 Classic月次カーブをNextへclean-roomで再接続する
 
 - 状態:
-  - Now。利用者は2026-08-10に、次の新規taskで月次カーブの実装から進めることを明示した。Classicの月次実績sliceは実装済みだが、公開Next `0.2.0.13`のentryには未接続である。
+  - Now。source実装とlocal検証は完了し、main同期後のNext manual publication、公開artifact照合、利用者のTampermonkey更新、通常Chrome実画面QAを残す。公開Next `0.2.0.13`にはまだ未反映である。
 - 目的:
   - 月次実績画面でも、Classicで使い慣れたLT月次カーブ、比較切替、Tooltip、日次差分をNextで確認できるようにする。
 - 実装境界:
   - `/monthly-progress/YYYY-MM`の標準chartを残し、その直下へNextの独立sectionを置く。表示と操作はClassicの`monthlyProgress` sliceをbaselineとするが、Classicの`src/main.ts`、runtime、DOM root、通信・保存責務をimportしない。
   - 最初のvertical sliceは、既存specの販売客室数、販売単価 / 売上切替、対象月と未来月、前年から3年前までの比較、追従Tooltip、日次差分、loading / empty / comparison shortage / partial failureを合成fixtureで通す。
-  - 既存`/api/v1/booking_curve/monthly`以外のendpoint、Revenue Assistant write、標準UI置換、raw response保存、Classic DBの更新・削除・一括移行を追加しない。Classic snapshotを読み取り専用の起点に使うか、Next専用保存へ分けるかは、現行schemaとcallerを確認し、before / after、互換、rollbackを固定してからlive write pathへ接続する。
+  - 既存`/api/v1/booking_curve/monthly`以外のendpoint、Revenue Assistant write、標準UI置換、raw response保存、Classic DBの更新・削除・一括移行を追加しない。`D-20260810-007`で、Next専用append-only DBを新規取得の保存先とし、Classic snapshotは同一batch primary keyの完全一致recordだけをread-only memory seedにするbefore / after、互換、rollbackを固定した。
 - 合格条件:
   - 月次routeの直開き、F5、route往復でNext sectionが1件だけ表示され、標準chartと操作を維持する。
   - Classicと同じ主要な見出し、panel順、比較切替、metric切替、凡例、線、Tooltip、日次差分の読み方をdesktop / 390pxで確認できる。変更が必要な箇所は、標準UI干渉、意味の誤り、または判断時間悪化の根拠とともに限定する。
   - 欠損を0へ推測せず、current monthを比較月の取得完了より先に表示し、fixtureでempty / comparison shortage / partial failureを区別する。
   - focused test、`npm run check:next`、`npm run check`、`npm run check:classic-publication`、月次fixture / smoke、candidate artifact、desktop / 390px QA、`git diff --check`を通す。runtime変更は`D-20260810-003`に従い、main同期後のNext manual publication、公開artifact照合、利用者のTampermonkey更新、通常Chrome確認までを同じGoal Bundleに含める。
+- 検証:
+  - focused checkでcurrent-first、初期最大5 GET、比較切替を含むunique yearMonth最大15、100ms以上 / 直列、3連続error停止、auth / rate-limit即停止、可視施設 / batch date guard、Next add-only保存、Classic exact-key read-only seed、store failure / duplicate addのfail-closedを確認した。
+  - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.168`、326,657 bytes、SHA-256 `672EF6E09B94CF0975FC150A29CF1F599EA99629668B78AF4BECAA62DCD989D3`、updateURL / downloadURLなしである。
+  - 合成Browser QAではdesktop / 390pxで標準chart 1件、Next root 1件、2 panel / SVG、Tooltip、日次差分、F5 / route往復、loading / empty / current-only / comparison shortage / partial failure、document overflow 0、console warning / error 0を確認した。fixtureの月次API requestとRevenue Assistant writeは0である。
 - metadata:
   - `spec-impact: yes`
-  - `spec-checkpoint: before-impl`
+  - `spec-checkpoint: after-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md`
-  - `open-spec-question: Classic monthly snapshotのread-only seedとNext専用保存の境界`
+  - `decision: D-20260810-007`
   - `depends-on: RAU-UX-168 complete`
 
 Remaining Task Triage のNowは`RAU-MP-09`とする。Classic再公開、新規endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。

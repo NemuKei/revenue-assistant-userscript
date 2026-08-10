@@ -66,6 +66,12 @@ const expectedSources = [
     "src/next/live/liveSimilarityLensTransport.ts",
     "src/next/live/liveSimilarityLensView.ts",
     "src/next/live/liveSimilarityLensViewModel.ts",
+    "src/next/monthlyProgress/monthlyProgressDataSource.ts",
+    "src/next/monthlyProgress/monthlyProgressLegacySeedReader.ts",
+    "src/next/monthlyProgress/monthlyProgressModel.ts",
+    "src/next/monthlyProgress/monthlyProgressRuntime.ts",
+    "src/next/monthlyProgress/monthlyProgressStore.ts",
+    "src/next/monthlyProgress/monthlyProgressView.ts",
     "src/next/runtimeDomMutation.ts",
     "src/next/runtimeLease.ts",
     "src/next/runtimeMarker.ts",
@@ -140,6 +146,8 @@ assert.match(artifactText, /data-ra-next-booking-curve-acquisition-root/u);
 assert.match(artifactText, /data-ra-next-analyze-state/u);
 assert.match(artifactText, /data-ra-next-booking-curve-state/u);
 assert.match(artifactText, /data-ra-next-price-trend-state/u);
+assert.match(artifactText, /data-ra-next-monthly-progress-root/u);
+assert.match(artifactText, /data-ra-next-monthly-progress-state/u);
 assert.match(artifactText, /server-read-only\/local-bounded-history/u);
 assert.equal(countMatches(artifactText, /\bfetch\b/gu), 1, "Next candidate must contain one raw fetch");
 assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");
@@ -147,6 +155,11 @@ assert.equal(countMatches(artifactText, /\/api\/v2\/yad\/info/gu), 1);
 assert.equal(countMatches(artifactText, /\/api\/v2\/competitors/gu), 1);
 assert.equal(countMatches(artifactText, /\/api\/v1\/price_trends/gu) >= 1, true);
 assert.equal(countMatches(artifactText, /\/api\/v1\/suggest\/output\/current_settings/gu), 1);
+assert.equal(
+    countMatches(artifactText, /\/api\/v1\/booking_curve\/monthly/gu),
+    3,
+    "monthly endpoint must stay limited to transport and the two snapshot validators"
+);
 assert.equal(countMatches(artifactText, /\/api\/v3\/lincoln\/suggest\/status/gu), 1);
 assert.equal(
     countMatches(artifactText, /\/api\/v4\/booking_curve/gu) >= 1,
@@ -158,16 +171,18 @@ assert.equal(
     true,
     "competitor endpoint contract must remain present for cache validation"
 );
-assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 10);
+assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 12);
 assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 4);
 assert.equal(countMatches(artifactText, /\.openCursor\s*\(/gu), 2);
 assert.match(artifactText, /readonly/u);
 assert.match(artifactText, /readwrite/u);
-assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 3);
+assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 4);
 assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 5);
 assert.match(artifactText, /revenue-assistant-next-competitor-price-snapshots/u);
 assert.match(artifactText, /revenue-assistant-next-price-trends/u);
 assert.match(artifactText, /revenue-assistant-next-booking-curve-sources/u);
+assert.match(artifactText, /revenue-assistant-next-monthly-progress/u);
+assert.equal(countMatches(artifactText, /\blocalStorage\b/gu), 3, "monthly preferences must be the only localStorage access");
 assert.match(artifactText, /GET/u);
 
 for (const forbiddenPattern of [
@@ -177,7 +192,6 @@ for (const forbiddenPattern of [
     /\bEventSource\b/u,
     /\bSharedWorker\b/u,
     /\bWorker\b/u,
-    /\blocalStorage\b/u,
     /\bsessionStorage\b/u,
     /\bdocument\.cookie\b/u,
     /\bdeleteObjectStore\b/u,

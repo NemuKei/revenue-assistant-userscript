@@ -19,8 +19,14 @@ const bookingCurveStorePath = path.join(
     "bookingCurve",
     "bookingCurveSourceStore.ts"
 );
+const monthlyProgressStorePath = path.join(
+    nextSourceRoot,
+    "monthlyProgress",
+    "monthlyProgressStore.ts"
+);
 
 const expectedApiPaths = [
+    "/api/v1/booking_curve/monthly",
     "/api/v1/price_trends",
     "/api/v1/suggest/output/current_settings",
     "/api/v2/competitors",
@@ -35,6 +41,7 @@ const expectedRequestKinds = [
     "competitors",
     "current-settings",
     "facility",
+    "monthly-booking-curve",
     "price-trends",
     "rank-status"
 ];
@@ -90,6 +97,16 @@ const allowedBookingCurveStoreIndexedDbMethods = new Set([
     "continue",
     "openCursor"
 ]);
+const allowedAppendOnlyStoreIndexedDbMethods = new Set([
+    "abort",
+    "add",
+    "close",
+    "createObjectStore",
+    "get",
+    "objectStore",
+    "open",
+    "transaction"
+]);
 const allowedSharedRuntimeSources = new Set([
     "src/bookingCurveRawSourceContract.ts",
     "src/competitorPriceSnapshotContract.ts",
@@ -113,6 +130,7 @@ assert.equal(existsSync(indexedDbPath), true, "strict readonly IndexedDB source 
 assert.equal(existsSync(snapshotStorePath), true, "bounded Next snapshot store source is required");
 assert.equal(existsSync(priceTrendStorePath), true, "bounded Next price trend store source is required");
 assert.equal(existsSync(bookingCurveStorePath), true, "bounded Next booking curve store source is required");
+assert.equal(existsSync(monthlyProgressStorePath), true, "append-only Next monthly progress store source is required");
 
 const tsconfigPath = ts.findConfigFile(projectRoot, ts.sys.fileExists, "tsconfig.json");
 assert.notEqual(tsconfigPath, undefined, "tsconfig.json is required for type-aware boundary checks");
@@ -160,7 +178,10 @@ console.log(JSON.stringify({
     priceTrendRetentionLimit: 1_440,
     bookingCurveStoreOwner: toProjectPath(bookingCurveStorePath),
     bookingCurveStoreModes: ["readonly", "readwrite"],
-    bookingCurveRetentionLimit: 4_096
+    bookingCurveRetentionLimit: 4_096,
+    monthlyProgressStoreOwner: toProjectPath(monthlyProgressStorePath),
+    monthlyProgressStoreModes: ["readonly", "readwrite"],
+    monthlyProgressRetention: "append-only-no-automatic-prune"
 }, null, 2));
 
 function checkTransportBoundary(sources, source) {
@@ -255,7 +276,7 @@ function checkTransportBoundary(sources, source) {
     assert.deepEqual(
         collectNextReadRequestKinds(source).sort(),
         expectedRequestKinds,
-        "NextReadRequest kinds must remain the seven reviewed GET scopes"
+        "NextReadRequest kinds must remain the eight reviewed GET scopes"
     );
 
     const urlConstructions = collectNodes(source, (node) => (
@@ -263,7 +284,7 @@ function checkTransportBoundary(sources, source) {
         && ts.isIdentifier(node.expression)
         && node.expression.text === "URL"
     ));
-    assert.equal(urlConstructions.length, 7, "Next transport must construct exactly seven allowlisted URLs");
+    assert.equal(urlConstructions.length, 8, "Next transport must construct exactly eight allowlisted URLs");
     assert.deepEqual(
         urlConstructions.map((node) => node.arguments?.[0]?.getText(source) ?? "").sort(),
         [
@@ -272,10 +293,11 @@ function checkTransportBoundary(sources, source) {
             "NEXT_COMPETITOR_PRICES_ENDPOINT",
             "NEXT_CURRENT_SETTINGS_ENDPOINT",
             "NEXT_FACILITY_ENDPOINT",
+            "NEXT_MONTHLY_BOOKING_CURVE_ENDPOINT",
             "NEXT_PRICE_TRENDS_ENDPOINT",
             "NEXT_RANK_STATUS_ENDPOINT"
         ],
-        "Next transport URL constructors must use the seven closed endpoint constants"
+        "Next transport URL constructors must use the eight closed endpoint constants"
     );
     for (const construction of urlConstructions) {
         assert.equal(
@@ -316,7 +338,8 @@ function checkTransportBoundary(sources, source) {
             ["rm_room_group_id", "request.roomGroupId"],
             ["stay_date", "request.stayDate"],
             ["to", "request.to"],
-            ["to", "request.to"]
+            ["to", "request.to"],
+            ["year_month", "request.yearMonth"]
         ],
         "Next query parameters must remain the reviewed exact values"
     );
@@ -349,10 +372,12 @@ function checkIndexedDbBoundary(sources) {
     const snapshotStoreOwner = normalizePath(snapshotStorePath);
     const priceTrendStoreOwner = normalizePath(priceTrendStorePath);
     const bookingCurveStoreOwner = normalizePath(bookingCurveStorePath);
+    const monthlyProgressStoreOwner = normalizePath(monthlyProgressStorePath);
     const boundedStoreOwners = new Set([
         snapshotStoreOwner,
         priceTrendStoreOwner,
-        bookingCurveStoreOwner
+        bookingCurveStoreOwner,
+        monthlyProgressStoreOwner
     ]);
     const allowedOwners = new Set([readonlyOwner, ...boundedStoreOwners]);
 
@@ -390,6 +415,8 @@ function checkIndexedDbBoundary(sources) {
             }
             const allowedMethods = sourcePath === readonlyOwner
                 ? allowedReadonlyIndexedDbMethods
+                : sourcePath === monthlyProgressStoreOwner
+                    ? allowedAppendOnlyStoreIndexedDbMethods
                 : sourcePath === bookingCurveStoreOwner
                     ? allowedBookingCurveStoreIndexedDbMethods
                     : allowedBoundedStoreIndexedDbMethods;
@@ -420,22 +447,24 @@ function checkIndexedDbBoundary(sources) {
             toProjectPath(indexedDbPath),
             toProjectPath(snapshotStorePath),
             toProjectPath(priceTrendStorePath),
-            toProjectPath(bookingCurveStorePath)
+            toProjectPath(bookingCurveStorePath),
+            toProjectPath(monthlyProgressStorePath)
         ].sort(),
         "readonly and all bounded store owners must have direct IndexedDB access"
     );
-    assert.equal(readwriteLiterals.length, 3, "Next runtime must contain three reviewed readwrite modes");
+    assert.equal(readwriteLiterals.length, 4, "Next runtime must contain four reviewed readwrite modes");
     assert.deepEqual(
         readwriteLiterals.map((entry) => toProjectPath(entry.source.fileName)).sort(),
         [
             toProjectPath(snapshotStorePath),
             toProjectPath(priceTrendStorePath),
-            toProjectPath(bookingCurveStorePath)
+            toProjectPath(bookingCurveStorePath),
+            toProjectPath(monthlyProgressStorePath)
         ].sort(),
-        "readwrite mode is restricted to the three bounded Next stores"
+        "readwrite mode is restricted to the four reviewed Next stores"
     );
     assert.equal(forbiddenCalls.length, 0, formatReasonNodeList("forbidden IndexedDB mutation", forbiddenCalls));
-    assert.equal(transactionCalls.length, 10, "reviewed IndexedDB owners must retain ten explicit transactions");
+    assert.equal(transactionCalls.length, 12, "reviewed IndexedDB owners must retain twelve explicit transactions");
     for (const transaction of transactionCalls) {
         assert.equal(transaction.node.arguments.length, 2, "IndexedDB transaction must use an explicit two-argument call");
         const mode = getStringLiteralText(transaction.node.arguments[1]);
@@ -595,6 +624,22 @@ function checkIndexedDbBoundary(sources) {
     assert.equal(bookingCurveMethodCounts.get("continue"), 1, "booking curve cursor may advance through one reviewed site");
     assert.equal(bookingCurveMethodCounts.get("createObjectStore"), 1, "booking curve store must create one owned store");
     assert.equal(bookingCurveMethodCounts.get("createIndex"), 2, "booking curve store must create two owned indexes");
+    const monthlyProgressStoreCalls = indexedDbCalls.filter(
+        (call) => normalizePath(call.source.fileName) === monthlyProgressStoreOwner
+    );
+    const monthlyProgressMethodCounts = new Map();
+    for (const call of monthlyProgressStoreCalls) {
+        monthlyProgressMethodCounts.set(
+            call.member.name,
+            (monthlyProgressMethodCounts.get(call.member.name) ?? 0) + 1
+        );
+    }
+    assert.equal(monthlyProgressMethodCounts.get("add"), 1, "monthly progress store must use one constraint-backed add");
+    assert.equal(monthlyProgressMethodCounts.get("get"), 1, "monthly progress store must use one exact primary-key read");
+    assert.equal(monthlyProgressMethodCounts.get("createObjectStore"), 1, "monthly progress store must create one owned store");
+    assert.equal(monthlyProgressMethodCounts.get("delete") ?? 0, 0, "monthly progress store must not prune or delete records");
+    assert.equal(monthlyProgressMethodCounts.get("getAll") ?? 0, 0, "monthly progress store must not materialize unbounded records");
+    assert.equal(monthlyProgressMethodCounts.get("createIndex") ?? 0, 0, "monthly progress store must retain exact-key-only access");
     const recordLimitDeclarations = collectNodes(getProgramSourceFile(indexedDbPath), (node) => (
         ts.isVariableDeclaration(node)
         && ts.isIdentifier(node.name)

@@ -5,6 +5,7 @@ const NEXT_COMPETITOR_PRICES_ENDPOINT = "/api/v5/competitor_prices";
 const NEXT_PRICE_TRENDS_ENDPOINT = "/api/v1/price_trends";
 const NEXT_RANK_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
 const NEXT_BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
+const NEXT_MONTHLY_BOOKING_CURVE_ENDPOINT = "/api/v1/booking_curve/monthly";
 
 export type NextReadRequest =
     | { kind: "facility" }
@@ -15,6 +16,10 @@ export type NextReadRequest =
         kind: "booking-curve";
         roomGroupId: string | null;
         stayDate: string;
+    }
+    | {
+        kind: "monthly-booking-curve";
+        yearMonth: string;
     }
     | {
         kind: "price-trends";
@@ -116,6 +121,11 @@ export function buildNextReadUrl(request: NextReadRequest, origin: string): URL 
         if (request.roomGroupId !== null) {
             url.searchParams.set("rm_room_group_id", request.roomGroupId);
         }
+        return url;
+    }
+    if (request.kind === "monthly-booking-curve") {
+        const url = new URL(NEXT_MONTHLY_BOOKING_CURVE_ENDPOINT, origin);
+        url.searchParams.set("year_month", request.yearMonth);
         return url;
     }
     if (request.kind === "price-trends") {
