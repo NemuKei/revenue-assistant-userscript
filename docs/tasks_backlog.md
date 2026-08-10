@@ -488,7 +488,7 @@
 ### RAU-UX-161 取得中のTooltipとTop団体数表示の待ちを減らす
 
 - 状態:
-  - source実装、focused / full check、合成fixture QAまで完了。Next manual publicationと更新後の通常Chrome実画面QAを待つ。公開版`0.2.0.4`にはまだ反映していない。
+  - source実装、focused / full check、合成fixture QA、Next `0.2.0.7`へのmanual publicationまで完了。Tampermonkey更新後の通常Chrome実画面QAを待つ。
 - 解決する問題:
   - `0.2.0.4`の通常Chromeで、取得中はTooltip操作と単純な画面状態確認が3秒を超えてtimeoutし、Topの基準日選択から青い`団n` 92件が揃うまで約27秒かかった。取得完了後は同じ状態確認が約40msへ戻った。
   - Tooltip handler単体ではなく、選択時の全期間差分再計画、Analyze room scopeごとの全描画、Next-owned Tooltip / chart DOM変化を6 runtimeのMutationObserverが再検査する処理が重なっていた。
@@ -500,6 +500,7 @@
   - 選択日current -> 保存済み投影 -> background計画の順序、room scope直列取得と一括描画、Next-owned / 標準UI mutationの分離をfocused checkで固定した。
   - 合成販売設定fixtureでTooltip click約342ms、追加load / rank load 0、console warning / error 0、tab離脱時root / supplement 0、復帰時root 1 / supplement 2を確認した。
   - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.159`、269,104 bytes、SHA-256 `3A2EE34AF337E9F5B39476E393C6E190A4449EE7D81706277F90B6E605A1590D`、updateURL / downloadURLなしである。
+  - `RAU-UX-162`と同じmanual workflow run `31345497959`でNext `0.2.0.7`へ配信した。公開artifactは275,895 bytes、SHA-256 `244B75495BBBCB735FE2895F4BB888620A80D49DF546995606C6DA7B7506084A`でrelease manifestと一致し、build / deploy / verifyはすべてsuccess、Classic公開baselineは不変だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: during-impl`
@@ -509,7 +510,7 @@
 ### RAU-UX-162 Topの団体数と前回調整日を基準日選択前から表示する
 
 - 状態:
-  - source実装、focused / full check、desktop / 390px合成fixture QAまで完了。`RAU-UX-161`と同じ次回更新候補へ含めた。manual publication、Tampermonkey更新、通常Chrome実画面QAを待つ。公開版`0.2.0.4`にはまだ反映していない。
+  - source実装、focused / full check、desktop / 390px合成fixture QA、`RAU-UX-161`と同じNext `0.2.0.7`へのmanual publicationまで完了。Tampermonkey更新と通常Chrome実画面QAを待つ。
 - 解決する問題:
   - 旧版で常時見えていた青い団体数と「前回調整から◯日前」が、現行Nextでは基準日選択前に揃わない。団体数は基準日選択後だけ表示し、前回調整日はNextに未実装なので、単なる描画遅延として扱わない。
 - 提案する境界:
@@ -523,14 +524,14 @@
   - focused checkで可視範囲rank status 1 GET、同一context retry 0、保存済みhotel scopeの先行表示、local再読込の追加GET 0、401 / 403 / 429即停止、calendar / route cleanup時abortを固定した。欠損responseと欠損stay dateは表示せず、`0日前`や`調整なし`へ推測しない。
   - live-shell fixtureでは基準日未選択で団体badge 92件と合成前回調整23件を表示し、desktop / 390 x 844の標準値・団体・前回調整の相互重なり0、document overflow 0、console warning / error 0を確認した。基準日選択後も表示を維持し、Analyzeで追加artifact 0、標準3 tab維持、calendar復帰でidle再mountした。
   - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`が通過した。runtime graph 46 files、raw fetch 1か所、許可API path 7件、Revenue Assistant write path追加0である。local candidateはversion `0.1.0.160`、275,691 bytes、SHA-256 `4018D311C9045415D97358EEDD09A5F701855A37559C2EF31A9F4A260876DBEA`、updateURL / downloadURLなしである。
-  - 通常Chrome実画面の保存済み件数、rank status range GET、標準UI非干渉、write 0はmanual publicationとTampermonkey更新後の別gateとして未実施である。
+  - 通常Chrome実画面の保存済み件数、rank status range GET、標準UI非干渉、write 0はTampermonkey更新後の別gateとして未実施である。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_003_rank_recommendation_signal.md`
   - `decision: D-20260808-008`
 
-Remaining Task Triage は Now `RAU-UX-161` / `RAU-UX-162`を同じNext manual publicationへ進め、Tampermonkey更新後の通常Chrome live QAを行うこと、After Next / Laterなしとする。`main` pushは公開を開始しない。Classic再公開、新規endpoint、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now 公開済みNext `0.2.0.7`へTampermonkeyを更新し、`RAU-UX-161` / `RAU-UX-162`の通常Chrome live QAを行うこと、After Next / Laterなしとする。manual publicationは完了しており再実行しない。`main` pushは公開を開始しない。Classic再公開、新規endpoint、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
