@@ -534,7 +534,7 @@
 ### RAU-UX-163 booking curveの欠損表示とAnalyze再読込を補正する
 
 - 状態:
-  - source、spec、focused / full check、合成ChromeのF5 QAまで完了。local candidate `0.1.0.161`を作成した。manual publication、Tampermonkey更新、Revenue Assistant実画面QAは別gateである。
+  - source、spec、focused / full check、合成ChromeのF5 QA、Next `0.2.0.8`へのmanual publicationまで完了。Tampermonkey更新とRevenue Assistant実画面QAは別gateである。
 - 解決する問題:
   - 宿泊日当日に取得できなかったcurrentの`0日前`が欠損すること自体は正しいが、referenceまで`0日前`で途切れ、季節型も初期非表示だった。後続のcumulative responseが内部の未観測日を返しても、tail-only mergeが保存済み終端以前を捨てていた。
   - Analyzeの日付URLを直接開く、またはF5更新する経路では、標準surfaceの遅延描画後にNext表示が再同期されない可能性があった。
@@ -546,13 +546,16 @@
   - focused checkで、referenceのexact / core / 表示専用補間の優先順、current非補間、seasonal初期表示、内部欠損追加と既存point不変、post-stay `0日前`非復元、F5再同期listenerを固定した。
   - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.161`、275,971 bytes、SHA-256 `2FEF7351C8C2D37439D04A91161A5D565ED88A807D8426DE25B2092766D64E81`、updateURL / downloadURLなしである。
   - 合成Chromeでは販売設定とbooking curveのF5前後でNext root各1件、季節型初期表示、販売設定supplement 2件を維持した。既存ChromeのRevenue Assistant preflightではNext marker / rootが0だったがTampermonkey状態を未確認のため、修正後のlive証拠には使わない。
+- 配信確認:
+  - 2026-08-10に利用者の明示承認を受け、source `86bb732c8f28a2e8f1548b708304b0039d8f9ab5`をmanual workflow run `31353307101`で公開版`0.2.0.8`へ配信した。build / Pages deploy / post-deploy verifyはすべてsuccessだった。
+  - remote再照合では公開Nextが276,175 bytes、SHA-256 `91019392D4BE7D892B0EDD6EBB2E2BA8BB4B1D378221FD45E44CCCB9ACFC23A4`、source mapが1,065,278 bytes、SHA-256 `FD86DCD710756043B58CE42F55C4BE653791CB8D45289B9D58A7AEDAB1E176C8`でrelease manifestとrun identityに一致した。Classic userscriptは662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source mapも固定baselineと同一byte列だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_002_curve_core.md`
   - `decision: D-20260810-001`
 
-Remaining Task Triage は Now `RAU-UX-163`のmanual publication判断、配信後のTampermonkey更新と通常Chrome live QA、ならびに公開済み`RAU-UX-161` / `RAU-UX-162`の未確認項目を同じ実画面で確認すること、After Next / Laterなしとする。`main` pushは公開を開始しない。Classic再公開、新規endpoint、穴埋め専用の追加request、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は Now 公開済み`RAU-UX-163`のTampermonkey更新と通常Chrome live QA、ならびに`RAU-UX-161` / `RAU-UX-162`の未確認項目を同じ実画面で確認すること、After Next / Laterなしとする。`main` pushは公開を開始しない。Classic再公開、新規endpoint、穴埋め専用の追加request、可視範囲外の取得、session上限拡張、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

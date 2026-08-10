@@ -17,7 +17,7 @@
 - Classic と Next を同じ Revenue Assistant tab で同時に実行しない。初期 Next QA は Tampermonkey で Classic を無効化してから reload する。Next は既に描画済みの Classic DOM を検出すると停止するが、現公開 Classic が後から起動する競合までは防げない。
 - Next のcalendar entryは、表示中カレンダーだけへ接続するread-onlyな基準日レンズである。利用者が`基準日を選ぶ`を押した後だけ確認済み2 endpointを各1回GETし、OHはcurrent settings、個人 / 団体は既存booking curve raw cache、競合は既存snapshot cacheから読む。facility、room type、source、current as-of、stay dateのguardを満たさない値を採用せず、競合snapshotの取得時刻を最新性保証や類似判定に使わない。
 - Next のAnalyze entryは、可視な標準競合価格本文の末尾へClassic / Nextのbrowser-local履歴を統合表示する。facility labelが一致する未保存日の現在stay dateだけ、既存の競合一覧 / 競合価格GETを各最大1回使い、部屋 / 食事指定なし・1〜6名のsnapshotをJST日単位でNext専用IndexedDBへ最大1件保存する。週・月・周辺日程のbackground prefetch、raw response保存、Classic DB変更、Revenue Assistant write操作は行わない。
-- Next公開版`0.2.0.3`は配信済みで、2026-08-08に通常ChromeのTampermonkey更新後実画面smokeまで確認した。installed version / 有効状態はmutable stateなので次のlive作業前にもfresh確認し、Classic再公開は引き続き別gateとする。
+- Next公開版`0.2.0.8`は配信済みで、Tampermonkey更新後の通常Chrome実画面smokeを待つ。installed version / 有効状態はmutable stateなので次のlive作業前にもfresh確認し、Classic再公開は引き続き別gateとする。
 
 ## 前提
 
@@ -271,3 +271,5 @@ localの `.github/workflows/publish-userscript.yml` は、`main` pushによるCl
 2026-07-22に明示承認を受け、origin/mainの6 dependency / Actions更新をverify-only workflowと同じtreeへ統合し、merge commit `57c99837303ed07ca86af924c922fcf783a342eb` をpushしました。Actionsはcheckout / setup-node v7、lockfileどおりの`npm ci`とfull verifyを通しています。同commitのGitHub ActionsはValidate Main run `29888589509` 1件だけがsuccessし、Publish系run 0件、GitHub Pages deployment 0件でした。最新Pages deploymentは引き続きsource `659d998254c7527ecc40b45a3e22513f049168de`で、公開artifactのversion / bytes / SHA-256もpush後のcache-bypass照合2回で不変です。Classic公開経路の分離は完了し、Nextの公開、Tampermonkey install、Classicからの切替はそれぞれ別gateです。
 
 2026-08-08に利用者の明示承認を受け、source `bc20624de6ee0b94f68f07499809596030e11e2a`をmanual workflow run `31236765218`で公開版`0.2.0.3`へ配信しました。公開Nextは246,049 bytes、SHA-256 `D38603B94417FDC93E90D3D81A07FED1FAE2C016C29E8BD32CE5E7F4B5888F07`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。Tampermonkey更新とRevenue Assistant実画面smokeは公開後の別確認です。
+
+2026-08-10に利用者の明示承認を受け、source `86bb732c8f28a2e8f1548b708304b0039d8f9ab5`をmanual workflow run `31353307101`で公開版`0.2.0.8`へ配信しました。公開Nextは276,175 bytes、SHA-256 `91019392D4BE7D892B0EDD6EBB2E2BA8BB4B1D378221FD45E44CCCB9ACFC23A4`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。Tampermonkey更新とRevenue Assistant実画面smokeは公開後の別確認です。
