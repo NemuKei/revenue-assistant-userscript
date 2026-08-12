@@ -243,6 +243,32 @@ const salesRankOrderGateCases = [
             rankHistory: { status: "ready", events: [{ signature: "event" }] },
             scopeKind: "roomGroup"
         }
+    },
+    {
+        expected: false,
+        label: "a second room while the facility rank order is loading",
+        options: {
+            active: true,
+            hasError: false,
+            hasSnapshot: false,
+            loading: true,
+            open: true,
+            rankHistory: { status: "ready", events: [{ signature: "event" }] },
+            scopeKind: "roomGroup"
+        }
+    },
+    {
+        expected: false,
+        label: "a second room after the facility rank order is ready",
+        options: {
+            active: true,
+            hasError: false,
+            hasSnapshot: true,
+            loading: false,
+            open: true,
+            rankHistory: { status: "ready", events: [{ signature: "event" }] },
+            scopeKind: "roomGroup"
+        }
     }
 ];
 for (const testCase of salesRankOrderGateCases) {
@@ -1455,6 +1481,108 @@ assert.deepEqual(
 );
 sequentialRankCoordinator.stop();
 
+const cancelResetRankStatusHarness = createControlledRankDataSourceHarness("status");
+const cancelResetRankOrderHarness = createControlledRankDataSourceHarness("order");
+const cancelResetRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: cancelResetRankOrderHarness.createSource,
+    createRankStatusDataSource: cancelResetRankStatusHarness.createSource
+});
+const cancelResetConsumer = cancelResetRankCoordinator.createConsumer("cancel-reset");
+const firstCancelResetStatusLoad = cancelResetConsumer.rankStatusDataSource.load(
+    "yad:cancel-reset",
+    "20260812"
+);
+cancelResetRankStatusHarness.sources[0].calls[0].resolve(createReadyRankStatusResult(
+    "yad:cancel-reset",
+    "20260812"
+));
+assert.equal((await firstCancelResetStatusLoad).status, "ready");
+cancelResetConsumer.rankStatusDataSource.cancel();
+cancelResetConsumer.rankStatusDataSource.reset();
+const freshCancelResetStatusLoad = cancelResetConsumer.rankStatusDataSource.load(
+    "yad:cancel-reset",
+    "20260812"
+);
+assert.equal(
+    cancelResetRankStatusHarness.sources.length,
+    2,
+    "cancel followed by a route reset must invalidate the released status cache"
+);
+assert.equal(cancelResetRankStatusHarness.sources[0].stopCount, 1);
+cancelResetRankStatusHarness.sources[1].calls[0].resolve(createReadyRankStatusResult(
+    "yad:cancel-reset",
+    "20260812"
+));
+assert.equal((await freshCancelResetStatusLoad).status, "ready");
+
+const firstCancelResetOrderLoad = cancelResetConsumer.rankOrderDataSource.load("yad:cancel-reset");
+cancelResetRankOrderHarness.sources[0].calls[0].resolve(createReadyRankOrderResult("yad:cancel-reset"));
+assert.equal((await firstCancelResetOrderLoad).status, "ready");
+cancelResetConsumer.rankOrderDataSource.cancel();
+cancelResetConsumer.rankOrderDataSource.reset();
+const freshCancelResetOrderLoad = cancelResetConsumer.rankOrderDataSource.load("yad:cancel-reset");
+assert.equal(
+    cancelResetRankOrderHarness.sources.length,
+    2,
+    "cancel followed by a route reset must invalidate the released rank-order cache"
+);
+assert.equal(cancelResetRankOrderHarness.sources[0].stopCount, 1);
+cancelResetRankOrderHarness.sources[1].calls[0].resolve(createReadyRankOrderResult("yad:cancel-reset"));
+assert.equal((await freshCancelResetOrderLoad).status, "ready");
+cancelResetRankCoordinator.stop();
+
+const salesRoomRankOrderHarness = createControlledRankDataSourceHarness("order");
+const salesRoomRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: salesRoomRankOrderHarness.createSource
+});
+const salesRoomRankReads = salesRoomRankCoordinator.createConsumer("sales-room-sequence");
+let salesRoomRankOrderLoading = false;
+let salesRoomRankOrderSnapshot = null;
+let salesRoomRankOrderLoad = null;
+const reconcileSalesRoomRankOrder = (signature) => {
+    const shouldLoad = salesSettingRuntime.shouldStartSalesSettingRankOrderLoad({
+        active: true,
+        hasError: false,
+        hasSnapshot: salesRoomRankOrderSnapshot !== null,
+        loading: salesRoomRankOrderLoading,
+        open: true,
+        rankHistory: { status: "ready", events: [{ signature }] },
+        scopeKind: "roomGroup"
+    });
+    if (!shouldLoad) {
+        return;
+    }
+    salesRoomRankOrderLoading = true;
+    salesRoomRankOrderLoad = salesRoomRankReads.rankOrderDataSource.load("yad:sales-room-sequence")
+        .then((result) => {
+            salesRoomRankOrderLoading = false;
+            if (result.status === "ready") {
+                salesRoomRankOrderSnapshot = result.snapshot;
+            }
+            return result;
+        });
+};
+reconcileSalesRoomRankOrder("room-a-event");
+assert.equal(salesRoomRankOrderHarness.sources.length, 1);
+reconcileSalesRoomRankOrder("room-b-event");
+assert.equal(
+    salesRoomRankOrderHarness.sources.length,
+    1,
+    "a transient Sales remount and second room open must retain the pending facility rank-order read"
+);
+salesRoomRankOrderHarness.sources[0].calls[0].resolve(createReadyRankOrderResult(
+    "yad:sales-room-sequence"
+));
+assert.equal((await salesRoomRankOrderLoad).status, "ready");
+reconcileSalesRoomRankOrder("room-b-event");
+assert.equal(
+    salesRoomRankOrderHarness.sources.length,
+    1,
+    "a later room rebuild must reuse the ready facility rank-order result"
+);
+assert.equal(salesRoomRankOrderHarness.sources[0].calls.length, 1);
+salesRoomRankCoordinator.stop();
+
 const retryRankStatusHarness = createControlledRankDataSourceHarness("status");
 const retryRankOrderHarness = createControlledRankDataSourceHarness("order");
 const retryRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
@@ -1847,20 +1975,77 @@ assert.match(
     /documentHost\.visibilityState !== "hidden"[\s\S]*root\.isConnected[\s\S]*isVisiblyRendered\(surface\.insertionAnchor\)/u,
     "rank-order GETs must be gated by the mounted visible sales surface"
 );
-assert.match(
+const salesSurfaceReconcileSource = sliceSourceBetween(
     salesSettingRuntimeSource,
-    /if \(rankLoading\) \{[\s\S]*rankStatusDataSource\.reset\(\);[\s\S]*rankLoadError = null;[\s\S]*rankLoading = false;/u,
-    "an in-flight rank-status read must be invalidated without poisoning a later remount"
+    "        const nextSurface = resolveSalesSettingClassicSurface(documentHost);",
+    "        const asOfDate = resolveAsOfDate(documentHost);"
 );
 assert.match(
+    salesSurfaceReconcileSource,
+    /if \(documentHost\.visibilityState === "hidden"\) \{\s*suspendForInactiveSurface\("suspended-hidden"\);\s*return;\s*\}\s*if \(nextSurface === null\) \{\s*waitForNativeSalesSettingSurface\(\);\s*return;/u,
+    "a transient missing native surface must remain distinct from a hidden document"
+);
+const inactiveSalesSurfaceSource = sliceSourceBetween(
     salesSettingRuntimeSource,
-    /if \(rankOrderLoading\) \{[\s\S]*rankOrderDataSource\.reset\(\);[\s\S]*rankOrderLoadError = null;[\s\S]*rankOrderLoading = false;/u,
-    "an in-flight rank-order read must be retryable after the sales surface returns"
+    "    function suspendForInactiveSurface(finalState: string): void {",
+    "    function waitForNativeSalesSettingSurface(): void {"
+);
+const hiddenRankStatusLoadingSource = sliceSourceBetween(
+    inactiveSalesSurfaceSource,
+    "        if (rankLoading) {",
+    "        if (rankOrderLoading) {"
 );
 assert.match(
-    salesSettingRuntimeSource,
-    /function suspendForInactiveSurface\(finalState: string\): void \{[\s\S]*rankStatusDataSource\.cancel\(\);\s*rankOrderDataSource\.cancel\(\);[\s\S]*if \(root === null\)/u,
+    hiddenRankStatusLoadingSource,
+    /rankStatusDataSource\.cancel\(\);[\s\S]*rankLoadError = null;[\s\S]*rankLoading = false;/u,
+    "hiding the Sales surface must release an in-flight rank-status lease without invalidating its cache"
+);
+assert.doesNotMatch(hiddenRankStatusLoadingSource, /rankStatusDataSource\.reset\(\)/u);
+const hiddenRankOrderLoadingSource = sliceSourceBetween(
+    inactiveSalesSurfaceSource,
+    "        if (rankOrderLoading) {",
+    "        rankStatusDataSource.cancel();"
+);
+assert.match(
+    hiddenRankOrderLoadingSource,
+    /rankOrderDataSource\.cancel\(\);[\s\S]*rankOrderLoadError = null;[\s\S]*rankOrderLoading = false;/u,
+    "hiding the Sales surface must release an in-flight rank-order lease without a strong reset"
+);
+assert.doesNotMatch(hiddenRankOrderLoadingSource, /rankOrderDataSource\.reset\(\)/u);
+assert.match(
+    inactiveSalesSurfaceSource,
+    /rankStatusDataSource\.cancel\(\);\s*rankOrderDataSource\.cancel\(\);[\s\S]*if \(root === null\)/u,
     "an inactive Sales surface must release both shared-rank consumer leases even without a mounted root"
+);
+const waitingNativeSalesSurfaceSource = sliceSourceBetween(
+    salesSettingRuntimeSource,
+    "    function waitForNativeSalesSettingSurface(): void {",
+    "    function removeMountedArtifacts(): void {"
+);
+assert.match(
+    waitingNativeSalesSurfaceSource,
+    /removeMountedArtifacts\(\);\s*setRuntimeMarker\("waiting-native-sales-setting"\);/u,
+    "a transient native Sales remount must preserve the in-flight rank state and lease"
+);
+assert.doesNotMatch(
+    waitingNativeSalesSurfaceSource,
+    /rank(?:Generation|Loading|Order|Status)|DataSource\.(?:cancel|reset)\(\)/u
+);
+const resetSalesContextSource = sliceSourceBetween(
+    salesSettingRuntimeSource,
+    "    function resetContext(stayDate: string, asOfDate: string | null): void {",
+    "    function startLoadAll(stayDate: string, asOfDate: string, showLoading: boolean): void {"
+);
+assert.match(resetSalesContextSource, /rankStatusDataSource\.reset\(\);\s*rankOrderDataSource\.reset\(\);/u);
+const inactiveSalesRouteSource = sliceSourceBetween(
+    salesSettingRuntimeSource,
+    "    function suspendForInactiveRoute(): void {",
+    "    function suspendForInactiveSurface(finalState: string): void {"
+);
+assert.match(
+    inactiveSalesRouteSource,
+    /rankStatusDataSource\.reset\(\);\s*rankOrderDataSource\.reset\(\);/u,
+    "a real route exit must still invalidate both bounded rank caches"
 );
 assert.match(salesSettingRuntimeSource, /rankOrderDataSource\.reset\(\)/u);
 assert.match(salesSettingRuntimeSource, /rankOrderDataSource\.cancel\(\)/u);
@@ -2076,4 +2261,12 @@ function createFailedRankOrderResult(facilityId) {
         contextKey: facilityId,
         reason: "request-failed"
     };
+}
+
+function sliceSourceBetween(source, startMarker, endMarker) {
+    const startIndex = source.indexOf(startMarker);
+    assert.notEqual(startIndex, -1, `source start marker not found: ${startMarker}`);
+    const endIndex = source.indexOf(endMarker, startIndex + startMarker.length);
+    assert.notEqual(endIndex, -1, `source end marker not found: ${endMarker}`);
+    return source.slice(startIndex, endIndex);
 }

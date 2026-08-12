@@ -40,11 +40,20 @@ const fixtureMode = params.get("state") ?? "ready";
 const rankMode = params.get("rank") ?? "ready";
 const rankOrderMode = params.get("rank-order") ?? "ready";
 let loadCount = 0;
+let dataCancelCount = 0;
+let dataResetCount = 0;
 let rankLoadCount = 0;
+let rankCancelCount = 0;
+let rankResetCount = 0;
 let rankOrderLoadCount = 0;
+let rankOrderCancelCount = 0;
+let rankOrderResetCount = 0;
 
 const dataSource: BookingCurveReferenceDataSource = {
-    cancel() {},
+    cancel() {
+        dataCancelCount += 1;
+        setFixtureCount("data-cancel", dataCancelCount);
+    },
     async load(stayDate, asOfDate, scopeKey): Promise<BookingCurveReferenceDataLoadResult> {
         loadCount += 1;
         document.documentElement.setAttribute("data-mock-sales-setting-load-count", String(loadCount));
@@ -55,18 +64,27 @@ const dataSource: BookingCurveReferenceDataSource = {
         if (fixtureMode === "error") {
             return { status: "error", contextKey: `${stayDate}|${asOfDate}`, reason: "read-failed" };
         }
+        if (fixtureMode === "deferred-once" && loadCount === 1) {
+            await waitForFixtureSignal("data");
+        }
         if (fixtureMode === "missing" && scope.kind === "roomGroup") {
             return buildReadyResult(scope, { status: "missing", reason: "database-missing" }, []);
         }
         const records = buildFixtureRecords(scope);
         return buildReadyResult(scope, { status: "ready", records }, records);
     },
-    reset() {},
+    reset() {
+        dataResetCount += 1;
+        setFixtureCount("data-reset", dataResetCount);
+    },
     stop() {}
 };
 
 const rankStatusDataSource: BookingCurveRankStatusDataSource = {
-    cancel() {},
+    cancel() {
+        rankCancelCount += 1;
+        setFixtureCount("rank-cancel", rankCancelCount);
+    },
     async load(facilityId, stayDate): Promise<BookingCurveRankStatusLoadResult> {
         rankLoadCount += 1;
         document.documentElement.setAttribute("data-mock-sales-setting-rank-load-count", String(rankLoadCount));
@@ -112,12 +130,18 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
             }
         };
     },
-    reset() {},
+    reset() {
+        rankResetCount += 1;
+        setFixtureCount("rank-reset", rankResetCount);
+    },
     stop() {}
 };
 
 const rankOrderDataSource: BookingCurveRankOrderDataSource = {
-    cancel() {},
+    cancel() {
+        rankOrderCancelCount += 1;
+        setFixtureCount("rank-order-cancel", rankOrderCancelCount);
+    },
     async load(facilityId): Promise<BookingCurveRankOrderLoadResult> {
         rankOrderLoadCount += 1;
         document.documentElement.setAttribute(
@@ -142,7 +166,10 @@ const rankOrderDataSource: BookingCurveRankOrderDataSource = {
             }
         };
     },
-    reset() {},
+    reset() {
+        rankOrderResetCount += 1;
+        setFixtureCount("rank-order-reset", rankOrderResetCount);
+    },
     stop() {}
 };
 
@@ -151,12 +178,19 @@ startSalesSettingClassicRuntime(document, window, {
     rankOrderDataSource,
     rankStatusDataSource,
     resolveAsOfDate: () => AS_OF_DATE,
-    resolveStayDate: (location) => location.pathname.includes("/dev/fixtures/next-analyze-sales-setting/")
-        ? STAY_DATE
-        : null
+    resolveStayDate: (location) => {
+        if (!location.pathname.includes("/dev/fixtures/next-analyze-sales-setting/")) {
+            return null;
+        }
+        return location.pathname.endsWith("/2026-08-13") ? "20260813" : STAY_DATE;
+    }
 });
 
-function waitForFixtureSignal(name: "rank-order" | "rank-status"): Promise<void> {
+function setFixtureCount(name: string, value: number): void {
+    document.documentElement.setAttribute(`data-mock-sales-setting-${name}-count`, String(value));
+}
+
+function waitForFixtureSignal(name: "data" | "rank-order" | "rank-status"): Promise<void> {
     return new Promise((resolve) => {
         document.addEventListener(`mock-resolve-${name}`, () => resolve(), { once: true });
     });

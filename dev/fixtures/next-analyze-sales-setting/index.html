@@ -43,6 +43,9 @@
         <span>最終データ更新: 2026年8月8日</span>
         <button type="button" data-mock-show>販売設定を表示</button>
         <button type="button" data-mock-hide>他タブへ</button>
+        <button type="button" data-mock-detach-sales>販売設定DOMを一時除去</button>
+        <button type="button" data-mock-restore-sales>販売設定DOMを復元</button>
+        <button type="button" data-mock-stay-next>翌日のAnalyzeへ</button>
         <button type="button" data-mock-route-away>別画面へ</button>
         <button type="button" data-mock-route-back>Analyzeへ戻る</button>
     </header>
@@ -91,8 +94,27 @@
         (() => {
             const content = document.querySelector("[data-mock-sales-content]");
             const away = document.querySelector("[data-mock-away]");
+            let detachedContent = null;
+            let detachedNextSibling = null;
             document.querySelector("[data-mock-show]").addEventListener("click", () => { content.hidden = false; });
             document.querySelector("[data-mock-hide]").addEventListener("click", () => { content.hidden = true; });
+            document.querySelector("[data-mock-detach-sales]").addEventListener("click", () => {
+                if (content.isConnected) {
+                    detachedContent = content;
+                    detachedNextSibling = content.nextSibling;
+                    content.remove();
+                }
+            });
+            document.querySelector("[data-mock-restore-sales]").addEventListener("click", () => {
+                if (detachedContent !== null && !detachedContent.isConnected) {
+                    const main = document.querySelector("main");
+                    main.insertBefore(detachedContent, detachedNextSibling);
+                }
+            });
+            document.querySelector("[data-mock-stay-next]").addEventListener("click", () => {
+                history.pushState({}, "", "/dev/fixtures/next-analyze-sales-setting/2026-08-13");
+                dispatchEvent(new PopStateEvent("popstate"));
+            });
             document.querySelector("[data-mock-route-away]").addEventListener("click", () => {
                 history.pushState({}, "", "/monthly-progress/2026-08");
                 content.hidden = true;

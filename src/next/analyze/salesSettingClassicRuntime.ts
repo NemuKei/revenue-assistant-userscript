@@ -123,9 +123,12 @@ export function startSalesSettingClassicRuntime(
     let activeRankOrderSnapshot: BookingCurveRankOrderSnapshot | null = null;
     let rankLoadError: Extract<BookingCurveRankStatusLoadResult, { status: "error" }>["reason"] | null = null;
     let rankOrderLoadError: Extract<BookingCurveRankOrderLoadResult, { status: "error" }>["reason"] | null = null;
+    let rankFacilityId: string | null = null;
+    let rankOrderFacilityId: string | null = null;
     let rankLoading = false;
     let rankOrderLoading = false;
     let scopeBatchLoading = false;
+    let initialScopeBatchLoading = false;
     let root: HTMLElement | null = null;
     let surface: SalesSettingClassicSurface | null = null;
     let contextBlocked = false;
@@ -179,9 +182,16 @@ export function startSalesSettingClassicRuntime(
             suspendForInactiveRoute();
             return;
         }
+        if (activeStayDate !== null && activeStayDate !== stayDate) {
+            resetContext(stayDate, null);
+        }
         const nextSurface = resolveSalesSettingClassicSurface(documentHost);
-        if (documentHost.visibilityState === "hidden" || nextSurface === null) {
-            suspendForInactiveSurface(nextSurface === null ? "waiting-native-sales-setting" : "suspended-hidden");
+        if (documentHost.visibilityState === "hidden") {
+            suspendForInactiveSurface("suspended-hidden");
+            return;
+        }
+        if (nextSurface === null) {
+            waitForNativeSalesSettingSurface();
             return;
         }
         const asOfDate = resolveAsOfDate(documentHost);
@@ -249,9 +259,12 @@ export function startSalesSettingClassicRuntime(
         activeRankOrderSnapshot = null;
         rankLoadError = null;
         rankOrderLoadError = null;
+        rankFacilityId = null;
+        rankOrderFacilityId = null;
         rankLoading = false;
         rankOrderLoading = false;
         scopeBatchLoading = false;
+        initialScopeBatchLoading = false;
         contextBlocked = false;
         state = "idle";
         openScopes.clear();
@@ -264,6 +277,7 @@ export function startSalesSettingClassicRuntime(
         const generation = ++loadGeneration;
         dataSource.cancel();
         scopeBatchLoading = true;
+        initialScopeBatchLoading = showLoading;
         if (showLoading) {
             state = "loading";
             renderCurrentState();
@@ -278,6 +292,7 @@ export function startSalesSettingClassicRuntime(
         }
         if (hotelResult.status === "error") {
             scopeBatchLoading = false;
+            initialScopeBatchLoading = false;
             if (hotelResult.reason !== "aborted") {
                 state = "ready";
                 renderCurrentState();
@@ -316,6 +331,7 @@ export function startSalesSettingClassicRuntime(
             }
         }
         scopeBatchLoading = false;
+        initialScopeBatchLoading = false;
         rebuildCurves();
         renderCurrentState();
         maybeStartRankOrderLoad();
@@ -395,6 +411,7 @@ export function startSalesSettingClassicRuntime(
             return;
         }
         const generation = ++rankGeneration;
+        rankFacilityId = facilityId;
         rankLoading = true;
         rebuildCurves();
         if (!scopeBatchLoading) {
@@ -405,7 +422,7 @@ export function startSalesSettingClassicRuntime(
                 stopped
                 || generation !== rankGeneration
                 || activeStayDate !== stayDate
-                || activeData.get("hotel")?.facilityId !== facilityId
+                || rankFacilityId !== facilityId
             ) {
                 return;
             }
@@ -458,6 +475,7 @@ export function startSalesSettingClassicRuntime(
 
     function startRankOrderLoad(facilityId: string): void {
         const generation = ++rankOrderGeneration;
+        rankOrderFacilityId = facilityId;
         rankOrderLoading = true;
         rankOrderLoadError = null;
         rebuildCurves();
@@ -468,7 +486,7 @@ export function startSalesSettingClassicRuntime(
             if (
                 stopped
                 || generation !== rankOrderGeneration
-                || activeData.get("hotel")?.facilityId !== facilityId
+                || rankOrderFacilityId !== facilityId
             ) {
                 return;
             }
@@ -648,6 +666,9 @@ export function startSalesSettingClassicRuntime(
             || activeAsOfDate === null
             || state !== "ready"
             || scopeBatchLoading
+            || root === null
+            || !root.isConnected
+            || surface === null
             || scheduledDataRefreshTimer !== null
         ) {
             return;
@@ -659,6 +680,9 @@ export function startSalesSettingClassicRuntime(
                 || activeStayDate === null
                 || activeAsOfDate === null
                 || scopeBatchLoading
+                || root === null
+                || !root.isConnected
+                || surface === null
             ) {
                 return;
             }
@@ -673,10 +697,13 @@ export function startSalesSettingClassicRuntime(
         dataSource.cancel();
         rankStatusDataSource.cancel();
         rankOrderDataSource.cancel();
+        rankFacilityId = null;
+        rankOrderFacilityId = null;
         activeRankOrderSnapshot = null;
         rankOrderLoadError = null;
         rankOrderLoading = false;
         scopeBatchLoading = false;
+        initialScopeBatchLoading = false;
         contextBlocked = true;
         removeMountedArtifacts();
         setRuntimeMarker("suspended-facility-context-mismatch");
@@ -702,9 +729,12 @@ export function startSalesSettingClassicRuntime(
         activeRankOrderSnapshot = null;
         rankLoadError = null;
         rankOrderLoadError = null;
+        rankFacilityId = null;
+        rankOrderFacilityId = null;
         rankLoading = false;
         rankOrderLoading = false;
         scopeBatchLoading = false;
+        initialScopeBatchLoading = false;
         contextBlocked = false;
         state = "idle";
         openScopes.clear();
@@ -717,22 +747,25 @@ export function startSalesSettingClassicRuntime(
     function suspendForInactiveSurface(finalState: string): void {
         if (rankLoading) {
             rankGeneration += 1;
-            rankStatusDataSource.reset();
+            rankStatusDataSource.cancel();
             activeRankSnapshot = null;
             rankLoadError = null;
+            rankFacilityId = null;
             rankLoading = false;
             rebuildCurves();
         }
         if (rankOrderLoading) {
             rankOrderGeneration += 1;
-            rankOrderDataSource.reset();
+            rankOrderDataSource.cancel();
             activeRankOrderSnapshot = null;
             rankOrderLoadError = null;
+            rankOrderFacilityId = null;
             rankOrderLoading = false;
             rebuildCurves();
         }
         rankStatusDataSource.cancel();
         rankOrderDataSource.cancel();
+        cancelScopeBatchForInactiveSurface();
         if (root === null) {
             setRuntimeMarker(finalState);
             return;
@@ -750,9 +783,37 @@ export function startSalesSettingClassicRuntime(
             rankLoadError = null;
             rankLoading = false;
             scopeBatchLoading = false;
+            initialScopeBatchLoading = false;
         }
         removeMountedArtifacts();
         setRuntimeMarker(finalState);
+    }
+
+    function waitForNativeSalesSettingSurface(): void {
+        if (scheduledDataRefreshTimer !== null) {
+            windowHost.clearTimeout(scheduledDataRefreshTimer);
+            scheduledDataRefreshTimer = null;
+        }
+        cancelScopeBatchForInactiveSurface();
+        removeMountedArtifacts();
+        setRuntimeMarker("waiting-native-sales-setting");
+    }
+
+    function cancelScopeBatchForInactiveSurface(): void {
+        if (!scopeBatchLoading) {
+            return;
+        }
+        const clearInitialBatch = initialScopeBatchLoading;
+        loadGeneration += 1;
+        dataSource.cancel();
+        scopeBatchLoading = false;
+        initialScopeBatchLoading = false;
+        if (clearInitialBatch) {
+            state = "idle";
+            activeData = new Map();
+            activeCurves = new Map();
+            activeScopes = [];
+        }
     }
 
     function removeMountedArtifacts(): void {

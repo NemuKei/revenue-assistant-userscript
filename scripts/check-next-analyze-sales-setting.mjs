@@ -102,9 +102,26 @@ const roomScopeLoop = runtimeSource.match(
 );
 assert.notEqual(roomScopeLoop, null, "room scopes must remain sequential while their redraw is batched");
 assert.doesNotMatch(roomScopeLoop?.[1] ?? "", /renderCurrentState\(\)/u);
-assert.match(runtimeSource, /scopeBatchLoading = false;\s*rebuildCurves\(\);\s*renderCurrentState\(\);/u);
+assert.match(
+    runtimeSource,
+    /scopeBatchLoading = false;\s*initialScopeBatchLoading = false;\s*rebuildCurves\(\);\s*renderCurrentState\(\);/u,
+    "a completed initial room batch must clear both loading guards before one final render"
+);
 assert.match(runtimeSource, /hotelResult\.status === "error"\) \{\s*scopeBatchLoading = false;/u);
 assert.match(runtimeSource, /state !== "ready"\s*\|\| scopeBatchLoading/u);
+assert.match(runtimeSource, /function cancelScopeBatchForInactiveSurface\(\): void/u);
+assert.match(
+    runtimeSource,
+    /const clearInitialBatch = initialScopeBatchLoading;[\s\S]*loadGeneration \+= 1;\s*dataSource\.cancel\(\);\s*scopeBatchLoading = false;\s*initialScopeBatchLoading = false;[\s\S]*if \(clearInitialBatch\) \{[\s\S]*state = "idle";[\s\S]*activeData = new Map\(\);[\s\S]*activeCurves = new Map\(\);[\s\S]*activeScopes = \[\];/u,
+    "an absent native surface must abort an initial partial scope batch without retaining partial room data"
+);
+assert.match(
+    runtimeSource,
+    /activeStayDate !== null && activeStayDate !== stayDate\) \{\s*resetContext\(stayDate, null\);\s*\}[\s\S]*const nextSurface/u,
+    "a stay-date change must reset rank and data context even while the native surface is absent"
+);
+assert.match(runtimeSource, /rankFacilityId !== facilityId/u);
+assert.match(runtimeSource, /rankOrderFacilityId !== facilityId/u);
 assert.doesNotMatch(runtimeSource, /\bfetch\s*\(|XMLHttpRequest|POST|PUT|PATCH|DELETE/u);
 assert.match(viewSource, /"ランク変更履歴"/u);
 for (const segmentLabel of ["全体", "個人", "団体"]) {
@@ -124,9 +141,16 @@ assert.notEqual(
 assert.match(view.encodeSalesSettingScopeId("room:和室"), /^[0-9a-f-]+$/u);
 assert.match(fixture, /data-mock-route-away/u);
 assert.match(fixtureEntry, /fixtureMode === "missing"/u);
+assert.match(fixtureEntry, /fixtureMode === "deferred-once"/u);
 assert.match(fixtureEntry, /rankMode === "empty"/u);
 assert.match(fixtureEntry, /rankMode === "deferred-once"/u);
 assert.match(fixtureEntry, /rankOrderMode === "deferred-once"/u);
+for (const control of ["detach-sales", "restore-sales", "stay-next"]) {
+    assert.match(fixture, new RegExp(`data-mock-${control}`, "u"));
+}
+for (const counter of ["data-cancel", "data-reset", "rank-cancel", "rank-reset", "rank-order-cancel", "rank-order-reset"]) {
+    assert.match(fixtureEntry, new RegExp(`setFixtureCount\\("${counter}"`, "u"));
+}
 
 for (const classicLabel of [
     "ランク変更履歴",
