@@ -659,12 +659,15 @@ function describeRequest(request) {
 }
 
 async function waitForTerminalPhase(dataSource) {
-    for (let attempt = 0; attempt < 200; attempt += 1) {
+    const deadline = Date.now() + 5_000;
+    while (Date.now() < deadline) {
         const phase = dataSource.snapshot()?.progress.phase;
         if (phase === "complete" || phase === "stopped") {
             return;
         }
-        await new Promise((resolve) => setImmediate(resolve));
+        await new Promise((resolve) => setTimeout(resolve, 5));
     }
-    assert.fail("monthly progress data source did not reach a terminal phase");
+    assert.fail(
+        `monthly progress data source did not reach a terminal phase; last phase: ${dataSource.snapshot()?.progress.phase ?? "missing"}`
+    );
 }
