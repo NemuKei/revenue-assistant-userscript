@@ -668,7 +668,7 @@
 ### RAU-MP-09 Classic月次カーブをNextへclean-roomで再接続する
 
 - 状態:
-  - Now。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapはNext `0.2.0.15`へのmanual publicationまで完了し、利用者の更新済み画面で月次sectionと比較切替が表示された。比較年を相対語から表示月基準の絶対年へ変えるfollow-upはsource / spec / focused / full checks、desktop / 390px fixture QAまで完了し、main同期、Next再公開、更新後の通常Chrome実画面QAを残す。
+  - Now。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapはNext `0.2.0.15`へのmanual publicationまで完了し、利用者の更新済み画面で月次sectionと比較切替が表示された。比較年を相対語から表示月基準の絶対年へ変えるfollow-upはsource / spec / focused / full checks、desktop / 390px fixture QA、main同期、Next `0.2.0.16`へのmanual publication、公開artifact照合まで完了し、利用者更新後の通常Chrome実画面QAを残す。
 - 目的:
   - 月次実績画面でも、Classicで使い慣れたLT月次カーブ、比較切替、Tooltip、日次差分をNextで確認できるようにする。
 - 実装境界:
@@ -692,6 +692,7 @@
   - `bootstrap-loading`合成Chromeのdesktop / 390pxで、標準chart 1、Next root / style各1、skeleton 2 panel、overflow 0、network / write marker 0、native再描画 / route往復 / F5後のduplicate root 0、console warning / error 0を確認した。
   - manual workflow run `31550825513`はsource `51a4859c08c3eb36ba18d62db925de930b1b5f2f`を公開版`0.2.0.15`としてbuild / deploy / verifyし、すべてsuccessだった。公開Nextは331,865 bytes、SHA-256 `29B789181459C70B37CAF48D5B1D4B23A57C4496A594DA48BECC41E6C650FE59`でrelease manifestと一致し、workflow外照合でもrun identityとbyte列が一致した。Classic公開baselineは不変だった。
   - 絶対年表示のfocused / full checksとdesktop / 390px合成Chrome QAで、`2025年 / 2024年 / 2023年`、押下した年の`aria-pressed` / panel文言反映、root / document overflow 0、390pxのbutton高さ44px、console warning / error 0を確認した。local candidateは331,739 bytes、SHA-256 `48222FB8400F18C520F00CA3AB6A05C01978EF544DC2EF6F7185B5D09172DD15`である。
+  - manual workflow run `31552193105`はsource `a2d426cf781c4e3083ed6aef83c9611940aa00bf`を公開版`0.2.0.16`としてbuild / deploy / verifyし、すべてsuccessだった。公開Nextは331,944 bytes、SHA-256 `5917CAEDE6F844AC7652AD16D9C061D3A7D9E1D2097BAB046B0C13933186F1AF`でrelease manifestと一致し、workflow外照合でもrun identityとbyte列が一致した。Classic公開baselineは不変だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
