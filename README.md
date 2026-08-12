@@ -19,6 +19,7 @@
 - 次回調整のrank期待範囲へ向けたfirst sliceは、Top calendarが可視範囲へ既に行うrank status 1 GETのruntime validation済みresponseだけを再利用する。追加GETを開始せず、非PIIのrank change eventと取得range coverageをNext専用IndexedDB `revenue-assistant-next-rank-learning`へbounded保存する。facility最大4,096 event / 120 coverage、valid event batch最大512、施設Web Lock、deterministic key、constraint-backed `add`、atomic pruneを使う。raw response、room名、reflector名、価格・在庫、予約・顧客情報は保存しない。first sliceは期待値や成功率を表示せず、隣接1段変更の独立decision clusterとexact 3日 / 7日個人pickupをsynthetic dataで評価する。event 0件を`変更なし`へ推測しない。
 - Next のAnalyze entryは、可視な標準競合価格本文の末尾へClassic / Nextのbrowser-local履歴を統合表示する。facility labelが一致する未保存日の現在stay dateだけ、既存の競合一覧 / 競合価格GETを各最大1回使い、部屋 / 食事指定なし・1〜6名のsnapshotをJST日単位でNext専用IndexedDBへ最大1件保存する。週・月・周辺日程のbackground prefetch、raw response保存、Classic DB変更、Revenue Assistant write操作は行わない。
 - Next公開版`0.2.0.21`は、販売設定と標準booking curveのrank読取をpage-memoryで共有する`0.2.0.20`を維持しつつ、販売設定で部屋cardを開く際のnative DOM remountをroute離脱と誤認し、同一施設のrank sequencesを再取得する不具合を修正した。一時的なremountではpending read / snapshot / open scopeを保持し、実際の非表示ではcancel、route / stay date変更ではresetする。focused / full checks、実ブラウザfixture、main同期、manual publication、公開artifact / Classic baseline照合に加え、installed runtime `0.2.0.21`の通常Chrome受け入れを完了した。販売設定で2 roomを開き、標準booking curveへ移動してroom scopeを選び、販売設定へ戻る安定した監視区間では、Next由来のrank status / rank sequencesは各1 GET、Revenue Assistant request 30件はすべてGET、失敗0件で、Revenue Assistant writeは0だった。標準UI、root cleanup、consoleにも異常はなかった。Classic再公開は引き続き別gateとする。
+- 現在のNext公開版`0.2.0.22`は、次回調整のrank期待範囲へ向けたfirst sliceを追加した。既存Top calendarのrank status responseを再利用し、sanitized event / coverageだけをNext専用DBへbounded保存する。source `effa26ece86b3ac01b4f7ceaffea65977b93059e`、manual workflow run `31583889500`のbuild / deploy / verifyと公開artifact / Classic baseline照合は完了した。最後に確認済みのinstalled runtimeは`0.2.0.21`で、`0.2.0.22`のTampermonkey更新と通常Chrome受け入れは別gateである。
 
 ## 前提
 
@@ -260,6 +261,8 @@ Nextは`/monthly-progress/YYYY-MM`だけで起動し、既存top / analyzeの同
 
 Next公開 userscript URL:
 [https://nemukei.github.io/revenue-assistant-userscript/next/revenue-assistant-next.user.js](https://nemukei.github.io/revenue-assistant-userscript/next/revenue-assistant-next.user.js)
+
+現在の公開Nextはversion `0.2.0.22`、source `effa26ece86b3ac01b4f7ceaffea65977b93059e`、manual workflow run `31583889500`です。userscriptは366,252 bytes、SHA-256 `483D9E370BC0615EF591603EB3F4506B8B64939FBC6CC02DE45D5F4F962106B3`、source mapは1,418,836 bytes、SHA-256 `3FDAF988FD291E942D401346D1952CB765D13912DFFC8F7160B337ACD01FFC67`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。Tampermonkey更新と通常Chrome受け入れは未実施です。
 
 将来Classic release gateを再開する場合、production metadata付きbuildには `GITHUB_PAGES_BASE_URL` を使えますが、現verify-only workflowはbuildも配布も行いません。
 

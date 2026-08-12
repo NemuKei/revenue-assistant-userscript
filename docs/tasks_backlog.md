@@ -737,7 +737,7 @@
 ### RAU-RR-66 次回調整の期待値へ向けたrank学習coverageを作る
 
 - 状態:
-  - Now。source / focused / full checksは完了し、Next manual publicationと通常Chrome受け入れ待ち。利用者が、部屋タイプごとの振り返りを主目的にせず、次の調整時にrankをどう変えると個人予約がどの程度変わりそうかを示す方向へ進めることを確認した。`D-20260812-003`で新規storage / retention、追加GETなし、非PII保存、no-change control停止条件をspec-firstで固定した。
+  - Now。source / focused / full checks / main同期 / Next `0.2.0.22` manual publication / 公開artifact照合は完了し、Tampermonkey更新と通常Chrome受け入れ待ち。利用者が、部屋タイプごとの振り返りを主目的にせず、次の調整時にrankをどう変えると個人予約がどの程度変わりそうかを示す方向へ進めることを確認した。`D-20260812-003`で新規storage / retention、追加GETなし、非PII保存、no-change control停止条件をspec-firstで固定した。
 - 解決する問題:
   - 現行`RAU-RR-64`は表示中stay dateのeventをmemory評価するため、複数の過去調整を独立episodeとして集計できず、期待値を出せる母集団が何件あるか分からない。
   - 週ブロックや同時調整を宿泊日数・部屋タイプ数で水増しせず、変更日 / 3日後 / 7日後の個人予約をexactに評価できる範囲と不足理由を把握する必要がある。
@@ -752,7 +752,8 @@
 - 進捗:
   - sanitized parser / writer / two-store IndexedDB、同一transaction add / prune、施設別Web Lock / fallback、abort rollback、pure coverage modelを実装した。既存Top calendar responseへの相乗りだけで、transportと新規GETは追加していない。
   - 実Chrome IndexedDB fixtureでevent 4,096 + 512の古512 prune、coverage 120 + 1の古1 prune、同一payload dedupe、active transaction abortを確認した。`npm run check:next`、`npm run check`、`npm run check:classic-publication`、`git diff --check`は通過した。
-  - 残りはNext manual publication、Tampermonkey更新、通常Chromeの追加GET 0 / Revenue Assistant write 0 / standard UI非干渉 / 保存fieldと件数の実値非表示確認である。
+  - Validate Main run `31583779690`とmanual workflow run `31583889500`はboth successで、公開Next `0.2.0.22`は366,252 bytes、SHA-256 `483D9E370BC0615EF591603EB3F4506B8B64939FBC6CC02DE45D5F4F962106B3`、source mapは1,418,836 bytes、SHA-256 `3FDAF988FD291E942D401346D1952CB765D13912DFFC8F7160B337ACD01FFC67`でmanifestと一致した。Classic userscript / source mapは固定baselineのままである。
+  - 残りはTampermonkey更新、通常Chromeの追加GET 0 / Revenue Assistant write 0 / standard UI非干渉 / 保存fieldと件数の実値非表示確認である。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
