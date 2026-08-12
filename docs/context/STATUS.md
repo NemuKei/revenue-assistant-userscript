@@ -14,7 +14,7 @@
 - `RAU-UX-167`は、`0.2.0.11`の実画面でTooltipがcursorより大きく右へずれる問題を、変形済み親要素が作るfixed containing blockの原点と倍率を測ってviewport座標へ補正する形で修正した。focused / full check、desktop / 390pxの変形host合成Chrome QA、Next `0.2.0.12`へのmanual publicationまで完了し、利用者は更新後の通常Chromeで問題がないことを確認した。
 - `RAU-UX-168`は完了した。`0.2.0.12`のrank変更がピンクの常時縦破線と菱形、独立Tooltipになっている問題を、Classicのcurrent curve上の小丸markerと通常LTに統合したTooltipへ戻した。直前に確認済みのTooltip位置補正とNextのdata / API / storage / write境界を維持し、source、focused / full check、desktop / 390px合成Chrome QA、Next `0.2.0.13`へのmanual publicationを完了した。利用者はTampermonkey更新後の通常Chromeで問題がないことを確認した。
 - `RAU-MP-09`は公開Next `0.2.0.14`の更新後実画面で、runtime自体は起動しているが標準画面から`最終データ更新`ラベルがなくなり、`waiting-batch-date`でrootを削除していたことを確認した。`D-20260812-001`で、標準chart host確認後にloading rootを先に表示し、DOMラベルがない場合だけ既存月次GETの現在月response `updated_at`からbatchDateKeyを検証し、同じresponseをsnapshot候補へ再利用する修正をspec-firstで固定した。Next `0.2.0.15`へのmanual publication後、利用者の更新済み画面で月次sectionと比較切替が表示された。比較選択の`前年 / 前々年 / 3年前`は判断時に西暦へ読み替える必要があるとの指摘を受け、表示月基準の`2025年 / 2024年 / 2023年`へ変えるsource / spec / focused / full checks、desktop / 390px fixture QA、main同期、Next `0.2.0.16`へのmanual publication、公開artifact / Classic baseline照合まで完了した。利用者のTampermonkey更新後の通常Chrome QAを残す。内部compare mode、初期最大5 GET、Next add-only、Classic exact-key read-only、標準chart非干渉、Revenue Assistant write 0は維持している。
-- `RAU-RR-64`は、rank調整時点から個人ペースと参考線の差がどう変わったかをAnalyzeで振り返る試験sliceを実装した。`D-20260812-002`で固定したexact LT比較、複数変更window、`現在の参考線で再評価`という非因果の表示、対象eventがある場合だけのrank順GET最大1 / memory-only、欠損非推測、storage / Revenue Assistant write 0を維持し、focused / full checksとdesktop / 390px合成Chrome QAまで完了した。`D-20260810-003`に従うmanual publication、Tampermonkey更新、通常Chrome実画面評価を残す。
+- `RAU-RR-64`は、rank調整時点から個人ペースと参考線の差がどう変わったかをAnalyzeで振り返る試験sliceを実装した。`D-20260812-002`で固定したexact LT比較、複数変更window、`現在の参考線で再評価`という非因果の表示、対象eventがある場合だけのrank順GET最大1 / memory-only、欠損非推測、storage / Revenue Assistant write 0を維持し、focused / full checks、desktop / 390px合成Chrome QA、Next `0.2.0.17`へのmanual publication、公開artifact / Classic baseline照合まで完了した。利用者のTampermonkey更新と通常Chrome実画面評価を残す。
 
 ## Current State
 
@@ -67,12 +67,13 @@
 
 ## Next Re-entry
 
-1. 公開中のNextは表示月基準の絶対年比較を含む`0.2.0.16`で、sourceは`a2d426cf781c4e3083ed6aef83c9611940aa00bf`、manual workflow runは`31552193105`である。月次の利用者更新後通常Chrome QAは残る。
-2. `RAU-RR-64`の試験実装とlocal gateは完了した。確認済みroom scopeのrank eventと個人booking curveを接続し、変更日から次変更前日または現在as-ofまでの参考線差の変化を、直近型 / 季節型別の`調整後のペース（試験）`として表示する。
+1. 公開中のNextは`0.2.0.17`で、sourceは`65709a7df188460b89058d340883c8c7e95989ee`、manual workflow runは`31557630431`である。月次の絶対年比較と`RAU-RR-64`の試験表示を含む。
+2. 確認済みroom scopeのrank eventと個人booking curveを接続し、変更日から次変更前日または現在as-ofまでの参考線差の変化を、直近型 / 季節型別の`調整後のペース（試験）`として表示する。
 3. `現在の参考線で再評価`であり因果・成功・価格弾力性を断定しない。rank方向は確認済み`/api/v1/rank_sequences`を最大1 GET / facility / visible contextでmemory取得する。取得失敗は方向解釈だけを未確認とし、current / reference chartと差の数値を維持する。
 4. focused / full checks、candidate artifact、Classic publication baseline、desktop / 390px合成Chrome QAは完了した。合成画面では標準chart 2、Next panel 2、調整event 2、route往復後のduplicate root 0、Next root overflow 0、実API request 0、console warning / error 0を確認した。rank履歴emptyではrank順GET 0も確認した。candidateは347,628 bytes、SHA-256 `D6EE30EAF82B24B12C900AAC4DC8648970E8F8F0F5374E2DE2393322F016283B`である。
-5. 次は今回scopeだけをcommit / pushし、`D-20260810-003`に従ってNext manual publicationと公開artifact / Classic baseline照合へ進む。その後、利用者のTampermonkey更新と通常Chrome実画面評価を行う。新規storage / retention、raw response保存、ADR / sales評価、推奨金額、Revenue Assistant write、自動 / 一括反映は`RAU-RR-64`へ含めていない。
-6. 利用者の一括反映再検討意向は`RAU-RR-65`へ分けた。週ブロック等の明示選択、送信前preview、各行の直前再確認、取消、provider差、部分失敗、反映確認をdry-runで再評価し、live writeは別gateとする。
+5. Publish Next run 17のbuild / deploy / verifyはすべてsuccessである。公開Nextは347,833 bytes、SHA-256 `0DBCE7C6811DB56B1CA5C18280E79F6DD1FD6C8EA0F5A723D53C25E4592B0067`、source mapは1,329,191 bytes、SHA-256 `CC370545CF09808F17B4BDE1638DE163C7749A884143D189D513ACF54614317C`でmanifestと一致し、Classicは固定baselineと同一byte列である。
+6. 次は利用者がTampermonkeyのNextを`0.2.0.17`へ更新する。通常Chromeの対象日Analyzeでroom scopeを選び、標準chart 2、`調整後のペース（試験）`、変更前後rank、直近型 / 季節型、loading / empty / error、F5 / route往復、request budget、Revenue Assistant write 0を確認する。
+7. 新規storage / retention、raw response保存、ADR / sales評価、推奨金額、Revenue Assistant write、自動 / 一括反映は`RAU-RR-64`へ含めていない。利用者の一括反映再検討意向は`RAU-RR-65`へ分け、週ブロック等の明示選択、送信前preview、各行の直前再確認、取消、provider差、部分失敗、反映確認をdry-runで再評価し、live writeは別gateとする。
 
 ## Verify / Confirmation State
 

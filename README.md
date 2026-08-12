@@ -17,7 +17,7 @@
 - Classic と Next を同じ Revenue Assistant tab で同時に実行しない。初期 Next QA は Tampermonkey で Classic を無効化してから reload する。Next は既に描画済みの Classic DOM を検出すると停止するが、現公開 Classic が後から起動する競合までは防げない。
 - Next のcalendar entryは、表示中カレンダーだけへ接続するread-onlyな基準日レンズである。利用者が`基準日を選ぶ`を押した後だけ確認済み2 endpointを各1回GETし、OHはcurrent settings、個人 / 団体は既存booking curve raw cache、競合は既存snapshot cacheから読む。facility、room type、source、current as-of、stay dateのguardを満たさない値を採用せず、競合snapshotの取得時刻を最新性保証や類似判定に使わない。
 - Next のAnalyze entryは、可視な標準競合価格本文の末尾へClassic / Nextのbrowser-local履歴を統合表示する。facility labelが一致する未保存日の現在stay dateだけ、既存の競合一覧 / 競合価格GETを各最大1回使い、部屋 / 食事指定なし・1〜6名のsnapshotをJST日単位でNext専用IndexedDBへ最大1件保存する。週・月・周辺日程のbackground prefetch、raw response保存、Classic DB変更、Revenue Assistant write操作は行わない。
-- Next公開版`0.2.0.16`は`RAU-MP-09`の月次実績拡張、loading先行表示、表示月基準の絶対年比較を含めて配信済みである。installed version / 有効状態はmutable stateなので次のlive作業前にもfresh確認し、Classic再公開は引き続き別gateとする。
+- Next公開版`0.2.0.17`は、月次実績拡張に加え、Analyzeでrank調整後の個人ペースを現在の直近型 / 季節型参考線と比較する`調整後のペース（試験）`を含めて配信済みである。installed version / 有効状態はmutable stateなので次のlive作業前にもfresh確認し、Classic再公開は引き続き別gateとする。
 
 ## 前提
 
@@ -289,3 +289,5 @@ localの `.github/workflows/publish-userscript.yml` は、`main` pushによるCl
 2026-08-12にsource `51a4859c08c3eb36ba18d62db925de930b1b5f2f`をmanual workflow run `31550825513`で公開版`0.2.0.15`へ配信しました。公開Nextは331,865 bytes、SHA-256 `29B789181459C70B37CAF48D5B1D4B23A57C4496A594DA48BECC41E6C650FE59`、source mapは1,273,614 bytes、SHA-256 `CF121500CDD5EE0859D2FBDE4CADA6AE7795C71BFA91EF1305A639439C445830`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。
 
 2026-08-12にsource `a2d426cf781c4e3083ed6aef83c9611940aa00bf`をmanual workflow run `31552193105`で公開版`0.2.0.16`へ配信しました。公開Nextは331,944 bytes、SHA-256 `5917CAEDE6F844AC7652AD16D9C061D3A7D9E1D2097BAB046B0C13933186F1AF`、source mapは1,273,930 bytes、SHA-256 `44F7BDDE6D28B8751B41FC0DC3FF5CA9F7E976CC4041C14E682850AF2DDA421C`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。Tampermonkey更新と通常Chromeの比較年表示QAは公開後の別確認です。
+
+2026-08-12にsource `65709a7df188460b89058d340883c8c7e95989ee`をmanual workflow run `31557630431`で公開版`0.2.0.17`へ配信しました。公開Nextは347,833 bytes、SHA-256 `0DBCE7C6811DB56B1CA5C18280E79F6DD1FD6C8EA0F5A723D53C25E4592B0067`、source mapは1,329,191 bytes、SHA-256 `CC370545CF09808F17B4BDE1638DE163C7749A884143D189D513ACF54614317C`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。Tampermonkey更新と通常Chromeの試験表示QAは公開後の別確認です。
