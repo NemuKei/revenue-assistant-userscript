@@ -703,7 +703,7 @@
 ### RAU-RR-64 Analyzeで調整後の個人ペースを参考線と比較する
 
 - 状態:
-  - Next `0.2.0.17`の利用者更新後通常Chromeで、実Analyzeのembedded booking curveへ試験sectionが接続されず表示0件であることを確認した。embedded表示とSales runtimeのrank-order seamを修正し、Next `0.2.0.19`へのmanual publication後、通常Chromeで試験section、方向判定、F5時のloading UI、route cleanup / 再生成を確認した。共有coordinatorを公開した`0.2.0.20`の利用者更新後、F5が`比較準備中`7件を含むloadingからreadyへ戻る一方、安定した同一pageでSales room curveを2件開くとrank sequencesが2回開始した。native Sales remountでpending / snapshot / open scopeを保持し、実際の非表示だけcancel、route / context resetだけresetする修正へ置換した。実ブラウザfixtureを含むlocal gate、main同期、Next `0.2.0.21`へのmanual publication、公開artifact / Classic baseline照合まで完了し、利用者更新後のstable live request budget / Revenue Assistant write 0確認を残す。
+  - 完了。Next `0.2.0.17`の利用者更新後通常Chromeで見つかったembedded section欠落を`0.2.0.19`で修正し、`0.2.0.20`で販売設定 / 標準booking curve間のrank読取を共有した後、native Sales remountによるrank sequences再取得を`0.2.0.21`で修正した。実ブラウザfixtureを含むlocal gate、main同期、manual publication、公開artifact / Classic baseline照合、利用者のTampermonkey更新、通常Chromeのstable live request budget / Revenue Assistant write 0確認まで完了した。
 - 解決する問題:
   - rankを下げてペースを上げたかった、またはrankを上げてペースを抑え単価を狙った調整について、変更後に個人予約の参考線との差がどう変わったかをAnalyze内で振り返る入口がない。
 - 実装境界:
@@ -724,7 +724,9 @@
   - source監査でstandalone booking curveとSales runtimeが同じrank status / rank sequencesを別々に取得できることを確認した。両runtimeへentry-ownedのmemory-only coordinatorを注入し、同一keyの同時 / 順次読取を各1回へ統合した。一方のconsumer離脱、全consumer解放、異なるkeyのroute handoff、route reset後の同一key fresh read、成功 / 失敗cache、stale result拒否をfocused regressionで固定した。full checks、candidate / publication contract、Classic boundary、desktop / 390px embedded fixture、distribution / booking curve smokeは通過し、candidateは352,987 bytes、SHA-256 `FC175680B6A59BD4756137167C817E39FBCD2DB12A698D3A0BD1B08FC0BC1A95`である。
   - source `c88a5bb663fd613effd0b43854ba0a74d13a10b5`をmanual workflow run `31566094703`で公開版`0.2.0.20`へ配信した。build / deploy / verifyはすべてsuccessで、公開Next / source mapはrelease manifestと一致し、Classicは固定baselineと同一byte列である。利用者のTampermonkey更新後に、販売設定から標準booking curveへのtab切替を含むlive request budget / write 0を確認する。
   - 利用者のTampermonkey更新後、installed `0.2.0.20`でF5のloading / ready復帰を確認した。観測区間のnon-GETは0件だったが、F5 CDP eventがtruncatedのため全区間のwrite 0は未確定である。安定した同一page再現でSales room curveを2件開くとrank sequencesが2回開始し、native request後のNext rank statusは1回だった。native Sales surfaceの一時的なremountをinactiveとしてreset / cancelしていた原因を、pending / snapshot / open scopeを保持する修正へ置換した。実際の非表示はcancel、route / context resetはresetのままとし、room A pending中のDOM detach / restore後にroom Bを開いてもrank-order load 1 / root 1となる実ブラウザfixtureを追加した。
-  - source `fed091d3ea4e793d08a9f294c12c7c694cd17ade`はfocused / full checks、candidate / publication contract、Classic boundary、distribution / booking curve smoke、Validate Main run `31568743392`を通過した。manual workflow run `31568825506`で公開版`0.2.0.21`へ配信し、公開Next 353,544 bytes / SHA-256 `6D6D2239E19DA8069FC5DBB3D84BB772E02F1BAC232E278233A94E53432D1EB9`、source map 1,362,728 bytes / SHA-256 `A1C6327A86A2E2A4B1830DDA91F0662AFC9ADC3A3C2E48AE818FC85AAAD3B9C2`をmanifestと照合した。Classicは固定baselineと同一byte列である。利用者更新後のstable live request / write QAを残す。
+  - source `fed091d3ea4e793d08a9f294c12c7c694cd17ade`はfocused / full checks、candidate / publication contract、Classic boundary、distribution / booking curve smoke、Validate Main run `31568743392`を通過した。manual workflow run `31568825506`で公開版`0.2.0.21`へ配信し、公開Next 353,544 bytes / SHA-256 `6D6D2239E19DA8069FC5DBB3D84BB772E02F1BAC232E278233A94E53432D1EB9`、source map 1,362,728 bytes / SHA-256 `A1C6327A86A2E2A4B1830DDA91F0662AFC9ADC3A3C2E48AE818FC85AAAD3B9C2`をmanifestと照合した。Classicは固定baselineと同一byte列である。
+  - 利用者のTampermonkey更新後、通常Chromeでinstalled runtime `0.2.0.21`を確認した。販売設定の2 roomを開いて標準booking curveのroom scopeへ移り、販売設定へ戻る安定した監視区間はtruncatedなしで、Revenue Assistant request 30件はすべてGET、失敗0件だった。Next由来のrank status / rank sequencesは各1回で、復帰時の追加rank読取は0件、Revenue Assistant writeは0だった。Sales root / style各1、open room 2、embedded component 3、ready section 2、変更event 5、方向表示5、ready reference 10、固有かつ有効なARIA target 3 / 3、root overflow 0、console warning / error 0を確認した。標準booking curveへ移るとSales root / styleは各0、standalone rootはready 1となり、販売設定へ戻るとSales root / style各1、standalone root 0となった。標準の反映button 11件には触れていない。
+  - Chrome拡張のmouse入力が人工的なhidden transitionを起こした区間は棄却し、同じ通常Chrome tabで正確なDOM操作を使った安定区間だけを合格根拠にした。再mount後にdocument上の内部診断markerが古い`waiting-native-sales-setting`を残す場合がある。今回の受け入れ操作範囲では利用者表示、root状態、request契約に異常は観測していないが、全経路への無影響は一般化せず、このmarkerはready判定に使わない。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
@@ -750,7 +752,7 @@
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
-  - `depends-on: RAU-RR-64 live UI confirmation complete; live request / write boundary follow-up remains`
+  - `depends-on: RAU-RR-64 complete`
 
 Remaining Task Triage のNowは通常Chrome月次QAを残す`RAU-MP-09`、Nextは一括調整をdry-runから再評価する`RAU-RR-65`とする。Classic再公開、未調査endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
