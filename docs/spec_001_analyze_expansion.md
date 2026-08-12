@@ -539,6 +539,12 @@ Next booking curve adjustment-response experiment (`RAU-RR-64`):
 - response、rank order、評価結果をstorageへ保存せず、新規IndexedDB / migration / retention、raw response、request / response body、HAR、Cookie、token、credentialを追加しない。ADR / sales / RevPAR、類似非変更日、推奨金額、Revenue Assistant write、自動 / 一括反映はこの試験sliceに含めない。
 - fixtureでは、下げ後の正 / 負、上げ後の先行維持 / 参考線割れ、複数変更のwindow分離、exact LT欠損、変更後観測なし、rank順取得失敗、reference toggle、desktop / 390px、標準chart維持、duplicate root 0、Revenue Assistant write 0を確認する。共有coordinatorのfocused regressionでは、同じAnalyze contextで両runtimeが同じkeyを順次または同時に読んでも追加GETがrank status 1 + rank sequences 1を超えず、consumer片側の離脱が他方のin-flight取得を止めず、全consumer解放時だけ未完了取得をabortすること、異なるkeyへのhandoff中も新keyを停止しないこと、route reset後の同一keyは成功 / 失敗cacheを再利用せずfreshに読み直すことを確認する。公開後の通常Chromeでは販売設定から標準booking curveへのtab切替を含むlive request budgetを別途確認する。
 
+Next rank-response learning coverage contract (`RAU-RR-66`):
+
+- 利用者が次の調整時にrank変更後の個人予約反応を判断できる期待値へ進む前に、既存Top calendarの可視範囲rank status 1 GETから、runtime validation済みの非PII eventと取得coverageだけを追加GETなしでNext専用storageへ蓄積する。新しいnetwork owner、background prefetch、current-rank snapshot、Revenue Assistant writeを追加しない。
+- captureはfacility / as-of / visible stay-date range / document visible / current generationが一致したready responseだけを対象にする。stale / aborted / invalid / auth・rate-limit errorではwrite 0とし、writer / store失敗は既存calendar badge、booking curve取得、Analyze rank表示を止めない。保存field、DB / store / key、retention、migration / rollback、episode / 3日・7日coverage、no-change control停止条件は`docs/spec_003_rank_recommendation_signal.md`の`RAU-RR-66`契約を正とする。
+- このsliceの本番UIは既存`RAU-RR-64`表示を維持し、新しい期待値、確率、成功判定、推奨金額を出さない。first acceptanceはsyntheticなrank event / booking curveで独立episode、3日 / 7日exact coverage、censor / exclusion、事例不足を再現し、通常Chromeでは可視範囲rank statusが従来どおり最大1 GET、Revenue Assistant write 0、既存標準UI / Next root非干渉、sanitized store add / duplicate skip / pruneを確認する。
+
 Next 90-day price trend read-only comparison contract (`RAU-UX-150` 第四段階):
 
 - Nextの価格推移補助表示は `/analyze/YYYY-MM-DD` の標準価格推移本文が実際に可視で、`GET /api/v2/yad/info` のfacility labelが表示中contextと一致する場合だけ、native content末尾へsibling rootを1つ追加する。標準chart、filter、tabを隠す、移動する、置換する処理は持たず、他tab、別route、document hidden、facility mismatch、後発Classic、重複rootではroot / styleを除去またはfail closedとする。

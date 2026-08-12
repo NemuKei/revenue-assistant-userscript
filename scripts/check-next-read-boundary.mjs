@@ -24,6 +24,16 @@ const monthlyProgressStorePath = path.join(
     "monthlyProgress",
     "monthlyProgressStore.ts"
 );
+const rankLearningStorePath = path.join(
+    nextSourceRoot,
+    "rankLearning",
+    "rankLearningStore.ts"
+);
+const rankLearningTypesPath = path.join(
+    nextSourceRoot,
+    "rankLearning",
+    "rankLearningTypes.ts"
+);
 
 const expectedApiPaths = [
     "/api/v1/booking_curve/monthly",
@@ -133,6 +143,8 @@ assert.equal(existsSync(snapshotStorePath), true, "bounded Next snapshot store s
 assert.equal(existsSync(priceTrendStorePath), true, "bounded Next price trend store source is required");
 assert.equal(existsSync(bookingCurveStorePath), true, "bounded Next booking curve store source is required");
 assert.equal(existsSync(monthlyProgressStorePath), true, "append-only Next monthly progress store source is required");
+assert.equal(existsSync(rankLearningStorePath), true, "bounded Next rank learning store source is required");
+assert.equal(existsSync(rankLearningTypesPath), true, "Next rank learning storage contract is required");
 
 const tsconfigPath = ts.findConfigFile(projectRoot, ts.sys.fileExists, "tsconfig.json");
 assert.notEqual(tsconfigPath, undefined, "tsconfig.json is required for type-aware boundary checks");
@@ -183,7 +195,11 @@ console.log(JSON.stringify({
     bookingCurveRetentionLimit: 4_096,
     monthlyProgressStoreOwner: toProjectPath(monthlyProgressStorePath),
     monthlyProgressStoreModes: ["readonly", "readwrite"],
-    monthlyProgressRetention: "append-only-no-automatic-prune"
+    monthlyProgressRetention: "append-only-no-automatic-prune",
+    rankLearningStoreOwner: toProjectPath(rankLearningStorePath),
+    rankLearningStoreModes: ["readonly", "readwrite"],
+    rankLearningEventRetentionLimit: 4_096,
+    rankLearningCoverageRetentionLimit: 120
 }, null, 2));
 
 function checkTransportBoundary(sources, source) {
@@ -376,11 +392,13 @@ function checkIndexedDbBoundary(sources) {
     const priceTrendStoreOwner = normalizePath(priceTrendStorePath);
     const bookingCurveStoreOwner = normalizePath(bookingCurveStorePath);
     const monthlyProgressStoreOwner = normalizePath(monthlyProgressStorePath);
+    const rankLearningStoreOwner = normalizePath(rankLearningStorePath);
     const boundedStoreOwners = new Set([
         snapshotStoreOwner,
         priceTrendStoreOwner,
         bookingCurveStoreOwner,
-        monthlyProgressStoreOwner
+        monthlyProgressStoreOwner,
+        rankLearningStoreOwner
     ]);
     const allowedOwners = new Set([readonlyOwner, ...boundedStoreOwners]);
 
@@ -451,23 +469,25 @@ function checkIndexedDbBoundary(sources) {
             toProjectPath(snapshotStorePath),
             toProjectPath(priceTrendStorePath),
             toProjectPath(bookingCurveStorePath),
-            toProjectPath(monthlyProgressStorePath)
+            toProjectPath(monthlyProgressStorePath),
+            toProjectPath(rankLearningStorePath)
         ].sort(),
         "readonly and all bounded store owners must have direct IndexedDB access"
     );
-    assert.equal(readwriteLiterals.length, 4, "Next runtime must contain four reviewed readwrite modes");
+    assert.equal(readwriteLiterals.length, 5, "Next runtime must contain five reviewed readwrite modes");
     assert.deepEqual(
         readwriteLiterals.map((entry) => toProjectPath(entry.source.fileName)).sort(),
         [
             toProjectPath(snapshotStorePath),
             toProjectPath(priceTrendStorePath),
             toProjectPath(bookingCurveStorePath),
-            toProjectPath(monthlyProgressStorePath)
+            toProjectPath(monthlyProgressStorePath),
+            toProjectPath(rankLearningStorePath)
         ].sort(),
-        "readwrite mode is restricted to the four reviewed Next stores"
+        "readwrite mode is restricted to the five reviewed Next stores"
     );
     assert.equal(forbiddenCalls.length, 0, formatReasonNodeList("forbidden IndexedDB mutation", forbiddenCalls));
-    assert.equal(transactionCalls.length, 12, "reviewed IndexedDB owners must retain twelve explicit transactions");
+    assert.equal(transactionCalls.length, 14, "reviewed IndexedDB owners must retain fourteen explicit transactions");
     for (const transaction of transactionCalls) {
         assert.equal(transaction.node.arguments.length, 2, "IndexedDB transaction must use an explicit two-argument call");
         const mode = getStringLiteralText(transaction.node.arguments[1]);
@@ -546,6 +566,22 @@ function checkIndexedDbBoundary(sources) {
             "NEXT_PRICE_TREND_SERIES_READ_LIMIT"
         ].sort()
     );
+    const rankLearningStoreGetAllCalls = getAllCalls.filter(
+        (call) => normalizePath(call.source.fileName) === rankLearningStoreOwner
+    );
+    assert.equal(
+        rankLearningStoreGetAllCalls.length,
+        2,
+        "rank learning store must have two bounded facility getAll helpers"
+    );
+    for (const getAll of rankLearningStoreGetAllCalls) {
+        assert.equal(getAll.node.arguments.length, 2);
+        assert.equal(
+            getAll.node.arguments[1]?.getText(getAll.source),
+            "limit",
+            `rank learning facility reads must use an explicit bounded limit: ${formatNode(getAll)}`
+        );
+    }
     const bookingCurveStoreSource = getProgramSourceFile(bookingCurveStorePath);
     const bookingCurveReadHelperCalls = collectNodes(
         bookingCurveStoreSource,
@@ -643,6 +679,21 @@ function checkIndexedDbBoundary(sources) {
     assert.equal(monthlyProgressMethodCounts.get("delete") ?? 0, 0, "monthly progress store must not prune or delete records");
     assert.equal(monthlyProgressMethodCounts.get("getAll") ?? 0, 0, "monthly progress store must not materialize unbounded records");
     assert.equal(monthlyProgressMethodCounts.get("createIndex") ?? 0, 0, "monthly progress store must retain exact-key-only access");
+    const rankLearningStoreCalls = indexedDbCalls.filter(
+        (call) => normalizePath(call.source.fileName) === rankLearningStoreOwner
+    );
+    const rankLearningMethodCounts = new Map();
+    for (const call of rankLearningStoreCalls) {
+        rankLearningMethodCounts.set(
+            call.member.name,
+            (rankLearningMethodCounts.get(call.member.name) ?? 0) + 1
+        );
+    }
+    assert.equal(rankLearningMethodCounts.get("add"), 1, "rank learning store must use one constraint-backed add helper");
+    assert.equal(rankLearningMethodCounts.get("delete"), 1, "rank learning store may delete only through one prune helper");
+    assert.equal(rankLearningMethodCounts.get("getAll"), 2, "rank learning store must retain two bounded getAll helpers");
+    assert.equal(rankLearningMethodCounts.get("createObjectStore"), 1, "rank learning schema must use one closed store helper");
+    assert.equal(rankLearningMethodCounts.get("createIndex"), 1, "rank learning schema must use one closed facility-index helper");
     const recordLimitDeclarations = collectNodes(getProgramSourceFile(indexedDbPath), (node) => (
         ts.isVariableDeclaration(node)
         && ts.isIdentifier(node.name)
@@ -708,6 +759,27 @@ function checkIndexedDbBoundary(sources) {
         ["NEXT_BOOKING_CURVE_SOURCE_RETENTION_LIMIT", 4_096],
         ["NEXT_BOOKING_CURVE_SOURCE_BATCH_LIMIT", 32]
     ]), "booking curve store limits must remain fixed and bounded");
+    const rankLearningLimitDeclarations = collectNodes(
+        getProgramSourceFile(rankLearningTypesPath),
+        (node) => (
+            ts.isVariableDeclaration(node)
+            && ts.isIdentifier(node.name)
+            && (
+                node.name.text === "RANK_LEARNING_EVENT_BATCH_LIMIT"
+                || node.name.text === "RANK_LEARNING_EVENT_FACILITY_LIMIT"
+                || node.name.text === "RANK_LEARNING_COVERAGE_FACILITY_LIMIT"
+            )
+        )
+    );
+    const rankLearningLimits = new Map(rankLearningLimitDeclarations.map((declaration) => [
+        declaration.name.text,
+        getNumericLiteralValue(declaration.initializer)
+    ]));
+    assert.deepEqual(rankLearningLimits, new Map([
+        ["RANK_LEARNING_EVENT_BATCH_LIMIT", 512],
+        ["RANK_LEARNING_EVENT_FACILITY_LIMIT", 4_096],
+        ["RANK_LEARNING_COVERAGE_FACILITY_LIMIT", 120]
+    ]), "rank learning write and retention limits must remain fixed and bounded");
 }
 
 function checkRuntimeImportBoundary(reviewedPaths) {

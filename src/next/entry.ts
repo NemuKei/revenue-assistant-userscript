@@ -15,6 +15,7 @@ import { startBookingCurveAcquisitionRuntime } from "./bookingCurve/bookingCurve
 import { createLiveCalendarSummaryDataSource } from "./live/liveCalendarSummaryDataSource";
 import { startNextMonthlyProgressRuntime } from "./monthlyProgress/monthlyProgressRuntime";
 import { createBookingCurveRankReadCoordinator } from "./analyze/bookingCurveRankReadCoordinator";
+import { createRankLearningCaptureWriter } from "./rankLearning/rankLearningCaptureWriter";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -45,8 +46,11 @@ if (!runtimeResult.started) {
 function startNextCandidateRuntime(): void {
     document.documentElement.setAttribute(NEXT_RUNTIME_VERSION_ATTRIBUTE, SCRIPT_VERSION);
     const bookingCurveAcquisition = createNextBookingCurveAcquisitionCoordinator({ windowHost: window });
+    const rankLearningCaptureWriter = createRankLearningCaptureWriter({ windowHost: window });
     const liveCalendarSummary = createLiveCalendarSummaryDataSource({
         acquisition: bookingCurveAcquisition,
+        documentHost: document,
+        rankLearningCaptureWriter,
         windowHost: window
     });
     const rankReads = createBookingCurveRankReadCoordinator({ windowHost: window });

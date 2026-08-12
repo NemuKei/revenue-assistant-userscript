@@ -17,6 +17,7 @@ import {
     createBrowserNextReadTransport,
     type NextReadTransport
 } from "./liveSimilarityLensTransport";
+import type { RankLearningCaptureWriter } from "../rankLearning/rankLearningCaptureWriter";
 
 const LIVE_CALENDAR_GROUP_REFRESH_DELAY_MS = 1_000;
 const JST_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
@@ -73,7 +74,9 @@ export function createIdleLiveCalendarSummarySnapshot(): LiveCalendarSummarySnap
 
 export function createLiveCalendarSummaryDataSource(options: {
     acquisition: NextBookingCurveAcquisitionCoordinator;
+    documentHost?: Pick<Document, "visibilityState">;
     now?: () => Date;
+    rankLearningCaptureWriter?: RankLearningCaptureWriter;
     refreshDelayMs?: number;
     transport?: NextReadTransport;
     windowHost?: Window;
@@ -254,10 +257,11 @@ export function createLiveCalendarSummaryDataSource(options: {
             if (signal.aborted) {
                 return;
             }
+            const observedAt = now();
             const latestChanges = parseLiveCalendarLatestChanges(
                 payload,
                 context.visibleStayDates,
-                now()
+                observedAt
             );
             if (latestChanges === null) {
                 publishRankError(expectedGeneration, context.contextKey, "response-invalid");
@@ -273,6 +277,24 @@ export function createLiveCalendarSummaryDataSource(options: {
                 rankStatusError: null
             };
             emit();
+            if (
+                options.rankLearningCaptureWriter !== undefined
+                && options.documentHost?.visibilityState === "visible"
+            ) {
+                try {
+                    void options.rankLearningCaptureWriter.capture({
+                        asOfDate: context.asOfDate,
+                        capturedAt: observedAt.toISOString(),
+                        facilityId: context.facilityId,
+                        payload,
+                        signal,
+                        sourceRangeFrom: firstDate,
+                        sourceRangeTo: lastDate
+                    }).catch(() => undefined);
+                } catch {
+                    // Learning capture is non-blocking evidence and must not fail the calendar badge.
+                }
+            }
         } catch (error: unknown) {
             if (signal.aborted || isAbortError(error)) {
                 return;

@@ -668,7 +668,7 @@
 ### RAU-MP-09 Classic月次カーブをNextへclean-roomで再接続する
 
 - 状態:
-  - Now。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapはNext `0.2.0.15`へのmanual publicationまで完了し、利用者の更新済み画面で月次sectionと比較切替が表示された。比較年を相対語から表示月基準の絶対年へ変えるfollow-upはsource / spec / focused / full checks、desktop / 390px fixture QA、main同期、Next `0.2.0.16`へのmanual publication、公開artifact照合まで完了し、利用者更新後の通常Chrome実画面QAを残す。
+  - 実装・公開と利用者の通常Chrome表示確認まで完了。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapをNext `0.2.0.15`へ配信し、比較年を相対語から表示月基準の絶対年へ変えた`0.2.0.16`を公開した。2026-08-12に利用者が西暦比較表示を確認し、問題なしと回答した。runtimeのrequest count / Revenue Assistant write 0を通常Chromeで独立計測する作業は、次のruntime変更のlive gateで月次routeを再確認する。
 - 目的:
   - 月次実績画面でも、Classicで使い慣れたLT月次カーブ、比較切替、Tooltip、日次差分をNextで確認できるようにする。
 - 実装境界:
@@ -734,6 +734,50 @@
   - `decision: D-20260812-002`
   - `depends-on: RAU-UX-168 complete`
 
+### RAU-RR-66 次回調整の期待値へ向けたrank学習coverageを作る
+
+- 状態:
+  - Now。source / focused / full checksは完了し、Next manual publicationと通常Chrome受け入れ待ち。利用者が、部屋タイプごとの振り返りを主目的にせず、次の調整時にrankをどう変えると個人予約がどの程度変わりそうかを示す方向へ進めることを確認した。`D-20260812-003`で新規storage / retention、追加GETなし、非PII保存、no-change control停止条件をspec-firstで固定した。
+- 解決する問題:
+  - 現行`RAU-RR-64`は表示中stay dateのeventをmemory評価するため、複数の過去調整を独立episodeとして集計できず、期待値を出せる母集団が何件あるか分からない。
+  - 週ブロックや同時調整を宿泊日数・部屋タイプ数で水増しせず、変更日 / 3日後 / 7日後の個人予約をexactに評価できる範囲と不足理由を把握する必要がある。
+- 最初のscope:
+  - 既存Top calendarの可視範囲rank status最大1 GETを再利用し、facility / stay date / room group ID / 反映日時 / 変更前後rank名だけのsanitized eventと取得coverageを、新しいNext専用IndexedDBへ追加保存する。writerはtransportを持たず、新しいGET、raw response、`reflector_name`、room名、価格・在庫、予約・顧客情報、Revenue Assistant writeを追加しない。
+  - eventは施設最大4,096件、coverageは施設最大120件へboundedにし、deterministic key、Web Lock、add constraint、同一transactionのpruneを使う。既存Next / Classic DBをupgrade、更新、削除、一括copyしない。rollback時はwriter / readerを外し、新DBはinertに残す。
+  - pure coverage modelで隣接1段変更、週ブロックepisode、facility + reflected date単位の独立decision cluster、3日 / 7日exact transient pickup、再変更censor、同日複数変更、future / 宿泊日超過、欠損を区別する。rank status 0件を変更なしcontrolへ推測しない。
+- 合格条件:
+  - synthetic fixtureで同一payload再取得の追加0、event / coverage add、施設境界、batch / retention上限、atomic prune、store failure非波及、PII / raw field非保持を確認する。
+  - 連続する週ブロックを1 episode / 1 decision clusterとして数え、3日 / 7日exact ready、次変更censor、同日複数変更、2段移動、rank順未確認、欠損、負のpickup、no-change control disabledをpure checkで区別する。
+  - 既存calendarのrank status GETは可視範囲最大1のまま、rank sequences / booking curveの追加GET 0、Revenue Assistant write 0、標準UI非干渉をfocused / full checksと通常Chromeで確認する。期待値、確率、推奨金額、一括dry-runは表示しない。
+- 進捗:
+  - sanitized parser / writer / two-store IndexedDB、同一transaction add / prune、施設別Web Lock / fallback、abort rollback、pure coverage modelを実装した。既存Top calendar responseへの相乗りだけで、transportと新規GETは追加していない。
+  - 実Chrome IndexedDB fixtureでevent 4,096 + 512の古512 prune、coverage 120 + 1の古1 prune、同一payload dedupe、active transaction abortを確認した。`npm run check:next`、`npm run check`、`npm run check:classic-publication`、`git diff --check`は通過した。
+  - 残りはNext manual publication、Tampermonkey更新、通常Chromeの追加GET 0 / Revenue Assistant write 0 / standard UI非干渉 / 保存fieldと件数の実値非表示確認である。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260812-003`
+  - `depends-on: RAU-RR-64 complete`
+
+### RAU-RR-67 独立episodeから隣接rankの期待反応を試験表示する
+
+- 状態:
+  - Next。`RAU-RR-66`の実分布で独立decision cluster、3日 / 7日exact coverage、censor、room group別件数を確認してから、表示policyを固定する。
+- 解決する問題:
+  - 調整候補room groupについて、現在のLT・個人pace・capacity等が近い過去caseから、隣接rankへ動かした後の個人予約反応を、件数と不確実性を含めて短時間で判断できない。
+- 最初のscope:
+  - 同room groupの類似episodeを優先し、不足時だけ同facilityのcapacity / LT / 変更前paceが比較可能なpoolへfallbackする。件数guard、matching距離、facility fallback上限、1 decision cluster依存上限は`RAU-RR-66`のcoverage結果から決め、根拠なく固定しない。
+  - no-change controlはrank-status rangeの完全性と日次current rank snapshotが確認されるまでdisabledとし、先にtreated episodeだけの傾向を出す場合も`据え置き比`、因果効果、成功率とは呼ばない。期待値を出せない場合は`判定材料不足`とする。
+- 合格条件:
+  - 3日 / 7日の中央値、中央50%範囲、独立decision cluster数、same-room / facility fallback、censor率、leave-one-cluster-outでの方向安定性をbacktestし、future leakageを拒否する。
+  - UIは変更対象room group、隣接rank方向、期待レンジ、根拠件数、試験確度、主な注意を一覧で読み、個別curveは根拠詳細として展開できる。推奨金額、ADR / 売上効果、Revenue Assistant write、一括反映は含めない。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_003_rank_recommendation_signal.md`
+  - `depends-on: RAU-RR-66 coverage accepted`
+
 ### RAU-RR-65 明示選択した複数候補の一括調整をdry-runで再評価する
 
 - 状態:
@@ -752,9 +796,9 @@
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
-  - `depends-on: RAU-RR-64 complete`
+  - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage のNowは通常Chrome月次QAを残す`RAU-MP-09`、Nextは一括調整をdry-runから再評価する`RAU-RR-65`とする。Classic再公開、未調査endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage のNowは追加GETなしでrank event / coverageを蓄積する`RAU-RR-66`、Nextは実分布から期待値guardを決める`RAU-RR-67`、After Nextは明示選択した一括調整をdry-runから再評価する`RAU-RR-65`とする。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

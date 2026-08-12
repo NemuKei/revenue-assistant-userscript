@@ -29,6 +29,11 @@ assert.equal(
     "the lens and acquisition runtimes must share one in-memory calendar summary"
 );
 assert.match(
+    entrySource,
+    /const rankLearningCaptureWriter = createRankLearningCaptureWriter\(\{ windowHost: window \}\);[\s\S]*?createLiveCalendarSummaryDataSource\(\{[\s\S]*?documentHost: document,[\s\S]*?rankLearningCaptureWriter,/u,
+    "entry must inject one transportless rank-learning writer into the shared calendar summary"
+);
+assert.match(
     acquisitionRuntimeSource,
     /surface\.kind === "calendar"[\s\S]*?calendarSummary\?\.setContext\(context\)[\s\S]*?startBackground\(context\)/u,
     "the verified visible calendar context must be published before background planning"
@@ -92,9 +97,17 @@ const acquisition = createAcquisitionStub({
     suspendedReasons
 });
 const requests = [];
+const captureCalls = [];
 const source = summaryModule.createLiveCalendarSummaryDataSource({
     acquisition,
+    documentHost: { visibilityState: "visible" },
     now: () => new Date("2026-08-08T12:00:00+09:00"),
+    rankLearningCaptureWriter: {
+        async capture(options) {
+            captureCalls.push(options);
+            return { status: "stored" };
+        }
+    },
     refreshDelayMs: 0,
     transport: {
         async read(request) {
@@ -121,6 +134,25 @@ assert.deepEqual(requests, [{
     kind: "rank-status",
     to: "20260813"
 }], "the visible range must use one rank-status GET");
+assert.equal(captureCalls.length, 1, "the ready visible response must be offered to the learning writer once");
+assert.deepEqual(
+    {
+        asOfDate: captureCalls[0].asOfDate,
+        capturedAt: captureCalls[0].capturedAt,
+        facilityId: captureCalls[0].facilityId,
+        sourceRangeFrom: captureCalls[0].sourceRangeFrom,
+        sourceRangeTo: captureCalls[0].sourceRangeTo
+    },
+    {
+        asOfDate: "20260808",
+        capturedAt: "2026-08-08T03:00:00.000Z",
+        facilityId: "yad:fixture",
+        sourceRangeFrom: "20260812",
+        sourceRangeTo: "20260813"
+    }
+);
+assert.equal(captureCalls[0].signal.aborted, false);
+assert.equal(Array.isArray(captureCalls[0].payload.suggest_statuses), true);
 assert.equal(firstSnapshot.contextKey, "yad:fixture|20260808|20260812,20260813");
 assert.deepEqual(firstSnapshot.latestChanges, [{ daysAgo: 1, stayDate: "20260812" }]);
 assert.equal(
@@ -141,7 +173,9 @@ for (const listener of stateListeners) {
 }
 await waitFor(() => readLatestCount >= 2);
 assert.equal(requests.length, 1, "local booking-curve refresh must not add rank-status GETs");
+assert.equal(captureCalls.length, 1, "local booking-curve refresh must not duplicate learning capture");
 source.clear();
+assert.equal(captureCalls[0].signal.aborted, true, "route cleanup must invalidate any unfinished learning write");
 assert.deepEqual(source.getSnapshot(), summaryModule.createIdleLiveCalendarSummarySnapshot());
 source.stop();
 
@@ -174,6 +208,134 @@ await flushTasks();
 assert.equal(rankRequestAborted, true, "route or calendar cleanup must abort the in-flight range GET");
 assert.deepEqual(abortSource.getSnapshot(), summaryModule.createIdleLiveCalendarSummarySnapshot());
 abortSource.stop();
+
+let hiddenCaptureCount = 0;
+const hiddenSource = summaryModule.createLiveCalendarSummaryDataSource({
+    acquisition: createAcquisitionStub({
+        readLatest: () => Promise.resolve([]),
+        stateListeners: new Set(),
+        suspendedReasons: []
+    }),
+    documentHost: { visibilityState: "hidden" },
+    now: () => new Date("2026-08-08T12:00:00+09:00"),
+    rankLearningCaptureWriter: {
+        async capture() {
+            hiddenCaptureCount += 1;
+            return { status: "stored" };
+        }
+    },
+    transport: {
+        async read() {
+            return { suggest_statuses: [] };
+        }
+    },
+    windowHost: createTimerWindow()
+});
+hiddenSource.setContext({
+    asOfDate: "20260808",
+    facilityId: "yad:fixture",
+    visibleStayDates: ["20260812"]
+});
+await waitFor(() => hiddenSource.getSnapshot().rankStatus === "ready");
+assert.equal(hiddenCaptureCount, 0, "a response resolved while the document is hidden must write nothing");
+hiddenSource.stop();
+
+let unknownVisibilityCaptureCount = 0;
+const unknownVisibilitySource = summaryModule.createLiveCalendarSummaryDataSource({
+    acquisition: createAcquisitionStub({
+        readLatest: () => Promise.resolve([]),
+        stateListeners: new Set(),
+        suspendedReasons: []
+    }),
+    now: () => new Date("2026-08-08T12:00:00+09:00"),
+    rankLearningCaptureWriter: {
+        async capture() {
+            unknownVisibilityCaptureCount += 1;
+            return { status: "stored" };
+        }
+    },
+    transport: {
+        async read() {
+            return { suggest_statuses: [] };
+        }
+    },
+    windowHost: createTimerWindow()
+});
+unknownVisibilitySource.setContext({
+    asOfDate: "20260808",
+    facilityId: "yad:fixture",
+    visibleStayDates: ["20260812"]
+});
+await waitFor(() => unknownVisibilitySource.getSnapshot().rankStatus === "ready");
+assert.equal(
+    unknownVisibilityCaptureCount,
+    0,
+    "learning capture must fail closed when document visibility is not provided"
+);
+unknownVisibilitySource.stop();
+
+const failingWriterSource = summaryModule.createLiveCalendarSummaryDataSource({
+    acquisition: createAcquisitionStub({
+        readLatest: () => Promise.resolve([]),
+        stateListeners: new Set(),
+        suspendedReasons: []
+    }),
+    documentHost: { visibilityState: "visible" },
+    rankLearningCaptureWriter: {
+        capture() {
+            throw new Error("fixture storage failure");
+        }
+    },
+    transport: {
+        async read() {
+            return { suggest_statuses: [] };
+        }
+    },
+    windowHost: createTimerWindow()
+});
+failingWriterSource.setContext({
+    asOfDate: "20260808",
+    facilityId: "yad:fixture",
+    visibleStayDates: ["20260812"]
+});
+await waitFor(() => failingWriterSource.getSnapshot().rankStatus === "ready");
+await flushTasks();
+assert.equal(
+    failingWriterSource.getSnapshot().rankStatus,
+    "ready",
+    "learning storage failure must not fail the existing calendar summary"
+);
+failingWriterSource.stop();
+
+let invalidCaptureCount = 0;
+const invalidResponseSource = summaryModule.createLiveCalendarSummaryDataSource({
+    acquisition: createAcquisitionStub({
+        readLatest: () => Promise.resolve([]),
+        stateListeners: new Set(),
+        suspendedReasons: []
+    }),
+    documentHost: { visibilityState: "visible" },
+    rankLearningCaptureWriter: {
+        async capture() {
+            invalidCaptureCount += 1;
+            return { status: "stored" };
+        }
+    },
+    transport: {
+        async read() {
+            return {};
+        }
+    },
+    windowHost: createTimerWindow()
+});
+invalidResponseSource.setContext({
+    asOfDate: "20260808",
+    facilityId: "yad:fixture",
+    visibleStayDates: ["20260812"]
+});
+await waitFor(() => invalidResponseSource.getSnapshot().rankStatus === "error");
+assert.equal(invalidCaptureCount, 0, "an invalid rank response must write nothing");
+invalidResponseSource.stop();
 
 for (const status of [401, 403, 429]) {
     const authStopReasons = [];

@@ -76,6 +76,10 @@ const expectedSources = [
     "src/next/monthlyProgress/monthlyProgressRuntime.ts",
     "src/next/monthlyProgress/monthlyProgressStore.ts",
     "src/next/monthlyProgress/monthlyProgressView.ts",
+    "src/next/rankLearning/rankLearningCaptureParser.ts",
+    "src/next/rankLearning/rankLearningCaptureWriter.ts",
+    "src/next/rankLearning/rankLearningStore.ts",
+    "src/next/rankLearning/rankLearningTypes.ts",
     "src/next/runtimeDomMutation.ts",
     "src/next/runtimeLease.ts",
     "src/next/runtimeMarker.ts",
@@ -175,17 +179,18 @@ assert.equal(
     true,
     "competitor endpoint contract must remain present for cache validation"
 );
-assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 12);
-assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 4);
+assert.equal(countMatches(artifactText, /\.transaction\s*\(/gu), 14);
+assert.equal(countMatches(artifactText, /\.getAll\s*\(/gu), 6);
 assert.equal(countMatches(artifactText, /\.openCursor\s*\(/gu), 2);
 assert.match(artifactText, /readonly/u);
 assert.match(artifactText, /readwrite/u);
-assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 4);
-assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 5);
+assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 5);
+assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 6);
 assert.match(artifactText, /revenue-assistant-next-competitor-price-snapshots/u);
 assert.match(artifactText, /revenue-assistant-next-price-trends/u);
 assert.match(artifactText, /revenue-assistant-next-booking-curve-sources/u);
 assert.match(artifactText, /revenue-assistant-next-monthly-progress/u);
+assert.match(artifactText, /revenue-assistant-next-rank-learning/u);
 assert.equal(countMatches(artifactText, /\blocalStorage\b/gu), 3, "monthly preferences must be the only localStorage access");
 assert.match(artifactText, /GET/u);
 
