@@ -231,11 +231,11 @@ version の扱いは `--version-policy warn | fail` で指定します。既定�
 
 ClassicとNextは別runtimeとして月次実績拡張を持ちます。NextはClassicの見出し、panel順、月別色、現年実線 / 比較年破線、比較切替、metric切替、Tooltip、日次差分という表示・操作契約だけを引き継ぎ、Classicの`src/main.ts`、DOM root、通信、保存処理はimportしません。公開版の現在地は`docs/context/STATUS.md`を正とします。
 
-Nextは`/monthly-progress/YYYY-MM`だけで起動し、既存top / analyzeの同期系とは分離します。標準の予約日基準chartを残し、その直下にNextの独立sectionを1件だけ追加します。可視な施設名がfacility responseと一致し、画面上の`最終データ更新`を観測できる場合だけ取得を始めます。施設や更新日を確認できない場合は値を推測せず、月次GETと保存を開始しません。
+Nextは`/monthly-progress/YYYY-MM`だけで起動し、既存top / analyzeの同期系とは分離します。標準の予約日基準chartを残し、その直下にNextの独立sectionを1件だけ追加します。可視な施設名がfacility responseと一致した後、batch dateは画面上の`最終データ更新`を優先し、そのラベルがない場合だけ現在月responseのruntime validation済み`updated_at`を使います。施設や更新日を確認できない場合は値を推測せず、未来月GETと保存を開始しません。
 
 既存read-only `GET /api/v1/booking_curve/monthly`のruntime validation後の最小snapshotは、Next専用IndexedDB `revenue-assistant-next-monthly-progress`へ`facilityId + yearMonth + batchDateKey`のdeterministic keyと`add` constraintで保存します。Next側に同じbatchがない場合だけClassic DBの完全一致recordをread-only memory seedにでき、Classic DBの作成、更新、削除、一括copy、過去batchの再解釈は行いません。
 
-独立sectionには`販売客室数` panel、`販売単価 / 売上`切替panel、対象月から未来4か月、`前年 / 前々年 / 3年前`の単一比較切替、mouse / keyboard / tap Tooltip、現在月の販売客室数を読む日次差分tableを表示します。欠損区間を0で補わず、loading、empty、比較不足、一部失敗を区別します。合成確認は`dev/fixtures/next-monthly-progress/?state=loading|empty|current-only|compare-shortage|partial-failure`を使い、fixtureからnetwork取得やIndexedDB writeは行いません。
+独立sectionには`販売客室数` panel、`販売単価 / 売上`切替panel、対象月から未来4か月、表示月を基準にした絶対年（例: `2025年 / 2024年 / 2023年`）の単一比較切替、mouse / keyboard / tap Tooltip、現在月の販売客室数を読む日次差分tableを表示します。欠損区間を0で補わず、loading、empty、比較不足、一部失敗を区別します。合成確認は`dev/fixtures/next-monthly-progress/?state=bootstrap-loading|loading|empty|current-only|compare-shortage|partial-failure`を使い、fixtureからnetwork取得やIndexedDB writeは行いません。
 
 ## ドキュメントの正本
 

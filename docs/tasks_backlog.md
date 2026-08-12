@@ -668,7 +668,7 @@
 ### RAU-MP-09 Classic月次カーブをNextへclean-roomで再接続する
 
 - 状態:
-  - Now。Next `0.2.0.14`更新後の通常Chromeで、標準画面に`最終データ更新`ラベルがなく`waiting-batch-date`でroot 0になる不具合を確認した。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapはsource / local検証、main同期、Next `0.2.0.15`へのmanual publication、公開artifact照合まで完了し、利用者のTampermonkey再更新後の通常Chrome実画面QAを残す。
+  - Now。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapはNext `0.2.0.15`へのmanual publicationまで完了し、利用者の更新済み画面で月次sectionと比較切替が表示された。比較年を相対語から表示月基準の絶対年へ変えるfollow-upはsource / spec / focused / full checks、desktop / 390px fixture QAまで完了し、main同期、Next再公開、更新後の通常Chrome実画面QAを残す。
 - 目的:
   - 月次実績画面でも、Classicで使い慣れたLT月次カーブ、比較切替、Tooltip、日次差分をNextで確認できるようにする。
 - 実装境界:
@@ -676,6 +676,7 @@
   - 最初のvertical sliceは、既存specの販売客室数、販売単価 / 売上切替、対象月と未来月、前年から3年前までの比較、追従Tooltip、日次差分、loading / empty / comparison shortage / partial failureを合成fixtureで通す。
   - 既存`/api/v1/booking_curve/monthly`以外のendpoint、Revenue Assistant write、標準UI置換、raw response保存、Classic DBの更新・削除・一括移行を追加しない。`D-20260810-007`で、Next専用append-only DBを新規取得の保存先とし、Classic snapshotは同一batch primary keyの完全一致recordだけをread-only memory seedにするbefore / after、互換、rollbackを固定した。
   - `D-20260812-001`で、標準chart host確認後はbatch確定前からloading rootを表示し、DOM更新日ラベルがない場合だけ施設guard後のcurrent monthly response `updated_at`を検証する。同じresponseをsnapshot候補へ再利用し、batch確認専用GET、日付推測、既存record上書きは追加しない。
+  - 比較切替のbuttonはrouteの表示月を基準にした絶対年を表示し、内部の1年前 / 2年前 / 3年前compare mode、取得月、保存、request budgetは変更しない。未来月を含む系列とTooltipは個別の比較対象月を使う。
 - 合格条件:
   - 月次routeの直開き、F5、route往復でNext sectionが1件だけ表示され、標準chartと操作を維持する。
   - Classicと同じ主要な見出し、panel順、比較切替、metric切替、凡例、線、Tooltip、日次差分の読み方をdesktop / 390pxで確認できる。変更が必要な箇所は、標準UI干渉、意味の誤り、または判断時間悪化の根拠とともに限定する。
@@ -690,9 +691,10 @@
   - 修正後focused checkで、施設不一致時monthly GET 0、DOM batch優先、ラベル欠損時current response 1回の再利用、初期最大5 GET、exact record非上書き、更新日欠損時write 0 / visible stopを確認した。focused / full checks、Classic publication、smoke、`git diff --check`は通過し、local candidateは331,660 bytes、SHA-256 `9388F0640DBE7AF7AD4D67A7B7A36C1833E0A5E2CA7BA7EF58B8C10A56896464`である。
   - `bootstrap-loading`合成Chromeのdesktop / 390pxで、標準chart 1、Next root / style各1、skeleton 2 panel、overflow 0、network / write marker 0、native再描画 / route往復 / F5後のduplicate root 0、console warning / error 0を確認した。
   - manual workflow run `31550825513`はsource `51a4859c08c3eb36ba18d62db925de930b1b5f2f`を公開版`0.2.0.15`としてbuild / deploy / verifyし、すべてsuccessだった。公開Nextは331,865 bytes、SHA-256 `29B789181459C70B37CAF48D5B1D4B23A57C4496A594DA48BECC41E6C650FE59`でrelease manifestと一致し、workflow外照合でもrun identityとbyte列が一致した。Classic公開baselineは不変だった。
+  - 絶対年表示のfocused / full checksとdesktop / 390px合成Chrome QAで、`2025年 / 2024年 / 2023年`、押下した年の`aria-pressed` / panel文言反映、root / document overflow 0、390pxのbutton高さ44px、console warning / error 0を確認した。local candidateは331,739 bytes、SHA-256 `48222FB8400F18C520F00CA3AB6A05C01978EF544DC2EF6F7185B5D09172DD15`である。
 - metadata:
   - `spec-impact: yes`
-  - `spec-checkpoint: after-impl`
+  - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260810-007, D-20260812-001`
   - `depends-on: RAU-UX-168 complete`

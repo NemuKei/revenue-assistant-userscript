@@ -1,6 +1,7 @@
 import type { LeadTimeBucketTick } from "../../leadTimeBuckets";
 import { positionViewportTooltip } from "../analyze/viewportTooltipPosition";
 import {
+    formatNextMonthlyProgressCompareLabel,
     formatNextMonthlyProgressYearMonth,
     resolveNextMonthlyProgressPanelPoints,
     type NextMonthlyProgressCompareYearsAgo,
@@ -220,14 +221,20 @@ function createCompareControls(options: RenderNextMonthlyProgressViewOptions): H
     const group = options.root.ownerDocument.createElement("fieldset");
     group.setAttribute("data-ra-next-monthly-progress-compare-group", "");
     const legend = options.root.ownerDocument.createElement("legend");
-    legend.textContent = "比較年";
+    legend.textContent = "比較年（表示月基準）";
     group.append(legend);
     for (const compareYearsAgo of [1, 2, 3] as const) {
         const button = options.root.ownerDocument.createElement("button");
         button.type = "button";
-        button.textContent = compareYearsAgo === 1
-            ? "前年"
-            : compareYearsAgo === 2 ? "前々年" : "3年前";
+        const compareLabel = formatNextMonthlyProgressCompareLabel(
+            options.model.routeYearMonth,
+            compareYearsAgo
+        );
+        button.textContent = compareLabel;
+        button.setAttribute(
+            "aria-label",
+            `${compareLabel}（表示月の${compareYearsAgo}年前）`
+        );
         button.setAttribute("aria-pressed", String(options.model.compareYearsAgo === compareYearsAgo));
         button.setAttribute("data-ra-next-monthly-progress-compare", String(compareYearsAgo));
         button.addEventListener("click", () => {

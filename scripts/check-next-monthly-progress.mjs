@@ -30,6 +30,10 @@ const runtimeModule = await importBundledTypeScript(
 assert.equal(model.parseNextMonthlyProgressRoute("/monthly-progress/2026-08"), "202608");
 assert.equal(model.parseNextMonthlyProgressRoute("/monthly-progress/2026-13"), null);
 assert.equal(model.parseNextMonthlyProgressRoute("/analyze/2026-08-01"), null);
+assert.equal(model.formatNextMonthlyProgressCompareLabel("202608", 1), "2025年");
+assert.equal(model.formatNextMonthlyProgressCompareLabel("202608", 2), "2024年");
+assert.equal(model.formatNextMonthlyProgressCompareLabel("202608", 3), "2023年");
+assert.equal(model.formatNextMonthlyProgressCompareLabel("invalid", 1), "前年");
 assert.deepEqual(model.buildNextMonthlyProgressFocusYearMonths("202611"), [
     "202611", "202612", "202701", "202702", "202703"
 ]);
@@ -549,6 +553,8 @@ assert.match(runtimeDomMutationSource, /data-ra-next-monthly-progress-root/u);
 assert.match(viewSource, /販売客室数/u);
 assert.match(viewSource, /販売単価/u);
 assert.match(viewSource, /日次差分/u);
+assert.match(viewSource, /比較年（表示月基準）/u);
+assert.match(viewSource, /formatNextMonthlyProgressCompareLabel/u);
 assert.match(viewSource, /月次データを準備しています/u);
 assert.match(viewSource, /prefers-reduced-motion/u);
 assert.match(viewSource, /positionViewportTooltip/u);

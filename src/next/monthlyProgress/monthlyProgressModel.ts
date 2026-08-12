@@ -387,7 +387,7 @@ export function formatNextMonthlyProgressCompareLabel(
     const normalized = normalizeNextMonthlyProgressYearMonth(routeYearMonth);
     return normalized === null
         ? compareYearsAgo === 1 ? "前年" : compareYearsAgo === 2 ? "前々年" : "3年前"
-        : String(Number(normalized.slice(0, 4)) - compareYearsAgo);
+        : `${Number(normalized.slice(0, 4)) - compareYearsAgo}年`;
 }
 
 export function resolveNextMonthlyProgressPanelPoints(
