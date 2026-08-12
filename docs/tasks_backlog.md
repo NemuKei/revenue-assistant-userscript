@@ -668,7 +668,7 @@
 ### RAU-MP-09 Classic月次カーブをNextへclean-roomで再接続する
 
 - 状態:
-  - Now。Next `0.2.0.14`更新後の通常Chromeで、標準画面に`最終データ更新`ラベルがなく`waiting-batch-date`でroot 0になる不具合を確認した。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapはsource / local検証まで完了し、main同期、Next再配信、Tampermonkey再更新後の通常Chrome実画面QAを残す。
+  - Now。Next `0.2.0.14`更新後の通常Chromeで、標準画面に`最終データ更新`ラベルがなく`waiting-batch-date`でroot 0になる不具合を確認した。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapはsource / local検証、main同期、Next `0.2.0.15`へのmanual publication、公開artifact照合まで完了し、利用者のTampermonkey再更新後の通常Chrome実画面QAを残す。
 - 目的:
   - 月次実績画面でも、Classicで使い慣れたLT月次カーブ、比較切替、Tooltip、日次差分をNextで確認できるようにする。
 - 実装境界:
@@ -689,6 +689,7 @@
   - 更新後実画面では標準chart可視、runtime marker `waiting-batch-date`、Next root / style 0、console warning / error 0、DOM更新日ラベルなしを確認した。既存月次GETの要約観測では`updated_at`はruntime validation可能な`YYYY-MM-DD` stringで、raw responseは保存していない。
   - 修正後focused checkで、施設不一致時monthly GET 0、DOM batch優先、ラベル欠損時current response 1回の再利用、初期最大5 GET、exact record非上書き、更新日欠損時write 0 / visible stopを確認した。focused / full checks、Classic publication、smoke、`git diff --check`は通過し、local candidateは331,660 bytes、SHA-256 `9388F0640DBE7AF7AD4D67A7B7A36C1833E0A5E2CA7BA7EF58B8C10A56896464`である。
   - `bootstrap-loading`合成Chromeのdesktop / 390pxで、標準chart 1、Next root / style各1、skeleton 2 panel、overflow 0、network / write marker 0、native再描画 / route往復 / F5後のduplicate root 0、console warning / error 0を確認した。
+  - manual workflow run `31550825513`はsource `51a4859c08c3eb36ba18d62db925de930b1b5f2f`を公開版`0.2.0.15`としてbuild / deploy / verifyし、すべてsuccessだった。公開Nextは331,865 bytes、SHA-256 `29B789181459C70B37CAF48D5B1D4B23A57C4496A594DA48BECC41E6C650FE59`でrelease manifestと一致し、workflow外照合でもrun identityとbyte列が一致した。Classic公開baselineは不変だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: after-impl`
