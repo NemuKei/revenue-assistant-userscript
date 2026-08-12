@@ -529,6 +529,16 @@ Next booking curve rank-change contract (`RAU-UX-150` 第三段階B):
 - response、正規化event、request / response body、HAR、Cookie、token、credentialをstorageへ保存しない。`reflector_name`はmarker判断に不要で個人名になり得るためNextのmodelと表示へ取り込まない。月・隣接日・他stay dateの取得、background prefetch、Revenue AssistantのPOST / PUT / PATCH / DELETE、自動反映、一括反映を追加しない。
 - room-group scopeのcurrent booking curveに反映日以前の直接取得値があるeventだけを、LT bucket間を線形配置したrank markerとして全体panelと選択中の個人 / 団体panelへ描く。個人値は`transient`だけを使い、`all - group`で補わない。値がないeventはchart上へ推測配置せず、テキスト履歴には残す。markerは色だけに依存しない形と補助線を持ち、mouse、keyboard focus、tapでLT、反映日、変更前後rankを確認できる。全有効eventはhover不要のdetails / tableでも確認でき、empty / invalid response / request errorをcurrent / reference不足と区別する。
 
+Next booking curve adjustment-response experiment (`RAU-RR-64`):
+
+- 確認済みroom-group scopeでrank履歴がreadyの場合だけ、2 chartの直後へ`調整後のペース（試験）`を置く。主評価は部屋タイプごとの個人`transient`とし、全体 / 団体を合成して評価対象を作らない。hotel scope、履歴loading / empty / errorでは、方向や評価値を推測せず理由を短く示す。
+- rank change eventごとに、変更日をstartとする。次のrank変更があるeventはその前日、最後のeventは現在のas-ofをendとし、endがstart以前なら`変更後データ待ち`とする。currentは保存済みcurrent responseのstart / end日以前にある直接取得値、referenceは同じstart / endのexact LTで算出できた値だけを使う。LT bucketの表示値や近隣日から評価値を補間しない。
+- 直近型と季節型を別々に、`gap(t) = transient rooms(t) - reference rooms at same LT`、`差の変化 = gap(end) - gap(start)`で評価する。表示中のreference toggleに対応する行だけを示し、両方OFFなら参考線を表示すると評価できることを示す。変更前後rank、観測期間、start / endの差、差の変化はhoverなしで読めるようにする。
+- このsliceは過去の意思決定時点にreferenceを凍結保存しないため、`現在の参考線で再評価`と常時明記する。`差の変化`は調整後に観測された関連であり、rank変更の因果効果、成功判定、価格弾力性と呼ばない。下げ方向では正の変化を`ペース上向き`、負を`ペース下向き`、上げ方向では負の変化かつend gapが非負のときだけ`先行を保って抑制`と説明し、end gapが負なら`参考線を下回る`とする。方向不明でも数値は表示できるが、方向を含む解釈は`方向未確認`とする。
+- rank方向は既に観測済みの`GET /api/v1/rank_sequences`を、可視な標準booking curve、facility guard、確認済みroom-group scope、対象rank eventが1件以上揃った場合だけ施設ごとに最大1回使う。rank履歴がempty / errorの場合はこのGETを開始しない。runtime validation済みの配列順を設定画面と同じ高rankから低rankの順とし、`default_sequence`やrank名の文字パターンを方向へ使わない。結果 / 失敗は同じ表示contextのmemoryだけで再利用し、自動retryせず、route、stay date、tab、document visibility離脱時は未完了取得をabortする。取得またはvalidation失敗はrank履歴、current / reference chart、差の数値を止めない。
+- response、rank order、評価結果をstorageへ保存せず、新規IndexedDB / migration / retention、raw response、request / response body、HAR、Cookie、token、credentialを追加しない。ADR / sales / RevPAR、類似非変更日、推奨金額、Revenue Assistant write、自動 / 一括反映はこの試験sliceに含めない。
+- fixtureでは、下げ後の正 / 負、上げ後の先行維持 / 参考線割れ、複数変更のwindow分離、exact LT欠損、変更後観測なし、rank順取得失敗、reference toggle、desktop / 390px、標準chart維持、duplicate root 0、追加GET最大rank status 1 + rank sequences 1、Revenue Assistant write 0を確認する。
+
 Next 90-day price trend read-only comparison contract (`RAU-UX-150` 第四段階):
 
 - Nextの価格推移補助表示は `/analyze/YYYY-MM-DD` の標準価格推移本文が実際に可視で、`GET /api/v2/yad/info` のfacility labelが表示中contextと一致する場合だけ、native content末尾へsibling rootを1つ追加する。標準chart、filter、tabを隠す、移動する、置換する処理は持たず、他tab、別route、document hidden、facility mismatch、後発Classic、重複rootではroot / styleを除去またはfail closedとする。

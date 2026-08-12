@@ -23,12 +23,17 @@ import type {
     BookingCurveRankStatusDataSource,
     BookingCurveRankStatusLoadResult
 } from "../analyze/bookingCurveRankStatusDataSource";
+import type {
+    BookingCurveRankOrderDataSource,
+    BookingCurveRankOrderLoadResult
+} from "../analyze/bookingCurveRankOrderDataSource";
 import { startBookingCurveReferenceRuntime } from "../analyze/bookingCurveReferenceRuntime";
 
 const FACILITY_ID = "yad:fixture";
 const FACILITY_LABEL = "施設A（mock）";
 const STAY_DATE = "20260812";
 const AS_OF_DATE = "20260723";
+const FIXTURE_EVALUATION_TICKS = [30, 22, 21, 20] as const;
 const SCOPES: readonly BookingCurveReferenceScope[] = [
     { key: "hotel", kind: "hotel", label: "ホテル全体", roomGroupId: null },
     { key: "room:single", kind: "roomGroup", label: "シングル（mock）", roomGroupId: "single" },
@@ -37,11 +42,16 @@ const SCOPES: readonly BookingCurveReferenceScope[] = [
 const fixtureParams = new URLSearchParams(window.location.search);
 const fixtureMode = fixtureParams.get("state") ?? "ready";
 const rankFixtureMode = fixtureParams.get("rank") ?? "ready";
+const rankOrderFixtureMode = fixtureParams.get("rank-order") ?? "ready";
 let rankLoadCount = 0;
+let rankOrderLoadCount = 0;
 
 const dataSource: BookingCurveReferenceDataSource = {
     cancel() {},
     async load(stayDate, asOfDate, scopeKey): Promise<BookingCurveReferenceDataLoadResult> {
+        if (fixtureMode === "loading") {
+            return new Promise(() => undefined);
+        }
         const scope = SCOPES.find((item) => item.key === scopeKey);
         if (fixtureMode === "error") {
             return { status: "error", contextKey: `${stayDate}|${asOfDate}`, reason: "read-failed" };
@@ -76,6 +86,9 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
         rankLoadCount += 1;
         document.documentElement.setAttribute("data-mock-rank-load-count", String(rankLoadCount));
         const contextKey = `${facilityId}|${stayDate}`;
+        if (rankFixtureMode === "loading") {
+            return new Promise(() => undefined);
+        }
         if (rankFixtureMode === "error" || rankFixtureMode === "aborted") {
             return {
                 status: "error",
@@ -95,13 +108,23 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
                     ? []
                     : [
                         {
+                            afterRankName: "12",
+                            beforeRankName: "11",
+                            daysBeforeStay: 30,
+                            reflectedAt: "2026-07-13T03:30:00.000Z",
+                            reflectedDate: "2026-07-13",
+                            roomGroupId: "single",
+                            signature: "2026-07-13:11:12",
+                            stayDate
+                        },
+                        {
                             afterRankName: "11",
                             beforeRankName: "12",
-                            daysBeforeStay: 23,
-                            reflectedAt: "2026-07-20T03:30:00.000Z",
-                            reflectedDate: "2026-07-20",
+                            daysBeforeStay: 21,
+                            reflectedAt: "2026-07-22T03:30:00.000Z",
+                            reflectedDate: "2026-07-22",
                             roomGroupId: "single",
-                            signature: "2026-07-20:12:11",
+                            signature: "2026-07-22:12:11",
                             stayDate
                         },
                         {
@@ -122,8 +145,46 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
     stop() {}
 };
 
+const rankOrderDataSource: BookingCurveRankOrderDataSource = {
+    cancel() {},
+    async load(facilityId): Promise<BookingCurveRankOrderLoadResult> {
+        rankOrderLoadCount += 1;
+        document.documentElement.setAttribute(
+            "data-mock-rank-order-load-count",
+            String(rankOrderLoadCount)
+        );
+        const contextKey = facilityId;
+        if (rankOrderFixtureMode === "loading") {
+            return new Promise(() => undefined);
+        }
+        if (rankOrderFixtureMode === "error" || rankOrderFixtureMode === "aborted") {
+            return {
+                status: "error",
+                contextKey,
+                reason: rankOrderFixtureMode === "aborted" ? "aborted" : "request-failed"
+            };
+        }
+        return {
+            status: "ready",
+            contextKey,
+            facilityId,
+            snapshot: {
+                entries: rankOrderFixtureMode === "empty"
+                    ? []
+                    : Array.from({ length: 20 }, (_, index) => ({
+                        code: String(index + 1),
+                        name: String(index + 1)
+                    }))
+            }
+        };
+    },
+    reset() {},
+    stop() {}
+};
+
 startBookingCurveReferenceRuntime(document, window, {
     dataSource,
+    rankOrderDataSource,
     rankStatusDataSource,
     resolveAsOfDate: () => AS_OF_DATE,
     resolveStayDate: (location) => location.pathname.includes("/dev/fixtures/next-analyze-booking-curve/")
@@ -219,7 +280,10 @@ function createBookingCurveResponse(
     const roomScale = scope.kind === "hotel" ? 3 : scope.roomGroupId === "twin" ? 1.25 : 1;
     const staySeed = Number(stayDate.slice(-2)) % 7;
     const finalRooms = Math.round((14 + staySeed) * roomScale);
-    const bookingCurve = LEAD_TIME_BUCKET_TICKS.flatMap((tick) => {
+    const bookingCurve = Array.from(new Set([
+        ...LEAD_TIME_BUCKET_TICKS,
+        ...FIXTURE_EVALUATION_TICKS
+    ])).flatMap((tick) => {
         const observedDate = tick === "ACT" ? stayDate : shiftDate(stayDate, -tick);
         if (observedDate === null || observedDate > asOfDate) {
             return [];

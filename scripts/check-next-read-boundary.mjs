@@ -28,6 +28,7 @@ const monthlyProgressStorePath = path.join(
 const expectedApiPaths = [
     "/api/v1/booking_curve/monthly",
     "/api/v1/price_trends",
+    "/api/v1/rank_sequences",
     "/api/v1/suggest/output/current_settings",
     "/api/v2/competitors",
     "/api/v2/yad/info",
@@ -43,6 +44,7 @@ const expectedRequestKinds = [
     "facility",
     "monthly-booking-curve",
     "price-trends",
+    "rank-sequences",
     "rank-status"
 ];
 const expectedFetchOptionKeys = ["credentials", "headers", "method", "signal"];
@@ -276,7 +278,7 @@ function checkTransportBoundary(sources, source) {
     assert.deepEqual(
         collectNextReadRequestKinds(source).sort(),
         expectedRequestKinds,
-        "NextReadRequest kinds must remain the eight reviewed GET scopes"
+        "NextReadRequest kinds must remain the nine reviewed GET scopes"
     );
 
     const urlConstructions = collectNodes(source, (node) => (
@@ -284,7 +286,7 @@ function checkTransportBoundary(sources, source) {
         && ts.isIdentifier(node.expression)
         && node.expression.text === "URL"
     ));
-    assert.equal(urlConstructions.length, 8, "Next transport must construct exactly eight allowlisted URLs");
+    assert.equal(urlConstructions.length, 9, "Next transport must construct exactly nine allowlisted URLs");
     assert.deepEqual(
         urlConstructions.map((node) => node.arguments?.[0]?.getText(source) ?? "").sort(),
         [
@@ -295,9 +297,10 @@ function checkTransportBoundary(sources, source) {
             "NEXT_FACILITY_ENDPOINT",
             "NEXT_MONTHLY_BOOKING_CURVE_ENDPOINT",
             "NEXT_PRICE_TRENDS_ENDPOINT",
+            "NEXT_RANK_SEQUENCES_ENDPOINT",
             "NEXT_RANK_STATUS_ENDPOINT"
         ],
-        "Next transport URL constructors must use the eight closed endpoint constants"
+        "Next transport URL constructors must use the nine closed endpoint constants"
     );
     for (const construction of urlConstructions) {
         assert.equal(

@@ -700,7 +700,51 @@
   - `decision: D-20260810-007, D-20260812-001`
   - `depends-on: RAU-UX-168 complete`
 
-Remaining Task Triage のNowは`RAU-MP-09`とする。Classic再公開、新規endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+### RAU-RR-64 Analyzeで調整後の個人ペースを参考線と比較する
+
+- 状態:
+  - 試験実装とlocal gateを完了。`D-20260810-003`に従うNext manual publication、Tampermonkey更新、通常Chrome実画面評価を残す。
+- 解決する問題:
+  - rankを下げてペースを上げたかった、またはrankを上げてペースを抑え単価を狙った調整について、変更後に個人予約の参考線との差がどう変わったかをAnalyze内で振り返る入口がない。
+- 実装境界:
+  - 確認済みroom-groupのrank eventごとに、個人`transient`のcurrentと直近型 / 季節型referenceのexact LT差を、変更日から次変更前日または現在as-ofまで比較する。`現在の参考線で再評価`と明示し、因果、成功、価格弾力性は断定しない。
+  - 確認済み`GET /api/v1/rank_sequences`をroom scopeで施設ごとに最大1回だけmemory取得し、設定画面の高rankから低rankの順として方向を判定する。失敗は評価数値と既存chartを止めず、方向解釈だけを未確認にする。
+  - 新規storage / retention、raw response保存、ADR / sales、推奨金額、Revenue Assistant write、自動 / 一括反映は追加しない。
+- 合格条件:
+  - 下げ / 上げ / 方向未確認、複数変更window、変更後観測なし、exact LT不足、reference toggleをpure checkと合成fixtureで区別する。
+  - desktop / 390pxで標準chart、既存2 panel、rank marker / Tooltipを維持し、試験sectionのhover不要可読性、overflow 0、duplicate root 0、console error 0を確認する。
+  - focused / full checks、Classic publication baseline、candidate artifact、`git diff --check`を通し、今回scopeだけをcommit / pushする。続いてNext manual publication、公開artifact / Classic baseline照合、利用者のTampermonkey更新、通常Chrome実画面評価まで同じBundleで確認する。
+- 実装結果:
+  - pure model、rank-order parser / memory-only data source、既存Analyze runtime / view、synthetic fixtureを追加した。rankを上げた後のend gapが負なら、差の変化が0または正でも`参考線を下回る`を優先する反例testを含めた。
+  - `npm run check:next`、`npm run check`、candidate artifact / Classic publication / distribution fixture checksが通過した。desktop / 390px合成Chromeでは標準chart 2、Next panel 2、調整event 2、route往復後のduplicate root 0、Next root overflow 0、実API request 0、console warning / error 0を確認した。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260812-002`
+  - `depends-on: RAU-UX-168 complete`
+
+### RAU-RR-65 明示選択した複数候補の一括調整をdry-runで再評価する
+
+- 状態:
+  - Next候補。利用者からfirst phase後の一括反映を再検討したい意向が示されたため、完了済み`RAU-RR-11` / `RAU-AF-17`の`not-now`条件を、現在の候補検出・個別調整・調整後評価を前提に再評価する。
+- 解決する問題:
+  - 直近週を同じ考え方で調整する場面では、1日・1部屋タイプずつ同じ確認と操作を繰り返すため、判断後の実行時間が残る。
+- 最初のscope:
+  - カレンダーまたはAnalyzeで利用者が明示選択した候補だけを対象に、対象日 / 部屋タイプ / 変更前後rank / 除外理由を送信前previewへ並べるdry-runを設計する。未選択行、自動選択、推奨金額は含めない。
+  - 各行の送信直前current rank / rank status再確認、5秒pendingと取消、同一対象の重複防止、provider差、逐次送信、部分失敗、反映確認、rollback不可時の表示をspec-firstで固定する。
+  - `RAU-RR-48`で観測した`price_ranks`候補はfresh read-only確認なしにlive pathへ接続しない。最初のtaskではPOSTを送らず、synthetic fixtureとdry-runでgo / no-goを判断する。
+- 合格条件:
+  - 単一行を繰り返す場合との時間短縮、誤選択risk、部分失敗時の復旧負担を比較し、一括調整を実装する条件と見送る条件が分かれている。
+  - 明示選択、全件preview、直前再確認、取消、対象除外、逐次結果、再試行禁止、反映確認をfixtureで確認し、Revenue Assistant write 0を維持する。
+  - live writeへ進む場合は、対象provider / endpoint / request shape / server validation / error response / rollback可否をfresh確認し、別decisionと明示gateを置く。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `depends-on: RAU-RR-64 published experiment live confirmation`
+
+Remaining Task Triage のNowは通常Chrome月次QAを残す`RAU-MP-09`、Nextは一括調整をdry-runから再評価する`RAU-RR-65`とする。Classic再公開、未調査endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

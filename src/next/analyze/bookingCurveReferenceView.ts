@@ -1,5 +1,6 @@
 import { LEAD_TIME_BUCKET_VISIBLE_TICKS } from "../../leadTimeBuckets";
 import type {
+    BookingCurveAdjustmentResponseState,
     BookingCurveReferencePanel,
     BookingCurveReferenceRankMarker,
     BookingCurveReferenceSeries,
@@ -24,6 +25,7 @@ export const BOOKING_CURVE_REFERENCE_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-next-book
 export const BOOKING_CURVE_REFERENCE_ACTIVE_POINT_ATTRIBUTE = "data-ra-next-booking-curve-reference-active-point";
 export const BOOKING_CURVE_RANK_MARKER_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker";
 export const BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker-hitbox";
+export const BOOKING_CURVE_ADJUSTMENT_RESPONSE_ATTRIBUTE = "data-ra-next-booking-curve-adjustment-response";
 
 export type BookingCurveReferenceRenderState =
     | { status: "loading"; stayDate: string }
@@ -158,9 +160,14 @@ export function renderBookingCurveReference(
     for (const panel of viewModel.panels) {
         grid.append(createPanel(root.ownerDocument, panel, viewModel, domain, options.narrow));
     }
+    const adjustmentResponse = createAdjustmentResponseSummary(
+        root.ownerDocument,
+        viewModel.adjustmentResponse,
+        viewModel.visibility
+    );
     const diagnostics = createSeriesDiagnostics(root.ownerDocument, viewModel.panels);
     const details = createReferenceDetails(root.ownerDocument, meta, note, diagnostics, rankHistory);
-    root.replaceChildren(header, legend, grid, details);
+    root.replaceChildren(header, legend, grid, adjustmentResponse, details);
 }
 
 export function createEmbeddedBookingCurveReference(
@@ -340,6 +347,203 @@ function createSeriesDiagnostics(
         diagnostics.append(line);
     }
     return diagnostics;
+}
+
+function createAdjustmentResponseSummary(
+    documentHost: Document,
+    state: BookingCurveAdjustmentResponseState,
+    visibility: BookingCurveReferenceViewModel["visibility"]
+): HTMLElement {
+    const section = documentHost.createElement("section");
+    section.setAttribute(BOOKING_CURVE_ADJUSTMENT_RESPONSE_ATTRIBUTE, state.status);
+    section.setAttribute("aria-labelledby", "ra-next-booking-curve-adjustment-response-title");
+    const header = documentHost.createElement("div");
+    header.setAttribute("data-ra-next-booking-curve-adjustment-response-header", "");
+    const title = documentHost.createElement("h3");
+    title.id = "ra-next-booking-curve-adjustment-response-title";
+    title.textContent = "調整後のペース";
+    const badge = documentHost.createElement("span");
+    badge.setAttribute("data-ra-next-booking-curve-adjustment-response-badge", "");
+    badge.textContent = "試験";
+    header.append(title, badge);
+    const note = documentHost.createElement("p");
+    note.setAttribute("data-ra-next-booking-curve-adjustment-response-note", "");
+    note.textContent = "現在の参考線で再評価しています。調整後の観測であり、因果効果や成功判定ではありません。";
+    section.append(header, note);
+
+    if (state.status !== "ready") {
+        const message = documentHost.createElement("p");
+        message.setAttribute("data-ra-next-booking-curve-adjustment-response-message", state.status);
+        message.textContent = formatAdjustmentResponseState(state.status);
+        section.append(message);
+        return section;
+    }
+
+    if (state.rankOrderStatus !== "ready") {
+        const rankOrderNote = documentHost.createElement("p");
+        rankOrderNote.setAttribute(
+            "data-ra-next-booking-curve-adjustment-rank-order",
+            state.rankOrderStatus
+        );
+        rankOrderNote.textContent = state.rankOrderStatus === "loading"
+            ? "ランク方向を確認中です。数値比較は先に表示します。"
+            : "ランク方向は未確認です。数値比較は継続します。";
+        section.append(rankOrderNote);
+    }
+
+    const visibleReferenceIds = new Set([
+        ...(visibility.recent ? ["recent"] : []),
+        ...(visibility.seasonal ? ["seasonal"] : [])
+    ]);
+    if (visibleReferenceIds.size === 0) {
+        const message = documentHost.createElement("p");
+        message.setAttribute("data-ra-next-booking-curve-adjustment-response-message", "reference-hidden");
+        message.textContent = "参考線を表示すると、調整後のペースを比較できます。";
+        section.append(message);
+        return section;
+    }
+
+    const list = documentHost.createElement("div");
+    list.setAttribute("data-ra-next-booking-curve-adjustment-response-list", "");
+    for (const event of state.events) {
+        const card = documentHost.createElement("article");
+        card.setAttribute("data-ra-next-booking-curve-adjustment-response-event", event.status);
+        card.setAttribute("data-rank-direction", event.direction);
+        const eventHeader = documentHost.createElement("div");
+        eventHeader.setAttribute("data-ra-next-booking-curve-adjustment-response-event-header", "");
+        const transition = documentHost.createElement("strong");
+        transition.textContent = formatRankTransition(event.beforeRankName, event.afterRankName);
+        const direction = documentHost.createElement("span");
+        direction.setAttribute("data-ra-next-booking-curve-adjustment-response-direction", event.direction);
+        direction.textContent = formatAdjustmentDirection(event.direction);
+        eventHeader.append(transition, direction);
+        const meta = documentHost.createElement("p");
+        meta.setAttribute("data-ra-next-booking-curve-adjustment-response-event-meta", "");
+        meta.textContent = event.status === "ready"
+            ? `${formatDate(event.startDate)}から ${formatDate(event.endDate)} / LT ${event.startLeadDays} → ${event.endLeadDays}（${event.startLeadDays - event.endLeadDays}日後）`
+            : `${formatDate(event.startDate)} / LT ${event.startLeadDays}`;
+        card.append(eventHeader, meta);
+        if (event.status === "pending") {
+            const pending = documentHost.createElement("p");
+            pending.setAttribute("data-ra-next-booking-curve-adjustment-response-pending", event.missingReason);
+            pending.textContent = formatAdjustmentWindowMissingReason(event.missingReason);
+            card.append(pending);
+            list.append(card);
+            continue;
+        }
+
+        const references = documentHost.createElement("ul");
+        references.setAttribute("data-ra-next-booking-curve-adjustment-response-references", "");
+        for (const reference of event.references) {
+            if (!visibleReferenceIds.has(reference.referenceId)) {
+                continue;
+            }
+            const item = documentHost.createElement("li");
+            item.setAttribute("data-ra-next-booking-curve-adjustment-response-reference", reference.status);
+            item.setAttribute("data-reference", reference.referenceId);
+            const label = documentHost.createElement("strong");
+            label.textContent = reference.referenceLabel;
+            item.append(label);
+            if (reference.status === "pending") {
+                const pending = documentHost.createElement("span");
+                pending.textContent = `比較準備中：${formatAdjustmentReferenceMissingReason(reference.missingReason)}`;
+                item.append(pending);
+            } else {
+                const gap = documentHost.createElement("span");
+                gap.textContent = `参考線との差 ${formatSignedRooms(reference.startGapRooms)} → ${formatSignedRooms(reference.endGapRooms)}`;
+                const change = documentHost.createElement("span");
+                change.setAttribute("data-ra-next-booking-curve-adjustment-response-change", "");
+                change.textContent = `変化 ${formatSignedRooms(reference.gapChangeRooms)}`;
+                const interpretation = documentHost.createElement("span");
+                interpretation.setAttribute(
+                    "data-ra-next-booking-curve-adjustment-response-interpretation",
+                    reference.interpretation
+                );
+                interpretation.textContent = formatAdjustmentInterpretation(reference.interpretation);
+                item.append(gap, change, interpretation);
+            }
+            references.append(item);
+        }
+        card.append(references);
+        list.append(card);
+    }
+    section.append(list);
+    return section;
+}
+
+function formatAdjustmentResponseState(status: Exclude<BookingCurveAdjustmentResponseState["status"], "ready">): string {
+    switch (status) {
+        case "scope-required":
+            return "部屋タイプを選ぶと、その部屋タイプの個人ペースを確認できます。";
+        case "loading":
+            return "ランク変更履歴を確認しています。";
+        case "empty":
+            return "この宿泊日のランク変更はありません。";
+        case "error":
+            return "ランク変更履歴を確認できないため、ペース評価は表示できません。";
+    }
+}
+
+function formatAdjustmentDirection(direction: "raise" | "lower" | "unchanged" | "unresolved"): string {
+    switch (direction) {
+        case "raise":
+            return "ランク上げ";
+        case "lower":
+            return "ランク下げ";
+        case "unchanged":
+            return "変更なし";
+        case "unresolved":
+            return "方向未確認";
+    }
+}
+
+function formatAdjustmentWindowMissingReason(
+    reason: "event-after-observation" | "lead-time-out-of-range" | "post-observation-missing"
+): string {
+    return reason === "lead-time-out-of-range"
+        ? "評価できるLT範囲外です。"
+        : "変更後データ待ちです。";
+}
+
+function formatAdjustmentReferenceMissingReason(
+    reason: "current-end-missing" | "current-start-missing" | "reference-end-missing" | "reference-start-missing"
+): string {
+    return reason.startsWith("current")
+        ? "同じ日の個人実績が不足"
+        : "同じLTの参考線が不足";
+}
+
+function formatAdjustmentInterpretation(
+    interpretation:
+        | "direction-unresolved"
+        | "pace-down"
+        | "pace-up"
+        | "reference-below"
+        | "restrained-with-buffer"
+        | "unchanged"
+        | "variation-small"
+): string {
+    switch (interpretation) {
+        case "pace-up":
+            return "ペース上向き";
+        case "pace-down":
+            return "ペース下向き";
+        case "restrained-with-buffer":
+            return "先行を保って抑制";
+        case "reference-below":
+            return "参考線を下回る";
+        case "variation-small":
+            return "変化小";
+        case "unchanged":
+            return "ランク変更なし";
+        case "direction-unresolved":
+            return "方向未確認";
+    }
+}
+
+function formatSignedRooms(value: number): string {
+    const prefix = value > 0 ? "+" : value < 0 ? "−" : "";
+    return `${prefix}${formatRooms(Math.abs(value))}室`;
 }
 
 function createLegend(documentHost: Document, viewModel: BookingCurveReferenceViewModel): HTMLElement {
@@ -1286,6 +1490,52 @@ export function getBookingCurveReferenceStyles(): string {
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-grid] {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
 }
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_RESPONSE_ATTRIBUTE}] {
+    display: flex; flex-direction: column; gap: 7px; min-width: 0;
+    padding: 10px; border: 1px solid #d8e2f1; border-radius: 10px; background: #fff;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-header] {
+    display: flex; align-items: center; gap: 7px;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-badge] {
+    display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px;
+    border-radius: 999px; background: #fff4d6; color: #735600; font-size: 10px; font-weight: 800;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-note],
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-message],
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-rank-order],
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-event-meta],
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-pending] {
+    margin: 0; color: #607486; font-size: 11px; line-height: 1.55;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-list] {
+    display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-event] {
+    display: flex; flex-direction: column; gap: 6px; min-width: 0;
+    padding: 9px; border: 1px solid #e1e7ef; border-radius: 8px; background: #fbfcfe;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-event-header] {
+    display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 5px 8px;
+    font-size: 12px;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-direction] {
+    display: inline-flex; align-items: center; min-height: 22px; padding: 2px 7px;
+    border-radius: 999px; background: #eef4fb; color: #496984; font-size: 10px; font-weight: 800;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-references] {
+    display: grid; gap: 6px; margin: 0; padding: 0; list-style: none;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-reference] {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px; min-width: 0;
+    padding-top: 6px; border-top: 1px solid #e7ecf2; color: #496174; font-size: 11px; line-height: 1.45;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-reference] > strong {
+    min-width: 44px; color: #314e68;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-interpretation] {
+    margin-left: auto; font-weight: 800; color: #365f83;
+}
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_REFERENCE_PANEL_ATTRIBUTE}] {
     display: flex; flex-direction: column; gap: 6px; min-width: 0;
     padding: 10px 10px 8px; border: 1px solid #d8e2f1; border-radius: 10px; background: #fff;
@@ -1367,6 +1617,9 @@ export function getBookingCurveReferenceStyles(): string {
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-control-group] { width: 100%; }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] button { min-height: 44px; }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-grid] { grid-template-columns: 1fr; }
+    [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-list] { grid-template-columns: 1fr; }
+    [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-reference] { align-items: flex-start; }
+    [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-response-interpretation] { width: 100%; margin-left: 54px; }
 }
 `;
 }

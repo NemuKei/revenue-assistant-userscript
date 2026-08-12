@@ -1,6 +1,6 @@
 # INTENT
 
-最終更新: 2026-08-10
+最終更新: 2026-08-12
 
 ## Purpose
 
@@ -29,6 +29,7 @@ RAU の上位前提、Profile、非目的、安全境界、source-of-truth role 
 - `rank 名のパターンから上下関係を推定すること` と `Revenue Assistant の設定画面で保存された rank 並び順を使うこと` が競合する場合は、設定画面の保存済み順序を優先する。rank 名は、数字系、ローマ字または英字系、記号混在系のいずれもあり得て、同じ表記系でも高低が逆になる運用があるため、名前パターンだけでは企業や施設ごとの上下関係を安全に断定しない。
 - `曜日別の販売傾向や競合価格内の自社料金位置を使って rank の上下関係を推定すること` と `設定画面の保存済み順序または利用者の manual override で rank order を確定すること` が競合する場合は、後者を優先する。曜日別関係と競合価格内の自社料金位置は、rank order source ではなく priority、confidence、reasonCodes、diagnostics を補助する入力として扱う。
 - `Revenue Assistant への自動反映を早く作ること` と `RM が今日確認すべき作業キューを安全に作ること` が競合する場合は、当面は後者を優先する。
+- `利用者が明示選択した複数候補をまとめて調整すること` と `候補ごとの誤選択、送信直前の状態変化、部分失敗を確認できること` が競合する場合は、後者を優先する。一括調整は自動反映と分け、全対象preview、各行の直前再確認、取消、逐次結果、反映確認を送信しない試行で確かめた後に検討する。
 - `同じ recommendation を繰り返し表示して見落としを防ぐこと` と `利用者が様子見または対応不要と判断した結果を尊重すること` が競合する場合は、user decision と cooldown を尊重する。
 
 ## Non-Goals
@@ -38,7 +39,7 @@ RAU の上位前提、Profile、非目的、安全境界、source-of-truth role 
 - 当面は、RAU の first wave に PMS データ、DWH データ、BCL Python 実装、RAR 同期を必須化しない。
 - 当面は、予測モデルの採用、学習済みパラメータの固定、予測評価の合格基準固定を first wave の完了条件にしない。
 - 当面は、月次実績画面の custom booking curve を Analyze reference curve より優先しない。
-- 当面は、RAU から Revenue Assistant へ選択範囲の rank 変更を一括反映することを first wave の目標にしない。
+- 選択範囲のrank変更を一括反映することはfirst waveの完了条件にしない。first wave確認後は、利用者が明示選択した範囲に限る一括調整を、自動反映とは別の安全な操作候補として検討する。
 
 ## How To Use
 

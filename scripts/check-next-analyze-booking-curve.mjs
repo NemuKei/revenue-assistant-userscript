@@ -14,12 +14,24 @@ const model = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveReferenceModel.ts",
     import.meta.url
 );
+const adjustmentModel = await importBundledTypeScript(
+    "../src/next/analyze/bookingCurveAdjustmentResponseModel.ts",
+    import.meta.url
+);
 const rankModel = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveRankMarkerModel.ts",
     import.meta.url
 );
 const rankDataSourceModule = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveRankStatusDataSource.ts",
+    import.meta.url
+);
+const rankOrderModel = await importBundledTypeScript(
+    "../src/next/analyze/bookingCurveRankOrderModel.ts",
+    import.meta.url
+);
+const rankOrderDataSourceModule = await importBundledTypeScript(
+    "../src/next/analyze/bookingCurveRankOrderDataSource.ts",
     import.meta.url
 );
 const runtime = await importBundledTypeScript(
@@ -46,6 +58,9 @@ const [
     dataSourceSource,
     rankDataSourceSource,
     rankModelSource,
+    rankOrderDataSourceSource,
+    rankOrderModelSource,
+    adjustmentModelSource,
     viewSource
 ] = await Promise.all([
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
@@ -55,12 +70,49 @@ const [
     readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankStatusDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankMarkerModel.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveRankOrderDataSource.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveRankOrderModel.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveAdjustmentResponseModel.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceView.ts", import.meta.url), "utf8")
 ]);
 
 assert.equal(runtime.parseBookingCurveReferenceAnalyzeStayDate("/analyze/2026-08-12"), "20260812");
 assert.equal(runtime.parseBookingCurveReferenceAnalyzeStayDate("/analyze/2026-02-29"), null);
 assert.equal(runtime.parseBookingCurveReferenceAnalyzeStayDate("/"), null);
+assert.equal(runtime.shouldStartBookingCurveRankOrderLoad({
+    hasError: false,
+    hasSnapshot: false,
+    loading: false,
+    rankHistory: { status: "ready", events: [{ signature: "event" }] },
+    scopeKind: "roomGroup"
+}), true);
+for (const rankHistory of [
+    { status: "empty", invalidEventCount: 0 },
+    { status: "error", reason: "request-failed" },
+    { status: "loading" }
+]) {
+    assert.equal(runtime.shouldStartBookingCurveRankOrderLoad({
+        hasError: false,
+        hasSnapshot: false,
+        loading: false,
+        rankHistory,
+        scopeKind: "roomGroup"
+    }), false, `rank order must stay idle for rank history ${rankHistory.status}`);
+}
+assert.equal(runtime.shouldStartBookingCurveRankOrderLoad({
+    hasError: false,
+    hasSnapshot: false,
+    loading: false,
+    rankHistory: { status: "ready", events: [] },
+    scopeKind: "roomGroup"
+}), false, "rank order must stay idle when no applicable rank event exists");
+assert.equal(runtime.shouldStartBookingCurveRankOrderLoad({
+    hasError: false,
+    hasSnapshot: false,
+    loading: false,
+    rankHistory: { status: "ready", events: [{ signature: "event" }] },
+    scopeKind: "hotel"
+}), false);
 
 const scopes = dataSourceModule.parseBookingCurveReferenceScopes({
     suggest_output_current_settings: [{
@@ -142,6 +194,34 @@ assert.deepEqual(
 );
 assert.equal(rankModel.parseBookingCurveRankStatusResponse({}, "20260812"), null);
 
+const parsedRankOrder = rankOrderModel.parseBookingCurveRankOrderResponse({
+    rank_sequences: [
+        { price_rank_code: "high", price_rank_name: "A", default_sequence: 999 },
+        { price_rank_code: "mid", price_rank_name: "B", default_sequence: 1 },
+        { price_rank_code: "low", price_rank_name: "C", default_sequence: 2 }
+    ]
+});
+assert.deepEqual(parsedRankOrder, {
+    entries: [
+        { code: "high", name: "A" },
+        { code: "mid", name: "B" },
+        { code: "low", name: "C" }
+    ]
+}, "rank order must preserve the settings-screen array order and ignore default_sequence");
+assert.equal(rankOrderModel.parseBookingCurveRankOrderResponse({ rank_sequences: [] }), null);
+assert.equal(rankOrderModel.parseBookingCurveRankOrderResponse({
+    rank_sequences: [
+        { price_rank_code: "1", price_rank_name: "A" },
+        { price_rank_code: "1", price_rank_name: "B" }
+    ]
+}), null, "duplicate rank codes must fail closed");
+assert.equal(rankOrderModel.parseBookingCurveRankOrderResponse({
+    rank_sequences: [
+        { price_rank_code: "1", price_rank_name: "A" },
+        { price_rank_code: "2", price_rank_name: "A" }
+    ]
+}), null, "duplicate rank names cannot resolve name-only history safely");
+
 const rankUrl = transport.buildNextReadUrl(
     { kind: "rank-status", from: "20260812", to: "20260812" },
     "https://ra.jalan.net"
@@ -150,6 +230,157 @@ assert.equal(rankUrl.pathname, "/api/v3/lincoln/suggest/status");
 assert.equal(rankUrl.searchParams.get("filter_type"), "stay_date");
 assert.equal(rankUrl.searchParams.get("from"), "20260812");
 assert.equal(rankUrl.searchParams.get("to"), "20260812");
+const rankOrderUrl = transport.buildNextReadUrl(
+    { kind: "rank-sequences" },
+    "https://ra.jalan.net"
+);
+assert.equal(rankOrderUrl.pathname, "/api/v1/rank_sequences");
+assert.equal(rankOrderUrl.search, "");
+
+const adjustmentEvents = [
+    {
+        afterRankName: "12",
+        beforeRankName: "11",
+        daysBeforeStay: 30,
+        reflectedAt: "2026-07-13T03:30:00.000Z",
+        reflectedDate: "2026-07-13",
+        roomGroupId: "single",
+        signature: "2026-07-13:11:12",
+        stayDate: "20260812"
+    },
+    {
+        afterRankName: "11",
+        beforeRankName: "12",
+        daysBeforeStay: 21,
+        reflectedAt: "2026-07-22T03:30:00.000Z",
+        reflectedDate: "2026-07-22",
+        roomGroupId: "single",
+        signature: "2026-07-22:12:11",
+        stayDate: "20260812"
+    }
+];
+const adjustmentWindows = adjustmentModel.buildBookingCurveAdjustmentEvaluationWindows({
+    asOfDate: "20260723",
+    events: adjustmentEvents,
+    stayDate: "20260812"
+});
+assert.deepEqual(
+    adjustmentWindows.map((window) => [window.startLeadDays, window.endLeadDays, window.endDate]),
+    [[30, 22, "2026-07-21"], [21, 20, "2026-07-23"]],
+    "each change window must stop the day before the next change, while the latest ends at current as-of"
+);
+assert.deepEqual(
+    adjustmentModel.buildBookingCurveAdjustmentEvaluationTicks(adjustmentWindows),
+    [30, 22, 21, 20]
+);
+const adjustmentResponse = adjustmentModel.buildBookingCurveAdjustmentResponses({
+    allowZeroDayCurrent: false,
+    currentResponse: {
+        stay_date: "20260812",
+        booking_curve: [
+            ["2026-07-13", 4],
+            ["2026-07-21", 8],
+            ["2026-07-22", 10],
+            ["2026-07-23", 11]
+        ].map(([date, rooms]) => ({
+            date,
+            transient: { this_year_room_sum: rooms }
+        }))
+    },
+    rankOrderEntries: Array.from({ length: 20 }, (_, index) => ({
+        code: String(index + 1),
+        name: String(index + 1)
+    })),
+    recentReference: {
+        points: [
+            { lt: 30, rooms: 5 },
+            { lt: 22, rooms: 7 },
+            { lt: 21, rooms: 8 },
+            { lt: 20, rooms: 10 }
+        ]
+    },
+    seasonalReference: {
+        points: [
+            { lt: 30, rooms: 4 },
+            { lt: 22, rooms: 9 },
+            { lt: 21, rooms: 9 },
+            { lt: 20, rooms: 12 }
+        ]
+    },
+    windows: adjustmentWindows
+});
+assert.equal(adjustmentResponse[0].direction, "lower");
+assert.equal(adjustmentResponse[0].references[0].gapChangeRooms, 2);
+assert.equal(adjustmentResponse[0].references[0].interpretation, "pace-up");
+assert.equal(adjustmentResponse[0].references[1].gapChangeRooms, -1);
+assert.equal(adjustmentResponse[0].references[1].interpretation, "pace-down");
+assert.equal(adjustmentResponse[1].direction, "raise");
+assert.equal(adjustmentResponse[1].references[0].interpretation, "restrained-with-buffer");
+assert.equal(adjustmentResponse[1].references[1].interpretation, "reference-below");
+const raiseBelowReferenceResponse = adjustmentModel.buildBookingCurveAdjustmentResponses({
+    allowZeroDayCurrent: false,
+    currentResponse: {
+        stay_date: "20260812",
+        booking_curve: [
+            { date: "2026-07-22", transient: { this_year_room_sum: 5 } },
+            { date: "2026-07-23", transient: { this_year_room_sum: 6 } }
+        ]
+    },
+    rankOrderEntries: Array.from({ length: 20 }, (_, index) => ({
+        code: String(index + 1),
+        name: String(index + 1)
+    })),
+    recentReference: { points: [{ lt: 21, rooms: 8 }, { lt: 20, rooms: 8 }] },
+    seasonalReference: { points: [{ lt: 21, rooms: 7 }, { lt: 20, rooms: 8 }] },
+    windows: [adjustmentWindows[1]]
+});
+assert.equal(raiseBelowReferenceResponse[0].references[0].gapChangeRooms, 1);
+assert.equal(raiseBelowReferenceResponse[0].references[0].interpretation, "reference-below");
+assert.equal(raiseBelowReferenceResponse[0].references[1].gapChangeRooms, 0);
+assert.equal(
+    raiseBelowReferenceResponse[0].references[1].interpretation,
+    "reference-below",
+    "a raised rank that ends below reference must not be labelled as pace-up or variation-small"
+);
+const unresolvedAdjustmentResponse = adjustmentModel.buildBookingCurveAdjustmentResponses({
+    allowZeroDayCurrent: false,
+    currentResponse: {
+        stay_date: "20260812",
+        booking_curve: [
+            { date: "2026-07-22", transient: { this_year_room_sum: 10 } },
+            { date: "2026-07-23", transient: { this_year_room_sum: 11 } }
+        ]
+    },
+    rankOrderEntries: null,
+    recentReference: { points: [{ lt: 21, rooms: 8 }, { lt: 20, rooms: 10 }] },
+    seasonalReference: { points: [{ lt: 21, rooms: 9 }, { lt: 20, rooms: 12 }] },
+    windows: [adjustmentWindows[1]]
+});
+assert.equal(unresolvedAdjustmentResponse[0].direction, "unresolved");
+assert.equal(
+    unresolvedAdjustmentResponse[0].references[0].interpretation,
+    "direction-unresolved",
+    "rank-order failure must retain numeric gaps while withholding directional interpretation"
+);
+const missingExactResponse = adjustmentModel.buildBookingCurveAdjustmentResponses({
+    allowZeroDayCurrent: false,
+    currentResponse: {
+        stay_date: "20260812",
+        booking_curve: [{ date: "2026-07-13", transient: { this_year_room_sum: 4 } }]
+    },
+    rankOrderEntries: parsedRankOrder.entries,
+    recentReference: { points: [{ lt: 30, rooms: 5 }, { lt: 22, rooms: 7 }] },
+    seasonalReference: { points: [{ lt: 30, rooms: 4 }, { lt: 22, rooms: 9 }] },
+    windows: [adjustmentWindows[0]]
+});
+assert.equal(missingExactResponse[0].references[0].status, "pending");
+assert.equal(missingExactResponse[0].references[0].missingReason, "current-end-missing");
+const postMissingWindows = adjustmentModel.buildBookingCurveAdjustmentEvaluationWindows({
+    asOfDate: "20260723",
+    events: [{ ...adjustmentEvents[1], reflectedDate: "2026-07-23", daysBeforeStay: 20 }],
+    stayDate: "20260812"
+});
+assert.equal(postMissingWindows[0].missingReason, "post-observation-missing");
 
 const roomKeys = dataSourceModule.buildBookingCurveReferencePrimaryKeys({
     asOfDate: "20260723",
@@ -375,6 +606,13 @@ const roomRankBuilt = model.buildBookingCurveReferenceViewModel({
     readStatus: { status: "ready", records: [roomRankRecord] },
     records: [roomRankRecord],
     rankEvents: singleRankHistory.events,
+    rankOrder: {
+        status: "ready",
+        entries: Array.from({ length: 20 }, (_, index) => ({
+            code: String(index + 1),
+            name: String(index + 1)
+        }))
+    },
     scope: roomScope,
     scopes,
     stayDate: "20260812"
@@ -383,7 +621,15 @@ assert.equal(roomRankBuilt.status, "ready");
 assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers.length, 1);
 assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers[0].value, 4);
 assert.equal(roomRankBuilt.viewModel.panels[1].rankMarkers[0].value, 3);
+assert.equal(roomRankBuilt.viewModel.adjustmentResponse.status, "ready");
+assert.equal(roomRankBuilt.viewModel.adjustmentResponse.events[0].direction, "raise");
+assert.equal(
+    roomRankBuilt.viewModel.adjustmentResponse.events[0].references[0].missingReason,
+    "current-start-missing",
+    "a marker may use the prior point, but response evaluation must require an exact adjustment-day point"
+);
 assert.equal(built.viewModel.panels.every((panel) => panel.rankMarkers.length === 0), true);
+assert.deepEqual(built.viewModel.adjustmentResponse, { status: "scope-required" });
 
 const zeroRecord = createRecord({
     scope: hotelScope,
@@ -787,6 +1033,49 @@ assert.equal((await abortingRankDataSource.load("yad:fixture", "20260812")).reas
 assert.equal(abortRequestCount, 1, "aborted context must not retry automatically");
 abortingRankDataSource.stop();
 
+const rankOrderRequests = [];
+const rankOrderDataSource = rankOrderDataSourceModule.createBookingCurveRankOrderDataSource({
+    transport: {
+        async read(request) {
+            rankOrderRequests.push(request);
+            return {
+                rank_sequences: [
+                    { price_rank_code: "1", price_rank_name: "1" },
+                    { price_rank_code: "2", price_rank_name: "2" }
+                ]
+            };
+        }
+    },
+    windowHost: {}
+});
+const firstRankOrderLoad = await rankOrderDataSource.load("yad:fixture");
+const reusedRankOrderLoad = await rankOrderDataSource.load("yad:fixture");
+assert.equal(firstRankOrderLoad.status, "ready");
+assert.equal(reusedRankOrderLoad.status, "ready");
+assert.deepEqual(rankOrderRequests, [{ kind: "rank-sequences" }]);
+rankOrderDataSource.stop();
+
+let abortRankOrderRequestCount = 0;
+const abortingRankOrderDataSource = rankOrderDataSourceModule.createBookingCurveRankOrderDataSource({
+    transport: {
+        async read(_request, signal) {
+            abortRankOrderRequestCount += 1;
+            return new Promise((_resolve, reject) => {
+                signal.addEventListener("abort", () => {
+                    reject(new DOMException("aborted", "AbortError"));
+                }, { once: true });
+            });
+        }
+    },
+    windowHost: {}
+});
+const abortedRankOrderLoadPromise = abortingRankOrderDataSource.load("yad:fixture");
+abortingRankOrderDataSource.cancel();
+assert.equal((await abortedRankOrderLoadPromise).reason, "aborted");
+assert.equal((await abortingRankOrderDataSource.load("yad:fixture")).reason, "aborted");
+assert.equal(abortRankOrderRequestCount, 1, "aborted rank order context must not retry automatically");
+abortingRankOrderDataSource.stop();
+
 const styles = view.getBookingCurveReferenceStyles();
 assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/u);
 assert.match(styles, /@media \(max-width: 680px\)/u);
@@ -798,10 +1087,16 @@ assert.match(styles, /data-ra-next-booking-curve-reference-control-label/u);
 assert.match(styles, /data-ra-next-booking-curve-reference-active-guide/u);
 assert.match(styles, /data-ra-next-booking-curve-reference-active-point/u);
 assert.match(styles, /cursor: crosshair/u);
+assert.match(styles, /data-ra-next-booking-curve-adjustment-response/u);
+assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/u);
 assert.match(viewSource, /header\.append\(createControls\(root\.ownerDocument, viewModel\)\)/u);
 assert.match(viewSource, /export function createEmbeddedBookingCurveReference/u);
 assert.match(viewSource, /createControls\(documentHost, viewModel, false\)/u);
-assert.match(viewSource, /root\.replaceChildren\(header, legend, grid, details\)/u);
+assert.match(viewSource, /root\.replaceChildren\(header, legend, grid, adjustmentResponse, details\)/u);
+assert.match(viewSource, /現在の参考線で再評価しています/u);
+assert.match(viewSource, /因果効果や成功判定ではありません/u);
+assert.match(viewSource, /参考線との差/u);
+assert.match(viewSource, /比較準備中/u);
 assert.match(viewSource, /body\.append\(meta, note, diagnostics, rankHistory\)/u);
 assert.match(viewSource, /（補間）/u);
 assert.match(viewSource, /（表示補間）/u);
@@ -852,6 +1147,10 @@ assert.doesNotMatch(dataSourceSource, /rank|lincoln\/suggest\/status|booking_cur
 assert.match(rankDataSourceSource, /kind: "rank-status"/u);
 assert.doesNotMatch(rankDataSourceSource, /indexedDB|localStorage|sessionStorage|fetch\s*\(/u);
 assert.doesNotMatch(rankModelSource, /reflector_name|reflectorName/u);
+assert.match(rankOrderDataSourceSource, /kind: "rank-sequences"/u);
+assert.doesNotMatch(rankOrderDataSourceSource, /indexedDB|localStorage|sessionStorage|fetch\s*\(/u);
+assert.doesNotMatch(rankOrderModelSource, /default_sequence/u);
+assert.doesNotMatch(adjustmentModelSource, /all\s*-\s*group|localStorage|indexedDB|fetch\s*\(/u);
 assert.match(fixture, /booking-curve-main-chart-header/u);
 assert.match(fixture, /booking-curve-sub-chart-header/u);
 assert.match(fixture, /data-mock-route-away/u);
@@ -859,6 +1158,8 @@ assert.match(fixtureEntry, /state=|fixtureMode/u);
 assert.match(fixtureEntry, /fixtureMode === "future"/u);
 assert.match(fixtureEntry, /fixtureMode === "history"/u);
 assert.match(fixtureEntry, /rankFixtureMode/u);
+assert.match(fixtureEntry, /rankOrderFixtureMode/u);
+assert.match(fixtureEntry, /data-mock-rank-order-load-count/u);
 
 console.log("Next Analyze booking curve reference checks passed");
 

@@ -14,6 +14,7 @@
 - `RAU-UX-167`は、`0.2.0.11`の実画面でTooltipがcursorより大きく右へずれる問題を、変形済み親要素が作るfixed containing blockの原点と倍率を測ってviewport座標へ補正する形で修正した。focused / full check、desktop / 390pxの変形host合成Chrome QA、Next `0.2.0.12`へのmanual publicationまで完了し、利用者は更新後の通常Chromeで問題がないことを確認した。
 - `RAU-UX-168`は完了した。`0.2.0.12`のrank変更がピンクの常時縦破線と菱形、独立Tooltipになっている問題を、Classicのcurrent curve上の小丸markerと通常LTに統合したTooltipへ戻した。直前に確認済みのTooltip位置補正とNextのdata / API / storage / write境界を維持し、source、focused / full check、desktop / 390px合成Chrome QA、Next `0.2.0.13`へのmanual publicationを完了した。利用者はTampermonkey更新後の通常Chromeで問題がないことを確認した。
 - `RAU-MP-09`は公開Next `0.2.0.14`の更新後実画面で、runtime自体は起動しているが標準画面から`最終データ更新`ラベルがなくなり、`waiting-batch-date`でrootを削除していたことを確認した。`D-20260812-001`で、標準chart host確認後にloading rootを先に表示し、DOMラベルがない場合だけ既存月次GETの現在月response `updated_at`からbatchDateKeyを検証し、同じresponseをsnapshot候補へ再利用する修正をspec-firstで固定した。Next `0.2.0.15`へのmanual publication後、利用者の更新済み画面で月次sectionと比較切替が表示された。比較選択の`前年 / 前々年 / 3年前`は判断時に西暦へ読み替える必要があるとの指摘を受け、表示月基準の`2025年 / 2024年 / 2023年`へ変えるsource / spec / focused / full checks、desktop / 390px fixture QA、main同期、Next `0.2.0.16`へのmanual publication、公開artifact / Classic baseline照合まで完了した。利用者のTampermonkey更新後の通常Chrome QAを残す。内部compare mode、初期最大5 GET、Next add-only、Classic exact-key read-only、標準chart非干渉、Revenue Assistant write 0は維持している。
+- `RAU-RR-64`は、rank調整時点から個人ペースと参考線の差がどう変わったかをAnalyzeで振り返る試験sliceを実装した。`D-20260812-002`で固定したexact LT比較、複数変更window、`現在の参考線で再評価`という非因果の表示、対象eventがある場合だけのrank順GET最大1 / memory-only、欠損非推測、storage / Revenue Assistant write 0を維持し、focused / full checksとdesktop / 390px合成Chrome QAまで完了した。`D-20260810-003`に従うmanual publication、Tampermonkey更新、通常Chrome実画面評価を残す。
 
 ## Current State
 
@@ -25,6 +26,7 @@
 - `RAU-UX-150` 第二段階は、可視な標準競合価格本文と facility label guard が一致する間だけ、部屋 / 食事指定なし・1〜6名の現在 stay date を `facility x stay date x JST取得日` ごとに1件保存する。Next 専用 IndexedDB、exclusive browser lock、deterministic key、`add` constraint、120観測 retention を writer / store 境界へ隔離し、Classic DB は変更しない。plan name / URL / price diff は保存せず、Classic / Next の有効履歴を表示時だけ統合する。
 - `RAU-UX-150` 第三段階Aは、可視な標準booking curveの2 chartを残し、そのnative content末尾へ独立rootを追加する。初期scopeはホテル全体、room groupは確認済みidを利用者が選んだ場合だけ遅延読込し、`全体`と`個人 / 団体`の2 panelでcurrent / 直近型 / 季節型を同じLT軸へ重ねる。facility / current settings GETは各最大1回、raw cacheは選択scopeのexact primary keyだけを1 readonly transactionで読み、referenceはメモリ上で算出して保存しない。
 - `RAU-UX-150` 第三段階Bは、利用者の明示承認に基づき、facility guard通過後の確認済みroom scopeで表示中stay dateだけを既存rank status endpointへ最大1 GETする。responseはruntime validation後もメモリだけに置き、同一room / JST反映日の最新eventへ絞る。current curveの直接値があるeventだけをmarkerへ置き、値がないeventも履歴表には残す。room名fallback、ホテル全体への集約、`reflector_name`、response保存、自動retry、rank writeを追加していない。
+- `RAU-RR-64`の試験表示は、room scopeの個人`transient`だけを主評価にし、rank eventから次変更前日または現在as-ofまでの`current - reference`差の変化を直近型 / 季節型別に出す。rank順は設定画面と同じ`/api/v1/rank_sequences`配列順を使い、方向取得失敗を既存chartや数値比較の失敗へ広げない。過去時点reference保存、ADR / sales評価、推奨金額、writeは別taskのままとする。利用者から一括反映の再検討意向が示されたため、実装ではなく安全条件を再評価する`RAU-RR-65`を次候補とした。
 - `RAU-UX-150` 第四段階では当時、1〜4名のsummary cardと選択中1人数の詳細chartを採用した。標準chart非干渉、filter、tooltip、accessible table、保存時刻、empty / stale / error、bounded readonly readの境界は現在も有効だが、表示layoutと人数選択は`RAU-UX-152`で置き換えた。
 - `RAU-UX-150` 第五段階は、利用者の明示承認に基づき、可視な標準価格推移本文、facility label guard、document visible、JST当日から89日先までのstay dateが揃う場合だけ、部屋指定なし・4食事 x 4人数の不足scopeを取得する。競合一覧GETは最大1回、価格推移GETは最大16回 / concurrency 2で、Classic / Nextに同日有効scopeがあれば両方を省略する。Next専用DB、deterministic key、Web Locks、IDB add constraint、scopeごとの最新1件、施設単位で当日〜89日先・最大1,440件の自動pruneをwriter / store境界へ隔離し、Classic DBを変更しない。
 - `RAU-UX-151` は、可視なcalendarまたはAnalyze、facility label guard、document visible、現在のas-ofが揃う場合だけ既存read-only `GET /api/v4/booking_curve`を使う。実装当時、必要source coverage 80%未満のbounded bootstrapは表示中stay dateのhotel / 全room currentとhotel直近型referenceを最大800件、coverage 80%以上のdaily deltaは新規・欠損・current tail・新しく観測可能になったreference tickだけを最大200件、250ms以上 / concurrency 2で補った。1 sessionで全sourceへ届かない場合は`今回分完了`として次の可視sessionで再計画し、全source準備済みを断定しない。Next専用DBはsource最新1件へ過去pointを内包し、施設最大4,096件、401 / 403 / 429即停止、同一run retryなしとする。現在の速度設定とClassic seed利用は`RAU-UX-159`を正とする。
@@ -65,12 +67,12 @@
 
 ## Next Re-entry
 
-1. 公開中のNextは表示月基準の絶対年比較を含む`0.2.0.16`で、sourceは`a2d426cf781c4e3083ed6aef83c9611940aa00bf`、manual workflow runは`31552193105`である。
-2. 利用者の更新済み月次画面でNextの比較切替が表示され、`前年 / 前々年 / 3年前`より`2025年`等の絶対年が判断しやすいとの指摘を受けた。表示月基準の3年へ置き換え、内部の1 / 2 / 3年前compare modeと取得対象は変えていない。
-3. 絶対年表示のfocused / full checksとdesktop / 390px fixture QAは完了した。`2025年 / 2024年 / 2023年`表示、押下後の選択年反映、root / document overflow 0、390pxのbutton高さ44px、console warning / error 0を確認した。local candidateは331,739 bytes、SHA-256 `48222FB8400F18C520F00CA3AB6A05C01978EF544DC2EF6F7185B5D09172DD15`である。
-4. workflow run 16のbuild / deploy / verifyはすべてsuccessで、公開Nextは331,944 bytes、SHA-256 `5917CAEDE6F844AC7652AD16D9C061D3A7D9E1D2097BAB046B0C13933186F1AF`、source mapは1,273,930 bytes、SHA-256 `44F7BDDE6D28B8751B41FC0DC3FF5CA9F7E976CC4041C14E682850AF2DDA421C`でmanifestと一致した。workflow外照合でもrun identityとbyte列が一致し、Classicは不変だった。
-5. 次は利用者がTampermonkeyのNextを`0.2.0.16`へ更新する。更新後、通常Chromeの`/monthly-progress/YYYY-MM`で比較年表示を含むready root、2 panel、metric切替、Tooltip、日次差分、F5 / route往復、request budget、Revenue Assistant write 0を確認する。ここまでを同じGoal Bundleとする。
-6. browser-local monthly snapshot件数はstorageを直接確認しておらず断定しない。Classic再公開、新規endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeは含めない。
+1. 公開中のNextは表示月基準の絶対年比較を含む`0.2.0.16`で、sourceは`a2d426cf781c4e3083ed6aef83c9611940aa00bf`、manual workflow runは`31552193105`である。月次の利用者更新後通常Chrome QAは残る。
+2. `RAU-RR-64`の試験実装とlocal gateは完了した。確認済みroom scopeのrank eventと個人booking curveを接続し、変更日から次変更前日または現在as-ofまでの参考線差の変化を、直近型 / 季節型別の`調整後のペース（試験）`として表示する。
+3. `現在の参考線で再評価`であり因果・成功・価格弾力性を断定しない。rank方向は確認済み`/api/v1/rank_sequences`を最大1 GET / facility / visible contextでmemory取得する。取得失敗は方向解釈だけを未確認とし、current / reference chartと差の数値を維持する。
+4. focused / full checks、candidate artifact、Classic publication baseline、desktop / 390px合成Chrome QAは完了した。合成画面では標準chart 2、Next panel 2、調整event 2、route往復後のduplicate root 0、Next root overflow 0、実API request 0、console warning / error 0を確認した。rank履歴emptyではrank順GET 0も確認した。candidateは347,628 bytes、SHA-256 `D6EE30EAF82B24B12C900AAC4DC8648970E8F8F0F5374E2DE2393322F016283B`である。
+5. 次は今回scopeだけをcommit / pushし、`D-20260810-003`に従ってNext manual publicationと公開artifact / Classic baseline照合へ進む。その後、利用者のTampermonkey更新と通常Chrome実画面評価を行う。新規storage / retention、raw response保存、ADR / sales評価、推奨金額、Revenue Assistant write、自動 / 一括反映は`RAU-RR-64`へ含めていない。
+6. 利用者の一括反映再検討意向は`RAU-RR-65`へ分けた。週ブロック等の明示選択、送信前preview、各行の直前再確認、取消、provider差、部分失敗、反映確認をdry-runで再評価し、live writeは別gateとする。
 
 ## Verify / Confirmation State
 

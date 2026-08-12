@@ -589,6 +589,13 @@ rank response dataset の first contract:
 - output は、`pickupRooms`、`transientPickupRooms`、`groupPickupRooms`、`adrChange`、`salesChange`、`revparLikeChange`、`netPickup`、`baselineDelta`、`diagnostics` を持つ。
 - 実価格または rank price table が取れるまで、価格変化率や価格弾力性は出力しない。`rank response` は rank transition 後の需要、ADR、sales の反応を表す分析用 dataset とする。
 
+Analyze試験表示の最小slice (`RAU-RR-64`):
+
+- first contract全体を一度に永続datasetへせず、まず確認済みroom-groupの個人`transient`について、既存rank eventと保存済みcurrent / referenceをmemoryで接続する。粒度は`facilityId x stayDate x roomGroupId x rankChangeEvent`を維持するが、`reflector_name`は不要かつ個人名になり得るためNextへ取り込まない。
+- startはrank変更日、endは次の変更前日または現在as-ofとする。変更後の観測がない、currentまたはreferenceのexact LTが欠ける場合は`比較準備中`とし、0、隣接LT、別roomGroupで補わない。直近型 / 季節型それぞれで`gap(t) = transient rooms(t) - reference rooms at same LT`と`gap(end) - gap(start)`を出し、2つのreferenceを単一scoreへ混ぜない。
+- 過去時点のreference snapshotを保存していないため、これは`現在の参考線で再評価`した観測である。因果効果、価格弾力性、推奨rankの正しさ、調整成功を断定しない。rank順は`/api/v1/rank_sequences`の設定画面配列順だけを高rankから低rankとして使い、取得失敗時は数値観測と方向解釈を分ける。
+- このsliceで追加するreadは、room scopeで既存rank status最大1 GETに加え、対象rank eventが1件以上ある場合だけ開始する`/api/v1/rank_sequences`最大1 GET / facility / visible contextとする。rank履歴empty / errorでは開始しない。memory-only、自動retryなし、context離脱時abortとし、response / evaluationの保存、background取得、ADR / sales評価、推奨金額、Revenue Assistant write、自動 / 一括反映を追加しない。
+
 推奨 rank 算出の first contract:
 
 - current rank は `/api/v1/suggest/output/current_settings` の `latest_current.price_rank_code` / `price_rank_name` を第一候補にする。
