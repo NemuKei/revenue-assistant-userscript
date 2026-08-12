@@ -150,6 +150,27 @@ export function parseNextMonthlyProgressRoute(pathname: string): string | null {
         : normalizeNextMonthlyProgressYearMonth(`${match[1]}${match[2]}`);
 }
 
+export function resolveNextMonthlyProgressBatchDateKeyFromUpdatedAt(
+    value: unknown
+): string | null {
+    if (typeof value !== "string") {
+        return null;
+    }
+    const match = /^(\d{4})-(\d{2})-(\d{2})(?:$|T)/u.exec(value.trim());
+    if (match === null) {
+        return null;
+    }
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const parsed = new Date(Date.UTC(year, month - 1, day));
+    return parsed.getUTCFullYear() === year
+        && parsed.getUTCMonth() === month - 1
+        && parsed.getUTCDate() === day
+        ? `${match[1]}${match[2]}${match[3]}`
+        : null;
+}
+
 export function shiftNextMonthlyProgressYearMonth(
     yearMonth: string,
     offsetMonths: number

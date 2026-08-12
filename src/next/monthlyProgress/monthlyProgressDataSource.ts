@@ -9,9 +9,11 @@ import {
     buildNextMonthlyProgressTargetYearMonths,
     compactNextMonthlyProgressResponse,
     normalizeNextMonthlyProgressYearMonth,
+    resolveNextMonthlyProgressBatchDateKeyFromUpdatedAt,
     type NextMonthlyProgressAcquisitionProgress,
     type NextMonthlyProgressCompareYearsAgo,
     type NextMonthlyProgressDataSnapshot,
+    type NextMonthlyProgressSnapshotPayload,
     type NextMonthlyProgressSnapshotRecord
 } from "./monthlyProgressModel";
 import {
@@ -28,12 +30,25 @@ import {
 const MONTHLY_PROGRESS_MINIMUM_START_INTERVAL_MS = 100;
 const MONTHLY_PROGRESS_SESSION_REQUEST_LIMIT = 15;
 
+type MonthlyProgressPayloadReadResult =
+    | { status: "ready"; payload: NextMonthlyProgressSnapshotPayload }
+    | { status: "error"; reason: string };
+
+type MonthlyProgressBootstrapResult =
+    | {
+        status: "ready";
+        batchDateKey: string;
+        payload: NextMonthlyProgressSnapshotPayload;
+    }
+    | { status: "error"; reason: string };
+
 export type NextMonthlyProgressDataLoadResult =
     | { status: "ready"; snapshot: NextMonthlyProgressDataSnapshot }
     | {
         status: "error";
         reason:
             | "aborted"
+            | "batch-date-unavailable"
             | "batch-date-invalid"
             | "facility-context-mismatch"
             | "facility-response-invalid"
@@ -46,7 +61,7 @@ export interface NextMonthlyProgressDataSource {
     cancel(): void;
     load(
         routeYearMonth: string,
-        batchDateKey: string,
+        batchDateKey: string | null,
         compareYearsAgo: NextMonthlyProgressCompareYearsAgo
     ): Promise<NextMonthlyProgressDataLoadResult>;
     reset(): void;
@@ -131,13 +146,15 @@ export function createNextMonthlyProgressDataSource(
             if (normalizedRouteYearMonth === null) {
                 return { status: "error", reason: "year-month-invalid" };
             }
-            if (!isValidBatchDateKey(batchDateKey)) {
+            if (batchDateKey !== null && !isValidBatchDateKey(batchDateKey)) {
                 return { status: "error", reason: "batch-date-invalid" };
             }
-            const contextKey = `${normalizedRouteYearMonth}|${batchDateKey}`;
-            if (activeContextKey !== contextKey) {
+            const contextChanged = activeContextKey === null
+                || activeRouteYearMonth !== normalizedRouteYearMonth
+                || (batchDateKey !== null && activeBatchDateKey !== batchDateKey);
+            if (contextChanged) {
                 reset();
-                activeContextKey = contextKey;
+                activeContextKey = `${normalizedRouteYearMonth}|${batchDateKey ?? "bootstrap"}`;
                 activeRouteYearMonth = normalizedRouteYearMonth;
                 activeBatchDateKey = batchDateKey;
             } else {
@@ -173,9 +190,74 @@ export function createNextMonthlyProgressDataSource(
                     normalizedRouteYearMonth,
                     compareYearsAgo
                 );
-                await loadStoredRecords(facility.facilityId, batchDateKey, targetYearMonths);
+                let bootstrapPayload: NextMonthlyProgressSnapshotPayload | null = null;
+                if (activeBatchDateKey === null) {
+                    progress = createProgress({
+                        phase: "loading-current",
+                        targetYearMonths: [normalizedRouteYearMonth]
+                    });
+                    progress.currentYearMonth = normalizedRouteYearMonth;
+                    notify();
+                    const bootstrapResult = await acquireBootstrapYearMonth(
+                        normalizedRouteYearMonth,
+                        controller.signal
+                    );
+                    if (!isCurrent(generation, controller.signal)) {
+                        return { status: "error", reason: "aborted" };
+                    }
+                    if (bootstrapResult.status === "error") {
+                        progress.phase = "stopped";
+                        progress.currentYearMonth = null;
+                        progress.failedCount = 1;
+                        progress.processedCount = 1;
+                        progress.stopReason = bootstrapResult.reason;
+                        notify();
+                        return {
+                            status: "error",
+                            reason: bootstrapResult.reason === "batch-date-unavailable"
+                                ? "batch-date-unavailable"
+                                : bootstrapResult.reason === "aborted" ? "aborted" : "request-failed"
+                        };
+                    }
+                    activeBatchDateKey = bootstrapResult.batchDateKey;
+                    activeContextKey = `${normalizedRouteYearMonth}|${activeBatchDateKey}`;
+                    bootstrapPayload = bootstrapResult.payload;
+                }
+                const resolvedBatchDateKey = activeBatchDateKey;
+                if (resolvedBatchDateKey === null) {
+                    return { status: "error", reason: "batch-date-unavailable" };
+                }
+                await loadStoredRecords(
+                    facility.facilityId,
+                    resolvedBatchDateKey,
+                    targetYearMonths
+                );
                 if (!isCurrent(generation, controller.signal)) {
                     return { status: "error", reason: "aborted" };
+                }
+                if (
+                    bootstrapPayload !== null
+                    && !recordsByYearMonth.has(normalizedRouteYearMonth)
+                ) {
+                    const bootstrapFailure = await persistMonthlyProgressPayload({
+                        batchDateKey: resolvedBatchDateKey,
+                        facilityId: facility.facilityId,
+                        payload: bootstrapPayload,
+                        signal: controller.signal,
+                        yearMonth: normalizedRouteYearMonth
+                    });
+                    if (bootstrapFailure !== null) {
+                        progress = createProgress({
+                            phase: "stopped",
+                            failedCount: 1,
+                            processedCount: 1,
+                            targetYearMonths: [normalizedRouteYearMonth]
+                        });
+                        progress.networkRequestCount = monthlyRequestCount;
+                        progress.stopReason = bootstrapFailure;
+                        notify();
+                        return { status: "ready", snapshot: requireSnapshot() };
+                    }
                 }
 
                 const unresolvedYearMonths = targetYearMonths.filter(
@@ -205,7 +287,7 @@ export function createNextMonthlyProgressDataSource(
                     const currentResult = await acquireYearMonth(
                         facility.facilityId,
                         normalizedRouteYearMonth,
-                        batchDateKey,
+                        resolvedBatchDateKey,
                         controller.signal
                     );
                     progress.processedCount += 1;
@@ -239,7 +321,7 @@ export function createNextMonthlyProgressDataSource(
                             return;
                         }
                         void runBackgroundQueue({
-                            batchDateKey,
+                            batchDateKey: resolvedBatchDateKey,
                             controller,
                             facilityId,
                             generation,
@@ -356,15 +438,61 @@ export function createNextMonthlyProgressDataSource(
                 ? null
                 : failedYearMonthReasons.get(yearMonth) ?? "already-attempted";
         }
+        const readResult = await readMonthlyProgressPayload(yearMonth, signal);
+        return readResult.status === "error"
+            ? readResult.reason
+            : persistMonthlyProgressPayload({
+                batchDateKey,
+                facilityId,
+                payload: readResult.payload,
+                signal,
+                yearMonth
+            });
+    }
+
+    async function acquireBootstrapYearMonth(
+        yearMonth: string,
+        signal: AbortSignal
+    ): Promise<MonthlyProgressBootstrapResult> {
+        if (attemptedYearMonths.has(yearMonth)) {
+            return {
+                status: "error",
+                reason: failedYearMonthReasons.get(yearMonth) ?? "already-attempted"
+            };
+        }
+        const readResult = await readMonthlyProgressPayload(yearMonth, signal);
+        if (readResult.status === "error") {
+            return readResult;
+        }
+        const batchDateKey = resolveNextMonthlyProgressBatchDateKeyFromUpdatedAt(
+            readResult.payload.updatedAt
+        );
+        if (batchDateKey === null) {
+            return {
+                status: "error",
+                reason: rememberFailure(yearMonth, "batch-date-unavailable")
+            };
+        }
+        return {
+            status: "ready",
+            batchDateKey,
+            payload: readResult.payload
+        };
+    }
+
+    async function readMonthlyProgressPayload(
+        yearMonth: string,
+        signal: AbortSignal
+    ): Promise<MonthlyProgressPayloadReadResult> {
         const elapsed = now() - lastMonthlyRequestStartedAt;
         if (lastMonthlyRequestStartedAt > 0 && elapsed < MONTHLY_PROGRESS_MINIMUM_START_INTERVAL_MS) {
             await wait(MONTHLY_PROGRESS_MINIMUM_START_INTERVAL_MS - elapsed, signal);
         }
         if (signal.aborted) {
-            return "aborted";
+            return { status: "error", reason: "aborted" };
         }
         if (attemptedYearMonths.size >= MONTHLY_PROGRESS_SESSION_REQUEST_LIMIT) {
-            return "request-budget-exceeded";
+            return { status: "error", reason: "request-budget-exceeded" };
         }
         attemptedYearMonths.add(yearMonth);
         lastMonthlyRequestStartedAt = now();
@@ -376,44 +504,60 @@ export function createNextMonthlyProgressDataSource(
                 yearMonth
             }, signal);
             if (signal.aborted) {
-                return "aborted";
+                return { status: "error", reason: "aborted" };
             }
             const compactPayload = compactNextMonthlyProgressResponse(payload, yearMonth);
             if (compactPayload === null) {
-                return rememberFailure(yearMonth, "response-invalid");
+                return {
+                    status: "error",
+                    reason: rememberFailure(yearMonth, "response-invalid")
+                };
             }
-            const record = createNextMonthlyProgressSnapshotRecord({
-                facilityId,
-                yearMonth,
-                batchDateKey,
-                fetchedAt: new Date(now()).toISOString(),
-                payload: compactPayload
-            });
-            let resolvedRecord = record;
-            try {
-                const addedCount = await store.add([record]);
-                if (addedCount === 0) {
-                    const storedRecords = await store.readByRecordKeys([record.recordKey]);
-                    const storedRecord = storedRecords[0];
-                    if (storedRecord === undefined) {
-                        return rememberFailure(yearMonth, "store-write-conflict");
-                    }
-                    resolvedRecord = storedRecord;
-                }
-            } catch {
-                return rememberFailure(yearMonth, "store-write-failed");
-            }
-            if (signal.aborted) {
-                return "aborted";
-            }
-            recordsByYearMonth.set(yearMonth, resolvedRecord);
-            failedYearMonthReasons.delete(yearMonth);
-            updateSourceCounts();
-            return null;
+            return { status: "ready", payload: compactPayload };
         } catch (error: unknown) {
             const reason = toStopReason(error);
-            return reason === "aborted" ? reason : rememberFailure(yearMonth, reason);
+            return {
+                status: "error",
+                reason: reason === "aborted" ? reason : rememberFailure(yearMonth, reason)
+            };
         }
+    }
+
+    async function persistMonthlyProgressPayload(options: {
+        batchDateKey: string;
+        facilityId: string;
+        payload: NextMonthlyProgressSnapshotPayload;
+        signal: AbortSignal;
+        yearMonth: string;
+    }): Promise<string | null> {
+        const record = createNextMonthlyProgressSnapshotRecord({
+            facilityId: options.facilityId,
+            yearMonth: options.yearMonth,
+            batchDateKey: options.batchDateKey,
+            fetchedAt: new Date(now()).toISOString(),
+            payload: options.payload
+        });
+        let resolvedRecord = record;
+        try {
+            const addedCount = await store.add([record]);
+            if (addedCount === 0) {
+                const storedRecords = await store.readByRecordKeys([record.recordKey]);
+                const storedRecord = storedRecords[0];
+                if (storedRecord === undefined) {
+                    return rememberFailure(options.yearMonth, "store-write-conflict");
+                }
+                resolvedRecord = storedRecord;
+            }
+        } catch {
+            return rememberFailure(options.yearMonth, "store-write-failed");
+        }
+        if (options.signal.aborted) {
+            return "aborted";
+        }
+        recordsByYearMonth.set(options.yearMonth, resolvedRecord);
+        failedYearMonthReasons.delete(options.yearMonth);
+        updateSourceCounts();
+        return null;
     }
 
     function rememberFailure(yearMonth: string, reason: string): string {

@@ -14,6 +14,7 @@ import {
 import {
     NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE,
     removeNextMonthlyProgressArtifacts,
+    renderNextMonthlyProgressLoadingState,
     renderNextMonthlyProgressView
 } from "./monthlyProgressView";
 
@@ -59,6 +60,7 @@ export function startNextMonthlyProgressRuntime(
     let preferencesLoaded = false;
     let root: HTMLElement | null = null;
     let loadGeneration = 0;
+    let loadPending = false;
     let reconcileTimer: number | null = null;
     let refreshTimer: number | null = null;
     let stopped = false;
@@ -105,31 +107,30 @@ export function startNextMonthlyProgressRuntime(
         }
         const target = resolveNextMonthlyProgressMountTarget(documentHost);
         if (documentHost.visibilityState === "hidden" || target === null) {
+            loadGeneration += 1;
+            loadPending = false;
             dataSource.cancel();
             removeRoot();
             setState(target === null ? "waiting-native-monthly-chart" : "suspended-hidden");
             return;
         }
-        const batchDateKey = resolveBatchDateKey(documentHost);
-        if (batchDateKey === null) {
-            dataSource.cancel();
-            removeRoot();
-            setState("waiting-batch-date");
-            return;
-        }
-        const contextChanged = activeYearMonth !== yearMonth || activeBatchDateKey !== batchDateKey;
+        ensureRoot(target);
+        const observedBatchDateKey = resolveBatchDateKey(documentHost);
+        const contextChanged = activeYearMonth !== yearMonth
+            || (observedBatchDateKey !== null && activeBatchDateKey !== observedBatchDateKey);
         if (contextChanged) {
             loadGeneration += 1;
+            loadPending = false;
             dataSource.reset();
             activeYearMonth = yearMonth;
-            activeBatchDateKey = batchDateKey;
+            activeBatchDateKey = observedBatchDateKey;
             activeFacilityId = null;
             compareYearsAgo = 1;
             secondaryMetric = "unit-price";
             preferencesLoaded = false;
         }
-        ensureRoot(target);
         if (contextChanged || dataSource.snapshot() === null) {
+            renderLoadingState();
             loadData();
         } else {
             renderSnapshot();
@@ -137,24 +138,32 @@ export function startNextMonthlyProgressRuntime(
     }
 
     function loadData(): void {
-        if (activeYearMonth === null || activeBatchDateKey === null) {
+        if (activeYearMonth === null || loadPending) {
             return;
         }
         const yearMonth = activeYearMonth;
         const batchDateKey = activeBatchDateKey;
         const requestedCompare = compareYearsAgo;
         const generation = ++loadGeneration;
+        loadPending = true;
         setState("loading");
+        if (dataSource.snapshot() === null) {
+            renderLoadingState();
+        }
         void dataSource.load(yearMonth, batchDateKey, requestedCompare).then((result) => {
             if (
                 stopped
                 || generation !== loadGeneration
                 || activeYearMonth !== yearMonth
-                || activeBatchDateKey !== batchDateKey
             ) {
                 return;
             }
+            loadPending = false;
             applyLoadResult(result);
+        }).finally(() => {
+            if (generation === loadGeneration) {
+                loadPending = false;
+            }
         });
     }
 
@@ -166,6 +175,7 @@ export function startNextMonthlyProgressRuntime(
             }
             return;
         }
+        activeBatchDateKey = result.snapshot.batchDateKey;
         activeFacilityId = result.snapshot.facilityId;
         if (!preferencesLoaded) {
             preferencesLoaded = true;
@@ -220,6 +230,18 @@ export function startNextMonthlyProgressRuntime(
         setState(model.progress.phase === "complete" ? "ready" : `ready-${model.progress.phase}`);
     }
 
+    function renderLoadingState(): void {
+        if (root === null || activeYearMonth === null) {
+            return;
+        }
+        renderNextMonthlyProgressLoadingState({
+            root,
+            routeYearMonth: activeYearMonth,
+            stage: activeBatchDateKey === null ? "checking-context" : "loading-current"
+        });
+        setState(activeBatchDateKey === null ? "loading-context" : "loading-current");
+    }
+
     function ensureRoot(target: MonthlyProgressMountTarget): void {
         const candidates = Array.from(documentHost.querySelectorAll<HTMLElement>(
             `[${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}]`
@@ -262,12 +284,15 @@ export function startNextMonthlyProgressRuntime(
         if (root === null) {
             return;
         }
+        root.setAttribute("aria-busy", "false");
         const heading = documentHost.createElement("h2");
         heading.textContent = "LTブッキングカーブ";
         const message = documentHost.createElement("p");
         message.setAttribute("data-ra-next-monthly-progress-empty", "");
         message.textContent = reason === "facility-context-mismatch"
             ? "表示中の施設を確認できないため、月次補助表示を停止しました。施設を再選択して再表示してください。"
+            : reason === "batch-date-unavailable"
+                ? "月次データの更新日を確認できないため、日付を推測せず停止しました。標準chartはそのまま利用できます。"
             : "月次補助表示を準備できませんでした。標準chartはそのまま利用できます。";
         root.replaceChildren(heading, message);
     }
@@ -279,6 +304,7 @@ export function startNextMonthlyProgressRuntime(
         activeBatchDateKey = null;
         activeFacilityId = null;
         preferencesLoaded = false;
+        loadPending = false;
         removeRoot();
         setState(finalState);
     }
@@ -295,6 +321,7 @@ export function startNextMonthlyProgressRuntime(
         }
         stopped = true;
         loadGeneration += 1;
+        loadPending = false;
         unsubscribe();
         dataSource.stop();
         abortController.abort();

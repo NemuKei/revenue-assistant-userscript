@@ -32,12 +32,69 @@ export interface RenderNextMonthlyProgressViewOptions {
     root: HTMLElement;
 }
 
+export type NextMonthlyProgressLoadingStage = "checking-context" | "loading-current";
+
+export interface RenderNextMonthlyProgressLoadingOptions {
+    root: HTMLElement;
+    routeYearMonth: string;
+    stage: NextMonthlyProgressLoadingStage;
+}
+
 interface MonthlyProgressPanelModel {
     compareLabel: string;
     focusMonths: NextMonthlyProgressFocusMonthPreview[];
     metric: NextMonthlyProgressMetric;
     title: string;
     subtitle: string;
+}
+
+export function renderNextMonthlyProgressLoadingState(
+    options: RenderNextMonthlyProgressLoadingOptions
+): void {
+    ensureNextMonthlyProgressStyles(options.root.ownerDocument);
+    options.root.setAttribute(NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE, "");
+    options.root.setAttribute("data-ra-next-monthly-progress-phase", options.stage);
+    options.root.setAttribute("data-ra-next-monthly-progress-network-requests", "0");
+    options.root.setAttribute("data-ra-next-monthly-progress-write-count", "0");
+    options.root.setAttribute("aria-busy", "true");
+
+    const heading = createElement(options.root, "h2", "LTブッキングカーブ");
+    const meta = createElement(
+        options.root,
+        "p",
+        `予約日基準 / 対象 ${formatNextMonthlyProgressYearMonth(options.routeYearMonth)} から5か月`
+    );
+    meta.setAttribute("data-ra-next-monthly-progress-meta", "");
+
+    const status = createElement(
+        options.root,
+        "p",
+        options.stage === "checking-context"
+            ? "月次データを準備しています。施設とデータ更新日を確認中です…"
+            : "月次データを準備しています。現在月を取得中です…"
+    );
+    status.setAttribute("data-ra-next-monthly-progress-status", "");
+    status.setAttribute("data-ra-next-monthly-progress-loading-status", options.stage);
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
+    const note = createElement(
+        options.root,
+        "p",
+        "準備中も標準chartはそのまま利用できます。値が確認できるまで線や金額は表示しません。"
+    );
+    note.setAttribute("data-ra-next-monthly-progress-note", "");
+
+    const grid = createElement(options.root, "div");
+    grid.setAttribute("data-ra-next-monthly-progress-grid", "");
+    grid.setAttribute("data-ra-next-monthly-progress-loading-grid", "");
+    grid.setAttribute("aria-hidden", "true");
+    grid.replaceChildren(
+        createLoadingPanel(options.root, "販売客室数"),
+        createLoadingPanel(options.root, "販売単価 / 売上")
+    );
+
+    options.root.replaceChildren(heading, meta, status, note, grid);
 }
 
 export function renderNextMonthlyProgressView(
@@ -54,6 +111,7 @@ export function renderNextMonthlyProgressView(
         "data-ra-next-monthly-progress-write-count",
         "0"
     );
+    options.root.setAttribute("aria-busy", "false");
 
     const heading = createElement(options.root, "h2", "LTブッキングカーブ");
     const meta = createElement(
@@ -126,6 +184,21 @@ export function renderNextMonthlyProgressView(
     details.replaceChildren(detailsSummary, detailsBody);
 
     options.root.replaceChildren(heading, meta, note, controls, status, content, details);
+}
+
+function createLoadingPanel(root: HTMLElement, titleText: string): HTMLElement {
+    const panel = createElement(root, "section");
+    panel.setAttribute("data-ra-next-monthly-progress-loading-panel", "");
+    const title = createElement(root, "h3", titleText);
+    const skeleton = createElement(root, "div");
+    skeleton.setAttribute("data-ra-next-monthly-progress-skeleton", "");
+    for (let index = 0; index < 4; index += 1) {
+        const line = createElement(root, "span");
+        line.style.width = `${88 - (index * 11)}%`;
+        skeleton.append(line);
+    }
+    panel.replaceChildren(title, skeleton);
+    return panel;
 }
 
 export function ensureNextMonthlyProgressStyles(documentHost: Document): void {
@@ -800,6 +873,22 @@ function getNextMonthlyProgressStyles(): string {
 [${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [data-ra-next-monthly-progress-grid] {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;
 }
+[${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [data-ra-next-monthly-progress-loading-panel] {
+    min-width: 0; min-height: 150px; padding: 10px; border: 1px solid #d8e2f1;
+    border-radius: 10px; background: #fff;
+}
+[${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [data-ra-next-monthly-progress-skeleton] {
+    display: flex; flex-direction: column; justify-content: flex-end; gap: 13px; height: 105px; margin-top: 8px;
+}
+[${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [data-ra-next-monthly-progress-skeleton] > span {
+    display: block; height: 9px; border-radius: 999px;
+    background: linear-gradient(90deg, #edf2f8 25%, #dfe8f3 50%, #edf2f8 75%);
+    background-size: 200% 100%; animation: ra-next-monthly-progress-loading 1.4s ease-in-out infinite;
+}
+@keyframes ra-next-monthly-progress-loading {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+}
 [${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [${NEXT_MONTHLY_PROGRESS_PANEL_ATTRIBUTE}],
 [${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [${NEXT_MONTHLY_PROGRESS_DAILY_DIFF_ATTRIBUTE}] {
     min-width: 0; padding: 10px; border: 1px solid #d8e2f1; border-radius: 10px; background: #fff;
@@ -860,6 +949,11 @@ function getNextMonthlyProgressStyles(): string {
     [${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [${NEXT_MONTHLY_PROGRESS_TOOLTIP_ATTRIBUTE}] { font-size: 10px; }
     [${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [${NEXT_MONTHLY_PROGRESS_TOOLTIP_ATTRIBUTE}] th,
     [${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [${NEXT_MONTHLY_PROGRESS_TOOLTIP_ATTRIBUTE}] td { padding: 4px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    [${NEXT_MONTHLY_PROGRESS_ROOT_ATTRIBUTE}] [data-ra-next-monthly-progress-skeleton] > span {
+        animation: none;
+    }
 }
 `;
 }

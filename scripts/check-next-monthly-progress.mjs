@@ -56,6 +56,16 @@ assert.equal(runtimeModule.resolveNextMonthlyProgressBatchDateKey({
 assert.equal(runtimeModule.resolveNextMonthlyProgressBatchDateKey({
     body: { innerText: "更新日を確認できません" }
 }), null);
+assert.equal(
+    model.resolveNextMonthlyProgressBatchDateKeyFromUpdatedAt("2026-08-12"),
+    "20260812"
+);
+assert.equal(
+    model.resolveNextMonthlyProgressBatchDateKeyFromUpdatedAt("2026-08-12T03:00:00Z"),
+    "20260812"
+);
+assert.equal(model.resolveNextMonthlyProgressBatchDateKeyFromUpdatedAt("2026-02-30"), null);
+assert.equal(model.resolveNextMonthlyProgressBatchDateKeyFromUpdatedAt(null), null);
 assert.equal(model.compactNextMonthlyProgressResponse({
     year_month: "202608",
     room_based: []
@@ -219,6 +229,40 @@ assert.equal(load.status, "ready");
 await waitForTerminalPhase(dataSource);
 assert.equal(transportCalls.filter((request) => request.kind === "monthly-booking-curve").length, 15);
 
+const bootstrapCalls = [];
+const bootstrapStore = createMemoryStore();
+const bootstrapDataSource = dataSourceModule.createNextMonthlyProgressDataSource({
+    documentHost: {},
+    legacySeedReader: createEmptyLegacyReader(),
+    readFacilityContextHints: () => ["施設A（mock）"],
+    schedule: (task) => setTimeout(task, 0),
+    store: bootstrapStore,
+    transport: {
+        async read(request) {
+            bootstrapCalls.push(request);
+            return request.kind === "facility"
+                ? { yad_no: "fixture", name: "施設A（mock）" }
+                : createRawPayload(request.yearMonth);
+        }
+    },
+    wait: async () => undefined,
+    windowHost: {}
+});
+const bootstrapLoad = await bootstrapDataSource.load("202608", null, 1);
+assert.equal(bootstrapLoad.status, "ready");
+assert.equal(bootstrapDataSource.snapshot()?.batchDateKey, "20260810");
+await waitForTerminalPhase(bootstrapDataSource);
+assert.deepEqual(bootstrapCalls.map(describeRequest), [
+    "facility",
+    "monthly:202608",
+    "monthly:202609",
+    "monthly:202610",
+    "monthly:202611",
+    "monthly:202612"
+]);
+assert.equal(bootstrapStore.records.size, 5);
+assert.equal(bootstrapDataSource.snapshot()?.progress.networkRequestCount, 5);
+
 const classicSeed = {
     ...storeModule.createNextMonthlyProgressSnapshotRecord({
         facilityId: "yad:fixture",
@@ -261,6 +305,34 @@ assert.equal(seedCalls.some((request) => (
 assert.equal(seedStore.records.has(classicSeed.recordKey), false);
 assert.equal(seedDataSource.snapshot()?.progress.classicSeedCount, 1);
 
+const bootstrapSeedCalls = [];
+const bootstrapSeedStore = createMemoryStore();
+const bootstrapSeedDataSource = dataSourceModule.createNextMonthlyProgressDataSource({
+    documentHost: {},
+    legacySeedReader: {
+        async readExact() {
+            return { status: "ready", records: [classicSeed] };
+        }
+    },
+    readFacilityContextHints: () => ["施設A（mock）"],
+    schedule: () => undefined,
+    store: bootstrapSeedStore,
+    transport: {
+        async read(request) {
+            bootstrapSeedCalls.push(request);
+            return request.kind === "facility"
+                ? { yad_no: "fixture", name: "施設A（mock）" }
+                : createRawPayload(request.yearMonth);
+        }
+    },
+    wait: async () => undefined,
+    windowHost: {}
+});
+assert.equal((await bootstrapSeedDataSource.load("202608", null, 1)).status, "ready");
+assert.deepEqual(bootstrapSeedCalls.map(describeRequest), ["facility", "monthly:202608"]);
+assert.equal(bootstrapSeedDataSource.snapshot()?.records[0]?.source, "classic-readonly-seed");
+assert.equal(bootstrapSeedStore.records.size, 0);
+
 const missingGuardCalls = [];
 const missingGuardDataSource = dataSourceModule.createNextMonthlyProgressDataSource({
     documentHost: {},
@@ -277,7 +349,7 @@ const missingGuardDataSource = dataSourceModule.createNextMonthlyProgressDataSou
     wait: async () => undefined,
     windowHost: {}
 });
-const missingGuardLoad = await missingGuardDataSource.load("202608", "20260810", 1);
+const missingGuardLoad = await missingGuardDataSource.load("202608", null, 1);
 assert.deepEqual(missingGuardLoad, {
     status: "error",
     reason: "facility-context-mismatch"
@@ -301,6 +373,35 @@ assert.deepEqual(await invalidBatchDataSource.load("202608", "20261340", 1), {
     reason: "batch-date-invalid"
 });
 assert.deepEqual(invalidBatchCalls, []);
+
+const missingUpdatedAtCalls = [];
+const missingUpdatedAtStore = createMemoryStore();
+const missingUpdatedAtDataSource = dataSourceModule.createNextMonthlyProgressDataSource({
+    documentHost: {},
+    legacySeedReader: createEmptyLegacyReader(),
+    readFacilityContextHints: () => ["施設A（mock）"],
+    store: missingUpdatedAtStore,
+    transport: {
+        async read(request) {
+            missingUpdatedAtCalls.push(request);
+            if (request.kind === "facility") {
+                return { yad_no: "fixture", name: "施設A（mock）" };
+            }
+            return { ...createRawPayload(request.yearMonth), updated_at: null };
+        }
+    },
+    wait: async () => undefined,
+    windowHost: {}
+});
+assert.deepEqual(await missingUpdatedAtDataSource.load("202608", null, 1), {
+    status: "error",
+    reason: "batch-date-unavailable"
+});
+assert.deepEqual(missingUpdatedAtCalls.map(describeRequest), [
+    "facility",
+    "monthly:202608"
+]);
+assert.equal(missingUpdatedAtStore.records.size, 0);
 
 const consecutiveErrorCalls = [];
 const consecutiveErrorDataSource = dataSourceModule.createNextMonthlyProgressDataSource({
@@ -440,11 +541,16 @@ assert.match(runtimeSource, /waiting-native-monthly-chart/u);
 assert.match(runtimeSource, /visibilitychange/u);
 assert.match(runtimeSource, /pageshow/u);
 assert.match(runtimeSource, /removeNextMonthlyProgressArtifacts/u);
+assert.match(runtimeSource, /renderNextMonthlyProgressLoadingState/u);
+assert.match(runtimeSource, /ensureRoot\(target\);\s*const observedBatchDateKey/u);
+assert.doesNotMatch(runtimeSource, /waiting-batch-date/u);
 assert.match(runtimeSource, /revenue-assistant:next:monthly-progress:v1:/u);
 assert.match(runtimeDomMutationSource, /data-ra-next-monthly-progress-root/u);
 assert.match(viewSource, /販売客室数/u);
 assert.match(viewSource, /販売単価/u);
 assert.match(viewSource, /日次差分/u);
+assert.match(viewSource, /月次データを準備しています/u);
+assert.match(viewSource, /prefers-reduced-motion/u);
 assert.match(viewSource, /positionViewportTooltip/u);
 assert.match(viewSource, /pointermove/u);
 assert.match(viewSource, /tabindex/u);
@@ -452,6 +558,7 @@ assert.match(viewSource, /@media \(max-width: 680px\)/u);
 assert.match(fixtureHtml, /chart-content-numberOfRoomsSold-dateOfReservationBasis/u);
 assert.match(fixtureHtml, /data-mock-route-away/u);
 assert.match(fixtureEntrySource, /loading/u);
+assert.match(fixtureEntrySource, /bootstrap-loading/u);
 assert.match(fixtureEntrySource, /partial-failure/u);
 assert.match(legacyReaderSource, /readExistingIndexedDbRecordsByPrimaryKeys/u);
 assert.doesNotMatch(legacyReaderSource, /\.put\(|\.add\(|\.delete\(/u);
@@ -459,6 +566,8 @@ assert.match(storeSource, /store\.add\(record\)/u);
 assert.doesNotMatch(storeSource, /store\.put\(|store\.delete\(|\.clear\(/u);
 assert.match(dataSourceSource, /MONTHLY_PROGRESS_SESSION_REQUEST_LIMIT = 15/u);
 assert.match(dataSourceSource, /MONTHLY_PROGRESS_MINIMUM_START_INTERVAL_MS = 100/u);
+assert.match(dataSourceSource, /resolveNextMonthlyProgressBatchDateKeyFromUpdatedAt/u);
+assert.match(dataSourceSource, /batch-date-unavailable/u);
 assert.match(dataSourceSource, /http-401/u);
 assert.match(dataSourceSource, /http-403/u);
 assert.match(dataSourceSource, /http-429/u);

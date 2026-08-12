@@ -668,13 +668,14 @@
 ### RAU-MP-09 Classic月次カーブをNextへclean-roomで再接続する
 
 - 状態:
-  - Now。source実装、local検証、main同期、Next `0.2.0.14`へのmanual publication、公開artifact照合は完了した。利用者のTampermonkey更新と通常Chrome実画面QAを残す。
+  - Now。Next `0.2.0.14`更新後の通常Chromeで、標準画面に`最終データ更新`ラベルがなく`waiting-batch-date`でroot 0になる不具合を確認した。`D-20260812-001`のloading先行表示と既存月次response `updated_at` bootstrapはsource / local検証まで完了し、main同期、Next再配信、Tampermonkey再更新後の通常Chrome実画面QAを残す。
 - 目的:
   - 月次実績画面でも、Classicで使い慣れたLT月次カーブ、比較切替、Tooltip、日次差分をNextで確認できるようにする。
 - 実装境界:
   - `/monthly-progress/YYYY-MM`の標準chartを残し、その直下へNextの独立sectionを置く。表示と操作はClassicの`monthlyProgress` sliceをbaselineとするが、Classicの`src/main.ts`、runtime、DOM root、通信・保存責務をimportしない。
   - 最初のvertical sliceは、既存specの販売客室数、販売単価 / 売上切替、対象月と未来月、前年から3年前までの比較、追従Tooltip、日次差分、loading / empty / comparison shortage / partial failureを合成fixtureで通す。
   - 既存`/api/v1/booking_curve/monthly`以外のendpoint、Revenue Assistant write、標準UI置換、raw response保存、Classic DBの更新・削除・一括移行を追加しない。`D-20260810-007`で、Next専用append-only DBを新規取得の保存先とし、Classic snapshotは同一batch primary keyの完全一致recordだけをread-only memory seedにするbefore / after、互換、rollbackを固定した。
+  - `D-20260812-001`で、標準chart host確認後はbatch確定前からloading rootを表示し、DOM更新日ラベルがない場合だけ施設guard後のcurrent monthly response `updated_at`を検証する。同じresponseをsnapshot候補へ再利用し、batch確認専用GET、日付推測、既存record上書きは追加しない。
 - 合格条件:
   - 月次routeの直開き、F5、route往復でNext sectionが1件だけ表示され、標準chartと操作を維持する。
   - Classicと同じ主要な見出し、panel順、比較切替、metric切替、凡例、線、Tooltip、日次差分の読み方をdesktop / 390pxで確認できる。変更が必要な箇所は、標準UI干渉、意味の誤り、または判断時間悪化の根拠とともに限定する。
@@ -685,11 +686,14 @@
   - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking-curve smoke fixture、candidate artifact、`git diff --check`が通過した。local candidateはversion `0.1.0.168`、326,657 bytes、SHA-256 `672EF6E09B94CF0975FC150A29CF1F599EA99629668B78AF4BECAA62DCD989D3`、updateURL / downloadURLなしである。
   - 合成Browser QAではdesktop / 390pxで標準chart 1件、Next root 1件、2 panel / SVG、Tooltip、日次差分、F5 / route往復、loading / empty / current-only / comparison shortage / partial failure、document overflow 0、console warning / error 0を確認した。fixtureの月次API requestとRevenue Assistant writeは0である。
   - manual workflow run `31372836965`はsource `781a357195912b66e7c2f32ccd081f649f6fc882`を公開版`0.2.0.14`としてbuild / deploy / verifyし、すべてsuccessだった。公開Nextは326,862 bytes、SHA-256 `8DCB35B956EC0943F7C3AC5829D2154CB1926CA1BE23389A52753C1F09708C46`でrelease manifestと一致し、Classic公開baselineは不変だった。
+  - 更新後実画面では標準chart可視、runtime marker `waiting-batch-date`、Next root / style 0、console warning / error 0、DOM更新日ラベルなしを確認した。既存月次GETの要約観測では`updated_at`はruntime validation可能な`YYYY-MM-DD` stringで、raw responseは保存していない。
+  - 修正後focused checkで、施設不一致時monthly GET 0、DOM batch優先、ラベル欠損時current response 1回の再利用、初期最大5 GET、exact record非上書き、更新日欠損時write 0 / visible stopを確認した。focused / full checks、Classic publication、smoke、`git diff --check`は通過し、local candidateは331,660 bytes、SHA-256 `9388F0640DBE7AF7AD4D67A7B7A36C1833E0A5E2CA7BA7EF58B8C10A56896464`である。
+  - `bootstrap-loading`合成Chromeのdesktop / 390pxで、標準chart 1、Next root / style各1、skeleton 2 panel、overflow 0、network / write marker 0、native再描画 / route往復 / F5後のduplicate root 0、console warning / error 0を確認した。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: after-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md`
-  - `decision: D-20260810-007`
+  - `decision: D-20260810-007, D-20260812-001`
   - `depends-on: RAU-UX-168 complete`
 
 Remaining Task Triage のNowは`RAU-MP-09`とする。Classic再公開、新規endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。

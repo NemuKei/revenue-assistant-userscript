@@ -7,6 +7,7 @@ import { startNextMonthlyProgressRuntime } from "../monthlyProgress/monthlyProgr
 const fixtureParams = new URLSearchParams(window.location.search);
 const rawMode = fixtureParams.get("state");
 const fixtureMode: NextMonthlyProgressDevFixtureMode = rawMode === "loading"
+    || rawMode === "bootstrap-loading"
     || rawMode === "empty"
     || rawMode === "current-only"
     || rawMode === "compare-shortage"
@@ -19,7 +20,7 @@ const runtime = startNextMonthlyProgressRuntime(document, window, {
         batchDateKey: "20260810",
         mode: fixtureMode
     }),
-    resolveBatchDateKey: () => "20260810",
+    resolveBatchDateKey: () => fixtureMode === "bootstrap-loading" ? null : "20260810",
     resolveYearMonth: (location) => location.pathname.includes("next-monthly-progress")
         ? "202608"
         : null

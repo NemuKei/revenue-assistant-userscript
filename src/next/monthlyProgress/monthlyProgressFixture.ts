@@ -16,7 +16,10 @@ import {
     createNextMonthlyProgressSnapshotRecord
 } from "./monthlyProgressStore";
 
-export type NextMonthlyProgressDevFixtureMode = NextMonthlyProgressFixtureMode | "ready";
+export type NextMonthlyProgressDevFixtureMode =
+    | NextMonthlyProgressFixtureMode
+    | "bootstrap-loading"
+    | "ready";
 
 export function createNextMonthlyProgressFixtureDataSource(options: {
     batchDateKey?: string;
@@ -36,6 +39,9 @@ export function createNextMonthlyProgressFixtureDataSource(options: {
         async load(routeYearMonth, requestedBatchDateKey, compareYearsAgo) {
             if (stopped) {
                 return { status: "error", reason: "stopped" };
+            }
+            if (options.mode === "bootstrap-loading") {
+                return new Promise<NextMonthlyProgressDataLoadResult>(() => undefined);
             }
             const normalized = normalizeNextMonthlyProgressYearMonth(routeYearMonth);
             if (normalized === null) {
