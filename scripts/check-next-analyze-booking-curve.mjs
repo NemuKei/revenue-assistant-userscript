@@ -34,6 +34,10 @@ const rankOrderDataSourceModule = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveRankOrderDataSource.ts",
     import.meta.url
 );
+const rankReadCoordinatorModule = await importBundledTypeScript(
+    "../src/next/analyze/bookingCurveRankReadCoordinator.ts",
+    import.meta.url
+);
 const runtime = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveReferenceRuntime.ts",
     import.meta.url
@@ -113,6 +117,7 @@ const [
     rankModelSource,
     rankOrderDataSourceSource,
     rankOrderModelSource,
+    rankReadCoordinatorSource,
     adjustmentModelSource,
     viewSource
 ] = await Promise.all([
@@ -126,6 +131,7 @@ const [
     readFile(new URL("../src/next/analyze/bookingCurveRankMarkerModel.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankOrderDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankOrderModel.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveRankReadCoordinator.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveAdjustmentResponseModel.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceView.ts", import.meta.url), "utf8")
 ]);
@@ -1298,6 +1304,446 @@ assert.equal((await abortingRankOrderDataSource.load("yad:fixture")).reason, "ab
 assert.equal(abortRankOrderRequestCount, 1, "aborted rank order context must not retry automatically");
 abortingRankOrderDataSource.stop();
 
+const sharedRankStatusHarness = createControlledRankDataSourceHarness("status");
+const sharedRankOrderHarness = createControlledRankDataSourceHarness("order");
+const sharedRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: sharedRankOrderHarness.createSource,
+    createRankStatusDataSource: sharedRankStatusHarness.createSource
+});
+const sharedStandaloneRankReads = sharedRankCoordinator.createConsumer("standalone");
+const sharedSalesRankReads = sharedRankCoordinator.createConsumer("sales");
+const sharedStatusLoads = [
+    sharedStandaloneRankReads.rankStatusDataSource.load("yad:shared", "20260812"),
+    sharedSalesRankReads.rankStatusDataSource.load("yad:shared", "2026-08-12")
+];
+const sharedOrderLoads = [
+    sharedStandaloneRankReads.rankOrderDataSource.load("yad:shared"),
+    sharedSalesRankReads.rankOrderDataSource.load(" yad:shared ")
+];
+assert.equal(sharedRankStatusHarness.sources.length, 1);
+assert.equal(sharedRankStatusHarness.sources[0].calls.length, 1);
+assert.equal(sharedRankOrderHarness.sources.length, 1);
+assert.equal(sharedRankOrderHarness.sources[0].calls.length, 1);
+sharedRankStatusHarness.sources[0].calls[0].resolve(createReadyRankStatusResult(
+    "yad:shared",
+    "20260812"
+));
+sharedRankOrderHarness.sources[0].calls[0].resolve(createReadyRankOrderResult("yad:shared"));
+assert.deepEqual(
+    (await Promise.all(sharedStatusLoads)).map((result) => result.status),
+    ["ready", "ready"]
+);
+assert.deepEqual(
+    (await Promise.all(sharedOrderLoads)).map((result) => result.status),
+    ["ready", "ready"]
+);
+const lateRankConsumer = sharedRankCoordinator.createConsumer("late-consumer");
+assert.equal(
+    (await lateRankConsumer.rankStatusDataSource.load("yad:shared", "20260812")).status,
+    "ready"
+);
+assert.equal(
+    (await lateRankConsumer.rankOrderDataSource.load("yad:shared")).status,
+    "ready"
+);
+assert.equal(
+    sharedRankStatusHarness.sources.length,
+    1,
+    "sequential and concurrent consumers must share one rank-status GET per facility/stay key"
+);
+assert.equal(
+    sharedRankOrderHarness.sources.length,
+    1,
+    "sequential and concurrent consumers must share one rank-sequences GET per facility key"
+);
+sharedRankCoordinator.stop();
+assert.equal(sharedRankStatusHarness.sources[0].stopCount, 1);
+assert.equal(sharedRankOrderHarness.sources[0].stopCount, 1);
+assert.equal(
+    (await lateRankConsumer.rankStatusDataSource.load("yad:shared", "20260812")).reason,
+    "aborted"
+);
+assert.equal(
+    (await lateRankConsumer.rankOrderDataSource.load("yad:shared")).reason,
+    "aborted"
+);
+sharedRankCoordinator.stop();
+assert.equal(sharedRankStatusHarness.sources[0].stopCount, 1, "coordinator stop must be idempotent");
+assert.equal(sharedRankOrderHarness.sources[0].stopCount, 1, "coordinator stop must be idempotent");
+
+const sequentialRankStatusHarness = createControlledRankDataSourceHarness("status");
+const sequentialRankOrderHarness = createControlledRankDataSourceHarness("order");
+const sequentialRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: sequentialRankOrderHarness.createSource,
+    createRankStatusDataSource: sequentialRankStatusHarness.createSource
+});
+const sequentialA = sequentialRankCoordinator.createConsumer("sequential-a");
+const sequentialB = sequentialRankCoordinator.createConsumer("sequential-b");
+const sequentialStatusLoads = [
+    sequentialA.rankStatusDataSource.load("yad:sequential", "20260812"),
+    sequentialB.rankStatusDataSource.load("yad:sequential", "20260812")
+];
+sequentialRankStatusHarness.sources[0].calls[0].resolve(createReadyRankStatusResult(
+    "yad:sequential",
+    "20260812"
+));
+assert.deepEqual(
+    (await Promise.all(sequentialStatusLoads)).map((result) => result.status),
+    ["ready", "ready"]
+);
+sequentialA.rankStatusDataSource.reset();
+assert.equal(
+    (await sequentialB.rankStatusDataSource.load("yad:sequential", "20260812")).status,
+    "ready",
+    "one consumer reset must not invalidate a settled success still leased by the other"
+);
+assert.equal(sequentialRankStatusHarness.sources.length, 1);
+assert.equal(sequentialRankStatusHarness.sources[0].calls.length, 1);
+sequentialB.rankStatusDataSource.reset();
+const reenteredStatusLoads = [
+    sequentialA.rankStatusDataSource.load("yad:sequential", "20260812"),
+    sequentialB.rankStatusDataSource.load("yad:sequential", "20260812")
+];
+assert.equal(
+    sequentialRankStatusHarness.sources.length,
+    2,
+    "after both route resets, same-key status re-entry must create one fresh source"
+);
+assert.deepEqual(sequentialRankStatusHarness.sources.map((source) => source.calls.length), [1, 1]);
+sequentialRankStatusHarness.sources[1].calls[0].resolve(createReadyRankStatusResult(
+    "yad:sequential",
+    "20260812"
+));
+assert.deepEqual(
+    (await Promise.all(reenteredStatusLoads)).map((result) => result.status),
+    ["ready", "ready"]
+);
+
+const sequentialOrderLoads = [
+    sequentialA.rankOrderDataSource.load("yad:sequential"),
+    sequentialB.rankOrderDataSource.load("yad:sequential")
+];
+sequentialRankOrderHarness.sources[0].calls[0].resolve(createReadyRankOrderResult("yad:sequential"));
+assert.deepEqual(
+    (await Promise.all(sequentialOrderLoads)).map((result) => result.status),
+    ["ready", "ready"]
+);
+sequentialA.rankOrderDataSource.cancel();
+assert.equal(
+    (await sequentialB.rankOrderDataSource.load("yad:sequential")).status,
+    "ready",
+    "one consumer release must not invalidate a settled order result still leased by the other"
+);
+assert.equal(sequentialRankOrderHarness.sources.length, 1);
+assert.equal(sequentialRankOrderHarness.sources[0].calls.length, 1);
+sequentialA.rankOrderDataSource.reset();
+sequentialB.rankOrderDataSource.reset();
+const reenteredOrderLoads = [
+    sequentialA.rankOrderDataSource.load("yad:sequential"),
+    sequentialB.rankOrderDataSource.load("yad:sequential")
+];
+assert.equal(
+    sequentialRankOrderHarness.sources.length,
+    2,
+    "after both route resets, same-key order re-entry must create one fresh source"
+);
+assert.deepEqual(sequentialRankOrderHarness.sources.map((source) => source.calls.length), [1, 1]);
+sequentialRankOrderHarness.sources[1].calls[0].resolve(createReadyRankOrderResult("yad:sequential"));
+assert.deepEqual(
+    (await Promise.all(reenteredOrderLoads)).map((result) => result.status),
+    ["ready", "ready"]
+);
+sequentialRankCoordinator.stop();
+
+const retryRankStatusHarness = createControlledRankDataSourceHarness("status");
+const retryRankOrderHarness = createControlledRankDataSourceHarness("order");
+const retryRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: retryRankOrderHarness.createSource,
+    createRankStatusDataSource: retryRankStatusHarness.createSource
+});
+const retryA = retryRankCoordinator.createConsumer("retry-a");
+const retryB = retryRankCoordinator.createConsumer("retry-b");
+const failedStatusLoads = [
+    retryA.rankStatusDataSource.load("yad:retry", "20260812"),
+    retryB.rankStatusDataSource.load("yad:retry", "20260812")
+];
+retryRankStatusHarness.sources[0].calls[0].resolve(createFailedRankStatusResult(
+    "yad:retry",
+    "20260812"
+));
+assert.deepEqual(
+    (await Promise.all(failedStatusLoads)).map((result) => result.reason),
+    ["request-failed", "request-failed"]
+);
+retryA.rankStatusDataSource.reset();
+assert.equal(
+    (await retryB.rankStatusDataSource.load("yad:retry", "20260812")).reason,
+    "request-failed",
+    "one reset must not replace a settled failure still leased by the other consumer"
+);
+assert.equal(retryRankStatusHarness.sources.length, 1);
+retryB.rankStatusDataSource.reset();
+const retriedStatusLoads = [
+    retryA.rankStatusDataSource.load("yad:retry", "20260812"),
+    retryB.rankStatusDataSource.load("yad:retry", "20260812")
+];
+assert.equal(
+    retryRankStatusHarness.sources.length,
+    2,
+    "a settled status failure must not become permanent after both consumers reset"
+);
+assert.deepEqual(retryRankStatusHarness.sources.map((source) => source.calls.length), [1, 1]);
+retryRankStatusHarness.sources[1].calls[0].resolve(createReadyRankStatusResult(
+    "yad:retry",
+    "20260812"
+));
+assert.deepEqual(
+    (await Promise.all(retriedStatusLoads)).map((result) => result.status),
+    ["ready", "ready"]
+);
+
+const failedOrderLoads = [
+    retryA.rankOrderDataSource.load("yad:retry"),
+    retryB.rankOrderDataSource.load("yad:retry")
+];
+retryRankOrderHarness.sources[0].calls[0].resolve(createFailedRankOrderResult("yad:retry"));
+assert.deepEqual(
+    (await Promise.all(failedOrderLoads)).map((result) => result.reason),
+    ["request-failed", "request-failed"]
+);
+retryA.rankOrderDataSource.reset();
+assert.equal(
+    (await retryB.rankOrderDataSource.load("yad:retry")).reason,
+    "request-failed",
+    "one reset must not replace a settled order failure still leased by the other consumer"
+);
+assert.equal(retryRankOrderHarness.sources.length, 1);
+retryB.rankOrderDataSource.reset();
+const retriedOrderLoads = [
+    retryA.rankOrderDataSource.load("yad:retry"),
+    retryB.rankOrderDataSource.load("yad:retry")
+];
+assert.equal(
+    retryRankOrderHarness.sources.length,
+    2,
+    "a settled order failure must not become permanent after both consumers reset"
+);
+assert.deepEqual(retryRankOrderHarness.sources.map((source) => source.calls.length), [1, 1]);
+retryRankOrderHarness.sources[1].calls[0].resolve(createReadyRankOrderResult("yad:retry"));
+assert.deepEqual(
+    (await Promise.all(retriedOrderLoads)).map((result) => result.status),
+    ["ready", "ready"]
+);
+retryRankCoordinator.stop();
+
+const retainedRankStatusHarness = createControlledRankDataSourceHarness("status");
+const retainedRankOrderHarness = createControlledRankDataSourceHarness("order");
+const retainedRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: retainedRankOrderHarness.createSource,
+    createRankStatusDataSource: retainedRankStatusHarness.createSource
+});
+const releasingRankConsumer = retainedRankCoordinator.createConsumer("releasing");
+const retainedRankConsumer = retainedRankCoordinator.createConsumer("retained");
+const releasedStatusLoad = releasingRankConsumer.rankStatusDataSource.load("yad:retained", "20260812");
+const retainedStatusLoad = retainedRankConsumer.rankStatusDataSource.load("yad:retained", "20260812");
+releasingRankConsumer.rankStatusDataSource.cancel();
+assert.equal((await releasedStatusLoad).reason, "aborted");
+assert.equal(
+    retainedRankStatusHarness.sources[0].cancelCount,
+    0,
+    "one consumer cancel must not abort another consumer's active rank-status read"
+);
+retainedRankStatusHarness.sources[0].calls[0].resolve(createReadyRankStatusResult(
+    "yad:retained",
+    "20260812"
+));
+assert.equal((await retainedStatusLoad).status, "ready");
+const releasedOrderLoad = releasingRankConsumer.rankOrderDataSource.load("yad:retained");
+const retainedOrderLoad = retainedRankConsumer.rankOrderDataSource.load("yad:retained");
+releasingRankConsumer.rankOrderDataSource.reset();
+assert.equal((await releasedOrderLoad).reason, "aborted");
+assert.equal(
+    retainedRankOrderHarness.sources[0].cancelCount,
+    0,
+    "one consumer reset must not abort another consumer's active rank-sequences read"
+);
+retainedRankOrderHarness.sources[0].calls[0].resolve(createReadyRankOrderResult("yad:retained"));
+assert.equal((await retainedOrderLoad).status, "ready");
+retainedRankCoordinator.stop();
+
+const releasedRankStatusHarness = createControlledRankDataSourceHarness("status");
+const releasedRankOrderHarness = createControlledRankDataSourceHarness("order");
+const releasedRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: releasedRankOrderHarness.createSource,
+    createRankStatusDataSource: releasedRankStatusHarness.createSource
+});
+const releaseA = releasedRankCoordinator.createConsumer("release-a");
+const releaseB = releasedRankCoordinator.createConsumer("release-b");
+const releaseStatusLoads = [
+    releaseA.rankStatusDataSource.load("yad:release", "20260812"),
+    releaseB.rankStatusDataSource.load("yad:release", "20260812")
+];
+releaseA.rankStatusDataSource.cancel();
+assert.equal(releasedRankStatusHarness.sources[0].cancelCount, 0);
+releaseB.rankStatusDataSource.reset();
+assert.equal(
+    releasedRankStatusHarness.sources[0].cancelCount,
+    1,
+    "the last rank-status lease release must abort the in-flight underlying read"
+);
+assert.deepEqual(
+    (await Promise.all(releaseStatusLoads)).map((result) => result.reason),
+    ["aborted", "aborted"]
+);
+const releaseOrderLoads = [
+    releaseA.rankOrderDataSource.load("yad:release"),
+    releaseB.rankOrderDataSource.load("yad:release")
+];
+releaseA.rankOrderDataSource.reset();
+assert.equal(releasedRankOrderHarness.sources[0].cancelCount, 0);
+releaseB.stop();
+assert.equal(
+    releasedRankOrderHarness.sources[0].cancelCount,
+    1,
+    "the last rank-sequences lease release must abort the in-flight underlying read"
+);
+assert.deepEqual(
+    (await Promise.all(releaseOrderLoads)).map((result) => result.reason),
+    ["aborted", "aborted"]
+);
+assert.equal(
+    (await releaseB.rankOrderDataSource.load("yad:release")).reason,
+    "aborted",
+    "a stopped consumer must remain stopped"
+);
+releasedRankCoordinator.stop();
+
+const handoffRankStatusHarness = createControlledRankDataSourceHarness("status");
+const handoffRankOrderHarness = createControlledRankDataSourceHarness("order");
+const handoffRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: handoffRankOrderHarness.createSource,
+    createRankStatusDataSource: handoffRankStatusHarness.createSource
+});
+const handoffA = handoffRankCoordinator.createConsumer("handoff-a");
+const handoffB = handoffRankCoordinator.createConsumer("handoff-b");
+const oldStatusLoads = [
+    handoffA.rankStatusDataSource.load("yad:old", "20260812"),
+    handoffB.rankStatusDataSource.load("yad:old", "20260812")
+];
+const newStatusA = handoffA.rankStatusDataSource.load("yad:new", "20260813");
+assert.equal(
+    handoffRankStatusHarness.sources.length,
+    2,
+    "a consumer may begin the new status key while another consumer still releases the old key"
+);
+assert.deepEqual(
+    handoffRankStatusHarness.sources.map((source) => source.calls.length),
+    [1, 1],
+    "status handoff must create one underlying call per key"
+);
+assert.equal((await oldStatusLoads[0]).reason, "aborted");
+assert.equal(handoffRankStatusHarness.sources[0].cancelCount, 0);
+handoffRankStatusHarness.sources[1].calls[0].resolve(createReadyRankStatusResult(
+    "yad:new",
+    "20260813"
+));
+assert.equal((await newStatusA).status, "ready");
+const newStatusB = handoffB.rankStatusDataSource.load("yad:new", "20260813");
+assert.equal(
+    handoffRankStatusHarness.sources[0].cancelCount,
+    1,
+    "the old in-flight status read must abort when its final consumer switches keys"
+);
+assert.equal((await oldStatusLoads[1]).reason, "aborted");
+assert.equal((await newStatusB).status, "ready");
+assert.equal(handoffRankStatusHarness.sources.length, 2);
+assert.deepEqual(handoffRankStatusHarness.sources.map((source) => source.calls.length), [1, 1]);
+
+const oldOrderLoads = [
+    handoffA.rankOrderDataSource.load("yad:old"),
+    handoffB.rankOrderDataSource.load("yad:old")
+];
+const newOrderA = handoffA.rankOrderDataSource.load("yad:new");
+assert.equal(
+    handoffRankOrderHarness.sources.length,
+    2,
+    "a consumer may begin the new rank-sequences key while another consumer still releases the old key"
+);
+assert.deepEqual(
+    handoffRankOrderHarness.sources.map((source) => source.calls.length),
+    [1, 1],
+    "rank-sequences handoff must create one underlying call per key"
+);
+assert.equal((await oldOrderLoads[0]).reason, "aborted");
+assert.equal(handoffRankOrderHarness.sources[0].cancelCount, 0);
+handoffRankOrderHarness.sources[1].calls[0].resolve(createReadyRankOrderResult("yad:new"));
+assert.equal((await newOrderA).status, "ready");
+const newOrderB = handoffB.rankOrderDataSource.load("yad:new");
+assert.equal(
+    handoffRankOrderHarness.sources[0].cancelCount,
+    1,
+    "the old in-flight rank-sequences read must abort when its final consumer switches keys"
+);
+assert.equal((await oldOrderLoads[1]).reason, "aborted");
+assert.equal((await newOrderB).status, "ready");
+assert.equal(handoffRankOrderHarness.sources.length, 2);
+assert.deepEqual(handoffRankOrderHarness.sources.map((source) => source.calls.length), [1, 1]);
+handoffRankCoordinator.stop();
+
+const mismatchedRankStatusHarness = createControlledRankDataSourceHarness("status");
+const mismatchedRankOrderHarness = createControlledRankDataSourceHarness("order");
+const mismatchedRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: mismatchedRankOrderHarness.createSource,
+    createRankStatusDataSource: mismatchedRankStatusHarness.createSource
+});
+const mismatchedRankConsumer = mismatchedRankCoordinator.createConsumer("mismatched-result");
+const mismatchedStatusLoad = mismatchedRankConsumer.rankStatusDataSource.load(
+    "yad:expected",
+    "20260812"
+);
+mismatchedRankStatusHarness.sources[0].calls[0].resolve(createReadyRankStatusResult(
+    "yad:stale",
+    "20260811"
+));
+assert.deepEqual(await mismatchedStatusLoad, {
+    status: "error",
+    contextKey: "yad:expected|20260812",
+    reason: "request-failed"
+});
+const mismatchedOrderLoad = mismatchedRankConsumer.rankOrderDataSource.load("yad:expected");
+mismatchedRankOrderHarness.sources[0].calls[0].resolve(createReadyRankOrderResult("yad:stale"));
+assert.deepEqual(await mismatchedOrderLoad, {
+    status: "error",
+    contextKey: "yad:expected",
+    reason: "request-failed"
+});
+mismatchedRankCoordinator.stop();
+
+const stoppedRankStatusHarness = createControlledRankDataSourceHarness("status");
+const stoppedRankOrderHarness = createControlledRankDataSourceHarness("order");
+const stoppedRankCoordinator = rankReadCoordinatorModule.createBookingCurveRankReadCoordinator({
+    createRankOrderDataSource: stoppedRankOrderHarness.createSource,
+    createRankStatusDataSource: stoppedRankStatusHarness.createSource
+});
+const stoppedRankConsumer = stoppedRankCoordinator.createConsumer("stopped-in-flight");
+const stoppedStatusLoad = stoppedRankConsumer.rankStatusDataSource.load("yad:stop", "20260812");
+const stoppedOrderLoad = stoppedRankConsumer.rankOrderDataSource.load("yad:stop");
+stoppedRankCoordinator.stop();
+assert.equal(stoppedRankStatusHarness.sources[0].stopCount, 1);
+assert.equal(stoppedRankOrderHarness.sources[0].stopCount, 1);
+assert.equal((await stoppedStatusLoad).reason, "aborted");
+assert.equal((await stoppedOrderLoad).reason, "aborted");
+assert.equal(
+    (await stoppedRankConsumer.rankStatusDataSource.load("yad:after-stop", "20260814")).reason,
+    "aborted"
+);
+assert.equal(
+    (await stoppedRankConsumer.rankOrderDataSource.load("yad:after-stop")).reason,
+    "aborted"
+);
+assert.equal(stoppedRankStatusHarness.sources.length, 1);
+assert.equal(stoppedRankOrderHarness.sources.length, 1);
+
 const styles = view.getBookingCurveReferenceStyles();
 assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/u);
 assert.match(styles, /@media \(max-width: 680px\)/u);
@@ -1359,6 +1805,25 @@ assert.doesNotMatch(viewSource, /閲覧のみ|booking-curve-reference-badge/u);
 assert.doesNotMatch(viewSource, /element\.append\(\s*title,\s*diagnostics,/u);
 assert.match(entrySource, /startBookingCurveReferenceRuntime\(document, window, \{/u);
 assert.match(entrySource, /createBookingCurveReferenceDataSource\(\{[\s\S]*acquisition: bookingCurveAcquisition/u);
+assert.match(entrySource, /const rankReads = createBookingCurveRankReadCoordinator\(\{ windowHost: window \}\)/u);
+assert.match(
+    entrySource,
+    /const bookingCurveReferenceRankReads = rankReads\.createConsumer\("booking-curve-reference"\)/u
+);
+assert.match(
+    entrySource,
+    /const salesSettingRankReads = rankReads\.createConsumer\("sales-setting"\)/u
+);
+assert.match(
+    entrySource,
+    /startBookingCurveReferenceRuntime\(document, window, \{[\s\S]*rankOrderDataSource: bookingCurveReferenceRankReads\.rankOrderDataSource,[\s\S]*rankStatusDataSource: bookingCurveReferenceRankReads\.rankStatusDataSource/u,
+    "the standalone runtime must receive its own shared-rank consumer adapter"
+);
+assert.match(
+    entrySource,
+    /startSalesSettingClassicRuntime\(document, window, \{[\s\S]*rankOrderDataSource: salesSettingRankReads\.rankOrderDataSource,[\s\S]*rankStatusDataSource: salesSettingRankReads\.rankStatusDataSource/u,
+    "the SalesSetting runtime must receive a distinct shared-rank consumer adapter"
+);
 assert.match(runtimeSource, /booking-curve-main-chart-header/u);
 assert.match(runtimeSource, /booking-curve-sub-chart-header/u);
 assert.match(runtimeSource, /addEventListener\("load", scheduleReconcile/u);
@@ -1392,6 +1857,11 @@ assert.match(
     /if \(rankOrderLoading\) \{[\s\S]*rankOrderDataSource\.reset\(\);[\s\S]*rankOrderLoadError = null;[\s\S]*rankOrderLoading = false;/u,
     "an in-flight rank-order read must be retryable after the sales surface returns"
 );
+assert.match(
+    salesSettingRuntimeSource,
+    /function suspendForInactiveSurface\(finalState: string\): void \{[\s\S]*rankStatusDataSource\.cancel\(\);\s*rankOrderDataSource\.cancel\(\);[\s\S]*if \(root === null\)/u,
+    "an inactive Sales surface must release both shared-rank consumer leases even without a mounted root"
+);
 assert.match(salesSettingRuntimeSource, /rankOrderDataSource\.reset\(\)/u);
 assert.match(salesSettingRuntimeSource, /rankOrderDataSource\.cancel\(\)/u);
 assert.match(salesSettingRuntimeSource, /rankOrderDataSource\.stop\(\)/u);
@@ -1403,6 +1873,13 @@ assert.doesNotMatch(rankModelSource, /reflector_name|reflectorName/u);
 assert.match(rankOrderDataSourceSource, /kind: "rank-sequences"/u);
 assert.doesNotMatch(rankOrderDataSourceSource, /indexedDB|localStorage|sessionStorage|fetch\s*\(/u);
 assert.doesNotMatch(rankOrderModelSource, /default_sequence/u);
+assert.match(rankReadCoordinatorSource, /createConsumer\(consumerId/u);
+assert.match(rankReadCoordinatorSource, /entry\.leases\.size > 0/u);
+assert.doesNotMatch(
+    rankReadCoordinatorSource,
+    /indexedDB|localStorage|sessionStorage|fetch\s*\(/u,
+    "the cross-runtime coordinator must remain memory-only and reuse injected read sources"
+);
 assert.doesNotMatch(adjustmentModelSource, /all\s*-\s*group|localStorage|indexedDB|fetch\s*\(/u);
 assert.match(fixture, /booking-curve-main-chart-header/u);
 assert.match(fixture, /booking-curve-sub-chart-header/u);
@@ -1482,4 +1959,121 @@ function readVirtualText(root) {
             ? readVirtualText(child)
             : child.textContent)
     ].join("");
+}
+
+function createControlledRankDataSourceHarness(kind) {
+    const sources = [];
+    return {
+        createSource() {
+            const source = {
+                calls: [],
+                cancelCount: 0,
+                resetCount: 0,
+                stopCount: 0,
+                cancel() {
+                    source.cancelCount += 1;
+                    abortControlledRankCalls(source.calls);
+                },
+                load(...args) {
+                    const contextKey = kind === "status"
+                        ? `${String(args[0]).trim()}|${String(args[1]).replaceAll("-", "")}`
+                        : String(args[0]).trim();
+                    const deferred = createDeferredResult();
+                    const call = {
+                        args,
+                        contextKey,
+                        promise: deferred.promise,
+                        resolve: deferred.resolve,
+                        settled: deferred.isSettled
+                    };
+                    source.calls.push(call);
+                    return call.promise;
+                },
+                reset() {
+                    source.resetCount += 1;
+                    abortControlledRankCalls(source.calls);
+                },
+                stop() {
+                    source.stopCount += 1;
+                    abortControlledRankCalls(source.calls);
+                }
+            };
+            sources.push(source);
+            return source;
+        },
+        sources
+    };
+}
+
+function abortControlledRankCalls(calls) {
+    for (const call of calls) {
+        if (!call.settled()) {
+            call.resolve({
+                status: "error",
+                contextKey: call.contextKey,
+                reason: "aborted"
+            });
+        }
+    }
+}
+
+function createDeferredResult() {
+    let settled = false;
+    let resolvePromise;
+    const promise = new Promise((resolve) => {
+        resolvePromise = resolve;
+    });
+    return {
+        isSettled() {
+            return settled;
+        },
+        promise,
+        resolve(value) {
+            if (settled) {
+                return;
+            }
+            settled = true;
+            resolvePromise(value);
+        }
+    };
+}
+
+function createReadyRankStatusResult(facilityId, stayDate) {
+    const compactStayDate = stayDate.replaceAll("-", "");
+    return {
+        status: "ready",
+        contextKey: `${facilityId}|${compactStayDate}`,
+        facilityId,
+        snapshot: {
+            events: [],
+            invalidEventCount: 0,
+            stayDate: compactStayDate
+        },
+        stayDate: compactStayDate
+    };
+}
+
+function createFailedRankStatusResult(facilityId, stayDate) {
+    return {
+        status: "error",
+        contextKey: `${facilityId}|${stayDate.replaceAll("-", "")}`,
+        reason: "request-failed"
+    };
+}
+
+function createReadyRankOrderResult(facilityId) {
+    return {
+        status: "ready",
+        contextKey: facilityId,
+        facilityId,
+        snapshot: { entries: [{ code: "1", name: "1" }] }
+    };
+}
+
+function createFailedRankOrderResult(facilityId) {
+    return {
+        status: "error",
+        contextKey: facilityId,
+        reason: "request-failed"
+    };
 }

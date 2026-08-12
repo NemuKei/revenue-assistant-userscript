@@ -14,6 +14,7 @@ import { createNextBookingCurveAcquisitionCoordinator } from "./bookingCurve/boo
 import { startBookingCurveAcquisitionRuntime } from "./bookingCurve/bookingCurveAcquisitionRuntime";
 import { createLiveCalendarSummaryDataSource } from "./live/liveCalendarSummaryDataSource";
 import { startNextMonthlyProgressRuntime } from "./monthlyProgress/monthlyProgressRuntime";
+import { createBookingCurveRankReadCoordinator } from "./analyze/bookingCurveRankReadCoordinator";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -48,6 +49,9 @@ function startNextCandidateRuntime(): void {
         acquisition: bookingCurveAcquisition,
         windowHost: window
     });
+    const rankReads = createBookingCurveRankReadCoordinator({ windowHost: window });
+    const bookingCurveReferenceRankReads = rankReads.createConsumer("booking-curve-reference");
+    const salesSettingRankReads = rankReads.createConsumer("sales-setting");
     startLiveSimilarityLensRuntime(document, window, {
         calendarSummary: liveCalendarSummary,
         dataSource: createLiveSimilarityLensDataSource({
@@ -62,14 +66,18 @@ function startNextCandidateRuntime(): void {
             acquisition: bookingCurveAcquisition,
             documentHost: document,
             windowHost: window
-        })
+        }),
+        rankOrderDataSource: bookingCurveReferenceRankReads.rankOrderDataSource,
+        rankStatusDataSource: bookingCurveReferenceRankReads.rankStatusDataSource
     });
     startSalesSettingClassicRuntime(document, window, {
         dataSource: createBookingCurveReferenceDataSource({
             acquisition: bookingCurveAcquisition,
             documentHost: document,
             windowHost: window
-        })
+        }),
+        rankOrderDataSource: salesSettingRankReads.rankOrderDataSource,
+        rankStatusDataSource: salesSettingRankReads.rankStatusDataSource
     });
     startPriceTrendComparisonRuntime(document, window);
     startBookingCurveAcquisitionRuntime(document, window, {

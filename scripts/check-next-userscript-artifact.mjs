@@ -31,6 +31,7 @@ const expectedSources = [
     "src/next/analyze/bookingCurveAdjustmentResponseModel.ts",
     "src/next/analyze/bookingCurveRankOrderDataSource.ts",
     "src/next/analyze/bookingCurveRankOrderModel.ts",
+    "src/next/analyze/bookingCurveRankReadCoordinator.ts",
     "src/next/analyze/bookingCurveReferenceDataSource.ts",
     "src/next/analyze/bookingCurveReferenceModel.ts",
     "src/next/analyze/bookingCurveReferenceRuntime.ts",

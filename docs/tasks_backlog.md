@@ -703,7 +703,7 @@
 ### RAU-RR-64 Analyzeで調整後の個人ペースを参考線と比較する
 
 - 状態:
-  - Next `0.2.0.17`の利用者更新後通常Chromeで、実Analyzeのembedded booking curveへ試験sectionが接続されず表示0件であることを確認した。embedded表示とSales runtimeのrank-order seamを修正し、local gate、main同期、Next `0.2.0.19`へのmanual publication、公開artifact / Classic baseline照合を完了した。利用者更新後の通常Chromeで試験section表示を確認し、認証切れで停止したF5 / route往復、live request budget / Revenue Assistant write 0確認を残す。
+  - Next `0.2.0.17`の利用者更新後通常Chromeで、実Analyzeのembedded booking curveへ試験sectionが接続されず表示0件であることを確認した。embedded表示とSales runtimeのrank-order seamを修正し、local gate、main同期、Next `0.2.0.19`へのmanual publication、公開artifact / Classic baseline照合を完了した。利用者更新後の通常Chromeで試験section、方向判定、F5時のloading UI、route cleanup / 再生成を確認した。監視できた75件はすべてGETだったがevent欠落印が残った。source監査で両Analyze runtimeが同じrank読取を重複できる経路を確認し、共有coordinator修正版のlocal gateを完了した。Next再公開、利用者更新、tab切替を含むlive総request budget / 全区間のRevenue Assistant write 0確認を残す。
 - 解決する問題:
   - rankを下げてペースを上げたかった、またはrankを上げてペースを抑え単価を狙った調整について、変更後に個人予約の参考線との差がどう変わったかをAnalyze内で振り返る入口がない。
 - 実装境界:
@@ -720,7 +720,8 @@
   - source `65709a7df188460b89058d340883c8c7e95989ee`をmanual workflow run `31557630431`で公開版`0.2.0.17`へ配信した。公開Next / source mapはrelease manifestと一致し、Classicは固定baselineと同一byte列である。
   - `0.2.0.17`の通常ChromeではSales runtimeのembedded経路にsectionとrank-order stateが未接続だった。embedded 2 chart直後のsection、衝突しないARIA id、開いたroom cardだけのrank順取得、error時の数値維持、非表示中のstale結果抑止と再表示時のretryへ修正し、回帰testとdesktop / 390px embedded fixture QAを追加した。
   - source `8c2c0f806ff6619bc7721c221163c7223c515a6e`をmanual workflow run `31561621623`で公開版`0.2.0.19`へ配信した。公開Next / source mapはrelease manifestと一致し、Classicは固定baselineと同一byte列である。先行run number 18はdeploy runner未割当のまま公開未反映だったため取消し、公開版は作られていない。
-  - 利用者更新後の通常Chromeでruntime `0.2.0.19`、Sales root / style各1、embedded component 2件、試験section `scope-required` / `ready`各1、変更event 2件、直近型 / 季節型、固有ARIA target、標準room detail 6件、root overflow 0、console warning / error 0を確認した。F5時にRevenue Assistantの認証切れで`/login`へ移ったため、再ログイン後の継続確認を残す。
+  - 利用者更新後の通常Chromeでruntime `0.2.0.19`、Sales root / style各1、embedded component 2件、試験section `scope-required` / `ready`各1、変更event 2件、方向判定2件、数値比較4件、ready reference 4件、固有ARIA target 2 / 2、root overflow 0、console warning / error 0を確認した。再ログイン後のF5では可視な`比較準備中`7件を経てreadyへ戻り、Analyze離脱時はroot / style / component各0、復帰時は各1で重複しなかった。標準の反映button 11件には触れていない。監視できた75件はすべてGETだったが、F5時の監視target切替でevent欠落印が残ったため、live総request budgetと全区間のRevenue Assistant write 0だけを未確定として残す。
+  - source監査でstandalone booking curveとSales runtimeが同じrank status / rank sequencesを別々に取得できることを確認した。両runtimeへentry-ownedのmemory-only coordinatorを注入し、同一keyの同時 / 順次読取を各1回へ統合した。一方のconsumer離脱、全consumer解放、異なるkeyのroute handoff、route reset後の同一key fresh read、成功 / 失敗cache、stale result拒否をfocused regressionで固定した。full checks、candidate / publication contract、Classic boundary、desktop / 390px embedded fixture、distribution / booking curve smokeは通過し、candidateは352,987 bytes、SHA-256 `FC175680B6A59BD4756137167C817E39FBCD2DB12A698D3A0BD1B08FC0BC1A95`である。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
@@ -746,7 +747,7 @@
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
-  - `depends-on: RAU-RR-64 published experiment live confirmation`
+  - `depends-on: RAU-RR-64 live UI confirmation complete; live request / write boundary follow-up remains`
 
 Remaining Task Triage のNowは通常Chrome月次QAを残す`RAU-MP-09`、Nextは一括調整をdry-runから再評価する`RAU-RR-65`とする。Classic再公開、未調査endpoint、既存snapshotの更新・削除・一括移行、retention変更、Revenue Assistant writeはtask進行から推論せず明示gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 

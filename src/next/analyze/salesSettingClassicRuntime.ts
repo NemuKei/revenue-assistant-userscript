@@ -731,6 +731,8 @@ export function startSalesSettingClassicRuntime(
             rankOrderLoading = false;
             rebuildCurves();
         }
+        rankStatusDataSource.cancel();
+        rankOrderDataSource.cancel();
         if (root === null) {
             setRuntimeMarker(finalState);
             return;

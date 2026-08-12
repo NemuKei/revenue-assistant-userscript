@@ -594,7 +594,7 @@ Analyze試験表示の最小slice (`RAU-RR-64`):
 - first contract全体を一度に永続datasetへせず、まず確認済みroom-groupの個人`transient`について、既存rank eventと保存済みcurrent / referenceをmemoryで接続する。粒度は`facilityId x stayDate x roomGroupId x rankChangeEvent`を維持するが、`reflector_name`は不要かつ個人名になり得るためNextへ取り込まない。
 - startはrank変更日、endは次の変更前日または現在as-ofとする。変更後の観測がない、currentまたはreferenceのexact LTが欠ける場合は`比較準備中`とし、0、隣接LT、別roomGroupで補わない。直近型 / 季節型それぞれで`gap(t) = transient rooms(t) - reference rooms at same LT`と`gap(end) - gap(start)`を出し、2つのreferenceを単一scoreへ混ぜない。
 - 過去時点のreference snapshotを保存していないため、これは`現在の参考線で再評価`した観測である。因果効果、価格弾力性、推奨rankの正しさ、調整成功を断定しない。rank順は`/api/v1/rank_sequences`の設定画面配列順だけを高rankから低rankとして使い、取得失敗時は数値観測と方向解釈を分ける。
-- このsliceで追加するreadは、room scopeで既存rank status最大1 GETに加え、対象rank eventが1件以上ある場合だけ開始する`/api/v1/rank_sequences`最大1 GET / facility / visible contextとする。rank履歴empty / errorでは開始しない。memory-only、自動retryなし、context離脱時abortとし、response / evaluationの保存、background取得、ADR / sales評価、推奨金額、Revenue Assistant write、自動 / 一括反映を追加しない。
+- このsliceで追加するreadは、可視な標準booking curveまたは可視な販売設定surfaceで使う既存rank status最大1 GETに加え、対象rank eventが1件以上あるroom curveを明示的に開いた場合だけ開始する`/api/v1/rank_sequences`最大1 GET / facility / Analyze表示contextとする。両surfaceは同じmemory-only coordinatorを使い、tabを順に切り替えても両runtime合算のrank statusをfacility + stay date最大1 GET、rank sequencesをfacility最大1 GETにする。rank履歴empty / error、hotel scope、閉じた販売設定cardではrank sequencesを開始しない。一方のsurface離脱だけで他方が使用中の取得をabortせず、全consumer解放時だけ未完了取得をabortする。route / facility / stay date変更で全consumerがresetした場合は成功 / 失敗cacheを破棄し、同一keyへの再入場もfreshに読む。自動retryなしとし、response / evaluationの保存、background取得、ADR / sales評価、推奨金額、Revenue Assistant write、自動 / 一括反映を追加しない。
 
 推奨 rank 算出の first contract:
 
