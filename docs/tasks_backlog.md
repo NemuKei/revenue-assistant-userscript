@@ -703,7 +703,7 @@
 ### RAU-RR-64 Analyzeで調整後の個人ペースを参考線と比較する
 
 - 状態:
-  - 試験実装、local gate、Next `0.2.0.17`へのmanual publication、公開artifact / Classic baseline照合を完了。利用者のTampermonkey更新と通常Chrome実画面評価を残す。
+  - Next `0.2.0.17`の利用者更新後通常Chromeで、実Analyzeのembedded booking curveへ試験sectionが接続されず表示0件であることを確認した。embedded表示とSales runtimeのrank-order seamを修正し、local gateを完了。修正版のmain同期、manual publication、公開artifact照合、利用者更新後の通常Chrome再確認を残す。
 - 解決する問題:
   - rankを下げてペースを上げたかった、またはrankを上げてペースを抑え単価を狙った調整について、変更後に個人予約の参考線との差がどう変わったかをAnalyze内で振り返る入口がない。
 - 実装境界:
@@ -718,6 +718,7 @@
   - pure model、rank-order parser / memory-only data source、既存Analyze runtime / view、synthetic fixtureを追加した。rankを上げた後のend gapが負なら、差の変化が0または正でも`参考線を下回る`を優先する反例testを含めた。
   - `npm run check:next`、`npm run check`、candidate artifact / Classic publication / distribution fixture checksが通過した。desktop / 390px合成Chromeでは標準chart 2、Next panel 2、調整event 2、route往復後のduplicate root 0、Next root overflow 0、実API request 0、console warning / error 0を確認した。
   - source `65709a7df188460b89058d340883c8c7e95989ee`をmanual workflow run `31557630431`で公開版`0.2.0.17`へ配信した。公開Next / source mapはrelease manifestと一致し、Classicは固定baselineと同一byte列である。
+  - `0.2.0.17`の通常ChromeではSales runtimeのembedded経路にsectionとrank-order stateが未接続だった。embedded 2 chart直後のsection、衝突しないARIA id、開いたroom cardだけのrank順取得、error時の数値維持、非表示中のstale結果抑止と再表示時のretryへ修正し、回帰testとdesktop / 390px embedded fixture QAを追加した。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`

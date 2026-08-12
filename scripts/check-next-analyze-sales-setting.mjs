@@ -6,6 +6,10 @@ const model = await importBundledTypeScript(
     "../src/next/analyze/salesSettingClassicModel.ts",
     import.meta.url
 );
+const view = await importBundledTypeScript(
+    "../src/next/analyze/salesSettingClassicView.ts",
+    import.meta.url
+);
 const [
     entrySource,
     runtimeSource,
@@ -112,9 +116,17 @@ assert.match(viewSource, /"ブッキングカーブを閉じる"/u);
 assert.match(viewSource, /message\.textContent = "比較準備中"/u);
 assert.match(viewSource, /createEmbeddedBookingCurveReference/u);
 assert.match(viewSource, /replaceAll\([\s\S]*BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE/u);
+assert.notEqual(
+    view.encodeSalesSettingScopeId("room:a/b"),
+    view.encodeSalesSettingScopeId("room:a:b"),
+    "distinct room scope keys must retain distinct embedded ARIA ids"
+);
+assert.match(view.encodeSalesSettingScopeId("room:和室"), /^[0-9a-f-]+$/u);
 assert.match(fixture, /data-mock-route-away/u);
 assert.match(fixtureEntry, /fixtureMode === "missing"/u);
 assert.match(fixtureEntry, /rankMode === "empty"/u);
+assert.match(fixtureEntry, /rankMode === "deferred-once"/u);
+assert.match(fixtureEntry, /rankOrderMode === "deferred-once"/u);
 
 for (const classicLabel of [
     "ランク変更履歴",

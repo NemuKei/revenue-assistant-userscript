@@ -250,7 +250,7 @@ function renderNativeCard(
             supplement.ownerDocument,
             card.curve,
             card.rankHistory,
-            { narrow, titleId: `ra-next-sales-setting-curve-${safeId(nativeCard.scopeKey)}` }
+            { narrow, titleId: `ra-next-sales-setting-curve-${encodeSalesSettingScopeId(nativeCard.scopeKey)}` }
         ));
         children.push(curveSection);
     }
@@ -418,8 +418,11 @@ function formatRankTransition(before: string | null, after: string | null): stri
     return after ?? before ?? "-";
 }
 
-function safeId(value: string): string {
-    return value.replaceAll(/[^a-zA-Z0-9_-]/gu, "-");
+export function encodeSalesSettingScopeId(value: string): string {
+    return Array.from(
+        value,
+        (character) => character.codePointAt(0)?.toString(16) ?? "0"
+    ).join("-");
 }
 
 function getSalesSettingClassicStyles(): string {

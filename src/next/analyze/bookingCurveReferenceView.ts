@@ -198,13 +198,19 @@ export function createEmbeddedBookingCurveReference(
     for (const panel of viewModel.panels) {
         grid.append(createPanel(documentHost, panel, viewModel, domain, options.narrow));
     }
+    const adjustmentResponse = createAdjustmentResponseSummary(
+        documentHost,
+        viewModel.adjustmentResponse,
+        viewModel.visibility,
+        `${options.titleId}-adjustment-response`
+    );
     const diagnostics = createSeriesDiagnostics(documentHost, viewModel.panels);
     const details = createReferenceDetails(documentHost, meta, note, diagnostics, createRankHistorySummary(
         documentHost,
         rankHistory,
         viewModel.scope.label
     ));
-    component.replaceChildren(header, legend, grid, details);
+    component.replaceChildren(header, legend, grid, adjustmentResponse, details);
     return component;
 }
 
@@ -352,15 +358,16 @@ function createSeriesDiagnostics(
 function createAdjustmentResponseSummary(
     documentHost: Document,
     state: BookingCurveAdjustmentResponseState,
-    visibility: BookingCurveReferenceViewModel["visibility"]
+    visibility: BookingCurveReferenceViewModel["visibility"],
+    titleId = "ra-next-booking-curve-adjustment-response-title"
 ): HTMLElement {
     const section = documentHost.createElement("section");
     section.setAttribute(BOOKING_CURVE_ADJUSTMENT_RESPONSE_ATTRIBUTE, state.status);
-    section.setAttribute("aria-labelledby", "ra-next-booking-curve-adjustment-response-title");
+    section.setAttribute("aria-labelledby", titleId);
     const header = documentHost.createElement("div");
     header.setAttribute("data-ra-next-booking-curve-adjustment-response-header", "");
     const title = documentHost.createElement("h3");
-    title.id = "ra-next-booking-curve-adjustment-response-title";
+    title.id = titleId;
     title.textContent = "調整後のペース";
     const badge = documentHost.createElement("span");
     badge.setAttribute("data-ra-next-booking-curve-adjustment-response-badge", "");

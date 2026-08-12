@@ -38,6 +38,10 @@ const runtime = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveReferenceRuntime.ts",
     import.meta.url
 );
+const salesSettingRuntime = await importBundledTypeScript(
+    "../src/next/analyze/salesSettingClassicRuntime.ts",
+    import.meta.url
+);
 const view = await importBundledTypeScript(
     "../src/next/analyze/bookingCurveReferenceView.ts",
     import.meta.url
@@ -50,11 +54,60 @@ const transport = await importBundledTypeScript(
     "../src/next/live/liveSimilarityLensTransport.ts",
     import.meta.url
 );
+
+class VirtualElement {
+    constructor(ownerDocument, tagName) {
+        this.attributes = new Map();
+        this.childNodes = [];
+        this.children = [];
+        this.ownerDocument = ownerDocument;
+        this.parentElement = null;
+        this.style = {};
+        this.tagName = tagName;
+        this.textContent = "";
+    }
+
+    addEventListener() {}
+
+    append(...nodes) {
+        for (const node of nodes) {
+            this.childNodes.push(node);
+            if (node instanceof VirtualElement) {
+                node.parentElement = this;
+                this.children.push(node);
+            }
+        }
+    }
+
+    focus() {}
+
+    getAttribute(name) {
+        return this.attributes.get(name) ?? null;
+    }
+
+    replaceChildren(...nodes) {
+        this.childNodes = [];
+        this.children = [];
+        this.append(...nodes);
+    }
+
+    setAttribute(name, value) {
+        this.attributes.set(name, String(value));
+    }
+}
+
+class VirtualTextNode {
+    constructor(textContent) {
+        this.textContent = textContent;
+    }
+}
+
 const [
     entrySource,
     fixture,
     fixtureEntry,
     runtimeSource,
+    salesSettingRuntimeSource,
     dataSourceSource,
     rankDataSourceSource,
     rankModelSource,
@@ -67,6 +120,7 @@ const [
     readFile(new URL("../dev/fixtures/next-analyze-booking-curve/index.html", import.meta.url), "utf8"),
     readFile(new URL("../src/next/dev/analyzeBookingCurveReferenceFixtureEntry.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceRuntime.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/salesSettingClassicRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankStatusDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankMarkerModel.ts", import.meta.url), "utf8"),
@@ -113,6 +167,92 @@ assert.equal(runtime.shouldStartBookingCurveRankOrderLoad({
     rankHistory: { status: "ready", events: [{ signature: "event" }] },
     scopeKind: "hotel"
 }), false);
+
+const salesRankOrderGateCases = [
+    {
+        expected: true,
+        label: "an open room with a ready rank event",
+        options: {
+            active: true,
+            hasError: false,
+            hasSnapshot: false,
+            loading: false,
+            open: true,
+            rankHistory: { status: "ready", events: [{ signature: "event" }] },
+            scopeKind: "roomGroup"
+        }
+    },
+    {
+        expected: false,
+        label: "a closed room",
+        options: {
+            active: true,
+            hasError: false,
+            hasSnapshot: false,
+            loading: false,
+            open: false,
+            rankHistory: { status: "ready", events: [{ signature: "event" }] },
+            scopeKind: "roomGroup"
+        }
+    },
+    ...["loading", "empty", "error"].map((status) => ({
+        expected: false,
+        label: `rank history ${status}`,
+        options: {
+            active: true,
+            hasError: false,
+            hasSnapshot: false,
+            loading: false,
+            open: true,
+            rankHistory: status === "empty"
+                ? { status, invalidEventCount: 0 }
+                : status === "error"
+                    ? { status, reason: "request-failed" }
+                    : { status },
+            scopeKind: "roomGroup"
+        }
+    })),
+    {
+        expected: false,
+        label: "hotel scope",
+        options: {
+            active: true,
+            hasError: false,
+            hasSnapshot: false,
+            loading: false,
+            open: true,
+            rankHistory: { status: "ready", events: [{ signature: "event" }] },
+            scopeKind: "hotel"
+        }
+    },
+    {
+        expected: false,
+        label: "an inactive sales surface",
+        options: {
+            active: false,
+            hasError: false,
+            hasSnapshot: false,
+            loading: false,
+            open: true,
+            rankHistory: { status: "ready", events: [{ signature: "event" }] },
+            scopeKind: "roomGroup"
+        }
+    }
+];
+for (const testCase of salesRankOrderGateCases) {
+    assert.equal(
+        salesSettingRuntime.shouldStartSalesSettingRankOrderLoad(testCase.options),
+        testCase.expected,
+        `SalesSetting rank-order GET gate must reject ${testCase.label}`
+    );
+}
+assert.equal(
+    salesRankOrderGateCases.filter((testCase) => (
+        salesSettingRuntime.shouldStartSalesSettingRankOrderLoad(testCase.options)
+    )).length,
+    1,
+    "SalesSetting must permit one rank-order load only for an open room with a ready event"
+);
 
 const scopes = dataSourceModule.parseBookingCurveReferenceScopes({
     suggest_output_current_settings: [{
@@ -631,6 +771,88 @@ assert.equal(
 assert.equal(built.viewModel.panels.every((panel) => panel.rankMarkers.length === 0), true);
 assert.deepEqual(built.viewModel.adjustmentResponse, { status: "scope-required" });
 
+const embeddedDocument = createVirtualDocument();
+const embeddedRoomCurve = view.createEmbeddedBookingCurveReference(
+    embeddedDocument,
+    roomRankBuilt.viewModel,
+    singleRankHistory,
+    { narrow: false, titleId: "room-booking-curve-title" }
+);
+const embeddedRoomAdjustmentSections = findVirtualElementsByAttribute(
+    embeddedRoomCurve,
+    "data-ra-next-booking-curve-adjustment-response"
+);
+assert.equal(
+    embeddedRoomAdjustmentSections.length,
+    1,
+    "embedded room booking curve must preserve the adjustment-response section"
+);
+assert.equal(embeddedRoomAdjustmentSections[0].parentElement, embeddedRoomCurve);
+assert.equal(embeddedRoomAdjustmentSections[0].getAttribute(
+    "data-ra-next-booking-curve-adjustment-response"
+), "ready");
+assert.match(readVirtualText(embeddedRoomAdjustmentSections[0]), /調整後のペース/u);
+assert.equal(
+    findVirtualElementsByAttribute(
+        embeddedRoomAdjustmentSections[0],
+        "data-ra-next-booking-curve-adjustment-response-event"
+    ).length,
+    roomRankBuilt.viewModel.adjustmentResponse.events.length
+);
+
+const embeddedRankOrderFailureCurve = view.createEmbeddedBookingCurveReference(
+    embeddedDocument,
+    {
+        ...roomRankBuilt.viewModel,
+        adjustmentResponse: {
+            status: "ready",
+            events: unresolvedAdjustmentResponse,
+            rankOrderStatus: "error"
+        }
+    },
+    singleRankHistory,
+    { narrow: false, titleId: "room-booking-curve-rank-order-error-title" }
+);
+const embeddedRankOrderFailureSection = findVirtualElementsByAttribute(
+    embeddedRankOrderFailureCurve,
+    "data-ra-next-booking-curve-adjustment-response"
+)[0];
+assert.notEqual(embeddedRankOrderFailureSection, undefined);
+assert.equal(findVirtualElementsByAttribute(
+    embeddedRankOrderFailureSection,
+    "data-ra-next-booking-curve-adjustment-rank-order"
+)[0]?.getAttribute("data-ra-next-booking-curve-adjustment-rank-order"), "error");
+assert.match(readVirtualText(embeddedRankOrderFailureSection), /ランク方向は未確認/u);
+assert.match(
+    readVirtualText(embeddedRankOrderFailureSection),
+    /参考線との差 \+2室 → \+1室/u,
+    "rank-order failure must preserve the embedded numeric gap comparison"
+);
+
+const embeddedHotelCurve = view.createEmbeddedBookingCurveReference(
+    embeddedDocument,
+    built.viewModel,
+    { status: "scope-required" },
+    { narrow: false, titleId: "hotel-booking-curve-title" }
+);
+const embeddedHotelAdjustmentSections = findVirtualElementsByAttribute(
+    embeddedHotelCurve,
+    "data-ra-next-booking-curve-adjustment-response"
+);
+assert.equal(embeddedHotelAdjustmentSections.length, 1);
+assert.equal(embeddedHotelAdjustmentSections[0].getAttribute(
+    "data-ra-next-booking-curve-adjustment-response"
+), "scope-required");
+assert.equal(
+    findVirtualElementsByAttribute(
+        embeddedHotelAdjustmentSections[0],
+        "data-ra-next-booking-curve-adjustment-response-event"
+    ).length,
+    0,
+    "embedded hotel booking curve must not show room adjustment events"
+);
+assert.match(readVirtualText(embeddedHotelAdjustmentSections[0]), /部屋タイプを選ぶ/u);
+
 const zeroRecord = createRecord({
     scope: hotelScope,
     stayDate: "20260812",
@@ -1142,6 +1364,37 @@ assert.match(runtimeSource, /booking-curve-sub-chart-header/u);
 assert.match(runtimeSource, /addEventListener\("load", scheduleReconcile/u);
 assert.match(runtimeSource, /addEventListener\("pageshow", scheduleReconcile/u);
 assert.doesNotMatch(runtimeSource, /seasonal:\s*false/u);
+assert.match(salesSettingRuntimeSource, /rankOrderDataSource\?: BookingCurveRankOrderDataSource/u);
+assert.match(
+    salesSettingRuntimeSource,
+    /options\.rankOrderDataSource\s*\?\? createBookingCurveRankOrderDataSource\(\{ windowHost \}\)/u,
+    "SalesSetting must provide an injectable rank-order source with the bounded default"
+);
+assert.match(
+    salesSettingRuntimeSource,
+    /rankEvents: rankHistory\.status === "ready" \? rankHistory\.events : \[\],[\s\S]*rankHistory,[\s\S]*rankOrder,/u,
+    "SalesSetting must pass rank history and rank order into each embedded curve model"
+);
+assert.match(salesSettingRuntimeSource, /for \(const scopeKey of openScopes\)/u);
+assert.match(salesSettingRuntimeSource, /shouldStartSalesSettingRankOrderLoad\(\{[\s\S]*active,[\s\S]*open: true,[\s\S]*rankHistory,[\s\S]*scopeKind: data\.scope\.kind/u);
+assert.match(
+    salesSettingRuntimeSource,
+    /documentHost\.visibilityState !== "hidden"[\s\S]*root\.isConnected[\s\S]*isVisiblyRendered\(surface\.insertionAnchor\)/u,
+    "rank-order GETs must be gated by the mounted visible sales surface"
+);
+assert.match(
+    salesSettingRuntimeSource,
+    /if \(rankLoading\) \{[\s\S]*rankStatusDataSource\.reset\(\);[\s\S]*rankLoadError = null;[\s\S]*rankLoading = false;/u,
+    "an in-flight rank-status read must be invalidated without poisoning a later remount"
+);
+assert.match(
+    salesSettingRuntimeSource,
+    /if \(rankOrderLoading\) \{[\s\S]*rankOrderDataSource\.reset\(\);[\s\S]*rankOrderLoadError = null;[\s\S]*rankOrderLoading = false;/u,
+    "an in-flight rank-order read must be retryable after the sales surface returns"
+);
+assert.match(salesSettingRuntimeSource, /rankOrderDataSource\.reset\(\)/u);
+assert.match(salesSettingRuntimeSource, /rankOrderDataSource\.cancel\(\)/u);
+assert.match(salesSettingRuntimeSource, /rankOrderDataSource\.stop\(\)/u);
 assert.match(dataSourceSource, /readExistingIndexedDbRecordsByPrimaryKeys/u);
 assert.doesNotMatch(dataSourceSource, /rank|lincoln\/suggest\/status|booking_curve\?date/u);
 assert.match(rankDataSourceSource, /kind: "rank-status"/u);
@@ -1198,4 +1451,35 @@ function createRecord({ asOfDate = "20260723", points, scope, stayDate }) {
             }))
         }
     };
+}
+
+function createVirtualDocument() {
+    const documentHost = {
+        createElement(tagName) {
+            return new VirtualElement(documentHost, tagName);
+        },
+        createElementNS(_namespace, tagName) {
+            return new VirtualElement(documentHost, tagName);
+        },
+        createTextNode(textContent) {
+            return new VirtualTextNode(textContent);
+        }
+    };
+    return documentHost;
+}
+
+function findVirtualElementsByAttribute(root, attribute) {
+    return [
+        ...(root.getAttribute(attribute) === null ? [] : [root]),
+        ...root.children.flatMap((child) => findVirtualElementsByAttribute(child, attribute))
+    ];
+}
+
+function readVirtualText(root) {
+    return [
+        root.textContent,
+        ...root.childNodes.map((child) => child instanceof VirtualElement
+            ? readVirtualText(child)
+            : child.textContent)
+    ].join("");
 }

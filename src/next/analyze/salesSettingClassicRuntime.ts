@@ -13,20 +13,31 @@ import {
 } from "./bookingCurveReferenceDataSource";
 import {
     buildBookingCurveReferenceViewModel,
+    type BookingCurveAdjustmentRankOrderState,
     type BookingCurveReferenceSecondarySegment,
     type BookingCurveReferenceVisibility,
     type BookingCurveReferenceViewModel
 } from "./bookingCurveReferenceModel";
 import {
     buildBookingCurveRankHistoryViewState,
+    type BookingCurveRankHistoryViewState,
     type BookingCurveRankStatusSnapshot
 } from "./bookingCurveRankMarkerModel";
+import {
+    createBookingCurveRankOrderDataSource,
+    type BookingCurveRankOrderDataSource,
+    type BookingCurveRankOrderLoadResult
+} from "./bookingCurveRankOrderDataSource";
+import type { BookingCurveRankOrderSnapshot } from "./bookingCurveRankOrderModel";
 import {
     createBookingCurveRankStatusDataSource,
     type BookingCurveRankStatusDataSource,
     type BookingCurveRankStatusLoadResult
 } from "./bookingCurveRankStatusDataSource";
-import { parseBookingCurveReferenceAnalyzeStayDate } from "./bookingCurveReferenceRuntime";
+import {
+    parseBookingCurveReferenceAnalyzeStayDate,
+    shouldStartBookingCurveRankOrderLoad
+} from "./bookingCurveReferenceRuntime";
 import {
     BOOKING_CURVE_REFERENCE_SEGMENT_ATTRIBUTE,
     BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE
@@ -62,9 +73,22 @@ export interface SalesSettingClassicRuntimeHandle {
 
 export interface StartSalesSettingClassicRuntimeOptions {
     dataSource?: BookingCurveReferenceDataSource;
+    rankOrderDataSource?: BookingCurveRankOrderDataSource;
     rankStatusDataSource?: BookingCurveRankStatusDataSource;
     resolveAsOfDate?: (documentHost: Document) => string | null;
     resolveStayDate?: (location: Location) => string | null;
+}
+
+export function shouldStartSalesSettingRankOrderLoad(options: {
+    active: boolean;
+    hasError: boolean;
+    hasSnapshot: boolean;
+    loading: boolean;
+    open: boolean;
+    rankHistory: BookingCurveRankHistoryViewState;
+    scopeKind: BookingCurveReferenceViewModel["scope"]["kind"];
+}): boolean {
+    return options.active && options.open && shouldStartBookingCurveRankOrderLoad(options);
 }
 
 export interface SalesSettingClassicSurface {
@@ -84,6 +108,8 @@ export function startSalesSettingClassicRuntime(
     });
     const rankStatusDataSource = options.rankStatusDataSource
         ?? createBookingCurveRankStatusDataSource({ windowHost });
+    const rankOrderDataSource = options.rankOrderDataSource
+        ?? createBookingCurveRankOrderDataSource({ windowHost });
     const resolveStayDate = options.resolveStayDate
         ?? ((location: Location) => parseBookingCurveReferenceAnalyzeStayDate(location.pathname));
     const resolveAsOfDate = options.resolveAsOfDate ?? parseLiveSimilarityLensAsOfDate;
@@ -94,14 +120,18 @@ export function startSalesSettingClassicRuntime(
     let activeData = new Map<string, Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }>>();
     let activeCurves = new Map<string, BookingCurveReferenceViewModel>();
     let activeRankSnapshot: BookingCurveRankStatusSnapshot | null = null;
+    let activeRankOrderSnapshot: BookingCurveRankOrderSnapshot | null = null;
     let rankLoadError: Extract<BookingCurveRankStatusLoadResult, { status: "error" }>["reason"] | null = null;
+    let rankOrderLoadError: Extract<BookingCurveRankOrderLoadResult, { status: "error" }>["reason"] | null = null;
     let rankLoading = false;
+    let rankOrderLoading = false;
     let scopeBatchLoading = false;
     let root: HTMLElement | null = null;
     let surface: SalesSettingClassicSurface | null = null;
     let contextBlocked = false;
     let loadGeneration = 0;
     let rankGeneration = 0;
+    let rankOrderGeneration = 0;
     let scheduledReconcileTimer: number | null = null;
     let scheduledDataRefreshTimer: number | null = null;
     let narrow = windowHost.innerWidth <= 680;
@@ -172,6 +202,19 @@ export function startSalesSettingClassicRuntime(
             setRuntimeMarker("comparison-preparing");
             return;
         }
+        if (state === "ready") {
+            const hotelData = activeData.get("hotel");
+            if (
+                hotelData !== undefined
+                && !rankLoading
+                && activeRankSnapshot === null
+                && rankLoadError === null
+            ) {
+                startRankLoad(hotelData.facilityId, stayDate);
+            } else {
+                maybeStartRankOrderLoad();
+            }
+        }
         if (state === "idle") {
             startLoadAll(stayDate, asOfDate, true);
             return;
@@ -193,16 +236,21 @@ export function startSalesSettingClassicRuntime(
     function resetContext(stayDate: string, asOfDate: string | null): void {
         loadGeneration += 1;
         rankGeneration += 1;
+        rankOrderGeneration += 1;
         dataSource.reset();
         rankStatusDataSource.reset();
+        rankOrderDataSource.reset();
         activeStayDate = stayDate;
         activeAsOfDate = asOfDate;
         activeScopes = [];
         activeData = new Map();
         activeCurves = new Map();
         activeRankSnapshot = null;
+        activeRankOrderSnapshot = null;
         rankLoadError = null;
+        rankOrderLoadError = null;
         rankLoading = false;
+        rankOrderLoading = false;
         scopeBatchLoading = false;
         contextBlocked = false;
         state = "idle";
@@ -270,6 +318,7 @@ export function startSalesSettingClassicRuntime(
         scopeBatchLoading = false;
         rebuildCurves();
         renderCurrentState();
+        maybeStartRankOrderLoad();
         setRuntimeMarker("mounted-classic-ui");
     }
 
@@ -293,12 +342,15 @@ export function startSalesSettingClassicRuntime(
         const curves = new Map<string, BookingCurveReferenceViewModel>();
         for (const [scopeKey, data] of activeData) {
             const rankHistory = resolveRankHistory(data.scope);
+            const rankOrder = resolveRankOrder(data.scope);
             const result = buildBookingCurveReferenceViewModel({
                 asOfDate: data.asOfDate,
                 facilityId: data.facilityId,
                 readStatus: data.readStatus,
                 records: data.records,
                 rankEvents: rankHistory.status === "ready" ? rankHistory.events : [],
+                rankHistory,
+                rankOrder,
                 scope: data.scope,
                 scopes: data.scopes,
                 secondarySegment: secondarySegments.get(scopeKey) ?? "transient",
@@ -312,7 +364,7 @@ export function startSalesSettingClassicRuntime(
         activeCurves = curves;
     }
 
-    function resolveRankHistory(scope: BookingCurveReferenceScope) {
+    function resolveRankHistory(scope: BookingCurveReferenceScope): BookingCurveRankHistoryViewState {
         if (scope.kind !== "roomGroup") {
             return { status: "scope-required" } as const;
         }
@@ -323,6 +375,19 @@ export function startSalesSettingClassicRuntime(
             return { status: "error", reason: rankLoadError } as const;
         }
         return rankLoading ? { status: "loading" } as const : { status: "empty", invalidEventCount: 0 } as const;
+    }
+
+    function resolveRankOrder(scope: BookingCurveReferenceScope): BookingCurveAdjustmentRankOrderState {
+        if (scope.kind !== "roomGroup") {
+            return { status: "error" };
+        }
+        if (activeRankOrderSnapshot !== null) {
+            return { status: "ready", entries: activeRankOrderSnapshot.entries };
+        }
+        if (rankOrderLoadError !== null) {
+            return { status: "error" };
+        }
+        return { status: "loading" };
     }
 
     function startRankLoad(facilityId: string, stayDate: string): void {
@@ -351,6 +416,69 @@ export function startSalesSettingClassicRuntime(
             } else if (result.reason !== "aborted") {
                 activeRankSnapshot = null;
                 rankLoadError = result.reason;
+            }
+            rebuildCurves();
+            if (!scopeBatchLoading) {
+                renderCurrentState();
+            }
+            maybeStartRankOrderLoad();
+        });
+    }
+
+    function maybeStartRankOrderLoad(): void {
+        const active = !stopped
+            && documentHost.visibilityState !== "hidden"
+            && root !== null
+            && root.isConnected
+            && surface !== null
+            && isVisiblyRendered(surface.insertionAnchor);
+        if (!active) {
+            return;
+        }
+        for (const scopeKey of openScopes) {
+            const data = activeData.get(scopeKey);
+            if (data === undefined) {
+                continue;
+            }
+            const rankHistory = resolveRankHistory(data.scope);
+            if (shouldStartSalesSettingRankOrderLoad({
+                active,
+                hasError: rankOrderLoadError !== null,
+                hasSnapshot: activeRankOrderSnapshot !== null,
+                loading: rankOrderLoading,
+                open: true,
+                rankHistory,
+                scopeKind: data.scope.kind
+            })) {
+                startRankOrderLoad(data.facilityId);
+                return;
+            }
+        }
+    }
+
+    function startRankOrderLoad(facilityId: string): void {
+        const generation = ++rankOrderGeneration;
+        rankOrderLoading = true;
+        rankOrderLoadError = null;
+        rebuildCurves();
+        if (!scopeBatchLoading) {
+            renderCurrentState();
+        }
+        void rankOrderDataSource.load(facilityId).then((result) => {
+            if (
+                stopped
+                || generation !== rankOrderGeneration
+                || activeData.get("hotel")?.facilityId !== facilityId
+            ) {
+                return;
+            }
+            rankOrderLoading = false;
+            if (result.status === "ready") {
+                activeRankOrderSnapshot = result.snapshot;
+                rankOrderLoadError = null;
+            } else {
+                activeRankOrderSnapshot = null;
+                rankOrderLoadError = result.reason;
             }
             rebuildCurves();
             if (!scopeBatchLoading) {
@@ -439,6 +567,7 @@ export function startSalesSettingClassicRuntime(
                     openScopes.add(scopeKey);
                 }
                 renderCurrentState();
+                maybeStartRankOrderLoad();
                 focusControl(SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE, scopeKey, scopeKey);
             }
             return;
@@ -540,8 +669,13 @@ export function startSalesSettingClassicRuntime(
     function blockMismatchedContext(): void {
         loadGeneration += 1;
         rankGeneration += 1;
+        rankOrderGeneration += 1;
         dataSource.cancel();
         rankStatusDataSource.cancel();
+        rankOrderDataSource.cancel();
+        activeRankOrderSnapshot = null;
+        rankOrderLoadError = null;
+        rankOrderLoading = false;
         scopeBatchLoading = false;
         contextBlocked = true;
         removeMountedArtifacts();
@@ -555,16 +689,21 @@ export function startSalesSettingClassicRuntime(
         }
         loadGeneration += 1;
         rankGeneration += 1;
+        rankOrderGeneration += 1;
         dataSource.reset();
         rankStatusDataSource.reset();
+        rankOrderDataSource.reset();
         activeStayDate = null;
         activeAsOfDate = null;
         activeScopes = [];
         activeData = new Map();
         activeCurves = new Map();
         activeRankSnapshot = null;
+        activeRankOrderSnapshot = null;
         rankLoadError = null;
+        rankOrderLoadError = null;
         rankLoading = false;
+        rankOrderLoading = false;
         scopeBatchLoading = false;
         contextBlocked = false;
         state = "idle";
@@ -576,6 +715,22 @@ export function startSalesSettingClassicRuntime(
     }
 
     function suspendForInactiveSurface(finalState: string): void {
+        if (rankLoading) {
+            rankGeneration += 1;
+            rankStatusDataSource.reset();
+            activeRankSnapshot = null;
+            rankLoadError = null;
+            rankLoading = false;
+            rebuildCurves();
+        }
+        if (rankOrderLoading) {
+            rankOrderGeneration += 1;
+            rankOrderDataSource.reset();
+            activeRankOrderSnapshot = null;
+            rankOrderLoadError = null;
+            rankOrderLoading = false;
+            rebuildCurves();
+        }
         if (root === null) {
             setRuntimeMarker(finalState);
             return;
@@ -584,7 +739,7 @@ export function startSalesSettingClassicRuntime(
             loadGeneration += 1;
             rankGeneration += 1;
             dataSource.cancel();
-            rankStatusDataSource.cancel();
+            rankStatusDataSource.reset();
             state = "idle";
             activeData = new Map();
             activeCurves = new Map();
@@ -615,9 +770,11 @@ export function startSalesSettingClassicRuntime(
         stopped = true;
         loadGeneration += 1;
         rankGeneration += 1;
+        rankOrderGeneration += 1;
         unsubscribeDataSource();
         dataSource.stop();
         rankStatusDataSource.stop();
+        rankOrderDataSource.stop();
         abortController.abort();
         observer.disconnect();
         if (scheduledReconcileTimer !== null) {

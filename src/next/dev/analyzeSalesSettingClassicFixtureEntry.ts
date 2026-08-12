@@ -20,6 +20,10 @@ import type {
     BookingCurveRankStatusDataSource,
     BookingCurveRankStatusLoadResult
 } from "../analyze/bookingCurveRankStatusDataSource";
+import type {
+    BookingCurveRankOrderDataSource,
+    BookingCurveRankOrderLoadResult
+} from "../analyze/bookingCurveRankOrderDataSource";
 import { startSalesSettingClassicRuntime } from "../analyze/salesSettingClassicRuntime";
 
 const FACILITY_ID = "yad:fixture";
@@ -34,8 +38,10 @@ const SCOPES: readonly BookingCurveReferenceScope[] = [
 const params = new URLSearchParams(window.location.search);
 const fixtureMode = params.get("state") ?? "ready";
 const rankMode = params.get("rank") ?? "ready";
+const rankOrderMode = params.get("rank-order") ?? "ready";
 let loadCount = 0;
 let rankLoadCount = 0;
+let rankOrderLoadCount = 0;
 
 const dataSource: BookingCurveReferenceDataSource = {
     cancel() {},
@@ -65,6 +71,9 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
         rankLoadCount += 1;
         document.documentElement.setAttribute("data-mock-sales-setting-rank-load-count", String(rankLoadCount));
         const contextKey = `${facilityId}|${stayDate}`;
+        if (rankMode === "deferred-once" && rankLoadCount === 1) {
+            await waitForFixtureSignal("rank-status");
+        }
         if (rankMode === "error") {
             return { status: "error", contextKey, reason: "request-failed" };
         }
@@ -107,14 +116,51 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
     stop() {}
 };
 
+const rankOrderDataSource: BookingCurveRankOrderDataSource = {
+    cancel() {},
+    async load(facilityId): Promise<BookingCurveRankOrderLoadResult> {
+        rankOrderLoadCount += 1;
+        document.documentElement.setAttribute(
+            "data-mock-sales-setting-rank-order-load-count",
+            String(rankOrderLoadCount)
+        );
+        if (rankOrderMode === "deferred-once" && rankOrderLoadCount === 1) {
+            await waitForFixtureSignal("rank-order");
+        }
+        if (rankOrderMode === "error") {
+            return { status: "error", contextKey: facilityId, reason: "request-failed" };
+        }
+        return {
+            status: "ready",
+            contextKey: facilityId,
+            facilityId,
+            snapshot: {
+                entries: Array.from({ length: 20 }, (_value, index) => {
+                    const rank = String(index + 1);
+                    return { code: rank, name: rank };
+                })
+            }
+        };
+    },
+    reset() {},
+    stop() {}
+};
+
 startSalesSettingClassicRuntime(document, window, {
     dataSource,
+    rankOrderDataSource,
     rankStatusDataSource,
     resolveAsOfDate: () => AS_OF_DATE,
     resolveStayDate: (location) => location.pathname.includes("/dev/fixtures/next-analyze-sales-setting/")
         ? STAY_DATE
         : null
 });
+
+function waitForFixtureSignal(name: "rank-order" | "rank-status"): Promise<void> {
+    return new Promise((resolve) => {
+        document.addEventListener(`mock-resolve-${name}`, () => resolve(), { once: true });
+    });
+}
 
 function buildReadyResult(
     scope: BookingCurveReferenceScope,
