@@ -17,7 +17,7 @@
 - Classic と Next を同じ Revenue Assistant tab で同時に実行しない。初期 Next QA は Tampermonkey で Classic を無効化してから reload する。Next は既に描画済みの Classic DOM を検出すると停止するが、現公開 Classic が後から起動する競合までは防げない。
 - Next のcalendar entryは、表示中カレンダーだけへ接続するread-onlyな基準日レンズである。利用者が`基準日を選ぶ`を押した後だけ確認済み2 endpointを各1回GETし、OHはcurrent settings、個人 / 団体は既存booking curve raw cache、競合は既存snapshot cacheから読む。facility、room type、source、current as-of、stay dateのguardを満たさない値を採用せず、競合snapshotの取得時刻を最新性保証や類似判定に使わない。
 - Next のAnalyze entryは、可視な標準競合価格本文の末尾へClassic / Nextのbrowser-local履歴を統合表示する。facility labelが一致する未保存日の現在stay dateだけ、既存の競合一覧 / 競合価格GETを各最大1回使い、部屋 / 食事指定なし・1〜6名のsnapshotをJST日単位でNext専用IndexedDBへ最大1件保存する。週・月・周辺日程のbackground prefetch、raw response保存、Classic DB変更、Revenue Assistant write操作は行わない。
-- Next公開版`0.2.0.19`は、`0.2.0.17`の通常Chromeで判明した`調整後のペース（試験）`の埋め込み表示欠落を修正した。販売設定cardを明示的に開いた場合だけrank順を施設最大1回取得し、非表示中は取得を止め、再表示時に再開する。公開artifact / Classic固定baselineは照合済みで、利用者のTampermonkey更新後の通常Chrome再確認を残す。installed version / 有効状態はmutable stateなので次のlive作業前にもfresh確認し、Classic再公開は引き続き別gateとする。
+- Next公開版`0.2.0.19`は、`0.2.0.17`の通常Chromeで判明した`調整後のペース（試験）`の埋め込み表示欠落を修正した。利用者のTampermonkey更新後、通常Chromeの販売設定card内で試験section、変更event、直近型 / 季節型比較が表示されることを確認した。F5ではRevenue Assistantの認証切れにより`/login`へ移ったため、再ログイン後のF5 / route往復、live request budget / write 0確認を残す。installed version / 有効状態はmutable stateなので次のlive作業前にもfresh確認し、Classic再公開は引き続き別gateとする。
 
 ## 前提
 

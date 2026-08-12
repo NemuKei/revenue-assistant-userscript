@@ -703,7 +703,7 @@
 ### RAU-RR-64 Analyzeで調整後の個人ペースを参考線と比較する
 
 - 状態:
-  - Next `0.2.0.17`の利用者更新後通常Chromeで、実Analyzeのembedded booking curveへ試験sectionが接続されず表示0件であることを確認した。embedded表示とSales runtimeのrank-order seamを修正し、local gate、main同期、Next `0.2.0.19`へのmanual publication、公開artifact / Classic baseline照合まで完了。利用者更新後の通常Chrome再確認を残す。
+  - Next `0.2.0.17`の利用者更新後通常Chromeで、実Analyzeのembedded booking curveへ試験sectionが接続されず表示0件であることを確認した。embedded表示とSales runtimeのrank-order seamを修正し、local gate、main同期、Next `0.2.0.19`へのmanual publication、公開artifact / Classic baseline照合を完了した。利用者更新後の通常Chromeで試験section表示を確認し、認証切れで停止したF5 / route往復、live request budget / Revenue Assistant write 0確認を残す。
 - 解決する問題:
   - rankを下げてペースを上げたかった、またはrankを上げてペースを抑え単価を狙った調整について、変更後に個人予約の参考線との差がどう変わったかをAnalyze内で振り返る入口がない。
 - 実装境界:
@@ -720,6 +720,7 @@
   - source `65709a7df188460b89058d340883c8c7e95989ee`をmanual workflow run `31557630431`で公開版`0.2.0.17`へ配信した。公開Next / source mapはrelease manifestと一致し、Classicは固定baselineと同一byte列である。
   - `0.2.0.17`の通常ChromeではSales runtimeのembedded経路にsectionとrank-order stateが未接続だった。embedded 2 chart直後のsection、衝突しないARIA id、開いたroom cardだけのrank順取得、error時の数値維持、非表示中のstale結果抑止と再表示時のretryへ修正し、回帰testとdesktop / 390px embedded fixture QAを追加した。
   - source `8c2c0f806ff6619bc7721c221163c7223c515a6e`をmanual workflow run `31561621623`で公開版`0.2.0.19`へ配信した。公開Next / source mapはrelease manifestと一致し、Classicは固定baselineと同一byte列である。先行run number 18はdeploy runner未割当のまま公開未反映だったため取消し、公開版は作られていない。
+  - 利用者更新後の通常Chromeでruntime `0.2.0.19`、Sales root / style各1、embedded component 2件、試験section `scope-required` / `ready`各1、変更event 2件、直近型 / 季節型、固有ARIA target、標準room detail 6件、root overflow 0、console warning / error 0を確認した。F5時にRevenue Assistantの認証切れで`/login`へ移ったため、再ログイン後の継続確認を残す。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
