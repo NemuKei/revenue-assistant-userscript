@@ -781,6 +781,72 @@
   - `decision: D-20260813-003`
   - `supersedes: RAU-UX-168 reflector_name non-display only`
 
+### RAU-PERF-20〜22 Top / Analyzeを判断可能時間SLOで最適化する
+
+#### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
+
+- 状態:
+  - 設計・task化完了。runtime未変更。現行Nextには段階別timestamp markerがないため、`Next Operational SLO v0.1`の達成状況はprovisionalである。
+- 解決する問題:
+  - 現行smokeは最終DOM、request数、開始間隔、concurrency、errorを確認できるが、Topの団体 / 前回調整、Analyzeの全体 / 選択room、競合価格が何秒で使えるかを分けて測れない。
+  - 過去liveにはTop 92 badgeが約27秒、完了後約40ms、旧cold candidateが2分30秒超でもready未到達という証拠があるが、現行公開版のbaselineへ流用できない。
+- 実装scope:
+  - `performance.now()`起点のelapsed ms、固定enum、件数だけを持つversioned `data-ra-fetch-performance-summary`をNext DOMへ1件置く。storageへ永続化せず、context generationでresetし、consoleは既存debug flag時だけ許可する。
+  - Topはroute / shell / cached group / rank settled / base decision、Analyzeはsurface / shell / overall / selected room current / selected room evidence / all room summary、競合価格はsurface / cache paint / fresh settled、schedulerはinteractive queued / startedとbackground pause / settledを区別する。
+  - route / facility / stay date / room ID / 名、価格、在庫、URL、request / response、storage key、Cookie、token、credentialをmarker、console、storage、docsへ含めない。request対象、件数、開始間隔、concurrency、session上限、保存schema、描画順は変更しない。
+- 合格条件:
+  - 注入可能なmonotonic clockでmilestone順、first-write、stale generation無視、warm / revalidate、decision-ready / explanation、partial / error / aborted、coverage分母0、禁止field不在をpure testする。
+  - distribution smokeがNextのsingle-run markerを読み、明示実行するQA collectorが同一process内のsampleだけを集計する。collection windowは同じpublished source revision、marker schema、request profileに固定し、cohort別にnearest-rank `ceil(0.95 x N)`のp95、median、max、sample数、coverage、除外理由をsanitizedに出す。userscript storageやGit管理fileへ履歴を保存せず、20件未満はdescriptiveな`provisional`とし、未観測を0msやpassへしない。
+  - Tampermonkeyを公開Nextへ更新しRevenue Assistantへ再ログインした後、cache削除や実値保存をせず、Top、基準日選択、Analyze販売設定、room open、競合価格のwarmと自然に発生したrevalidateをlive計測する。現在確認済みinstalled runtimeは`0.2.0.23`、公開Nextは`0.2.0.24`であるため、現時点のlive baselineは開始しない。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260813-004`
+  - `risk: instrumentation only; request / storage unchanged`
+
+#### RAU-PERF-21 current優先でbooking curveのhead-of-lineを外す
+
+- 状態:
+  - `RAU-PERF-20`のlive baseline後に実施するNext候補。まず既存request数とsession上限の内側だけを変更する。
+- 解決する問題:
+  - 現行はhotel current後のreferenceを`interactive` FIFOへ入れるため、後続room currentがhotel referenceの後ろで待つ場合がある。Top / Analyzeの同一coordinatorとrequest count共有、room scope逐次loadも、全体summaryと選択roomの待ち時間を増やし得る。
+- 実装scope:
+  - booking curve queueを`critical-current`、`visible-current`、`selected-reference`、`visible-reference`、`background`へ分ける。利用者が明示選択したscopeはqueued taskだけpriority upgradeし、同じcontextでactiveなrequestはpriority elevationだけを理由に中断しない。route / facility / as-of / visible-range context変更時の既存abortは維持する。
+  - referenceをcurrentと同順位にせず、hotel / selected room currentを描画してからreferenceを段階追加する。全room完了をhotel summaryまたは明示選択roomのbarrierにしない。
+  - `RAU-PERF-20`で同じfacility / as-of / rangeのfacility / current settings GET重複が観測された場合は、entry-ownedのin-flight dedupeだけを追加する。route / facility / as-of変更では破棄し、完了結果を別contextへ再利用せず、API queryとrequest上限を広げない。
+  - request対象、due判定、100ms以上、concurrency 30以下、bootstrap 800 / daily 200、interactive reserve 32、401 / 403 / 429即停止、連続3 error停止、同一run retryなし、保存schema / retention、Revenue Assistant write 0を維持する。
+- 合格条件:
+  - synthetic 1 / 6 / 12 / 20 roomで、background active中のhotel current、明示room current、remaining current、selected referenceの開始順、pending dedupe / priority upgrade、route / facility / hidden abortを固定する。
+  - 同じlive scenarioのbefore / after markerでTop / Analyze SLO、request数、error、stop reasonを比較し、latencyを改善してもcoverage、current / reference意味、標準UI、write 0を壊さない。
+  - SLO未達理由がshared budgetまたは別endpointの同時取得でなければ、`RAU-PERF-22`を実装せず局所修正で閉じる。
+- metadata:
+  - `depends-on: RAU-PERF-20 live baseline`
+  - `spec-impact: yes`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260813-004`
+  - `risk: queue order only; request count unchanged`
+
+#### RAU-PERF-22 interactive admissionとroom数縮退を条件付きで設計する
+
+- 状態:
+  - 条件付き候補。`RAU-PERF-21`後に20件以上の同一cohortでSLO未達、または同じshared budget / queue wait原因による`budget-reached`かinteractive遅延を同一revisionの3 controlled run以上で再現した場合だけ開始する。20件未満のdescriptive baseline 1回だけでは開始しない。
+- 設計順:
+  - 最初にactive surfaceのcritical taskがpendingの間だけ、新しいbackground startを止める共有admission signalを検討する。開始済みGETはabortせず、tab / route / facility / document visibility変更では既存guardで止める。
+  - endpoint別の401 / 403 / 429とstop sourceを計測し、rank statusの失敗がbooking current全体を止める結合がSLO missとして観測された場合だけ、global auth / rate-limit stopとendpoint-local permission / data errorを分ける。停止条件を緩めて自動retryを増やさない。
+  - pauseだけで不足する場合に限り、backgroundが消費できないbounded critical tokenを検討する。Top / Analyzeの同一sessionで何回補充するか、総request上限、long session上限、追加request / 操作を、`RAU-PERF-20`のlatency / queue-wait evidenceとendpoint別request countの両方から決める。count-only evidenceだけでは枠を増やさない。
+  - room数は`1〜6`、`7〜12`、`13〜20`、`21以上`で計測し、room数が増えてもhotel summaryと明示選択roomのSLOを優先する。未選択room reference、遠距離background、全room完了の順に縮退し、silent dropや無制限queueにしない。
+- 合格条件:
+  - interactive pending中の新規background start 0、critical start wait p95 250ms以内、active request非中断、同一request dedupe、auth / permission / rate-limit即停止をfixtureとlive markerで確認する。
+  - request budgetまたはscopeを変える前に、利用目的、契約アカウント / 自施設 / 権限の再確認、対象endpoint、before / afterのsession・操作・日次request上限、latency / queue-wait / request count / 429・errorの負荷証拠、保存範囲、retention、削除方針、停止条件、rollbackをYellow zone decisionと対象specへ固定する。保存を変えない場合も`storage unchanged`と明記する。
+  - rollbackはadmission / token変更を外して`RAU-PERF-21`のqueue orderへ戻せることとし、保存dataのmigration / 削除を前提にしない。
+- metadata:
+  - `depends-on: RAU-PERF-20, RAU-PERF-21 and measured SLO miss`
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `risk: yellow-zone if request budget or scope changes`
+
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 
 - 状態:
@@ -792,6 +858,7 @@
   - rank statusは可視範囲1 GETを最優先・不変にし、未取得の画面外suffixだけを可視session当たり最大1小chunkでrotateする候補とする。server-side since / cursorは未確認なので、`差分`はlocal coverageで未取得chunkを省く意味に限定し、raw responseを保存しない。31日、62日、93日、184日の順にstatus、latency、valid / invalid件数、切捨て有無だけを確認し、401 / 403 / 429、512 event超過、不正 / truncatedで追加write 0のまま停止する。
   - booking curveはstay date × hotel / room scopeごとのGETである。184日、確認済みroom group 6件の現状例では初期task約1,555件、現行dueを毎日適用すると約1,295件/日となり、日次background実効上限168件を超える。そのため半年全scopeの日次取得は採用せず、近距離daily / 中距離weekly / 遠距離monthly、または新rank eventに関係するstay date × room groupだけのevent-driven補完を別sliceで比較する。
 - 実装前gate:
+  - `RAU-PERF-20`のbaselineと`RAU-PERF-21`のforeground優先を先に通し、Top / AnalyzeのSLO対象milestoneがbackground追加前後で悪化しないことを確認する。`RAU-PERF-22`が必要と判定された場合は、そのadmission / budget契約も先に固定する。
   - 半年の定義をJSTの未来184日inclusiveなど一意に固定し、room group数に対するrequest / 4,096 source retention式、追加request / session、cadence、停止条件、rollbackをspecとdecisionへ記録する。
   - JST月末 / 閏日 / inclusive境界、chunk overlap / dedupe、可視GET不変、追加最大1、coverage pre-skip、route / facility / as-of / hidden abort、auth / rate-limit即停止、write 0をpure / fixture testで固定する。
 - metadata:
@@ -799,7 +866,7 @@
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_003_rank_recommendation_signal.md; booking curve cadenceを変える場合はdocs/spec_001_analyze_expansion.md`
   - `risk: yellow-zone background prefetch`
-  - `depends-on: count-only live range gate and explicit decision`
+  - `depends-on: RAU-PERF-20 baseline, RAU-PERF-21 foreground gate, count-only live range gate and explicit decision`
 
 ### RAU-RR-66 次回調整の期待値へ向けたrank学習coverageを作る
 
@@ -871,7 +938,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage は、Nowを`RAU-UX-170`のTampermonkey `0.2.0.24`更新 / 再ログイン後のinstalled runtime確認、Nextを`RAU-WC-34`のcount-only live range gateと、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario test、After Nextを各gate通過後に限るcompact UIと明示選択した一括調整のdry-run再評価`RAU-RR-65`とする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goである。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は、Nowを`RAU-PERF-20`のprivacy-safe計測実装と、公開版更新 / 再ログイン後のTop / Analyze / 競合価格baseline取得とする。`RAU-UX-170`のinstalled `0.2.0.24`確認は同じlive gateで先に照合する。Nextはbaseline後の`RAU-PERF-21` current優先 / reference head-of-line解消とし、`RAU-PERF-22`は同一cohortのSLO missまたは3 controlled run以上の同一原因再現がある場合だけ開始する。`RAU-WC-34`のcount-only live range gateは`RAU-PERF-20` / `RAU-PERF-21`通過後、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goであり、compact UIと`RAU-RR-65`一括調整dry-runは各gate通過後に限る。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145`はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

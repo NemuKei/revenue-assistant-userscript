@@ -12,6 +12,23 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 - 前提: レベニューアシスタントは single-page application（ページ全体を再読み込みせずに画面を書き換える方式）として再描画される
 - 要求: 初回表示だけでなく、画面内遷移、タブ切替、再描画、フォーカス復帰でも表示が壊れないこと
 
+## Next Analyze Interactive Performance Contract
+
+TopからAnalyzeへ進む一連のSLO、計測母集団、privacy-safe markerは`docs/spec_003_rank_recommendation_signal.md`の`Next Operational SLO v0.1`を正とする。このsectionはAnalyzeの取得順と現行実装との差を所有する。
+
+現行Nextのbooking curveは、画面に必要なcurrent / referenceを`interactive`としてbackgroundより先に開始できる。ただし、TopとAnalyzeはentry単位の同じacquisition coordinator、`requestCount`、bootstrap 800 / daily 200のsession上限を共有し、backgroundが32件分を空けるだけである。したがって、Analyze foregroundが日次上限と完全に別枠であるとは扱わない。同じfacilityでTopからAnalyzeへ移った場合もrequest countは維持され、上限到達後はinteractive currentも`budget-reached`で開始できない可能性がある。
+
+販売設定はhotel scopeを先に描画し、room scopeを順番に読む。現行data sourceは各scopeのcurrent完了後にreferenceを同じ`interactive` priorityへ投入するため、hotel referenceが後続room currentより先に並ぶ場合がある。entry内のacquisition runtime、Top lens、Analyze booking curve / sales settingは別data sourceからfacility / current settings contextを確認するため、同じexact contextのGETが重なる可能性もある。同じcontext内ではpriority elevationだけを理由にactive background requestをpreemptしない一方、route / facility / as-of / visible-range context変更ではqueued / in-flightをabortする。booking curve、競合価格、90日価格推移はそれぞれ独立schedulerで動くため、active tabのforegroundを画面横断で保護するadmission controlもまだない。これらは現状認識であり、SLO達成済みの根拠にはしない。
+
+最適化は次の順で行う。
+
+1. `RAU-PERF-20`でNextへelapsed time / count / fixed enumだけの計測を追加し、request対象、件数、開始間隔、concurrency、保存schema、表示順を変えず、Top / Analyze / 競合価格のwarm / revalidate baselineを取る。
+2. `RAU-PERF-21`で同じrequest総数と上限を維持したまま、booking curve queueを`critical-current`、`visible-current`、`selected-reference`、`visible-reference`、`background`へ分ける。明示選択したscopeのpending taskはpriorityを上げるが、同じcontextでactiveなrequestはpriority elevationだけを理由に中断しない。referenceをcurrentと同順位にせず、hotel referenceがroom currentを待たせるhead-of-line blockingを外す。
+3. `RAU-PERF-21`後もSLO未達、またはshared budgetによるinteractive停止が観測された場合だけ、`RAU-PERF-22`でactive tabのinteractive admission、background pause、boundedなcritical tokenを検討する。総request上限、scope、standard画面より多い取得を変える場合はYellow zoneとして、before / after、追加request上限、停止条件、rollbackをdecisionへ固定してから実装する。
+4. 表示範囲外の半年取得`RAU-WC-34`は、SLO baselineとforeground保護を先に通し、余力だけを使う別scheduler / cadenceとして扱う。半年coverageの完了をTop / Analyze描画のbarrierにしない。
+
+Analyzeの完了点は、route全体の「全部取得」1点へまとめない。`shell`、`overall current`、`selected room current`、`selected room reference / rank marker`、`all room summary`、`competitor cache`、`competitor fresh`を分ける。room数が多い場合も、全room summary / 未選択room referenceをhotel summaryまたは明示選択roomのbarrierにしない。partial、empty、error、auth stop、rate-limit stopをdecision-readyへ数えず、判断に必要なfieldが欠ける場合は不足理由を`explanation latency`として別計測する。exact source / room coverageはlatencyと別の分子・分母で確認する。
+
 ## Data Sources
 
 ### Calendar / Group Data

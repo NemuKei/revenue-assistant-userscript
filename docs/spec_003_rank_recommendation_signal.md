@@ -124,6 +124,48 @@ Next first phase の候補では次を行う。Classic への公開済み変更�
 - facility名とIDの一致、Top route、visible calendar、document visibilityを確認してから表示・取得する。calendar、facility、route、document visibilityが変わった場合はin-flightを中止して表示を除去する。同じ可視contextではrank statusを自動retryせず、401 / 403 / 429では差分取得を含む同じrunを即停止する。
 - この表示追加で、許可endpoint、booking curveの開始間隔 / concurrency / request上限、IndexedDB schema / retention、Revenue Assistant write、Classic / Nextの公開境界は変更しない。manual publication、Tampermonkey更新、更新後の実画面QAは別gateとする。
 
+### Next Operational SLO v0.1 (`RAU-PERF-20`)
+
+Nextの性能目標は、全background取得の完了時間ではなく、RMがTopまたはAnalyzeで次の判断へ進める状態までの時間を正とする。v0.1は実装・計測前のperformance budgetであり、現在配布中のNextが達成済みとは扱わない。現行Nextには段階別timestamp markerがなく、最新公開版のlive cold / warm baselineも未取得である。
+
+計測開始点は、Next runtimeが対象routeと標準hostを安全に確認した時点、または利用者が基準日、room card、競合価格tabを明示操作した時点とする。Revenue Assistant本体のnavigation開始から標準host出現までをNextのlatencyへ混ぜないが、host確認後のfacility / as-of確認、cache read、API取得、描画は含める。標準UIを覆わず操作可能なこと、Revenue Assistant write 0、別施設 / 別routeのstale結果を描画しないことは、latencyとは別のhard guardとする。
+
+| 利用経路 / SLI | 完了条件 | v0.1 SLO |
+| --- | --- | ---: |
+| Top shell | 可視Top host確認から、標準calendarを塞がないNext shellが描画されるまで | p95 1,000ms以内 |
+| Top 保存済み団体cue | 可視Top host確認から、exactな保存済みhotel sourceを持つ全可視日に`団n`が描画され、対象日数 / 利用可能日数が確定するまで | p95 2,000ms以内 |
+| Top 前回調整cue | 可視Top host確認から、可視rangeのrank status最大1 GETがreadyとなり、有効eventを持つ日へ経過日数が描画されるまで | p95 3,000ms以内 |
+| Top 基準日判断 | 基準日の明示選択から、必要なexact current evidenceと類似日が`ready`になるか、完全な入力coverageから候補0件が確定するまで | p95 3,000ms以内 |
+| Analyze shell | 対象Analyze surface確認から、loading / cached stateを示すNext shellが描画されるまで | p95 1,000ms以内 |
+| Analyze 全体判断 | `販売設定` surface確認から、全体summaryとhotel current curveが判断可能になるまで | warm p95 2,000ms以内、revalidate p95 3,000ms以内 |
+| Analyze 選択room current | room curveの明示openから、そのroomのexact current lineが描画されるまで | p95 3,000ms以内 |
+| Analyze 選択room根拠 | room curveの明示openから、必要なcurrent、reference、rank markerの状態が`ready`で確定するまで | p95 5,000ms以内 |
+| Analyze room summary | `販売設定` surface確認から、1〜12 roomのsummaryがすべて確定するまで | p95 5,000ms以内 |
+| 競合価格 | 競合価格surface確認から保存済み主要graph、またはfresh capture後の主要graphが描画されるまで | cache p95 3,000ms以内、fresh p95 5,000ms以内 |
+| interactive開始待ち | critical currentがqueueへ入ってから最初のrequestが開始するまで | p95 250ms以内 |
+
+`warm`は必要なexact current sourceが操作開始時にNext storeまたは有効なClassic read-through seedへ存在する状態、`revalidate`は必要なcurrent sourceの一部が未保存またはdueである状態を指す。施設全体の空storeから行うbounded bootstrapはbackground準備であり、interactive SLOの完了条件へ含めない。background完了時間にはSLOを置かず、interactive pending中は同じcontextの新しいbackground requestを開始しないこと、priorityを上げただけでは同じcontextで開始済みのrequestをpreemptしないことをguardとする。route / facility / as-of / visible-range context変更、document hidden、runtime停止では既存契約どおりqueued / in-flightをabortできる。
+
+room数は`1〜6`、`7〜12`、`13〜20`、`21以上`に分けて計測する。`13以上`では全room完了を選択roomのbarrierにせず、hotel summaryと利用者が開いたroomのSLOを優先する。全room curveを最初から展開してSLOを満たそうとせず、既定の折りたたみとprogressive hydrationを維持する。`21以上`でも落ちず、取得密度またはbackground対象を縮退したことを示すが、実装上限はbaseline後の別decisionで固定する。
+
+latencyとcoverageは別SLIとし、outcomeは次の意味へ固定する。
+
+| outcome | 意味 | SLOでの扱い |
+| --- | --- | --- |
+| `ready` | 必要なexact currentとmilestone必須fieldが揃った | 対象のdecision-ready SLOへ数える |
+| `empty` | 必要なreadがすべて正常終了しcoverageも完全だが、rank eventまたは類似候補が意味上0件だった | Topのresolution SLOへ数える。booking curve / room summaryのsource欠損には使わない |
+| `partial` | 必要なsourceまたはfieldが欠け、判断材料が不足した | explanation latencyへだけ数える |
+| `error` | auth / permission / rate-limit以外を含む終端error | explanation latencyとerror件数へだけ数える |
+| `aborted` | hidden、context変更、利用者cancel、runtime停止 | latency母集団から除外しabort件数へ残す |
+
+`ready / empty`の`source`は`cache / network / mixed`のいずれかを必須とする。`source=none, outcome=ready`を許すのはnetwork / dataを必要としないshell milestoneだけである。必要根拠が欠けた`partial / error`は、理由がTop 3,000ms / Analyze・競合価格5,000ms以内に表示されたかを`explanation latency`として別集計し、decision-ready SLOの成功へ数えない。auth / permission / rate-limitはexplanation latencyと停止件数へ記録し、readyへ数えない。
+
+coverageは、Top団体を`renderedExactGroupDates / validExactGroupSourceDates`、Top前回調整を`renderedRankEventDates / validRankEventDates`、Analyze roomを`readyRequiredRoomScopes / requiredRoomScopes`として記録し、分母が1以上のeligible sampleでは100%をguardとする。分母0は`no-source`としてlatency SLOから外し、0 / 0を100%やreadyへ変換しない。rank status responseが正常でevent 0件の場合はrange settlement成功とevent coverage分母0を分け、`調整なし`とは表示しない。速いempty / partial表示でcoverageを達成したことにしない。
+
+SLOは`published Next source revision / marker schema x route / 操作 x warm / revalidate x room数band`ごとに、明示開始したQA collection windowの最新20件のeligible live sampleで判定する。値を昇順に並べ、nearest-rankの`ceil(0.95 x N)`番目をp95とする。20件未満、または安全に20件を収集できないcohortは`provisional`なdescriptive baselineとし、最大値、中央値、sample数、除外理由だけを報告して達成済みとは書かない。document hidden、route / facility / as-of変更、利用者cancelはlatency sampleから除外するがabort件数へ残す。scheduler、milestone、marker schema、request profileを変えたrevisionは同じbaselineへ混ぜない。
+
+Nextの計測はversionedな`data-ra-fetch-performance-summary`をDOM上に1件だけ置き、`performance.now()`起点のelapsed ms、固定enum、件数だけを保持する。Topはroute / shell / cached group / rank settled / base decision、Analyzeはsurface / shell / overall / selected room current / selected room evidence / all summary、競合価格はsurface / cache paint / fresh settled、schedulerはinteractive queued / startedとbackground pause / settledを区別する。件数は`eligibleVisibleDates`、`validExactGroupSourceDates`、`renderedExactGroupDates`、`validRankEventDates`、`renderedRankEventDates`、`requiredRoomScopes`、`readyRequiredRoomScopes`、request / error / abort / stopだけを許可する。`source`は`cache / network / mixed / none`、`outcome`は`ready / partial / empty / error / aborted`、`freshness`は`fresh / stale-revalidating / unknown`の固定値に限定する。施設ID / 名、stay date、roomGroup ID / 名、URL、価格、在庫、request / response、storage key、Cookie、token、credentialはmarker、console、storage、docsへ残さない。markerはcontext変更でresetし、永続保存せず、console出力は既存debug flagが有効な場合だけ許可する。p95集計はuserscript内へ履歴保存せず、明示実行したQA collectorが各single-run markerをprocess memoryへ集め、そのcollection windowのsource revision、schema、cohort、sample数、p95 / median / max、coverage、除外理由だけを出力する。通常利用をまたぐ20件が揃わない間はprovisionalを維持する。
+
 ## Classic To Next Target Contract Matrix
 
 Next は Classic の画面配置を複製しない。実務上の責務を、`探索 = カレンダー`、`根拠確認 = Analyze / graph`、`更新 = 単一候補の明示確認`へ分ける。表形式の料金調整候補は探索UIとして廃止対象だが、そこから到達できた根拠、状態、単一候補の安全操作は個別に parity 判定する。
