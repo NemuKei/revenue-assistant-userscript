@@ -78,6 +78,7 @@ export interface BookingCurveReferenceRankMarker {
     beforeRankName: string | null;
     daysBeforeStay: number;
     reflectedDate: string;
+    reflectorName: string | null;
     signature: string;
     value: number;
 }
@@ -409,6 +410,7 @@ function buildBookingCurveRankMarkers(
                 beforeRankName: event.beforeRankName,
                 daysBeforeStay: event.daysBeforeStay,
                 reflectedDate: event.reflectedDate,
+                reflectorName: event.reflectorName ?? null,
                 signature: event.signature,
                 value
             }];

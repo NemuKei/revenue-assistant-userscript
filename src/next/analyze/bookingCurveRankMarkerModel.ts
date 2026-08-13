@@ -11,6 +11,7 @@ export interface BookingCurveRankStatusEvent {
     daysBeforeStay: number;
     reflectedAt: string;
     reflectedDate: string;
+    reflectorName?: string | null;
     roomGroupId: string;
     signature: string;
     stayDate: string;
@@ -91,6 +92,7 @@ export function parseBookingCurveRankStatusResponse(
             daysBeforeStay: parsed.daysBeforeStay,
             reflectedAt: parsed.reflectedAt,
             reflectedDate: parsed.reflectedDate,
+            reflectorName: parsed.reflectorName ?? null,
             roomGroupId: parsed.roomGroupId,
             signature: parsed.signature,
             stayDate: parsed.stayDate
@@ -170,6 +172,7 @@ function parseRankEvent(
         daysBeforeStay,
         reflectedAt: timestamp.value,
         reflectedDate,
+        reflectorName: readOptionalReflectorName(value),
         roomGroupId,
         signature: [
             reflectedDate,
@@ -179,6 +182,13 @@ function parseRankEvent(
         sortValue: timestamp.sortValue,
         stayDate: compactStayDate
     };
+}
+
+function readOptionalReflectorName(value: Record<string, unknown>): string | null {
+    const candidate = value.reflector_name;
+    return typeof candidate === "string" && candidate.trim() !== ""
+        ? candidate.trim()
+        : null;
 }
 
 function resolveStatusTimestamp(

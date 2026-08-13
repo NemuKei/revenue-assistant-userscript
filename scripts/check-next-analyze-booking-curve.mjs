@@ -48,14 +48,21 @@ class VirtualElement {
         this.attributes = new Map();
         this.childNodes = [];
         this.children = [];
+        this.listeners = new Map();
         this.ownerDocument = ownerDocument;
         this.parentElement = null;
-        this.style = {};
+        this.style = { removeProperty() {} };
         this.tagName = tagName;
         this.textContent = "";
     }
 
-    addEventListener() {}
+    addEventListener(type, listener) {
+        this.listeners.set(type, listener);
+    }
+
+    dispatch(type, event = {}) {
+        this.listeners.get(type)?.(event);
+    }
 
     append(...nodes) {
         for (const node of nodes) {
@@ -71,6 +78,14 @@ class VirtualElement {
 
     getAttribute(name) {
         return this.attributes.get(name) ?? null;
+    }
+
+    getBoundingClientRect() {
+        return { height: 0, left: 0, top: 0, width: 0 };
+    }
+
+    querySelector(selector) {
+        return this.children.find((child) => child.tagName === selector) ?? null;
     }
 
     replaceChildren(...nodes) {
@@ -99,6 +114,7 @@ const [
     dataSourceSource,
     rankDataSourceSource,
     rankModelSource,
+    rankLearningCaptureParserSource,
     rankReadCoordinatorSource,
     viewSource
 ] = await Promise.all([
@@ -110,6 +126,7 @@ const [
     readFile(new URL("../src/next/analyze/bookingCurveReferenceDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankStatusDataSource.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankMarkerModel.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/rankLearning/rankLearningCaptureParser.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveRankReadCoordinator.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/bookingCurveReferenceView.ts", import.meta.url), "utf8")
 ]);
@@ -143,21 +160,23 @@ const parsedRankSnapshot = rankModel.parseBookingCurveRankStatusResponse({
             accepted_at: "2026-07-20T08:00:00+09:00",
             before_price_rank_name: "12",
             after_price_rank_name: "11",
-            reflector_name: "fixture-person-must-not-be-retained"
+            reflector_name: "older-person"
         },
         {
             date: "2026-08-12",
             rm_room_group_id: "single",
             accepted_at: "2026-07-20T12:00:00+09:00",
             before_price_rank_name: "11",
-            after_price_rank_name: "10"
+            after_price_rank_name: "10",
+            reflector_name: "  latest-person  "
         },
         {
             date: "2026-08-12",
             rm_room_group_id: "twin",
             completed_at: "2026-07-29T11:00:00+09:00",
             before_price_rank_name: "10",
-            after_price_rank_name: "9"
+            after_price_rank_name: "9",
+            reflector_name: 123
         },
         {
             date: "2026-08-11",
@@ -187,7 +206,20 @@ assert.equal(parsedRankSnapshot.events.length, 2);
 assert.equal(parsedRankSnapshot.invalidEventCount, 3);
 assert.equal(parsedRankSnapshot.events[0].roomGroupId, "single");
 assert.equal(parsedRankSnapshot.events[0].beforeRankName, "11", "same room/day keeps the latest event");
-assert.equal("reflectorName" in parsedRankSnapshot.events[0], false);
+assert.equal(parsedRankSnapshot.events[0].reflectorName, "latest-person", "same room/day keeps the latest reflector");
+assert.equal(parsedRankSnapshot.events[1].reflectorName, null, "a non-string reflector must not discard its event");
+const emptyReflectorSnapshot = rankModel.parseBookingCurveRankStatusResponse({
+    suggest_statuses: [{
+        date: "2026-08-12",
+        rm_room_group_id: "single",
+        accepted_at: "2026-07-20T12:00:00+09:00",
+        before_price_rank_name: "11",
+        after_price_rank_name: "10",
+        reflector_name: "   "
+    }]
+}, "20260812");
+assert.notEqual(emptyReflectorSnapshot, null);
+assert.equal(emptyReflectorSnapshot.events[0].reflectorName, null, "an empty reflector must not discard its event");
 const singleRankHistory = rankModel.buildBookingCurveRankHistoryViewState(parsedRankSnapshot, roomScope);
 assert.equal(singleRankHistory.status, "ready");
 assert.equal(singleRankHistory.events.length, 1);
@@ -437,6 +469,7 @@ const roomRankBuilt = model.buildBookingCurveReferenceViewModel({
 assert.equal(roomRankBuilt.status, "ready");
 assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers.length, 1);
 assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers[0].value, 4);
+assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers[0].reflectorName, "latest-person");
 assert.equal(roomRankBuilt.viewModel.panels[1].rankMarkers[0].value, 3);
 assert.equal(built.viewModel.panels.every((panel) => panel.rankMarkers.length === 0), true);
 assert.equal("adjustmentResponse" in roomRankBuilt.viewModel, false);
@@ -454,6 +487,46 @@ assert.equal(
     0,
     "embedded room booking curve must not duplicate the rank history in an adjustment-response block"
 );
+const rankMarkerHitboxes = findVirtualElementsByAttribute(
+    embeddedRoomCurve,
+    "data-ra-next-booking-curve-rank-marker-hitbox"
+);
+assert.equal(rankMarkerHitboxes.length, 2);
+assert.match(rankMarkerHitboxes[0].getAttribute("aria-label"), /変更者 latest-person/u);
+const tooltip = findVirtualElementsByAttribute(
+    embeddedRoomCurve,
+    "data-ra-next-booking-curve-reference-tooltip"
+)[0];
+rankMarkerHitboxes[0].dispatch("focus");
+assert.match(collectVirtualText(tooltip), /変更者: latest-person/u, "marker focus must show the reflector");
+const leadTimeHitbox = findVirtualElementsByAttribute(
+    embeddedRoomCurve,
+    "data-ra-next-booking-curve-reference-hitbox"
+).find((element) => /変更者 latest-person/u.test(element.getAttribute("aria-label") ?? ""));
+assert.notEqual(leadTimeHitbox, undefined);
+leadTimeHitbox.dispatch("focus");
+assert.match(collectVirtualText(tooltip), /変更者: latest-person/u, "lead-time focus must show the reflector");
+const nullReflectorCurve = view.createEmbeddedBookingCurveReference(
+    embeddedDocument,
+    {
+        ...roomRankBuilt.viewModel,
+        panels: roomRankBuilt.viewModel.panels.map((panel) => ({
+            ...panel,
+            rankMarkers: panel.rankMarkers.map((marker) => ({ ...marker, reflectorName: null }))
+        }))
+    },
+    singleRankHistory,
+    { narrow: false, titleId: "null-reflector-booking-curve-title" }
+);
+const nullReflectorTooltip = findVirtualElementsByAttribute(
+    nullReflectorCurve,
+    "data-ra-next-booking-curve-reference-tooltip"
+)[0];
+findVirtualElementsByAttribute(
+    nullReflectorCurve,
+    "data-ra-next-booking-curve-rank-marker-hitbox"
+)[0].dispatch("focus");
+assert.doesNotMatch(collectVirtualText(nullReflectorTooltip), /変更者:/u, "a null reflector must omit only its row");
 
 const embeddedHotelCurve = view.createEmbeddedBookingCurveReference(
     embeddedDocument,
@@ -1164,7 +1237,11 @@ assert.match(dataSourceSource, /readExistingIndexedDbRecordsByPrimaryKeys/u);
 assert.doesNotMatch(dataSourceSource, /rank|lincoln\/suggest\/status|booking_curve\?date/u);
 assert.match(rankDataSourceSource, /kind: "rank-status"/u);
 assert.doesNotMatch(rankDataSourceSource, /indexedDB|localStorage|sessionStorage|fetch\s*\(/u);
-assert.doesNotMatch(rankModelSource, /reflector_name|reflectorName/u);
+assert.match(rankModelSource, /reflector_name/u);
+assert.match(rankModelSource, /reflectorName\?: string \| null/u);
+assert.doesNotMatch(rankLearningCaptureParserSource, /reflector_name|reflectorName/u);
+assert.match(viewSource, /変更者: \$\{marker\.reflectorName\}/u);
+assert.match(viewSource, /変更者 \$\{marker\.reflectorName\}/u);
 assert.match(rankReadCoordinatorSource, /createConsumer\(consumerId/u);
 assert.match(rankReadCoordinatorSource, /entry\.leases\.size > 0/u);
 assert.doesNotMatch(
@@ -1222,6 +1299,14 @@ function createRecord({ asOfDate = "20260723", points, scope, stayDate }) {
 
 function createVirtualDocument() {
     const documentHost = {
+        defaultView: {
+            getComputedStyle() {
+                return { maxWidth: "" };
+            },
+            innerHeight: 800,
+            innerWidth: 1200
+        },
+        documentElement: { clientHeight: 800, clientWidth: 1200 },
         createElement(tagName) {
             return new VirtualElement(documentHost, tagName);
         },
@@ -1240,6 +1325,13 @@ function findVirtualElementsByAttribute(root, attribute) {
         ...(root.getAttribute(attribute) === null ? [] : [root]),
         ...root.children.flatMap((child) => findVirtualElementsByAttribute(child, attribute))
     ];
+}
+
+function collectVirtualText(root) {
+    return [
+        root.textContent,
+        ...root.childNodes.map((child) => collectVirtualText(child))
+    ].join(" ");
 }
 
 function createControlledRankDataSourceHarness(kind) {

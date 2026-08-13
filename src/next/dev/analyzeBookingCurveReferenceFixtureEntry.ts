@@ -107,6 +107,7 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
                             daysBeforeStay: 30,
                             reflectedAt: "2026-07-13T03:30:00.000Z",
                             reflectedDate: "2026-07-13",
+                            reflectorName: "fixture-person",
                             roomGroupId: "single",
                             signature: "2026-07-13:11:12",
                             stayDate
@@ -117,6 +118,7 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
                             daysBeforeStay: 21,
                             reflectedAt: "2026-07-22T03:30:00.000Z",
                             reflectedDate: "2026-07-22",
+                            reflectorName: null,
                             roomGroupId: "single",
                             signature: "2026-07-22:12:11",
                             stayDate
@@ -127,6 +129,7 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
                             daysBeforeStay: 14,
                             reflectedAt: "2026-07-29T02:00:00.000Z",
                             reflectedDate: "2026-07-29",
+                            reflectorName: null,
                             roomGroupId: "twin",
                             signature: "2026-07-29:10:9",
                             stayDate

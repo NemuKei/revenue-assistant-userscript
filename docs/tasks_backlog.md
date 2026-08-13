@@ -756,6 +756,50 @@
   - `decision: D-20260813-001`
   - `depends-on: RAU-RR-64 complete`
 
+### RAU-UX-170 rank変更Tooltipへ変更者を戻す
+
+- 状態:
+  - source / spec実装、focused / full checks、desktop / 390px合成Browser QAまで完了。main同期、Next manual publication、Tampermonkey更新後の通常Chrome確認を同じGoal Bundleで続ける。
+- 解決する問題:
+  - 部屋タイプ別booking curveのrank変更Tooltipから、Classicでは確認できた変更者がNext移行時に意図的に落ちたため、誰が変更したかをchart上で確認できない。
+- 実装境界:
+  - 既存rank status responseのoptional `reflector_name`がstringの場合だけtrimし、page-memory model、通常LT / marker Tooltip、同内容のaria labelへ`変更者`として渡す。欠損、空文字、string以外は変更者だけを省略し、eventは維持する。
+  - 折りたたみrank履歴表の列、API request、response保存、IndexedDB / localStorage / sessionStorage、console / diagnostics、`RAU-RR-66`のrank-learning parser / schema / field allowlist、Revenue Assistant write 0は変更しない。
+- 合格条件:
+  - 変更者ありのeventは通常LTとmarker直接選択のTooltip / aria labelに変更者を表示し、変更者なしのeventは空行や`undefined`を出さない。
+  - desktop / 390pxでTooltipをviewport内へ収め、Next root overflow、console warning / error、追加network / writeを発生させない。
+  - focused / full checks、candidate artifact、Classic publication baseline、`git diff --check`を通し、対象差分だけをcommit / pushする。`D-20260810-003`に従いNext manual publication、公開artifact照合、Tampermonkey更新、通常Chrome確認まで続ける。
+- local検証:
+  - focused checkで変更者stringのtrim、欠損 / 空 / 非string省略、marker直接選択 / 通常LT hitboxのTooltip本文とaria label、変更者なしの空行0、rank-learning parserへの非保持を固定した。
+  - typecheck、lint、Next全check、fixture / candidate build、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`が通過した。local candidateは348,419 bytes、SHA-256 `65E3F9F012C67A262F541867A400ECFB72FAC5C71452BB57F70B9942F8A79203`である。
+  - 合成Browser QAではdesktop / 390pxで変更者ありのTooltip本文 / aria labelを確認し、390pxのTooltipをviewport内へ収め、Next root overflow 0、console warning / error 0だった。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260813-003`
+  - `supersedes: RAU-UX-168 reflector_name non-display only`
+
+### RAU-WC-34 Topの半年取得を段階差分へ分離する
+
+- 状態:
+  - 設計候補。runtime未変更。表示外background prefetchはYellow zoneであり、期間rangeと負荷のcount-only live gate、spec / decision確定前に実装しない。
+- 解決する問題:
+  - Topの可視範囲だけを取得し続けると、将来ある時点で半年分を必要とした際にcold startが集中する。一方、半年分を現行daily-deltaへそのまま混ぜると、通常利用1sessionでは差分が収束しない。
+- 設計方向:
+  - `visibleStayDates`は標準UI、rank badge、current-settings、可視範囲優先の正本として維持し、画面外取得は別planner / scheduler / coverageへ分ける。rank statusとbooking curveは1 GETの粒度と負荷曲線が違うため同じ拡張にしない。
+  - rank statusは可視範囲1 GETを最優先・不変にし、未取得の画面外suffixだけを可視session当たり最大1小chunkでrotateする候補とする。server-side since / cursorは未確認なので、`差分`はlocal coverageで未取得chunkを省く意味に限定し、raw responseを保存しない。31日、62日、93日、184日の順にstatus、latency、valid / invalid件数、切捨て有無だけを確認し、401 / 403 / 429、512 event超過、不正 / truncatedで追加write 0のまま停止する。
+  - booking curveはstay date × hotel / room scopeごとのGETである。184日、確認済みroom group 6件の現状例では初期task約1,555件、現行dueを毎日適用すると約1,295件/日となり、日次background実効上限168件を超える。そのため半年全scopeの日次取得は採用せず、近距離daily / 中距離weekly / 遠距離monthly、または新rank eventに関係するstay date × room groupだけのevent-driven補完を別sliceで比較する。
+- 実装前gate:
+  - 半年の定義をJSTの未来184日inclusiveなど一意に固定し、room group数に対するrequest / 4,096 source retention式、追加request / session、cadence、停止条件、rollbackをspecとdecisionへ記録する。
+  - JST月末 / 閏日 / inclusive境界、chunk overlap / dedupe、可視GET不変、追加最大1、coverage pre-skip、route / facility / as-of / hidden abort、auth / rate-limit即停止、write 0をpure / fixture testで固定する。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_003_rank_recommendation_signal.md; booking curve cadenceを変える場合はdocs/spec_001_analyze_expansion.md`
+  - `risk: yellow-zone background prefetch`
+  - `depends-on: count-only live range gate and explicit decision`
+
 ### RAU-RR-66 次回調整の期待値へ向けたrank学習coverageを作る
 
 - 状態:
@@ -826,7 +870,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage は`RAU-RR-66`を完了、Nowを通常利用によるdata蓄積と`RAU-RR-67`のfresh再集計・policy確定・backtest / fixed scenario test、Nextをそれらすべての通過後に限るcompact UI、After Nextを明示選択した一括調整のdry-run再評価`RAU-RR-65`とする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goである。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は、Nowを`RAU-UX-170`のfull gate / Next publication / installed runtime確認、Nextを`RAU-WC-34`のcount-only live range gateと、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario test、After Nextを各gate通過後に限るcompact UIと明示選択した一括調整のdry-run再評価`RAU-RR-65`とする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goである。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

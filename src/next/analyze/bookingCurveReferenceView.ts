@@ -913,8 +913,9 @@ function appendRankMarkerTooltipRows(
     }
     for (const text of [
         `ランク変更（${marker.daysBeforeStay}日前）: ${formatRankTransition(marker.beforeRankName, marker.afterRankName)}`,
-        `反映日: ${formatDate(marker.reflectedDate)}`
-    ]) {
+        `反映日: ${formatDate(marker.reflectedDate)}`,
+        marker.reflectorName === null ? null : `変更者: ${marker.reflectorName}`
+    ].filter((item): item is string => item !== null)) {
         const row = list.ownerDocument.createElement("li");
         row.textContent = text;
         list.append(row);
@@ -984,6 +985,7 @@ function buildRankMarkerAriaLabel(
         `${marker.daysBeforeStay}日前 ランク変更`,
         formatRankTransition(marker.beforeRankName, marker.afterRankName),
         `反映日 ${formatDate(marker.reflectedDate)}`,
+        marker.reflectorName === null ? null : `変更者 ${marker.reflectorName}`,
         `${formatRooms(marker.value)}室`,
         capacityRooms === null
             ? null
@@ -1007,7 +1009,11 @@ function buildTickAriaLabel(
         }),
         marker === null
             ? null
-            : `ランク変更 ${formatRankTransition(marker.beforeRankName, marker.afterRankName)} 反映日 ${formatDate(marker.reflectedDate)}`
+            : [
+                `ランク変更 ${formatRankTransition(marker.beforeRankName, marker.afterRankName)}`,
+                `反映日 ${formatDate(marker.reflectedDate)}`,
+                marker.reflectorName === null ? null : `変更者 ${marker.reflectorName}`
+            ].filter((item): item is string => item !== null).join(" ")
     ].filter((item): item is string => item !== null).join("、");
 }
 

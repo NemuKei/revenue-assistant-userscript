@@ -82,9 +82,9 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 #### Next rank marker visual / interaction parity (`RAU-UX-168`)
 
 - room scopeのrank変更は、Classicと同じく各panelのcurrent curve上へ小さな丸markerとして置く。markerはpanelのcurrent色と白い縁取りを使い、常時表示の縦破線、菱形、独立したrank凡例は置かない。選択中だけ既存のactive guideと白抜きactive pointを使って位置を示す。
-- 通常のLT hitboxがrank markerと同じ表示区間を指す場合は、current / 直近型 / 季節型のTooltipへ変更前後rankと反映日を追記する。markerを直接mouse、keyboard focus、tapで選んだ場合も同じTooltip構造を使い、LT、該当時点の室数、capacityが確認できる場合の稼働率 / 上限、変更前後rank、反映日を確認できるようにする。
+- 通常のLT hitboxがrank markerと同じ表示区間を指す場合は、current / 直近型 / 季節型のTooltipへ変更前後rank、反映日、確認できる場合の変更者を追記する。markerを直接mouse、keyboard focus、tapで選んだ場合も同じTooltip構造を使い、LT、該当時点の室数、capacityが確認できる場合の稼働率 / 上限、変更前後rank、反映日、変更者を確認できるようにする。
 - Tooltipの位置は`RAU-UX-166` / `RAU-UX-167`の補正を維持し、mouse cursorまたはkeyboard選択位置の右8pxを基準にbrowser viewportだけでclampする。Classicの中央固定配置や、実画面で右へずれた補正前のfixed座標へは戻さない。
-- `reflector_name`は個人名になり得るため、従来のNext境界どおりmodelと表示へ取り込まない。全有効eventのdetails / table、欠損markerの非推測、room ID完全一致、取得・保存・API・retention・Revenue Assistant write 0の契約は変更しない。
+- `reflector_name`は個人名になり得るため、確認済みroom eventのoptional stringだけをtrimしてpage-memory modelへ渡し、通常LT / marker Tooltipと同内容のaria labelへ`変更者`として表示する。欠損、空文字、string以外では変更者行を出さない。response、正規化event、変更者をIndexedDB、localStorage、sessionStorage、console、diagnostics、docsへ保存せず、`RAU-RR-66`のrank-learning parser / schema / field allowlistにも追加しない。折りたたみ履歴表の列、欠損markerの非推測、room ID完全一致、取得・API・retention・Revenue Assistant write 0の契約は変更しない。
 
 ### Candidate: Room-Type Booking Curve
 
@@ -525,9 +525,9 @@ Next booking curve clean-room contract (`RAU-UX-150` 第三段階A):
 Next booking curve rank-change contract (`RAU-UX-150` 第三段階B):
 
 - 2026-07-23の利用者明示承認と`D-20260723-006`に基づき、可視な標準booking curve、または可視な販売設定surface、facility label guard、`current_settings`で確認済みのroom-group scopeが揃った場合だけ、表示中stay dateに対して `GET /api/v3/lincoln/suggest/status?filter_type=stay_date&from=YYYYMMDD&to=YYYYMMDD` を使う。ホテル全体scopeだけからroom固有rankを推測しない。同じfacility + stay dateのAnalyze表示contextでは、標準booking curve runtimeと販売設定runtimeのin-flight / 結果 / 失敗をmemory共有し、両surface合算で最大1 GETとする。room切替とtab再表示で追加取得せず、自動retryしない。一方のsurface離脱だけで他方が使用中の取得をabortせず、route、stay date、facilityの変更で全consumerがresetした場合は成功 / 失敗cacheを破棄し、document visibilityの離脱で全consumerが解放した未完了取得はabortする。
-- rank取得はreference raw-cache reader、competitor writer、rank writeから分離した専用adapterが所有する。response rootの`suggest_statuses`と各eventをruntime validationし、stay date完全一致、非空`rm_room_group_id`、parse可能な`accepted_at -> completed_at -> suggest_calc_datetime`の優先timestamp、stringまたはnullの変更前後rankを満たすeventだけを採用する。選択scopeとは`rm_room_group_id`で完全一致させ、room名fallbackを使わない。同一room-group・JST反映日では最新1件、stay dateまで0〜360日のeventだけを残す。
-- response、正規化event、request / response body、HAR、Cookie、token、credentialをstorageへ保存しない。`reflector_name`はmarker判断に不要で個人名になり得るためNextのmodelと表示へ取り込まない。月・隣接日・他stay dateの取得、background prefetch、Revenue AssistantのPOST / PUT / PATCH / DELETE、自動反映、一括反映を追加しない。
-- room-group scopeのcurrent booking curveに反映日以前の直接取得値があるeventだけを、LT bucket間を線形配置したrank markerとして全体panelと選択中の個人 / 団体panelへ描く。個人値は`transient`だけを使い、`all - group`で補わない。値がないeventはchart上へ推測配置せず、テキスト履歴には残す。markerは色だけに依存しない形と補助線を持ち、mouse、keyboard focus、tapでLT、反映日、変更前後rankを確認できる。全有効eventはhover不要のdetails / tableでも確認でき、empty / invalid response / request errorをcurrent / reference不足と区別する。
+- rank取得はreference raw-cache reader、competitor writer、rank writeから分離した専用adapterが所有する。response rootの`suggest_statuses`と各eventをruntime validationし、stay date完全一致、非空`rm_room_group_id`、parse可能な`accepted_at -> completed_at -> suggest_calc_datetime`の優先timestamp、stringまたはnullの変更前後rankを満たすeventだけを採用する。optionalの`reflector_name`はstringの場合だけtrimし、欠損、null、空文字、string以外は変更者なしとして扱う。選択scopeとは`rm_room_group_id`で完全一致させ、room名fallbackを使わない。同一room-group・JST反映日では最新1件、stay dateまで0〜360日のeventだけを残す。
+- response、正規化event、request / response body、HAR、Cookie、token、credentialをstorageへ保存しない。`reflector_name`は確認済みeventのpage-memory model、通常LT / marker Tooltip、同内容のaria labelだけで使い、折りたたみ履歴表、storage、console、diagnostics、`RAU-RR-66`のrank-learning DBへ渡さない。月・隣接日・他stay dateの取得、background prefetch、Revenue AssistantのPOST / PUT / PATCH / DELETE、自動反映、一括反映を追加しない。
+- room-group scopeのcurrent booking curveに反映日以前の直接取得値があるeventだけを、LT bucket間を線形配置したrank markerとして全体panelと選択中の個人 / 団体panelへ描く。個人値は`transient`だけを使い、`all - group`で補わない。値がないeventはchart上へ推測配置せず、テキスト履歴には残す。markerは色だけに依存しない形と補助線を持ち、mouse、keyboard focus、tapでLT、反映日、変更前後rank、確認できる場合の変更者を確認できる。全有効eventはhover不要のdetails / tableでも確認でき、empty / invalid response / request errorをcurrent / reference不足と区別する。
 
 Next booking curve adjustment-response display retirement (`RAU-UX-169`):
 
