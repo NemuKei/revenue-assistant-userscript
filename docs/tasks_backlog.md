@@ -737,7 +737,7 @@
 ### RAU-UX-169 `調整後のペース`blockを廃止する
 
 - 状態:
-  - source / spec / focused / full checks / desktop・390px fixture QAまで完了し、main同期とNext manual publication待ち。利用者のUI QAにより、過去のrank変更ごとにcardが増えるblockを廃止し、booking curve上のmarker / Tooltip / 折りたたみrank履歴へ振り返りを集約する。
+  - source / spec / focused / full checks / desktop・390px fixture QA / main同期 / Next `0.2.0.23` manual publication / 公開artifact・Classic baseline照合まで完了し、Tampermonkey更新と通常Chrome受け入れ待ち。利用者のUI QAにより、過去のrank変更ごとにcardが増えるblockを廃止し、booking curve上のmarker / Tooltip / 折りたたみrank履歴へ振り返りを集約する。
 - 解決する問題:
   - event件数に比例してAnalyzeが縦へ肥大化し、直上のbooking curveで確認できる変更時点と推移を別blockで重複表示している。
   - mobileではcardが1列へ積み上がるため、現在の判断に必要なchartと操作から離れやすい。
