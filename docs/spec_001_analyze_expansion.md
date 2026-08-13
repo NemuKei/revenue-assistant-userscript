@@ -20,12 +20,16 @@ TopからAnalyzeへ進む一連のSLO、計測母集団、privacy-safe markerは
 
 販売設定はhotel scopeを先に描画し、room scopeを順番に読む。現行data sourceは各scopeのcurrent完了後にreferenceを同じ`interactive` priorityへ投入するため、hotel referenceが後続room currentより先に並ぶ場合がある。entry内のacquisition runtime、Top lens、Analyze booking curve / sales settingは別data sourceからfacility / current settings contextを確認するため、同じexact contextのGETが重なる可能性もある。同じcontext内ではpriority elevationだけを理由にactive background requestをpreemptしない一方、route / facility / as-of / visible-range context変更ではqueued / in-flightをabortする。booking curve、競合価格、90日価格推移はそれぞれ独立schedulerで動くため、active tabのforegroundを画面横断で保護するadmission controlもまだない。これらは現状認識であり、SLO達成済みの根拠にはしない。
 
+booking curveの`開始間隔 / concurrency`は、同じdue task集合をどの時間密度で開始するかを制御する。`取得対象 / due判定 / session上限 / 表示外scope`は計画task数とsession最大件数を制御する別契約である。開始間隔だけを短くしてbootstrap 800 / daily 200、interactive reserve 32、due task集合を維持する試験は、計画taskやsession cap、半年coverageを増やす変更と同一視しない。ただしroute / hidden abortまたは429 responseが返るまでの短い時間窓では、実際に開始済みとなる件数とin-flightがcontrolより増え得る。profileごとにplanned / started / aborted、開始間隔、最大同時数、HTTP status、stop reason、interactive latencyを測り、段階的に切り替える。
+
 最適化は次の順で行う。
 
 1. `RAU-PERF-20`でNextへelapsed time / count / fixed enumだけの計測を追加し、request対象、件数、開始間隔、concurrency、保存schema、表示順を変えず、Top / Analyze / 競合価格のwarm / revalidate baselineを取る。
 2. `RAU-PERF-21`で同じrequest総数と上限を維持したまま、booking curve queueを`critical-current`、`visible-current`、`selected-reference`、`visible-reference`、`background`へ分ける。明示選択したscopeのpending taskはpriorityを上げるが、同じcontextでactiveなrequestはpriority elevationだけを理由に中断しない。referenceをcurrentと同順位にせず、hotel referenceがroom currentを待たせるhead-of-line blockingを外す。
-3. `RAU-PERF-21`後もSLO未達、またはshared budgetによるinteractive停止が観測された場合だけ、`RAU-PERF-22`でactive tabのinteractive admission、background pause、boundedなcritical tokenを検討する。総request上限、scope、standard画面より多い取得を変える場合はYellow zoneとして、before / after、追加request上限、停止条件、rollbackをdecisionへ固定してから実装する。
-4. 表示範囲外の半年取得`RAU-WC-34`は、SLO baselineとforeground保護を先に通し、余力だけを使う別scheduler / cadenceとして扱う。半年coverageの完了をTop / Analyze描画のbarrierにしない。
+3. `RAU-PERF-21B`でqueue順変更と切り分けたrequest pace試験を行う。最初のcandidateは50ms以上 / concurrency 20以下とし、`RAU-PERF-21`を100ms / 30で公開・検証した同じsource revisionのcontrolに対して、理論開始rateを最大10件/秒から20件/秒へ上げる。bootstrap 800 / daily 200、background実効768 / 168、interactive reserve 32、取得対象、due判定、保存、停止条件は変えない。SLO complianceに必要な20 sampleとは分け、controlで通常利用由来のNext booking curve GETを合計50件以上、HTTP / runtime error、401 / 403 / 429、Revenue Assistant write 0で観測できれば可逆試験を開始してよい。
+4. control / 50ms candidateそれぞれで対応するTop / Analyze操作を各3 controlled run以上行い、candidateの少なくとも1つの自然な連続windowで20 request starts以上またはconcurrency 10以上、最大同時20以下、HTTP / runtime error、401 / 403 / 429、Revenue Assistant write 0、標準UIとSLO milestoneの非悪化を確認する。candidate合計50 GETだけを細切れwindowで満たした場合は採用済みとしない。これを満たしてもSLO complianceの20 sample未達cohortはprovisionalを維持する。なおrequest paceが律速である場合だけ、旧Classic warm cacheの上限だった35ms以上 / concurrency 30以下を別profileで試す。35msは旧Analyze referenceの設定ではなく、旧warm cacheの設定であり、現行Nextで十分な件数を継続観測したfresh安全証拠とは扱わない。失敗時は100ms / 30へ戻す。
+5. `RAU-PERF-21` / `RAU-PERF-21B`後もSLO未達、またはshared budgetによるinteractive停止が観測された場合だけ、`RAU-PERF-22`でactive tabのinteractive admission、background pause、boundedなcritical tokenを検討する。総request上限、scope、standard画面より多い取得を変える場合はYellow zoneとして、before / after、追加request上限、停止条件、rollbackをdecisionへ固定してから実装する。
+6. 表示範囲外の半年取得`RAU-WC-34`は、SLO baselineとforeground保護を先に通し、余力だけを使う別scheduler / cadenceとして扱う。半年coverageの完了をTop / Analyze描画のbarrierにしない。
 
 Analyzeの完了点は、route全体の「全部取得」1点へまとめない。`shell`、`overall current`、`selected room current`、`selected room reference / rank marker`、`all room summary`、`competitor cache`、`competitor fresh`を分ける。room数が多い場合も、全room summary / 未選択room referenceをhotel summaryまたは明示選択roomのbarrierにしない。partial、empty、error、auth stop、rate-limit stopをdecision-readyへ数えず、判断に必要なfieldが欠ける場合は不足理由を`explanation latency`として別計測する。exact source / room coverageはlatencyと別の分子・分母で確認する。
 
@@ -291,6 +295,7 @@ BCL-tuned first wave の定義:
 ### 負荷、停止、再開
 
 - `/api/v4/booking_curve`のrequest開始間隔は100ms以上、同時実行数は30以下とする。Revenue Assistant本体の標準requestはこのcountへ含めない。総request数はClassic seed、Next store、due判定、session上限で先に抑える。
+- 上記は現在の既定profileであり、`RAU-PERF-21B`を公開するまでは変更しない。`RAU-PERF-21B`の第一段階candidateは50ms以上 / concurrency 20以下とする。profile変更は開始密度だけに限定し、取得対象、due判定、bootstrap / daily上限、interactive reserve、保存schema / retention、停止条件を同じ変更で広げない。50ms profileのlive gateとrollback条件を満たした後もpaceが律速の場合だけ、35ms以上 / concurrency 30以下を第二段階candidateにできる。
 - coverage 80%未満のbounded bootstrapは最大800 request / session、coverage 80%以上のdaily deltaは最大200 request / sessionとする。選択中currentはqueue先頭へ上げるが、同時実行数と開始間隔を迂回しない。
 - HTTP 401はログイン確認、403は権限 / 施設確認、429はrate limitとしてqueueを即停止する。同一run内の自動retryは行わない。その他のrequest / validation / storage errorは記録して次taskへ進められるが、連続3 errorで停止する。
 - document hidden、calendar / Analyze以外へのroute変更、facility label不一致、facility / as-of変更、runtime停止では未完了requestをabortし、次の安全な可視contextで保存済みsourceから再計画する。
