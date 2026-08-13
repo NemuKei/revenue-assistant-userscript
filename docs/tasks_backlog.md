@@ -759,7 +759,7 @@
 ### RAU-UX-170 rank変更Tooltipへ変更者を戻す
 
 - 状態:
-  - source / spec実装、focused / full checks、desktop / 390px合成Browser QAまで完了。main同期、Next manual publication、Tampermonkey更新後の通常Chrome確認を同じGoal Bundleで続ける。
+  - source / spec実装、focused / full checks、desktop / 390px合成Browser QA、main同期、Next `0.2.0.24` manual publication、公開artifact / Classic baseline照合まで完了。通常Chromeはinstalled runtime `0.2.0.23`と再ログイン案内を確認したため、Tampermonkey更新とログイン後の実画面確認を残す。
 - 解決する問題:
   - 部屋タイプ別booking curveのrank変更Tooltipから、Classicでは確認できた変更者がNext移行時に意図的に落ちたため、誰が変更したかをchart上で確認できない。
 - 実装境界:
@@ -773,6 +773,7 @@
   - focused checkで変更者stringのtrim、欠損 / 空 / 非string省略、marker直接選択 / 通常LT hitboxのTooltip本文とaria label、変更者なしの空行0、rank-learning parserへの非保持を固定した。
   - typecheck、lint、Next全check、fixture / candidate build、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`が通過した。local candidateは348,419 bytes、SHA-256 `65E3F9F012C67A262F541867A400ECFB72FAC5C71452BB57F70B9942F8A79203`である。
   - 合成Browser QAではdesktop / 390pxで変更者ありのTooltip本文 / aria labelを確認し、390pxのTooltipをviewport内へ収め、Next root overflow 0、console warning / error 0だった。
+  - source `54bd92665d42f1ed4876304a8a957c6e7ce2590d`をmanual workflow run `31664684495`で公開版`0.2.0.24`へ配信した。公開Nextは348,624 bytes、SHA-256 `A8DFA5720F4EEEF8AB2CA9EFD052CECD7C383F227D006A471B61427F0EB8EDFA`、source mapは1,351,480 bytes、SHA-256 `A26926C3D941534554CB1AFFE24425B0403899FA1AF12A2ACCA77CA6E3DF2077`でmanifestと一致し、Classic固定baselineは不変だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
@@ -870,7 +871,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage は、Nowを`RAU-UX-170`のfull gate / Next publication / installed runtime確認、Nextを`RAU-WC-34`のcount-only live range gateと、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario test、After Nextを各gate通過後に限るcompact UIと明示選択した一括調整のdry-run再評価`RAU-RR-65`とする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goである。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は、Nowを`RAU-UX-170`のTampermonkey `0.2.0.24`更新 / 再ログイン後のinstalled runtime確認、Nextを`RAU-WC-34`のcount-only live range gateと、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario test、After Nextを各gate通過後に限るcompact UIと明示選択した一括調整のdry-run再評価`RAU-RR-65`とする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goである。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 
