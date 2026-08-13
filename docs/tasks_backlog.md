@@ -737,7 +737,7 @@
 ### RAU-UX-169 `調整後のペース`blockを廃止する
 
 - 状態:
-  - source / spec / focused / full checks / desktop・390px fixture QA / main同期 / Next `0.2.0.23` manual publication / 公開artifact・Classic baseline照合まで完了し、Tampermonkey更新と通常Chrome受け入れ待ち。利用者のUI QAにより、過去のrank変更ごとにcardが増えるblockを廃止し、booking curve上のmarker / Tooltip / 折りたたみrank履歴へ振り返りを集約する。
+  - 完了。source / spec / focused / full checks / desktop・390px fixture QA / main同期 / Next `0.2.0.23` manual publication / 公開artifact・Classic baseline照合 / 利用者のTampermonkey更新 / 通常Chrome受け入れまで完了した。販売設定2 room、標準booking curveのroom scope、販売設定への復帰の安定区間で、対象block 0、rank sequences追加GET 0、Revenue Assistant write 0、HTTP失敗0、runtime例外0を確認した。販売設定復帰時はcomponent 3 / panel 6 / rank marker 26 / ready rank history 2、標準booking curveはroot 1 / panel 2 / rank marker 14 / ready rank history 1で、Next overflowは各0だった。
 - 解決する問題:
   - event件数に比例してAnalyzeが縦へ肥大化し、直上のbooking curveで確認できる変更時点と推移を別blockで重複表示している。
   - mobileではcardが1列へ積み上がるため、現在の判断に必要なchartと操作から離れやすい。
@@ -759,7 +759,7 @@
 ### RAU-RR-66 次回調整の期待値へ向けたrank学習coverageを作る
 
 - 状態:
-  - Now。source / focused / full checks / main同期 / Next `0.2.0.22` manual publication / 公開artifact照合は完了し、Tampermonkey更新と通常Chrome受け入れ待ち。利用者が、部屋タイプごとの振り返りを主目的にせず、次の調整時にrankをどう変えると個人予約がどの程度変わりそうかを示す方向へ進めることを確認した。`D-20260812-003`で新規storage / retention、追加GETなし、非PII保存、no-change control停止条件をspec-firstで固定した。
+  - Now。source / focused / full checks / main同期 / Next `0.2.0.22` manual publication / 公開artifact照合は完了した。installed runtimeは後続のNext `0.2.0.23`へ更新済みだが、Top calendarにおける新DB件数・field allowlistの実値非表示確認は未実施である。利用者が、部屋タイプごとの振り返りを主目的にせず、次の調整時にrankをどう変えると個人予約がどの程度変わりそうかを示す方向へ進めることを確認した。`D-20260812-003`で新規storage / retention、追加GETなし、非PII保存、no-change control停止条件をspec-firstで固定した。
 - 解決する問題:
   - 廃止した`RAU-RR-64`のevent別表示は表示中stay dateのeventをmemory評価していたため、複数の過去調整を独立episodeとして集計できず、期待値を出せる母集団が何件あるか分からなかった。
   - 週ブロックや同時調整を宿泊日数・部屋タイプ数で水増しせず、変更日 / 3日後 / 7日後の個人予約をexactに評価できる範囲と不足理由を把握する必要がある。
