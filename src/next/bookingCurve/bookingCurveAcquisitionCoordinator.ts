@@ -28,6 +28,10 @@ import {
     createNextBookingCurveLegacySeedReader,
     type NextBookingCurveLegacySeedReader
 } from "./bookingCurveLegacySeedReader";
+import type {
+    NextPerformanceRecorder,
+    NextPerformanceStopClassification
+} from "../performance/nextPerformanceRecorder";
 
 const NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD = 0.8;
 const NEXT_BOOKING_CURVE_CONSECUTIVE_ERROR_LIMIT = 3;
@@ -64,22 +68,31 @@ export interface NextBookingCurveAcquisitionCoordinator {
         scopeKeys?: readonly string[];
         signal: AbortSignal;
         stayDate: string;
-    }): Promise<void>;
+    }): Promise<NextBookingCurveAcquisitionDiagnostics>;
     readLatest(sourceKeys: readonly string[]): Promise<NextBookingCurveSourceRecord[]>;
     startBackground(context: NextBookingCurveAcquisitionContext): Promise<void>;
     startReference(options: {
         context: NextBookingCurveAcquisitionContext;
         scopeKey: string;
         targetStayDate: string;
-    }): Promise<void>;
+    }): Promise<NextBookingCurveAcquisitionDiagnostics>;
     subscribe(listener: (state: NextBookingCurveAcquisitionState) => void): () => void;
     suspend(reason: NextBookingCurveAcquisitionStopReason): void;
     stop(): void;
 }
 
+export interface NextBookingCurveAcquisitionDiagnostics {
+    candidateTaskCount: number;
+    dueTaskCount: number;
+    outcome: "aborted" | "ready";
+}
+
 interface QueuedTask {
+    backgroundPerformanceGeneration: number | null;
     completion: Promise<void>;
+    interactivePerformanceGeneration: number | null;
     priority: "background" | "interactive";
+    performanceGeneration: number | null;
     reject: (reason?: unknown) => void;
     resolve: () => void;
     task: NextBookingCurveAcquisitionTask;
@@ -89,6 +102,7 @@ interface QueuedTask {
 export interface CreateNextBookingCurveAcquisitionCoordinatorOptions {
     legacySeedReader?: NextBookingCurveLegacySeedReader;
     now?: () => Date;
+    performanceRecorder?: NextPerformanceRecorder;
     store?: NextBookingCurveSourceStore;
     transport?: NextReadTransport;
     windowHost?: Window;
@@ -106,6 +120,8 @@ export function createNextBookingCurveAcquisitionCoordinator(
     const listeners = new Set<(state: NextBookingCurveAcquisitionState) => void>();
     const legacySeedBySourceKey = new Map<string, NextBookingCurveSourceRecord>();
     const pendingByTaskKey = new Map<string, QueuedTask>();
+    const pendingBackgroundCountByPerformanceGeneration = new Map<number, number>();
+    const invalidBackgroundSettlementGenerations = new Set<number>();
     const queue: QueuedTask[] = [];
     let state: NextBookingCurveAcquisitionState = createInitialState();
     let activeController = new AbortController();
@@ -122,7 +138,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
     return {
         async ensureCurrent({ context, scopeKeys, signal, stayDate }) {
             if (stopped || signal.aborted) {
-                return;
+                return createAcquisitionDiagnostics(0, 0, "aborted");
             }
             await ensureContext(context);
             const tasks = buildNextBookingCurveCurrentTasks({
@@ -141,6 +157,11 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 .map((task) => enqueueTask(task, "interactive"));
             await Promise.all(pending.map((promise) => raceWithAbort(promise, signal)
                 .catch(() => undefined)));
+            return createAcquisitionDiagnostics(
+                tasks.length,
+                dueTasks.length,
+                signal.aborted ? "aborted" : "ready"
+            );
         },
         async readLatest(sourceKeys) {
             const nextRecords = await safeReadLatest(sourceKeys);
@@ -160,6 +181,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
             if (stopped) {
                 return;
             }
+            const performanceGeneration = getPerformanceGeneration();
             await ensureContext(context);
             const generation = ++planningGeneration;
             state = {
@@ -202,14 +224,26 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 totalCount: state.processedCount + queue.length + activeRequestCount + dueTasks.length
             };
             for (const task of dueTasks) {
-                void enqueueTask(task, "background").catch(() => undefined);
+                void enqueueTask(task, "background", performanceGeneration).catch(() => undefined);
+            }
+            if (
+                dueTasks.length === 0
+                && (
+                    performanceGeneration === null
+                    || (
+                        !pendingBackgroundCountByPerformanceGeneration.has(performanceGeneration)
+                        && !invalidBackgroundSettlementGenerations.has(performanceGeneration)
+                    )
+                )
+            ) {
+                recordForGeneration(performanceGeneration, { event: "background-settled" });
             }
             emit();
             drain();
         },
         async startReference({ context, scopeKey, targetStayDate }) {
             if (stopped) {
-                return;
+                return createAcquisitionDiagnostics(0, 0, "aborted");
             }
             await ensureContext(context);
             const tasks = buildNextBookingCurveReferenceTasks({
@@ -238,6 +272,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 emit();
                 drain();
             }
+            return createAcquisitionDiagnostics(tasks.length, dueTasks.length, "ready");
         },
         subscribe(listener) {
             listeners.add(listener);
@@ -287,13 +322,20 @@ export function createNextBookingCurveAcquisitionCoordinator(
 
     function enqueueTask(
         task: NextBookingCurveAcquisitionTask,
-        priority: QueuedTask["priority"]
+        priority: QueuedTask["priority"],
+        performanceGenerationOverride?: number | null
     ): Promise<void> {
         const taskKey = `${task.sourceKey}|asOf:${currentContextKey?.split("|")[1] ?? ""}`;
         const pending = pendingByTaskKey.get(taskKey);
         if (pending !== undefined) {
-            if (priority === "interactive") {
+            if (
+                priority === "interactive"
+                && pending.priority === "background"
+                && queue.includes(pending)
+            ) {
                 pending.priority = "interactive";
+                pending.interactivePerformanceGeneration = getPerformanceGeneration();
+                recordInteractiveQueued(pending.interactivePerformanceGeneration, 1);
             }
             return pending.completion;
         }
@@ -303,8 +345,18 @@ export function createNextBookingCurveAcquisitionCoordinator(
             resolveTask = resolve;
             rejectTask = reject;
         });
+        const performanceGeneration = performanceGenerationOverride === undefined
+            ? getPerformanceGeneration()
+            : performanceGenerationOverride;
         const queued: QueuedTask = {
+            backgroundPerformanceGeneration: priority === "background"
+                ? performanceGeneration
+                : null,
             completion,
+            interactivePerformanceGeneration: priority === "interactive"
+                ? performanceGeneration
+                : null,
+            performanceGeneration,
             priority,
             reject: rejectTask,
             resolve: resolveTask,
@@ -313,6 +365,11 @@ export function createNextBookingCurveAcquisitionCoordinator(
         };
         pendingByTaskKey.set(taskKey, queued);
         queue.push(queued);
+        registerBackgroundTask(queued.backgroundPerformanceGeneration);
+        recordForGeneration(queued.performanceGeneration, { count: 1, event: "planned" });
+        if (priority === "interactive") {
+            recordInteractiveQueued(queued.performanceGeneration, 1);
+        }
         state = {
             ...state,
             status: "running",
@@ -364,9 +421,11 @@ export function createNextBookingCurveAcquisitionCoordinator(
             requestCount: state.requestCount + 1,
             status: "running"
         };
+        recordRequestStarted(next, activeRequestCount);
         emit();
         void runTask(next).finally(() => {
             activeRequestCount -= 1;
+            settleBackgroundTask(next.backgroundPerformanceGeneration);
             pendingByTaskKey.delete(next.taskKey);
             drain();
         });
@@ -388,7 +447,11 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 selectedIndex = index;
             }
         }
-        return selectedIndex < 0 ? null : queue.splice(selectedIndex, 1)[0] ?? null;
+        if (selectedIndex < 0) {
+            return null;
+        }
+        const selected = queue.splice(selectedIndex, 1)[0] ?? null;
+        return selected;
     }
 
     async function runTask(queued: QueuedTask): Promise<void> {
@@ -434,35 +497,53 @@ export function createNextBookingCurveAcquisitionCoordinator(
             emit();
         } catch (error: unknown) {
             if (signal.aborted || isAbortError(error)) {
+                invalidateBackgroundSettlement(queued.backgroundPerformanceGeneration);
+                recordForGeneration(getTaskActivityPerformanceGeneration(queued), {
+                    count: 1,
+                    event: "aborted"
+                });
                 queued.reject(error);
                 return;
             }
+            invalidateBackgroundSettlement(queued.backgroundPerformanceGeneration);
             state = {
                 ...state,
                 errorCount: state.errorCount + 1,
                 processedCount: state.processedCount + 1
             };
             consecutiveErrorCount += 1;
+            recordForGeneration(getTaskActivityPerformanceGeneration(queued), {
+                event: "error",
+                httpClassification: getPerformanceHttpClassification(error)
+            });
             queued.reject(error);
             emit();
             const immediateHttpStopReason = getImmediateHttpStopReason(error);
             if (immediateHttpStopReason !== null) {
-                suspendRun(immediateHttpStopReason);
+                suspendRun(immediateHttpStopReason, getTaskActivityPerformanceGeneration(queued));
                 return;
             }
             if (consecutiveErrorCount >= NEXT_BOOKING_CURVE_CONSECUTIVE_ERROR_LIMIT) {
-                suspendRun("consecutive-errors");
+                suspendRun("consecutive-errors", getTaskActivityPerformanceGeneration(queued));
             }
         }
     }
 
-    function suspendRun(reason: NextBookingCurveAcquisitionStopReason): void {
+    function suspendRun(
+        reason: NextBookingCurveAcquisitionStopReason,
+        performanceGeneration = getPerformanceGeneration()
+    ): void {
         if (drainTimer !== null) {
             windowHost.clearTimeout(drainTimer);
             drainTimer = null;
         }
+        invalidateOutstandingBackgroundSettlements();
         activeController.abort();
         abortPending(reason);
+        recordForGeneration(performanceGeneration, {
+            classification: mapStopClassification(reason),
+            event: "stopped"
+        });
         currentContextKey = null;
         state = {
             ...state,
@@ -476,7 +557,13 @@ export function createNextBookingCurveAcquisitionCoordinator(
         activeController.abort();
         const error = new DOMException(reason, "AbortError");
         for (const queued of queue.splice(0)) {
+            invalidateBackgroundSettlement(queued.backgroundPerformanceGeneration);
+            recordForGeneration(getTaskActivityPerformanceGeneration(queued), {
+                count: 1,
+                event: "aborted"
+            });
             pendingByTaskKey.delete(queued.taskKey);
+            settleBackgroundTask(queued.backgroundPerformanceGeneration);
             queued.reject(error);
         }
     }
@@ -495,6 +582,82 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 totalCount: state.processedCount
             };
             emit();
+        }
+    }
+
+    function getPerformanceGeneration(): number | null {
+        return options.performanceRecorder?.currentGeneration() ?? null;
+    }
+
+    function recordInteractiveQueued(
+        performanceGeneration: number | null,
+        count: number
+    ): void {
+        recordForGeneration(performanceGeneration, { count, event: "interactive-queued" });
+    }
+
+    function recordRequestStarted(queued: QueuedTask, concurrentRequests: number): void {
+        recordForGeneration(getTaskActivityPerformanceGeneration(queued), queued.priority === "interactive"
+            ? { activeRequestCount: concurrentRequests, event: "interactive-started" }
+            : { activeRequestCount: concurrentRequests, event: "started" });
+    }
+
+    function getTaskActivityPerformanceGeneration(queued: QueuedTask): number | null {
+        return queued.interactivePerformanceGeneration ?? queued.performanceGeneration;
+    }
+
+    function recordForGeneration(
+        performanceGeneration: number | null,
+        event: Parameters<NextPerformanceRecorder["recordScheduler"]>[1]
+    ): void {
+        if (performanceGeneration === null) {
+            return;
+        }
+        try {
+            options.performanceRecorder?.recordScheduler(performanceGeneration, event);
+        } catch {
+            // Performance instrumentation must never affect acquisition.
+        }
+    }
+
+    function registerBackgroundTask(performanceGeneration: number | null): void {
+        if (performanceGeneration === null) {
+            return;
+        }
+        pendingBackgroundCountByPerformanceGeneration.set(
+            performanceGeneration,
+            (pendingBackgroundCountByPerformanceGeneration.get(performanceGeneration) ?? 0) + 1
+        );
+    }
+
+    function settleBackgroundTask(performanceGeneration: number | null): void {
+        if (performanceGeneration === null) {
+            return;
+        }
+        const pendingCount = pendingBackgroundCountByPerformanceGeneration.get(performanceGeneration);
+        if (pendingCount === undefined) {
+            return;
+        }
+        if (pendingCount > 1) {
+            pendingBackgroundCountByPerformanceGeneration.set(performanceGeneration, pendingCount - 1);
+            return;
+        }
+        pendingBackgroundCountByPerformanceGeneration.delete(performanceGeneration);
+        if (invalidBackgroundSettlementGenerations.has(performanceGeneration)) {
+            return;
+        }
+        recordForGeneration(performanceGeneration, { event: "background-settled" });
+    }
+
+    function invalidateBackgroundSettlement(performanceGeneration: number | null): void {
+        if (performanceGeneration !== null) {
+            invalidBackgroundSettlementGenerations.add(performanceGeneration);
+        }
+    }
+
+    function invalidateOutstandingBackgroundSettlements(): void {
+        for (const performanceGeneration of pendingBackgroundCountByPerformanceGeneration.keys()) {
+            invalidBackgroundSettlementGenerations.add(performanceGeneration);
         }
     }
 
@@ -599,6 +762,58 @@ function createInitialState(): NextBookingCurveAcquisitionState {
         storedCount: 0,
         totalCount: 0
     };
+}
+
+function createAcquisitionDiagnostics(
+    candidateTaskCount: number,
+    dueTaskCount: number,
+    outcome: NextBookingCurveAcquisitionDiagnostics["outcome"]
+): NextBookingCurveAcquisitionDiagnostics {
+    return {
+        candidateTaskCount: Math.max(0, Math.trunc(candidateTaskCount)),
+        dueTaskCount: Math.max(0, Math.trunc(dueTaskCount)),
+        outcome
+    };
+}
+
+function getPerformanceHttpClassification(
+    error: unknown
+): "http-401" | "http-403" | "http-429" | "other" {
+    const stopReason = getImmediateHttpStopReason(error);
+    return stopReason === "http-401"
+        ? "http-401"
+        : stopReason === "http-403"
+            ? "http-403"
+            : stopReason === "http-429"
+                ? "http-429"
+                : "other";
+}
+
+function mapStopClassification(
+    reason: NextBookingCurveAcquisitionStopReason
+): NextPerformanceStopClassification {
+    switch (reason) {
+        case "http-401":
+            return "auth";
+        case "http-403":
+            return "permission";
+        case "http-429":
+            return "rate-limit";
+        case "budget-reached":
+            return "budget";
+        case "consecutive-errors":
+            return "consecutive-errors";
+        case "document-hidden":
+            return "hidden";
+        case "facility-context-changed":
+            return "context-changed";
+        case "inactive-route":
+            return "inactive-route";
+        case "stopped":
+            return "stopped";
+        case "aborted":
+            return "aborted";
+    }
 }
 
 function buildContextKey(context: NextBookingCurveAcquisitionContext): string {

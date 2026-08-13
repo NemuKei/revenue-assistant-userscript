@@ -73,6 +73,7 @@ const expectedSources = [
     "src/next/monthlyProgress/monthlyProgressRuntime.ts",
     "src/next/monthlyProgress/monthlyProgressStore.ts",
     "src/next/monthlyProgress/monthlyProgressView.ts",
+    "src/next/performance/nextPerformanceRecorder.ts",
     "src/next/rankLearning/rankLearningCaptureParser.ts",
     "src/next/rankLearning/rankLearningCaptureWriter.ts",
     "src/next/rankLearning/rankLearningStore.ts",
@@ -153,8 +154,10 @@ assert.match(artifactText, /data-ra-next-booking-curve-state/u);
 assert.match(artifactText, /data-ra-next-price-trend-state/u);
 assert.match(artifactText, /data-ra-next-monthly-progress-root/u);
 assert.match(artifactText, /data-ra-next-monthly-progress-state/u);
+assert.match(artifactText, /data-ra-fetch-performance-summary/u);
+assert.match(artifactText, /rau-next-performance-v1/u);
 assert.match(artifactText, /server-read-only\/local-bounded-history/u);
-assert.equal(countMatches(artifactText, /\bfetch\b/gu), 1, "Next candidate must contain one raw fetch");
+assert.equal(countMatches(artifactText, /\bfetch\s*\(/gu), 1, "Next candidate must contain one raw fetch call");
 assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");
 assert.equal(countMatches(artifactText, /\/api\/v2\/yad\/info/gu), 1);
 assert.equal(countMatches(artifactText, /\/api\/v2\/competitors/gu), 1);
@@ -188,7 +191,12 @@ assert.match(artifactText, /revenue-assistant-next-price-trends/u);
 assert.match(artifactText, /revenue-assistant-next-booking-curve-sources/u);
 assert.match(artifactText, /revenue-assistant-next-monthly-progress/u);
 assert.match(artifactText, /revenue-assistant-next-rank-learning/u);
-assert.equal(countMatches(artifactText, /\blocalStorage\b/gu), 3, "monthly preferences must be the only localStorage access");
+assert.equal(
+    countMatches(artifactText, /\blocalStorage\b/gu),
+    4,
+    "monthly preferences and the read-only performance debug flag must be the only localStorage access"
+);
+assert.equal(countMatches(artifactText, /revenue-assistant:debug:fetch-performance/gu), 1);
 assert.match(artifactText, /GET/u);
 
 for (const forbiddenPattern of [

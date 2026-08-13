@@ -112,7 +112,8 @@ export function createLiveCalendarSummaryFixtureDataSource(
         stop() {
             stopped = true;
         },
-        subscribe() {
+        subscribe(listener) {
+            listener();
             return () => undefined;
         }
     };

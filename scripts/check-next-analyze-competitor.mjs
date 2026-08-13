@@ -190,12 +190,13 @@ assert.equal(model.formatCompetitorHistoryMealType("BREAKFAST_DINNER"), "朝夕�
 assert.equal(view.formatCompetitorHistoryCaptureStatus("checking"), "本日分を確認中");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("stored"), "本日分を保存");
 assert.equal(view.formatCompetitorHistoryCaptureStatus("already-stored"), "本日分は保存済み");
-assert.match(entrySource, /startCompetitorHistoryRuntime\(document, window\)/u);
+assert.match(entrySource, /startCompetitorHistoryRuntime\(document, window, \{ performanceRecorder \}\)/u);
 assert.match(fixture, /competitor-price-tax-included-text/u);
 assert.match(fixture, /data-mock-route-away/u);
 assert.match(fixtureEntry, /resolveStayDate/u);
 assert.match(fixtureEntry, /state=|fixtureMode/u);
-assert.match(fixtureEntry, /writer: null/u);
+assert.match(fixtureEntry, /performanceRecorder/u);
+assert.match(fixtureEntry, /writer/u);
 assert.match(storeSource, /NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT = 120/u);
 assert.match(storeSource, /store\.add\(record\)/u);
 assert.match(storeSource, /store\.delete\(snapshotKey\)/u);

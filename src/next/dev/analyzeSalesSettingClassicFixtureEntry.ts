@@ -5,12 +5,16 @@ import {
     type BookingCurveRawSourceRecord
 } from "../../bookingCurveRawSourceContract";
 import {
+    getRecentWeighted90CandidateStayDates,
+    getSeasonalComponentCandidateStayDates,
     getDaysBetweenDateKeys,
+    getUtcWeekday,
     normalizeDateKey,
     shiftDate,
     toCompactDateKey,
     type BookingCurveApiResponse
 } from "../../curveCore";
+import { LEAD_TIME_BUCKET_TICKS } from "../../leadTimeBuckets";
 import type {
     BookingCurveReferenceDataLoadResult,
     BookingCurveReferenceDataSource,
@@ -21,6 +25,7 @@ import type {
     BookingCurveRankStatusLoadResult
 } from "../analyze/bookingCurveRankStatusDataSource";
 import { startSalesSettingClassicRuntime } from "../analyze/salesSettingClassicRuntime";
+import { createNextPerformanceRecorder } from "../performance/nextPerformanceRecorder";
 
 const FACILITY_ID = "yad:fixture";
 const FACILITY_LABEL = "施設A（mock）";
@@ -129,8 +134,15 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
     stop() {}
 };
 
+const performanceRecorder = createNextPerformanceRecorder({
+    documentHost: document,
+    sourceRevision: "fixture",
+    windowHost: window
+});
+
 startSalesSettingClassicRuntime(document, window, {
     dataSource,
+    performanceRecorder,
     rankStatusDataSource,
     resolveAsOfDate: () => AS_OF_DATE,
     resolveStayDate: (location) => {
@@ -171,8 +183,29 @@ function buildReadyResult(
 }
 
 function buildFixtureRecords(scope: BookingCurveReferenceScope): BookingCurveRawSourceRecord[] {
-    return ["20260812", "20260805", "20260729", "20260722"]
-        .map((stayDate) => createRawRecord(scope, stayDate));
+    const stayDate = normalizeDateKey(STAY_DATE);
+    const asOfDate = normalizeDateKey(AS_OF_DATE);
+    const weekday = stayDate === null ? null : getUtcWeekday(stayDate);
+    if (stayDate === null || asOfDate === null || weekday === null) {
+        return [];
+    }
+    const stayDates = new Set<string>([stayDate]);
+    for (const candidate of getRecentWeighted90CandidateStayDates({
+        asOfDate,
+        targetStayDate: stayDate,
+        ticks: LEAD_TIME_BUCKET_TICKS
+    })) {
+        stayDates.add(candidate);
+    }
+    for (const candidate of getSeasonalComponentCandidateStayDates({
+        targetMonth: stayDate.slice(0, 7),
+        weekday
+    })) {
+        stayDates.add(candidate);
+    }
+    return Array.from(stayDates).map((candidate) => (
+        createRawRecord(scope, toCompactDateKey(candidate) ?? candidate)
+    ));
 }
 
 function createRawRecord(

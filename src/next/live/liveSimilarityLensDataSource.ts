@@ -30,7 +30,8 @@ import {
     type NextBookingCurveAcquisitionContext
 } from "../bookingCurve/bookingCurveAcquisitionModel";
 import type {
-    NextBookingCurveAcquisitionCoordinator
+    NextBookingCurveAcquisitionCoordinator,
+    NextBookingCurveAcquisitionDiagnostics
 } from "../bookingCurve/bookingCurveAcquisitionCoordinator";
 import { buildNextBookingCurveSourceKey } from "../bookingCurve/bookingCurveSourceStore";
 import {
@@ -62,6 +63,7 @@ export type LiveSimilarityLensDataLoadResult =
         evidence: LiveSimilarityLensEvidenceViewModel;
         contextKey: string;
         facilityLabel: string;
+        acquisitionDiagnostics?: NextBookingCurveAcquisitionDiagnostics;
     }
     | { status: "error"; reason: LiveSimilarityLensDataLoadErrorReason; contextKey: string | null };
 
@@ -296,16 +298,20 @@ async function loadLiveSimilarityLensData(options: {
             facilityLabel
         };
         options.onResolvedContext?.(resolvedContext);
+        let acquisitionDiagnostics: NextBookingCurveAcquisitionDiagnostics | undefined;
         if (options.acquisition !== undefined) {
             const selectedStayDate = options.selectedStayDate === undefined
                 ? null
                 : normalizeVisibleStayDates([options.selectedStayDate])[0] ?? null;
             if (selectedStayDate !== null && options.compactDates.includes(selectedStayDate)) {
-                await options.acquisition.ensureCurrent({
+                const diagnostics = await options.acquisition.ensureCurrent({
                     context: acquisitionContext,
                     signal: options.signal,
                     stayDate: selectedStayDate
                 });
+                if (isAcquisitionDiagnostics(diagnostics)) {
+                    acquisitionDiagnostics = diagnostics;
+                }
             }
         }
 
@@ -319,7 +325,9 @@ async function loadLiveSimilarityLensData(options: {
         if (options.acquisition !== undefined && !options.signal.aborted) {
             void options.acquisition.startBackground(acquisitionContext).catch(() => undefined);
         }
-        return storedResult;
+        return storedResult.status === "ready" && acquisitionDiagnostics !== undefined
+            ? { ...storedResult, acquisitionDiagnostics }
+            : storedResult;
     } catch (error: unknown) {
         return {
             status: "error",
@@ -327,6 +335,19 @@ async function loadLiveSimilarityLensData(options: {
             contextKey: options.contextKey
         };
     }
+}
+
+function isAcquisitionDiagnostics(
+    value: unknown
+): value is NextBookingCurveAcquisitionDiagnostics {
+    return typeof value === "object"
+        && value !== null
+        && "candidateTaskCount" in value
+        && Number.isInteger(value.candidateTaskCount)
+        && "dueTaskCount" in value
+        && Number.isInteger(value.dueTaskCount)
+        && "outcome" in value
+        && (value.outcome === "ready" || value.outcome === "aborted");
 }
 
 interface LiveSimilarityLensResolvedContext {

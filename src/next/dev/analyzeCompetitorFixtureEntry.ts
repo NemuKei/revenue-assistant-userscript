@@ -4,6 +4,8 @@ import type {
     CompetitorHistoryDataSource
 } from "../analyze/competitorHistoryDataSource";
 import { startCompetitorHistoryRuntime } from "../analyze/competitorHistoryRuntime";
+import type { CompetitorHistoryWriter } from "../analyze/competitorHistoryWriter";
+import { createNextPerformanceRecorder } from "../performance/nextPerformanceRecorder";
 
 const FACILITY_ID = "yad:fixture";
 const FACILITY_LABEL = "施設A（mock）";
@@ -37,12 +39,30 @@ const dataSource: CompetitorHistoryDataSource = {
     stop() {}
 };
 
+const writer: CompetitorHistoryWriter = {
+    cancel() {},
+    async capture() {
+        await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
+        const record = records.at(-1) ?? null;
+        return record === null
+            ? { status: "skipped", reason: "no-competitors", record: null }
+            : { status: "skipped", reason: "already-stored", record };
+    },
+    stop() {}
+};
+const performanceRecorder = createNextPerformanceRecorder({
+    documentHost: document,
+    sourceRevision: "fixture",
+    windowHost: window
+});
+
 startCompetitorHistoryRuntime(document, window, {
     dataSource,
+    performanceRecorder,
     resolveStayDate: (location) => location.pathname.includes("/dev/fixtures/next-analyze-competitor/")
         ? STAY_DATE
         : null,
-    writer: null
+    writer
 });
 
 function buildFixtureRecords(dayCount: number): CompetitorPriceSnapshotRecord[] {

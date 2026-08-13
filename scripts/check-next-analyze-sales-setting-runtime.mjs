@@ -22,6 +22,7 @@ try {
     const origin = server.resolvedUrls?.local[0];
     assert.notEqual(origin, undefined, "Vite did not expose a local fixture URL");
     browser = await launchBrowser();
+    await verifyPerformanceMarkers(origin);
     await verifyRankStatusSurvivesTransientRemount(origin);
     await verifyInitialBatchStopsWithoutNativeSurface(origin);
     await verifyHiddenAndRouteTransitions(origin);
@@ -30,6 +31,49 @@ try {
 } finally {
     await browser?.close();
     await server.close();
+}
+
+async function verifyPerformanceMarkers(origin) {
+    await withFixturePage(origin, "?rank=empty", async (page) => {
+        await waitForRoot(page, "ready");
+        const surfaceSummary = await readPerformanceSummary(page);
+        assert.equal(surfaceSummary.schemaVersion, "rau-next-performance-v1");
+        assert.equal(surfaceSummary.requestProfile, "booking-curve-100ms-30");
+        assert.equal(surfaceSummary.operation, "analyze-surface");
+        assert.equal(surfaceSummary.route, "analyze");
+        assert.equal(surfaceSummary.milestones.shellPainted.outcome, "ready");
+        assert.equal(surfaceSummary.milestones.overallSettled.outcome, "ready");
+        assert.equal(surfaceSummary.milestones.allRoomSummarySettled.outcome, "ready");
+        assert.deepEqual(surfaceSummary.counts, {
+            readyRequiredRoomScopes: 2,
+            requiredRoomScopes: 2
+        });
+        assert.equal(await page.locator("[data-ra-fetch-performance-summary]").count(), 1);
+
+        await page.locator(toggleSelector).first().click();
+        await drainFixtureTasks(page);
+        const roomSummary = await readPerformanceSummary(page);
+        assert.equal(roomSummary.operation, "room-open");
+        assert.equal(roomSummary.milestones.selectedRoomCurrentSettled.outcome, "ready");
+        assert.equal(roomSummary.milestones.selectedRoomEvidenceSettled.outcome, "ready");
+        const serialized = JSON.stringify(roomSummary).toLowerCase();
+        for (const forbidden of [
+            "facilityid",
+            "staydate",
+            "roomgroupid",
+            "price",
+            "inventory",
+            "requestbody",
+            "responsebody",
+            "storagekey",
+            "cookie",
+            "token",
+            "credential",
+            "url"
+        ]) {
+            assert.equal(serialized.includes(forbidden), false, forbidden);
+        }
+    });
 }
 
 async function verifyRankStatusSurvivesTransientRemount(origin) {
@@ -201,6 +245,15 @@ async function readCount(page, name) {
         (attribute) => Number(globalThis.document.documentElement.getAttribute(attribute) ?? "0"),
         countAttribute(name)
     );
+}
+
+async function readPerformanceSummary(page) {
+    return page.evaluate(() => {
+        const text = globalThis.document.querySelector(
+            "[data-ra-fetch-performance-summary]"
+        )?.textContent ?? "";
+        return JSON.parse(text);
+    });
 }
 
 function countAttribute(name) {

@@ -769,12 +769,100 @@ assert.equal(
 );
 coordinator.stop();
 
+const performanceEvents = [];
+const performanceRequests = [];
+const performanceRecorder = {
+    beginContext() {
+        return 1;
+    },
+    currentGeneration() {
+        return 1;
+    },
+    mark() {},
+    recordScheduler(generation, event) {
+        performanceEvents.push({ generation, ...event });
+    },
+    setCohort() {},
+    snapshot() {
+        return null;
+    },
+    stop() {}
+};
+const performanceCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    performanceRecorder,
+    store: {
+        async addAndPrune() {
+            return { addedCount: 1, deletedCount: 0 };
+        },
+        async readLatestBySourceKeys() {
+            return [];
+        }
+    },
+    transport: {
+        async read(request) {
+            performanceRequests.push(request);
+            return {
+                stay_date: request.stayDate,
+                booking_curve: [{
+                    date: "2026-07-23",
+                    all: { this_year_room_sum: 5 },
+                    transient: { this_year_room_sum: 4 },
+                    group: { this_year_room_sum: 1 }
+                }]
+            };
+        }
+    },
+    windowHost: fakeWindow
+});
+const performanceDiagnostics = await performanceCoordinator.ensureCurrent({
+    context: oneScopeContext,
+    signal,
+    stayDate: "20260723"
+});
+assert.deepEqual(performanceDiagnostics, {
+    candidateTaskCount: 1,
+    dueTaskCount: 1,
+    outcome: "ready"
+});
+assert.deepEqual(performanceRequests, [{
+    kind: "booking-curve",
+    roomGroupId: null,
+    stayDate: "20260723"
+}], "instrumentation must not change the transport request");
+assert.deepEqual(
+    performanceEvents.map((event) => event.event),
+    ["planned", "interactive-queued", "interactive-started"],
+    "interactive-only work must not report a background pause or settlement"
+);
+assert.equal(performanceEvents[2].activeRequestCount, 1);
+await performanceCoordinator.startBackground({
+    ...oneScopeContext,
+    visibleStayDates: []
+});
+assert.equal(
+    performanceEvents.at(-1)?.event,
+    "background-settled",
+    "an explicitly empty background plan may report immediate settlement"
+);
+performanceCoordinator.stop();
+
 let releasePriorityRequest;
 const priorityRequestGate = new Promise((resolve) => {
     releasePriorityRequest = resolve;
 });
 const priorityRequests = [];
+const priorityPerformanceEvents = [];
+let priorityPerformanceGeneration = 1;
 const priorityCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    performanceRecorder: {
+        ...performanceRecorder,
+        currentGeneration() {
+            return priorityPerformanceGeneration;
+        },
+        recordScheduler(generation, event) {
+            priorityPerformanceEvents.push({ generation, ...event });
+        }
+    },
     store: {
         async addAndPrune() {
             return { addedCount: 1, deletedCount: 0 };
@@ -803,11 +891,17 @@ const priorityContext = {
     visibleStayDates: ["20260723"]
 };
 await priorityCoordinator.startBackground(priorityContext);
+priorityPerformanceGeneration = 2;
 await priorityCoordinator.startReference({
     context: priorityContext,
     scopeKey: "room:a",
     targetStayDate: "20260812"
 });
+assert.equal(
+    priorityPerformanceEvents.some((event) => event.event === "background-paused"),
+    false,
+    "interactive enqueue alone must not claim that background admission paused"
+);
 await new Promise((resolve) => setTimeout(resolve, 320));
 assert.equal(priorityRequests.length >= 2, true);
 assert.equal(
@@ -815,11 +909,266 @@ assert.equal(
     "a",
     "the selected room reference must run ahead of the remaining background backlog"
 );
+assert.equal(
+    priorityPerformanceEvents.some((event) => event.event === "background-paused"),
+    false,
+    "the current scheduler resumes background admission at the next slot, so it must not claim a pause"
+);
+assert.equal(
+    priorityPerformanceEvents.some((event) => event.event === "background-settled"),
+    false,
+    "interactive completion must not settle background work owned by an older generation"
+);
 priorityCoordinator.stop();
 releasePriorityRequest();
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(
+    priorityPerformanceEvents.some((event) => (
+        event.generation === 1 && event.event === "background-settled"
+    )),
+    false,
+    "stopped background work must not be reported as settled"
+);
+
+let releaseStaleBackgroundRequest;
+const staleBackgroundRequestGate = new Promise((resolve) => {
+    releaseStaleBackgroundRequest = resolve;
+});
+const stalePerformanceEvents = [];
+let stalePerformanceGeneration = 1;
+const staleRequests = [];
+const staleExistingBackgroundRecords = model.buildNextBookingCurveBackgroundTasks(oneScopeContext)
+    .filter((task) => task.role !== "current")
+    .map((task) => model.createNextBookingCurveSourceRecord({
+        asOfDate: oneScopeContext.asOfDate,
+        facilityId: oneScopeContext.facilityId,
+        fetchedAt: "2026-07-23T00:00:00.000Z",
+        response: {
+            stay_date: task.stayDate,
+            booking_curve: [{
+                date: task.stayDate,
+                all: { this_year_room_sum: 1 },
+                transient: { this_year_room_sum: 1 },
+                group: { this_year_room_sum: 0 }
+            }]
+        },
+        task
+    }));
+const staleCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    performanceRecorder: {
+        ...performanceRecorder,
+        currentGeneration() {
+            return stalePerformanceGeneration;
+        },
+        recordScheduler(generation, event) {
+            stalePerformanceEvents.push({ generation, ...event });
+        }
+    },
+    store: {
+        async addAndPrune() {
+            return { addedCount: 1, deletedCount: 0 };
+        },
+        async readLatestBySourceKeys(sourceKeys) {
+            const requested = new Set(sourceKeys);
+            return staleExistingBackgroundRecords.filter((record) => requested.has(record.sourceKey));
+        }
+    },
+    transport: {
+        async read(request) {
+            staleRequests.push(request);
+            await staleBackgroundRequestGate;
+            return {
+                stay_date: request.stayDate,
+                booking_curve: []
+            };
+        }
+    },
+    windowHost: fakeWindow
+});
+await staleCoordinator.startBackground(oneScopeContext);
+assert.deepEqual(staleRequests, [{
+    kind: "booking-curve",
+    roomGroupId: null,
+    stayDate: "20260723"
+}], "background instrumentation must not alter the first admitted request");
+stalePerformanceGeneration = 2;
+const staleCurrentPromise = staleCoordinator.ensureCurrent({
+    context: oneScopeContext,
+    scopeKeys: ["hotel"],
+    signal,
+    stayDate: "20260723"
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+releaseStaleBackgroundRequest();
+await staleCurrentPromise;
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.equal(
+    stalePerformanceEvents.some((event) => (
+        event.generation === 2 && event.event === "background-settled"
+    )),
+    false,
+    "old background completion must not be relabelled as the latest performance generation"
+);
+assert.equal(
+    stalePerformanceEvents.some((event) => (
+        event.generation === 1 && event.event === "background-settled"
+    )),
+    true,
+    "background settlement remains attributed to the generation that planned the work"
+);
+staleCoordinator.stop();
+
+let releaseGenerationRead;
+let markGenerationReadStarted;
+const generationReadGate = new Promise((resolve) => {
+    releaseGenerationRead = resolve;
+});
+const generationReadStarted = new Promise((resolve) => {
+    markGenerationReadStarted = resolve;
+});
+const generationOwnerEvents = [];
+const generationOwnerRequests = [];
+let generationOwner = 1;
+let firstGenerationRead = true;
+const generationOwnerCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    performanceRecorder: {
+        ...performanceRecorder,
+        currentGeneration() {
+            return generationOwner;
+        },
+        recordScheduler(generation, event) {
+            generationOwnerEvents.push({ generation, ...event });
+        }
+    },
+    store: {
+        async addAndPrune() {
+            return { addedCount: 1, deletedCount: 0 };
+        },
+        async readLatestBySourceKeys(sourceKeys) {
+            if (firstGenerationRead) {
+                firstGenerationRead = false;
+                markGenerationReadStarted();
+                await generationReadGate;
+            }
+            const requested = new Set(sourceKeys);
+            return staleExistingBackgroundRecords.filter((record) => requested.has(record.sourceKey));
+        }
+    },
+    transport: {
+        async read(request) {
+            generationOwnerRequests.push(request);
+            return {
+                stay_date: request.stayDate,
+                booking_curve: []
+            };
+        }
+    },
+    windowHost: fakeWindow
+});
+const generationOwnerStart = generationOwnerCoordinator.startBackground(oneScopeContext);
+await generationReadStarted;
+generationOwner = 2;
+releaseGenerationRead();
+await generationOwnerStart;
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.deepEqual(generationOwnerRequests, [{
+    kind: "booking-curve",
+    roomGroupId: null,
+    stayDate: "20260723"
+}], "generation capture must not alter the background request");
+assert.deepEqual(
+    generationOwnerEvents
+        .filter((event) => ["planned", "started", "background-settled"].includes(event.event))
+        .map((event) => ({ event: event.event, generation: event.generation })),
+    [
+        { event: "planned", generation: 1 },
+        { event: "started", generation: 1 },
+        { event: "background-settled", generation: 1 }
+    ],
+    "background scheduler events must retain the generation captured before readExisting awaits"
+);
+generationOwnerCoordinator.stop();
+
+const partialErrorContext = {
+    ...context,
+    roomScopes: roomScopes.slice(0, 2),
+    visibleStayDates: ["20260723"]
+};
+const partialErrorExistingRecords = model.buildNextBookingCurveBackgroundTasks(partialErrorContext)
+    .filter((task) => task.role !== "current")
+    .map((task) => model.createNextBookingCurveSourceRecord({
+        asOfDate: partialErrorContext.asOfDate,
+        facilityId: partialErrorContext.facilityId,
+        fetchedAt: "2026-07-23T00:00:00.000Z",
+        response: {
+            stay_date: task.stayDate,
+            booking_curve: []
+        },
+        task
+    }));
+const partialErrorEvents = [];
+const partialErrorRequests = [];
+let partialErrorState = null;
+const partialErrorCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    performanceRecorder: {
+        ...performanceRecorder,
+        recordScheduler(generation, event) {
+            partialErrorEvents.push({ generation, ...event });
+        }
+    },
+    store: {
+        async addAndPrune() {
+            return { addedCount: 1, deletedCount: 0 };
+        },
+        async readLatestBySourceKeys(sourceKeys) {
+            const requested = new Set(sourceKeys);
+            return partialErrorExistingRecords.filter((record) => requested.has(record.sourceKey));
+        }
+    },
+    transport: {
+        async read(request) {
+            partialErrorRequests.push(request);
+            if (partialErrorRequests.length === 1) {
+                throw new Error("synthetic-network-error");
+            }
+            return {
+                stay_date: request.stayDate,
+                booking_curve: []
+            };
+        }
+    },
+    windowHost: fakeWindow
+});
+partialErrorCoordinator.subscribe((nextState) => {
+    partialErrorState = { ...nextState };
+});
+await partialErrorCoordinator.startBackground(partialErrorContext);
+for (let attempt = 0; attempt < 40 && partialErrorState?.status !== "complete"; attempt += 1) {
+    await new Promise((resolve) => setTimeout(resolve, 25));
+}
+assert.equal(partialErrorState?.status, "complete", "one non-terminal error must allow remaining work to drain");
+assert.equal(partialErrorState?.errorCount, 1);
+assert.deepEqual(
+    partialErrorRequests.map((request) => request.roomGroupId),
+    [null, "a"],
+    "performance invalidation must not alter request order or count"
+);
+assert.equal(
+    partialErrorEvents.some((event) => event.event === "background-settled"),
+    false,
+    "a background generation with any non-abort error must not be reported as settled"
+);
+partialErrorCoordinator.stop();
 
 const rateLimitedStates = [];
+const rateLimitedPerformanceEvents = [];
 const rateLimitedCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    performanceRecorder: {
+        ...performanceRecorder,
+        recordScheduler(generation, event) {
+            rateLimitedPerformanceEvents.push({ generation, ...event });
+        }
+    },
     store: {
         async addAndPrune() {
             throw new Error("must not store after 429");
@@ -838,14 +1187,30 @@ const rateLimitedCoordinator = coordinatorModule.createNextBookingCurveAcquisiti
 rateLimitedCoordinator.subscribe((state) => {
     rateLimitedStates.push({ ...state });
 });
-await rateLimitedCoordinator.ensureCurrent({
-    context: oneScopeContext,
-    signal,
-    stayDate: "20260723"
-});
+await rateLimitedCoordinator.startBackground(oneScopeContext);
+await new Promise((resolve) => setTimeout(resolve, 0));
 assert.equal(rateLimitedStates.at(-1).status, "stopped");
 assert.equal(rateLimitedStates.at(-1).stopReason, "http-429");
 assert.equal(rateLimitedStates.at(-1).requestCount, 1, "429 must stop without an automatic retry");
+assert.equal(
+    rateLimitedPerformanceEvents.some((event) => (
+        event.event === "error" && event.httpClassification === "http-429"
+    )),
+    true,
+    "429 must use the fixed HTTP classification"
+);
+assert.equal(
+    rateLimitedPerformanceEvents.some((event) => (
+        event.event === "stopped" && event.classification === "rate-limit"
+    )),
+    true,
+    "429 stop must use the fixed stop classification"
+);
+assert.equal(
+    rateLimitedPerformanceEvents.some((event) => event.event === "background-settled"),
+    false,
+    "HTTP-stopped background work must not be reported as settled"
+);
 rateLimitedCoordinator.stop();
 
 function buildClassicRawSourceRecord(options) {

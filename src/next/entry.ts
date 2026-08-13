@@ -16,6 +16,7 @@ import { createLiveCalendarSummaryDataSource } from "./live/liveCalendarSummaryD
 import { startNextMonthlyProgressRuntime } from "./monthlyProgress/monthlyProgressRuntime";
 import { createBookingCurveRankReadCoordinator } from "./analyze/bookingCurveRankReadCoordinator";
 import { createRankLearningCaptureWriter } from "./rankLearning/rankLearningCaptureWriter";
+import { createNextPerformanceRecorder } from "./performance/nextPerformanceRecorder";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -45,7 +46,15 @@ if (!runtimeResult.started) {
 
 function startNextCandidateRuntime(): void {
     document.documentElement.setAttribute(NEXT_RUNTIME_VERSION_ATTRIBUTE, SCRIPT_VERSION);
-    const bookingCurveAcquisition = createNextBookingCurveAcquisitionCoordinator({ windowHost: window });
+    const performanceRecorder = createNextPerformanceRecorder({
+        documentHost: document,
+        sourceRevision: SCRIPT_VERSION,
+        windowHost: window
+    });
+    const bookingCurveAcquisition = createNextBookingCurveAcquisitionCoordinator({
+        performanceRecorder,
+        windowHost: window
+    });
     const rankLearningCaptureWriter = createRankLearningCaptureWriter({ windowHost: window });
     const liveCalendarSummary = createLiveCalendarSummaryDataSource({
         acquisition: bookingCurveAcquisition,
@@ -62,9 +71,10 @@ function startNextCandidateRuntime(): void {
             acquisition: bookingCurveAcquisition,
             documentHost: document,
             windowHost: window
-        })
+        }),
+        performanceRecorder
     });
-    startCompetitorHistoryRuntime(document, window);
+    startCompetitorHistoryRuntime(document, window, { performanceRecorder });
     startBookingCurveReferenceRuntime(document, window, {
         dataSource: createBookingCurveReferenceDataSource({
             acquisition: bookingCurveAcquisition,
@@ -79,6 +89,7 @@ function startNextCandidateRuntime(): void {
             documentHost: document,
             windowHost: window
         }),
+        performanceRecorder,
         rankStatusDataSource: salesSettingRankReads.rankStatusDataSource
     });
     startPriceTrendComparisonRuntime(document, window);

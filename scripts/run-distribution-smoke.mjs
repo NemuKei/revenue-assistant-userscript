@@ -1044,11 +1044,22 @@ function collectModeMetricsInPage(selectedMode) {
                 return null;
             }
         })();
+        const nextPerformanceSummary = fetchPerformanceSummary?.schemaVersion === "rau-next-performance-v1"
+            && fetchPerformanceSummary?.requestProfile === "booking-curve-100ms-30"
+            && typeof fetchPerformanceSummary?.sourceRevision === "string"
+            && fetchPerformanceSummary?.milestones !== null
+            && typeof fetchPerformanceSummary?.milestones === "object"
+            ? fetchPerformanceSummary
+            : null;
         const commonPageDiagnostics = () => ({
             "page title": doc.title || "none",
             "login form candidate": doc.querySelector("input[type=\"password\"], form[action*=\"login\" i], [data-testid*=\"login\" i]") !== null ? "yes" : "no",
             "calendar candidate": doc.querySelector("[data-testid*=\"calendar\" i], [class*=\"calendar\" i], a[href^=\"/analyze/\"], a[href*=\"/analyze/\"]") !== null ? "yes" : "no",
             "RAU userscript root": doc.querySelector("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-analyze-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]") !== null ? "yes" : "no",
+            "Next performance marker": nextPerformanceSummary === null ? "no" : "yes",
+            "Next performance operation": nextPerformanceSummary?.operation ?? "n/a",
+            "Next performance route": nextPerformanceSummary?.route ?? "n/a",
+            "Next performance schema": nextPerformanceSummary?.schemaVersion ?? "n/a",
             "RAU userscript root count": doc.querySelectorAll("[data-ra-rank-recommendation-list], [data-ra-rank-recommendation-analyze-list], [data-ra-rank-recommendation-react-island], [data-ra-rank-recommendation-react-island-host]").length,
             "React marker mounted": doc.querySelector("[data-ra-rank-recommendation-react-island=\"mounted\"]") !== null ? "yes" : "no"
         });
@@ -1122,6 +1133,7 @@ function collectModeMetricsInPage(selectedMode) {
             const rowCount = doc.querySelectorAll("[data-ra-rank-recommendation-analyze-row]").length;
             const emptyCount = doc.querySelectorAll("[data-ra-rank-recommendation-analyze-empty]").length;
             const bookingCurveMetrics = fetchPerformanceSummary?.bookingCurve ?? {};
+            const nextMilestones = nextPerformanceSummary?.milestones ?? {};
             const writeButtonCount = doc.querySelectorAll(
                 "[data-ra-rank-recommendation-analyze-list] [data-ra-rank-recommendation-button-action=\"rank-change-submit\"],"
                 + "[data-ra-rank-recommendation-analyze-list] [data-ra-rank-recommendation-button-action=\"rank-change-preview-toggle\"],"
@@ -1142,8 +1154,12 @@ function collectModeMetricsInPage(selectedMode) {
                 "Analyze sales setting booking curve svg count": doc.querySelectorAll("[data-ra-sales-setting-booking-curve-panel-svg]").length,
                 "Analyze sales setting booking curve toggle count": doc.querySelectorAll("[data-ra-sales-setting-booking-curve-toggle-button]").length,
                 "Analyze reference performance marker": fetchPerformanceSummary === null ? "no" : "yes",
-                "Analyze reference first line painted": bookingCurveMetrics.referenceInteractiveFirstLinePaintedAt == null ? "no" : "yes",
-                "Analyze reference all lines painted": bookingCurveMetrics.referenceInteractiveAllLinesPaintedAt == null ? "no" : "yes",
+                "Analyze reference first line painted": bookingCurveMetrics.referenceInteractiveFirstLinePaintedAt != null
+                    || nextMilestones.overallSettled?.outcome === "ready"
+                    || nextMilestones.selectedRoomCurrentSettled?.outcome === "ready" ? "yes" : "no",
+                "Analyze reference all lines painted": bookingCurveMetrics.referenceInteractiveAllLinesPaintedAt != null
+                    || nextMilestones.allRoomSummarySettled?.outcome === "ready"
+                    || nextMilestones.selectedRoomEvidenceSettled?.outcome === "ready" ? "yes" : "no",
                 "Analyze reference interactive wait ms": bookingCurveMetrics.referenceInteractiveWaitMs ?? "n/a",
                 "Analyze reference max concurrent requests": bookingCurveMetrics.referenceInteractiveMaxConcurrentRequests ?? "n/a",
                 "Analyze reference min start interval ms": bookingCurveMetrics.referenceInteractiveMinStartIntervalMs ?? "n/a"

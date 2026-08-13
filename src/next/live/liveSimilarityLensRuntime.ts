@@ -29,10 +29,16 @@ import type {
     LiveSimilarityLensEvidenceLoadState,
     LiveSimilarityLensReadyViewModel
 } from "./liveSimilarityLensViewModel";
+import type {
+    NextPerformanceRecorder,
+    NextPerformanceSource
+} from "../performance/nextPerformanceRecorder";
 import {
     createLiveSimilarityLensRoot,
     ensureLiveSimilarityLensStyles,
     LIVE_SIMILARITY_LENS_ANALYZE_TRIGGER_ATTRIBUTE,
+    LIVE_SIMILARITY_LENS_CALENDAR_GROUP_BADGE_ATTRIBUTE,
+    LIVE_SIMILARITY_LENS_CALENDAR_LAST_CHANGE_ATTRIBUTE,
     LIVE_SIMILARITY_LENS_INSTRUCTION_ID,
     LIVE_SIMILARITY_LENS_ROOT_ATTRIBUTE,
     removeLiveSimilarityLensArtifacts,
@@ -53,6 +59,7 @@ export interface StartLiveSimilarityLensRuntimeOptions {
     calendarSummary?: LiveCalendarSummaryDataSource;
     dataSource?: LiveSimilarityLensDataSource;
     isCalendarRoute?: (location: Location) => boolean;
+    performanceRecorder?: NextPerformanceRecorder;
 }
 
 export function isLiveSimilarityLensCalendarRoute(pathname: string): boolean {
@@ -92,6 +99,12 @@ export function startLiveSimilarityLensRuntime(
     let pendingRoomGroupFocusAnchor: HTMLAnchorElement | null = null;
     let activeFacilityLabel: string | null = null;
     let routeSuspended = false;
+    let calendarSummaryRevision = 0;
+    let performanceCalendarSummaryRevision = 0;
+    let performanceContextSequence = 0;
+    let performanceGeneration: number | null = null;
+    let performanceOperation: "top-base-decision" | "top-route" | null = null;
+    let baseDecisionSource: NextPerformanceSource = "mixed";
     let calendarSummarySnapshot: LiveCalendarSummarySnapshot = options.calendarSummary?.getSnapshot()
         ?? createIdleLiveCalendarSummarySnapshot();
     let disclosureState: LiveSimilarityLensDisclosureState = {
@@ -117,6 +130,7 @@ export function startLiveSimilarityLensRuntime(
     const unsubscribeDataSource = dataSource.subscribe?.(scheduleEvidenceRefresh)
         ?? (() => undefined);
     const unsubscribeCalendarSummary = options.calendarSummary?.subscribe(() => {
+        calendarSummaryRevision += 1;
         calendarSummarySnapshot = options.calendarSummary?.getSnapshot()
             ?? createIdleLiveCalendarSummarySnapshot();
         scheduleReconcile();
@@ -197,6 +211,7 @@ export function startLiveSimilarityLensRuntime(
 
         const result = collectLiveCalendarDom(documentHost);
         if (!result.ok) {
+            clearPerformanceContext();
             const invalidated = invalidateLiveSimilarityLensRuntimeSelection(evidenceGeneration);
             state = invalidated.state;
             evidenceState = invalidated.evidenceState;
@@ -222,10 +237,19 @@ export function startLiveSimilarityLensRuntime(
 
         const previousSnapshot = snapshot;
         const previousFingerprint = previousSnapshot?.dateFingerprint ?? null;
-        snapshot = result.snapshot;
+        const nextSnapshot = result.snapshot;
         let stateChanged = false;
         const facilityContextChanged = previousSnapshot !== null
-            && previousSnapshot.calendarStrip !== snapshot.calendarStrip;
+            && previousSnapshot.calendarStrip !== nextSnapshot.calendarStrip;
+        snapshot = nextSnapshot;
+        if (
+            performanceGeneration === null
+            || previousSnapshot === null
+            || facilityContextChanged
+            || (previousFingerprint !== null && previousFingerprint !== snapshot.dateFingerprint)
+        ) {
+            beginTopPerformanceContext("top-route", previousSnapshot === null);
+        }
         const activeFacilityContextMissing = activeFacilityLabel !== null
             && !hasLiveFacilityContextLabel(snapshot.facilityContextHints, activeFacilityLabel);
         if (
@@ -277,6 +301,7 @@ export function startLiveSimilarityLensRuntime(
             calendarSummarySnapshot.latestChanges
         );
         syncSelectedBaseFocusability();
+        recordTopRoutePerformance();
         documentHost.documentElement.setAttribute(NEXT_LIVE_STATE_ATTRIBUTE, "mounted-read-only");
     }
 
@@ -290,7 +315,190 @@ export function startLiveSimilarityLensRuntime(
         }, 0);
     }
 
+    function beginTopPerformanceContext(
+        operation: "top-base-decision" | "top-route",
+        acceptCurrentCalendarSummary = false
+    ): void {
+        const recorder = options.performanceRecorder;
+        if (recorder === undefined) {
+            performanceGeneration = null;
+            performanceOperation = operation;
+            return;
+        }
+        performanceContextSequence += 1;
+        performanceGeneration = recorder.beginContext({
+            contextToken: String(performanceContextSequence),
+            operation,
+            route: "top"
+        });
+        performanceOperation = operation;
+        performanceCalendarSummaryRevision = acceptCurrentCalendarSummary
+            && calendarSummarySnapshot.contextKey !== null
+            ? calendarSummaryRevision - 1
+            : calendarSummaryRevision;
+        recorder.mark(performanceGeneration, {
+            name: "routeObserved",
+            outcome: "ready",
+            source: "none"
+        });
+    }
+
+    function recordTopRoutePerformance(): void {
+        const recorder = options.performanceRecorder;
+        const generation = performanceGeneration;
+        if (
+            recorder === undefined
+            || generation === null
+            || performanceOperation !== "top-route"
+            || snapshot === null
+        ) {
+            return;
+        }
+        recorder.mark(generation, {
+            name: "shellPainted",
+            outcome: "ready",
+            source: "none"
+        });
+        if (calendarSummaryRevision <= performanceCalendarSummaryRevision) {
+            return;
+        }
+        const eligibleVisibleDates = snapshot.cells.length;
+        if (
+            eligibleVisibleDates > 0
+            && calendarSummarySnapshot.contextKey !== null
+            && calendarSummarySnapshot.calendarGroups.length === eligibleVisibleDates
+        ) {
+            const validGroups = calendarSummarySnapshot.calendarGroups.filter(
+                (group) => group.groupCurve.status === "ready"
+            );
+            const renderedExactGroupDates = snapshot.cells.filter((cell) => (
+                cell.anchor.querySelector(
+                    `:scope > [${LIVE_SIMILARITY_LENS_CALENDAR_GROUP_BADGE_ATTRIBUTE}]`
+                ) !== null
+            )).length;
+            const allFresh = validGroups.length > 0 && validGroups.every((group) => (
+                group.groupCurve.status === "ready"
+                && group.groupCurve.value.source.freshnessDays === 0
+            ));
+            recorder.mark(generation, {
+                counts: {
+                    eligibleVisibleDates,
+                    renderedExactGroupDates,
+                    validExactGroupSourceDates: validGroups.length
+                },
+                freshness: validGroups.length === 0
+                    ? "unknown"
+                    : allFresh ? "fresh" : "stale-revalidating",
+                name: "cachedGroupSettled",
+                outcome: validGroups.length === eligibleVisibleDates
+                    && renderedExactGroupDates === validGroups.length
+                    ? "ready"
+                    : "partial",
+                source: "cache"
+            });
+        }
+        if (calendarSummarySnapshot.rankStatus === "ready") {
+            const validRankEventDates = new Set(
+                calendarSummarySnapshot.latestChanges.map((change) => change.stayDate)
+            ).size;
+            const renderedRankEventDates = snapshot.cells.filter((cell) => (
+                cell.anchor.querySelector(
+                    `:scope > [${LIVE_SIMILARITY_LENS_CALENDAR_LAST_CHANGE_ATTRIBUTE}]`
+                ) !== null
+            )).length;
+            recorder.mark(generation, {
+                counts: {
+                    renderedRankEventDates,
+                    validRankEventDates
+                },
+                freshness: "fresh",
+                name: "rankSettled",
+                outcome: validRankEventDates === 0
+                    ? "empty"
+                    : renderedRankEventDates === validRankEventDates ? "ready" : "partial",
+                source: "network"
+            });
+        } else if (calendarSummarySnapshot.rankStatus === "error") {
+            recorder.mark(generation, {
+                name: "rankSettled",
+                outcome: calendarSummarySnapshot.rankStatusError === "aborted" ? "aborted" : "error",
+                source: "network"
+            });
+        }
+    }
+
+    function recordBaseDecisionPerformance(): void {
+        const recorder = options.performanceRecorder;
+        const generation = performanceGeneration;
+        if (
+            recorder === undefined
+            || generation === null
+            || performanceOperation !== "top-base-decision"
+        ) {
+            return;
+        }
+        if (evidenceState.status === "error") {
+            recorder.mark(generation, {
+                name: "baseDecisionSettled",
+                outcome: evidenceState.reason === "aborted" ? "aborted" : "error",
+                source: "network"
+            });
+            return;
+        }
+        if (evidenceState.status !== "ready" || readyViewModel === null) {
+            return;
+        }
+        if (readyViewModel.roomGroups.length === 0) {
+            recorder.mark(generation, {
+                freshness: "unknown",
+                name: "baseDecisionSettled",
+                outcome: "partial",
+                source: baseDecisionSource
+            });
+            return;
+        }
+        const baseEvidence = readyViewModel.baseEvidence;
+        if (state.selectedRoomGroupId === null || baseEvidence === null) {
+            return;
+        }
+        const evidenceValues = [
+            baseEvidence.onHand,
+            baseEvidence.transientCurve,
+            baseEvidence.groupCurve
+        ];
+        if (evidenceValues.some((value) => value.status === "error" || value.status === "unavailable")) {
+            recorder.mark(generation, {
+                freshness: "unknown",
+                name: "baseDecisionSettled",
+                outcome: "partial",
+                source: baseDecisionSource
+            });
+            return;
+        }
+        const baseReady = evidenceValues.every((value) => value.status === "ready");
+        const coverageComplete = readyViewModel.totalDayCount > 0
+            && readyViewModel.comparableDayCount === readyViewModel.totalDayCount;
+        if (!baseReady || !coverageComplete) {
+            return;
+        }
+        const curveFresh = baseEvidence.transientCurve.status === "ready"
+            && baseEvidence.groupCurve.status === "ready"
+            && baseEvidence.transientCurve.value.source.freshnessDays === 0
+            && baseEvidence.groupCurve.value.source.freshnessDays === 0;
+        recorder.mark(generation, {
+            freshness: curveFresh ? "fresh" : "stale-revalidating",
+            name: "baseDecisionSettled",
+            outcome: readyViewModel.matches.length === 0 ? "empty" : "ready",
+            source: baseDecisionSource
+        });
+    }
+
+    function generationForPerformance(): number {
+        return performanceGeneration ?? -1;
+    }
+
     function suspendForInactiveRoute(): void {
+        clearPerformanceContext();
         if (!routeSuspended) {
             const invalidated = invalidateLiveSimilarityLensRuntimeSelection(evidenceGeneration);
             state = invalidated.state;
@@ -500,6 +708,11 @@ export function startLiveSimilarityLensRuntime(
             calendarSummarySnapshot.latestChanges
         );
         syncSelectedBaseFocusability();
+        if (performanceOperation === "top-route") {
+            recordTopRoutePerformance();
+        } else {
+            recordBaseDecisionPerformance();
+        }
     }
 
     function selectBaseDate(
@@ -507,6 +720,7 @@ export function startLiveSimilarityLensRuntime(
         stayDate: string,
         focusRoomGroupWhenReady: boolean
     ): void {
+        beginTopPerformanceContext("top-base-decision");
         dateAnchor.focus({ preventScroll: true });
         state = selectLiveSimilarityLensBaseDate(state, stayDate);
         evidenceState = { status: "loading" };
@@ -554,6 +768,15 @@ export function startLiveSimilarityLensRuntime(
                 return;
             }
             activeFacilityLabel = result.status === "ready" ? result.facilityLabel : null;
+            if (result.status === "ready") {
+                const dueTaskCount = result.acquisitionDiagnostics?.dueTaskCount;
+                baseDecisionSource = "mixed";
+                options.performanceRecorder?.setCohort(generationForPerformance(), {
+                    warmth: dueTaskCount === undefined
+                        ? "unknown"
+                        : dueTaskCount === 0 ? "warm" : "revalidate"
+                });
+            }
             evidenceState = result.status === "ready"
                 ? { status: "ready", evidence: result.evidence, contextKey: result.contextKey }
                 : { status: "error", reason: result.reason };
@@ -738,6 +961,7 @@ export function startLiveSimilarityLensRuntime(
             return;
         }
         stopped = true;
+        clearPerformanceContext();
         evidenceGeneration += 1;
         unsubscribeDataSource();
         unsubscribeCalendarSummary();
@@ -762,6 +986,14 @@ export function startLiveSimilarityLensRuntime(
         pendingRoomGroupFocus = false;
         pendingRoomGroupFocusAnchor = null;
         activeFacilityLabel = null;
+    }
+
+    function clearPerformanceContext(): void {
+        if (performanceGeneration !== null) {
+            options.performanceRecorder?.clear(performanceGeneration);
+        }
+        performanceGeneration = null;
+        performanceOperation = null;
     }
 
     function getCalendarGroups() {

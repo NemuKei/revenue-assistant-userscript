@@ -48,6 +48,8 @@ npm run check
 - `npm run dev:next:fixture`: Next の類似度モデル、実画面接続shell、Analyze競合履歴 / booking curve / 価格推移、月次実績の合成fixtureを `http://127.0.0.1:5173/dev/fixtures/` 以下でpreview
 - `npm run build:next:fixture`: Next の基準日レンズ / Analyze競合履歴 / booking curve / 価格推移 / 月次実績fixtureを `.tmp/vite-next-fixture/` に生成
 - `npm run check:next`: Next の型、lint、runtime lease、calendar rank-learning capture / 3日・7日coverage、live shell、Analyze parity / 競合履歴 / booking curve / 価格推移、月次実績、類似度model、live evidence、data source、GET allowlist、readonly owner / bounded writer owner、artifact metadata、candidate / fixture buildをまとめて確認。DOM interactionとログイン済み実画面の取得結果はBrowser QAで別途確認する
+- `npm run collect:next-performance`: stdinのNext performance marker配列またはJSON Linesを、source revision / schema / request profile / route / warm・revalidate / room数band別に集計する。履歴は保存せず、20件未満は`provisional`のまま出力する
+- `npm run collect:next-performance:live -- --seconds 300`: CDP port 9222のRevenue Assistant tabからsingle-run markerを明示した時間だけprocess memoryへ集め、p95 / median / max / coverage / 除外理由をsanitized出力する。userscript storageやrepo fileへ書き込まない
 - `npm run check:classic-publication`: Classicの公開baseline manifest、workflow allowlist、公開権限もdeploy処理も持たないverify-only workflowの完全一致をoffline検査。`-- --live` を付けると公開URLのmetadata、bytes、SHA-256とGitHub Actions run provenanceも照合する
 - `npm run build:compare:vite`: 正規 `dist` と Vite candidate の userscript metadata、size、entry line を比較
 - `npm run check:fixture-markers`: Revenue Assistant 認証、Tampermonkey、通常 Chrome profile を使わず、fixture の合成 data だけで top のカレンダー連携型判断 workspace の主要 UI marker を確認
@@ -94,6 +96,12 @@ git diff --check
 ```
 
 `npm run check` は repo 全体の typecheck / lint の後に Classic artifact を build します。`npm run check:next` も repo 全体の typecheck / lint を通し、続けて Next 専用の runtime lease、類似度 model、artifact metadata、candidate / fixture build を確認します。
+
+Nextのlive performance baselineは、markerを含む公開版へTampermonkeyを更新し、再ログインした後だけ開始します。`npm run chrome:debug:default-profile:resume`でCDP port 9222を有効にし、次のcollector実行中にTop、基準日選択、Analyze販売設定、room open、競合価格を通常操作します。collectorは同じpage runで上書きされるmarkerをprocess memory内だけで保持し、施設、宿泊日、部屋、価格、在庫、request / responseを出力しません。cache削除や強制全件取得でsampleを作らず、自然に発生したwarm / revalidateを分け、20件未満は達成判定へ使いません。
+
+```powershell
+npm run collect:next-performance:live -- --seconds 300
+```
 
 React component、React mount、React state 管理を追加または変更した場合は、`npm run check` に加えて `npm run react:doctor -- --scope full` を実行します。`react-doctor` は `devDependency` として `0.7.8` に固定し、lockfile に記録しています。package scriptは `--blocking none` とし、exit code 0をdiagnostic 0件の意味に読み替えません。出力は仮説として対象codeを確認し、今回scope外の既存診断を自動修正しません。`@latest` を指定した `npx react-doctor@latest`、global install、lockfile を更新しない一時実行は使いません。更新する場合は、npm registry の version、license、repository、dependencies、bin、lifecycle script、lockfile 差分、`npm audit`、repo-local 実行結果を確認してから行います。`npm install` や `npm run react:doctor` が Node engine、install script、未確認依存、network、権限のいずれかで失敗する場合は、その回の React 診断は停止し、`npm run check` と通常 Chrome smoke を代替 verify として記録します。
 

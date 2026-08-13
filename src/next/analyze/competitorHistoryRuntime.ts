@@ -32,6 +32,11 @@ import {
     type CompetitorHistoryCaptureStatus,
     type CompetitorHistoryRenderState
 } from "./competitorHistoryView";
+import type {
+    NextPerformanceOutcome,
+    NextPerformanceRecorder,
+    NextPerformanceSource
+} from "../performance/nextPerformanceRecorder";
 
 const NEXT_ANALYZE_STATE_ATTRIBUTE = "data-ra-next-analyze-state";
 const COMPETITOR_PRICE_NATIVE_CONTEXT_SELECTOR = '[data-testid="competitor-price-tax-included-text"]';
@@ -59,6 +64,7 @@ export interface StartCompetitorHistoryRuntimeOptions {
     dataSource?: CompetitorHistoryDataSource;
     resolveStayDate?: (location: Location) => string | null;
     writer?: CompetitorHistoryWriter | null;
+    performanceRecorder?: NextPerformanceRecorder;
 }
 
 interface CompetitorHistoryRuntimeContext {
@@ -101,6 +107,8 @@ export function startCompetitorHistoryRuntime(
     let scheduledReconcileTimer: number | null = null;
     let narrow = windowHost.innerWidth <= 680;
     let stopped = false;
+    let performanceContextSequence = 0;
+    let performanceGeneration: number | null = null;
 
     const dataSource = options.dataSource ?? createCompetitorHistoryDataSource({ windowHost });
     const writer = options.writer === null
@@ -166,6 +174,9 @@ export function startCompetitorHistoryRuntime(
             documentHost.documentElement.setAttribute(NEXT_ANALYZE_STATE_ATTRIBUTE, "waiting-native-competitor-tab");
             return;
         }
+        if (performanceGeneration === null) {
+            beginCompetitorPerformance();
+        }
         const mounted = ensureMountedRoot(target);
         if (state.status === "idle") {
             startLoad(stayDate);
@@ -173,6 +184,7 @@ export function startCompetitorHistoryRuntime(
             renderCurrentState();
         }
         maybeStartCapture();
+        markCompetitorShell();
     }
 
     function resetForStayDate(stayDate: string): void {
@@ -187,6 +199,7 @@ export function startCompetitorHistoryRuntime(
         state = { status: "idle" };
         filters = { mealType: null, roomType: null };
         selectedGuestCount = 2;
+        clearPerformanceContext();
         removeMountedRoot();
     }
 
@@ -194,6 +207,7 @@ export function startCompetitorHistoryRuntime(
         const generation = ++loadGeneration;
         state = { status: "loading", stayDate };
         renderCurrentState();
+        markCompetitorShell();
         void dataSource.load(stayDate).then((result) => {
             if (stopped || generation !== loadGeneration || activeStayDate !== stayDate) {
                 return;
@@ -210,6 +224,7 @@ export function startCompetitorHistoryRuntime(
             activeContext = null;
             state = { status: "error", stayDate, reason: result.reason };
             renderCurrentState();
+            markCompetitorCache("error", "network");
             return;
         }
         const facilityHints = readLiveFacilityContextHints(documentHost);
@@ -221,6 +236,7 @@ export function startCompetitorHistoryRuntime(
                 NEXT_ANALYZE_STATE_ATTRIBUTE,
                 "suspended-facility-context-mismatch"
             );
+            markCompetitorCache("error", "network");
             return;
         }
         activeContext = {
@@ -232,10 +248,18 @@ export function startCompetitorHistoryRuntime(
         if (result.status === "missing" || result.status === "unavailable") {
             state = { status: "empty", stayDate, reason: result.reason };
             renderCurrentState();
+            options.performanceRecorder?.setCohort(performanceGeneration ?? -1, {
+                warmth: "revalidate"
+            });
+            markCompetitorCache("partial");
             maybeStartCapture();
             return;
         }
         rebuildStateFromActiveContext();
+        options.performanceRecorder?.setCohort(performanceGeneration ?? -1, {
+            warmth: "warm"
+        });
+        markCompetitorCache(state.status === "ready" ? "ready" : "partial");
         maybeStartCapture();
     }
 
@@ -315,6 +339,7 @@ export function startCompetitorHistoryRuntime(
         if (result.status === "stored") {
             captureStatus = "stored";
             appendCapturedRecord(result.record);
+            markCompetitorFresh("ready", "network");
             return;
         }
         if (result.status === "skipped") {
@@ -324,11 +349,16 @@ export function startCompetitorHistoryRuntime(
             } else {
                 renderCurrentState();
             }
+            markCompetitorFresh(
+                result.reason === "already-stored" ? "ready" : "empty",
+                result.reason === "already-stored" ? "cache" : "network"
+            );
             return;
         }
         if (result.status === "unavailable") {
             captureStatus = "unavailable";
             renderCurrentState();
+            markCompetitorFresh("partial", "network");
             return;
         }
         if (result.reason === "aborted") {
@@ -336,6 +366,7 @@ export function startCompetitorHistoryRuntime(
         }
         captureStatus = "error";
         renderCurrentState();
+        markCompetitorFresh("error", "network");
     }
 
     function appendCapturedRecord(record: unknown): void {
@@ -397,6 +428,66 @@ export function startCompetitorHistoryRuntime(
         );
     }
 
+    function beginCompetitorPerformance(): void {
+        const recorder = options.performanceRecorder;
+        if (recorder === undefined) {
+            performanceGeneration = null;
+            return;
+        }
+        performanceContextSequence += 1;
+        performanceGeneration = recorder.beginContext({
+            contextToken: String(performanceContextSequence),
+            operation: "competitor-surface",
+            route: "competitor"
+        });
+        recorder.mark(performanceGeneration, {
+            name: "surfaceObserved",
+            outcome: "ready",
+            source: "none"
+        });
+    }
+
+    function markCompetitorShell(): void {
+        if (options.performanceRecorder === undefined || performanceGeneration === null) {
+            return;
+        }
+        options.performanceRecorder.mark(performanceGeneration, {
+            name: "shellPainted",
+            outcome: "ready",
+            source: "none"
+        });
+    }
+
+    function markCompetitorCache(
+        outcome: NextPerformanceOutcome,
+        source: NextPerformanceSource = "cache"
+    ): void {
+        if (options.performanceRecorder === undefined || performanceGeneration === null) {
+            return;
+        }
+        options.performanceRecorder.mark(performanceGeneration, {
+            freshness: "unknown",
+            name: "competitorCachePainted",
+            outcome,
+            source
+        });
+    }
+
+    function markCompetitorFresh(
+        outcome: NextPerformanceOutcome,
+        source: NextPerformanceSource
+    ): void {
+        if (options.performanceRecorder === undefined || performanceGeneration === null) {
+            return;
+        }
+        options.performanceRecorder.mark(performanceGeneration, {
+            freshness: outcome === "ready" || outcome === "empty" ? "fresh" : "unknown",
+            name: "competitorFreshSettled",
+            outcome,
+            source
+        });
+    }
+
     function handleDocumentClick(event: MouseEvent): void {
         if (stopped || root === null || !(event.target instanceof Element) || !root.contains(event.target)) {
             return;
@@ -450,6 +541,7 @@ export function startCompetitorHistoryRuntime(
     }
 
     function suspendForInactiveRoute(): void {
+        clearPerformanceContext();
         if (activeStayDate !== null || state.status !== "idle") {
             loadGeneration += 1;
             dataSource.cancel();
@@ -470,6 +562,7 @@ export function startCompetitorHistoryRuntime(
     }
 
     function suspendCaptureForInactiveSurface(): void {
+        clearPerformanceContext();
         captureGeneration += 1;
         writer?.cancel();
         captureAttemptKey = null;
@@ -489,6 +582,7 @@ export function startCompetitorHistoryRuntime(
             return;
         }
         stopped = true;
+        clearPerformanceContext();
         loadGeneration += 1;
         captureGeneration += 1;
         dataSource.stop();
@@ -503,6 +597,13 @@ export function startCompetitorHistoryRuntime(
         root = null;
         mountSection = null;
         documentHost.documentElement.setAttribute(NEXT_ANALYZE_STATE_ATTRIBUTE, finalState);
+    }
+
+    function clearPerformanceContext(): void {
+        if (performanceGeneration !== null) {
+            options.performanceRecorder?.clear(performanceGeneration);
+        }
+        performanceGeneration = null;
     }
 }
 

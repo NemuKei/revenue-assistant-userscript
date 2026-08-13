@@ -786,13 +786,14 @@
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
 
 - 状態:
-  - 設計・task化完了。runtime未変更。現行Nextには段階別timestamp markerがないため、`Next Operational SLO v0.1`の達成状況はprovisionalである。
+  - source実装とsynthetic / fixture / distribution smokeの計測gateは完了。公開Nextへの反映、Tampermonkey更新、再ログイン後のlive baselineを残すため、`Next Operational SLO v0.1`の達成状況はprovisionalである。
+  - markerは単一DOM JSON、collectorは明示実行中のprocess memoryだけを使う。request対象 / 件数 / 順序、100ms / concurrency 30、bootstrap 800 / daily 200、interactive reserve 32、保存schema / retention、Revenue Assistant write 0は変更していない。
 - 解決する問題:
   - 現行smokeは最終DOM、request数、開始間隔、concurrency、errorを確認できるが、Topの団体 / 前回調整、Analyzeの全体 / 選択room、競合価格が何秒で使えるかを分けて測れない。
   - 過去liveにはTop 92 badgeが約27秒、完了後約40ms、旧cold candidateが2分30秒超でもready未到達という証拠があるが、現行公開版のbaselineへ流用できない。
 - 実装scope:
   - `performance.now()`起点のelapsed ms、固定enum、件数だけを持つversioned `data-ra-fetch-performance-summary`をNext DOMへ1件置く。固定enumのrequest profile、planned / started / aborted件数、最大同時数、HTTP / stop分類も含め、storageへ永続化せず、context generationでresetし、consoleは既存debug flag時だけ許可する。
-  - Topはroute / shell / cached group / rank settled / base decision、Analyzeはsurface / shell / overall / selected room current / selected room evidence / all room summary、競合価格はsurface / cache paint / fresh settled、schedulerはinteractive queued / startedとbackground pause / settledを区別する。
+  - Topはroute / shell / cached group / rank settled / base decision、Analyzeはsurface / shell / overall / selected room current / selected room evidence / all room summary、競合価格はsurface / cache paint / fresh settled、schedulerはinteractive queued / started、background planned / started / settled、aborted / error / stopを区別する。現行schedulerが実際にはpauseしないpriority bypassをpauseとして記録しない。
   - route / facility / stay date / room ID / 名、価格、在庫、URL、request / response、storage key、Cookie、token、credentialをmarker、console、storage、docsへ含めない。request対象、件数、開始間隔、concurrency、session上限、保存schema、描画順は変更しない。
 - 合格条件:
   - 注入可能なmonotonic clockでmilestone順、first-write、stale generation無視、warm / revalidate、decision-ready / explanation、partial / error / aborted、coverage分母0、禁止field不在をpure testする。
@@ -963,7 +964,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage は、Nowを`RAU-PERF-20`のprivacy-safe計測実装と、公開版更新 / 再ログイン後のTop / Analyze / 競合価格baseline取得とする。`RAU-UX-170`のinstalled `0.2.0.24`確認は同じlive gateで先に照合する。Nextはbaseline後の`RAU-PERF-21` current優先 / reference head-of-line解消、そのqueue gateを100ms / 30で公開・検証した後に`RAU-PERF-21B`の50ms / concurrency 20 pace試験とする。SLO complianceの20 sampleをpace試験開始の必須条件にはせず、`RAU-PERF-21` source revisionの100ms / 30 controlで通常利用由来のNext booking curve GET合計50件以上と安全条件を確認する。`RAU-PERF-22`は`RAU-PERF-21B`第一段階後も同一cohortのSLO missまたは3 controlled run以上の同一原因再現がある場合だけ、request budget / scope変更候補として開始する。`RAU-WC-34`のcount-only live range gateは`RAU-PERF-20` / `RAU-PERF-21` / `RAU-PERF-21B`第一段階通過後、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goであり、compact UIと`RAU-RR-65`一括調整dry-runは各gate通過後に限る。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145`はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は、Nowを`RAU-PERF-20` sourceの公開版反映、Tampermonkey更新 / 再ログイン後のTop / Analyze / 競合価格baseline取得とする。privacy-safe計測実装とlocal gateは完了しており、`RAU-UX-170`のinstalled `0.2.0.24`確認は同じlive gateで先に照合する。Nextはbaseline後の`RAU-PERF-21` current優先 / reference head-of-line解消、そのqueue gateを100ms / 30で公開・検証した後に`RAU-PERF-21B`の50ms / concurrency 20 pace試験とする。SLO complianceの20 sampleをpace試験開始の必須条件にはせず、`RAU-PERF-21` source revisionの100ms / 30 controlで通常利用由来のNext booking curve GET合計50件以上と安全条件を確認する。`RAU-PERF-22`は`RAU-PERF-21B`第一段階後も同一cohortのSLO missまたは3 controlled run以上の同一原因再現がある場合だけ、request budget / scope変更候補として開始する。`RAU-WC-34`のcount-only live range gateは`RAU-PERF-20` / `RAU-PERF-21` / `RAU-PERF-21B`第一段階通過後、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goであり、compact UIと`RAU-RR-65`一括調整dry-runは各gate通過後に限る。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145`はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

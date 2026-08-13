@@ -32,7 +32,8 @@ import {
     buildNextBookingCurveReferenceTasks
 } from "../bookingCurve/bookingCurveAcquisitionModel";
 import type {
-    NextBookingCurveAcquisitionCoordinator
+    NextBookingCurveAcquisitionCoordinator,
+    NextBookingCurveAcquisitionDiagnostics
 } from "../bookingCurve/bookingCurveAcquisitionCoordinator";
 import {
     createBrowserNextReadTransport,
@@ -51,6 +52,10 @@ export type BookingCurveReferenceDataLoadResult =
     | {
         status: "ready";
         asOfDate: string;
+        acquisitionDiagnostics?: {
+            current: NextBookingCurveAcquisitionDiagnostics;
+            reference: NextBookingCurveAcquisitionDiagnostics;
+        };
         contextKey: string;
         facilityId: string;
         facilityLabel: string;
@@ -262,19 +267,26 @@ async function loadBookingCurveReferenceData(options: {
             options.asOfDate,
             options.stayDate
         );
+        let acquisitionDiagnostics: Extract<
+            BookingCurveReferenceDataLoadResult,
+            { status: "ready" }
+        >["acquisitionDiagnostics"];
         if (acquisition !== undefined) {
             await acquisition.startBackground(acquisitionContext);
-            await acquisition.ensureCurrent({
+            const current = await acquisition.ensureCurrent({
                 context: acquisitionContext,
                 scopeKeys: [scope.key],
                 signal: options.signal,
                 stayDate: options.stayDate
             });
-            await acquisition.startReference({
+            const reference = await acquisition.startReference({
                 context: acquisitionContext,
                 scopeKey: scope.key,
                 targetStayDate: options.stayDate
             });
+            if (isAcquisitionDiagnostics(current) && isAcquisitionDiagnostics(reference)) {
+                acquisitionDiagnostics = { current, reference };
+            }
         }
         const nextSourceKeys = buildBookingCurveReferenceSourceKeys({
             context: acquisitionContext,
@@ -301,6 +313,7 @@ async function loadBookingCurveReferenceData(options: {
             records.length > 0 ? { status: "ready", records } : classicReadStatus;
         return {
             status: "ready",
+            ...(acquisitionDiagnostics === undefined ? {} : { acquisitionDiagnostics }),
             asOfDate: options.asOfDate,
             contextKey,
             facilityId: resolvedContext.facilityId,
@@ -318,6 +331,19 @@ async function loadBookingCurveReferenceData(options: {
             reason: options.signal.aborted || isAbortError(error) ? "aborted" : "read-failed"
         };
     }
+}
+
+function isAcquisitionDiagnostics(
+    value: unknown
+): value is NextBookingCurveAcquisitionDiagnostics {
+    return typeof value === "object"
+        && value !== null
+        && "candidateTaskCount" in value
+        && Number.isInteger(value.candidateTaskCount)
+        && "dueTaskCount" in value
+        && Number.isInteger(value.dueTaskCount)
+        && "outcome" in value
+        && (value.outcome === "ready" || value.outcome === "aborted");
 }
 
 function buildAcquisitionContext(
