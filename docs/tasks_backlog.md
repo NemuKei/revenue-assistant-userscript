@@ -703,7 +703,7 @@
 ### RAU-RR-64 Analyzeで調整後の個人ペースを参考線と比較する
 
 - 状態:
-  - 完了。Next `0.2.0.17`の利用者更新後通常Chromeで見つかったembedded section欠落を`0.2.0.19`で修正し、`0.2.0.20`で販売設定 / 標準booking curve間のrank読取を共有した後、native Sales remountによるrank sequences再取得を`0.2.0.21`で修正した。実ブラウザfixtureを含むlocal gate、main同期、manual publication、公開artifact / Classic baseline照合、利用者のTampermonkey更新、通常Chromeのstable live request budget / Revenue Assistant write 0確認まで完了した。
+  - 完了。Next `0.2.0.17`の利用者更新後通常Chromeで見つかったembedded section欠落を`0.2.0.19`で修正し、`0.2.0.20`で販売設定 / 標準booking curve間のrank読取を共有した後、native Sales remountによるrank sequences再取得を`0.2.0.21`で修正した。実ブラウザfixtureを含むlocal gate、main同期、manual publication、公開artifact / Classic baseline照合、利用者のTampermonkey更新、通常Chromeのstable live request budget / Revenue Assistant write 0確認まで完了した。event別表示契約は、その後のUI QAを受けて`RAU-UX-169`で廃止した。以下は提供時の履歴として残す。
 - 解決する問題:
   - rankを下げてペースを上げたかった、またはrankを上げてペースを抑え単価を狙った調整について、変更後に個人予約の参考線との差がどう変わったかをAnalyze内で振り返る入口がない。
 - 実装境界:
@@ -734,12 +734,34 @@
   - `decision: D-20260812-002`
   - `depends-on: RAU-UX-168 complete`
 
+### RAU-UX-169 `調整後のペース`blockを廃止する
+
+- 状態:
+  - source / spec / focused / full checks / desktop・390px fixture QAまで完了し、main同期とNext manual publication待ち。利用者のUI QAにより、過去のrank変更ごとにcardが増えるblockを廃止し、booking curve上のmarker / Tooltip / 折りたたみrank履歴へ振り返りを集約する。
+- 解決する問題:
+  - event件数に比例してAnalyzeが縦へ肥大化し、直上のbooking curveで確認できる変更時点と推移を別blockで重複表示している。
+  - mobileではcardが1列へ積み上がるため、現在の判断に必要なchartと操作から離れやすい。
+- 実装境界:
+  - standalone booking curveと販売設定card内のembedded booking curveの双方から、`調整後のペース`sectionとevent別pace解釈を外す。block専用のrank順GET、parser / data source / model、共有read coordinatorのrank-order経路も外す。
+  - current / reference chart、current curve上のrank marker、通常Tooltip、初期折りたたみrank履歴、rank status最大1 GET、`RAU-RR-66`のsanitized capture / coverage DBは維持する。既存保存dataは削除・移行しない。
+  - 次回調整の方向と候補rankは、この変更で推測表示しない。`RAU-RR-67`の実分布と件数guardを通した後、Analyze上部の短い要約とrank変更UI付近の隣接1段候補として別sliceで扱う。
+- 合格条件:
+  - standalone / embedded双方でblockと専用attributeが0で、chart 2 panel、rank marker / Tooltip、折りたたみrank履歴が維持される。
+  - rank sequences追加GET 0、Revenue Assistant write 0、desktop / 390pxのNext root overflow 0、duplicate root 0、console error 0をfixtureで確認する。
+  - focused / full checks、candidate artifact、Classic publication baseline、`git diff --check`を通し、今回scopeだけをcommit / pushする。続いてNext manual publicationと公開artifact / Classic baselineを照合する。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260813-001`
+  - `depends-on: RAU-RR-64 complete`
+
 ### RAU-RR-66 次回調整の期待値へ向けたrank学習coverageを作る
 
 - 状態:
   - Now。source / focused / full checks / main同期 / Next `0.2.0.22` manual publication / 公開artifact照合は完了し、Tampermonkey更新と通常Chrome受け入れ待ち。利用者が、部屋タイプごとの振り返りを主目的にせず、次の調整時にrankをどう変えると個人予約がどの程度変わりそうかを示す方向へ進めることを確認した。`D-20260812-003`で新規storage / retention、追加GETなし、非PII保存、no-change control停止条件をspec-firstで固定した。
 - 解決する問題:
-  - 現行`RAU-RR-64`は表示中stay dateのeventをmemory評価するため、複数の過去調整を独立episodeとして集計できず、期待値を出せる母集団が何件あるか分からない。
+  - 廃止した`RAU-RR-64`のevent別表示は表示中stay dateのeventをmemory評価していたため、複数の過去調整を独立episodeとして集計できず、期待値を出せる母集団が何件あるか分からなかった。
   - 週ブロックや同時調整を宿泊日数・部屋タイプ数で水増しせず、変更日 / 3日後 / 7日後の個人予約をexactに評価できる範囲と不足理由を把握する必要がある。
 - 最初のscope:
   - 既存Top calendarの可視範囲rank status最大1 GETを再利用し、facility / stay date / room group ID / 反映日時 / 変更前後rank名だけのsanitized eventと取得coverageを、新しいNext専用IndexedDBへ追加保存する。writerはtransportを持たず、新しいGET、raw response、`reflector_name`、room名、価格・在庫、予約・顧客情報、Revenue Assistant writeを追加しない。
@@ -770,9 +792,11 @@
 - 最初のscope:
   - 同room groupの類似episodeを優先し、不足時だけ同facilityのcapacity / LT / 変更前paceが比較可能なpoolへfallbackする。件数guard、matching距離、facility fallback上限、1 decision cluster依存上限は`RAU-RR-66`のcoverage結果から決め、根拠なく固定しない。
   - no-change controlはrank-status rangeの完全性と日次current rank snapshotが確認されるまでdisabledとし、先にtreated episodeだけの傾向を出す場合も`据え置き比`、因果効果、成功率とは呼ばない。期待値を出せない場合は`判定材料不足`とする。
+  - Analyze上部には`上げ検討 / 下げ注意 / 維持 / 判定材料不足`の短い要約、3日 / 7日の期待レンジ、独立decision cluster数、試験確度、主な注意だけを置く。rank順とcurrent rankを確認できる場合だけ、実際のrank変更UI付近に`現rank -> 候補rank（1段）`を示す。
+  - 命令形の`上げるべき / 下げるべき`、根拠のない複数段移動、全履歴の再掲は行わない。個別curve、marker、Tooltip、折りたたみrank履歴を根拠確認の導線として維持する。
 - 合格条件:
   - 3日 / 7日の中央値、中央50%範囲、独立decision cluster数、same-room / facility fallback、censor率、leave-one-cluster-outでの方向安定性をbacktestし、future leakageを拒否する。
-  - UIは変更対象room group、隣接rank方向、期待レンジ、根拠件数、試験確度、主な注意を一覧で読み、個別curveは根拠詳細として展開できる。推奨金額、ADR / 売上効果、Revenue Assistant write、一括反映は含めない。
+  - UIはAnalyze上部のcompact summaryとrank変更UI付近の隣接1段候補で、変更対象room group、方向、期待レンジ、根拠件数、試験確度、主な注意を短時間で読める。booking curve内へevent別cardを戻さず、推奨金額、ADR / 売上効果、Revenue Assistant write、一括反映は含めない。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`

@@ -4,7 +4,6 @@ const NEXT_COMPETITORS_ENDPOINT = "/api/v2/competitors";
 const NEXT_COMPETITOR_PRICES_ENDPOINT = "/api/v5/competitor_prices";
 const NEXT_PRICE_TRENDS_ENDPOINT = "/api/v1/price_trends";
 const NEXT_RANK_STATUS_ENDPOINT = "/api/v3/lincoln/suggest/status";
-const NEXT_RANK_SEQUENCES_ENDPOINT = "/api/v1/rank_sequences";
 const NEXT_BOOKING_CURVE_ENDPOINT = "/api/v4/booking_curve";
 const NEXT_MONTHLY_BOOKING_CURVE_ENDPOINT = "/api/v1/booking_curve/monthly";
 
@@ -12,7 +11,6 @@ export type NextReadRequest =
     | { kind: "facility" }
     | { kind: "current-settings"; from: string; to: string }
     | { kind: "competitors" }
-    | { kind: "rank-sequences" }
     | { kind: "rank-status"; from: string; to: string }
     | {
         kind: "booking-curve";
@@ -109,9 +107,6 @@ export function buildNextReadUrl(request: NextReadRequest, origin: string): URL 
     }
     if (request.kind === "competitors") {
         return new URL(NEXT_COMPETITORS_ENDPOINT, origin);
-    }
-    if (request.kind === "rank-sequences") {
-        return new URL(NEXT_RANK_SEQUENCES_ENDPOINT, origin);
     }
     if (request.kind === "rank-status") {
         const url = new URL(NEXT_RANK_STATUS_ENDPOINT, origin);

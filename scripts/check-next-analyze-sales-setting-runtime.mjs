@@ -23,7 +23,6 @@ try {
     assert.notEqual(origin, undefined, "Vite did not expose a local fixture URL");
     browser = await launchBrowser();
     await verifyRankStatusSurvivesTransientRemount(origin);
-    await verifyRankOrderSurvivesRoomRemount(origin);
     await verifyInitialBatchStopsWithoutNativeSurface(origin);
     await verifyHiddenAndRouteTransitions(origin);
     await verifyAbsentSurfaceStayDateReset(origin);
@@ -34,7 +33,7 @@ try {
 }
 
 async function verifyRankStatusSurvivesTransientRemount(origin) {
-    await withFixturePage(origin, "?rank=deferred-once&rank-order=ready", async (page) => {
+    await withFixturePage(origin, "?rank=deferred-once", async (page) => {
         await waitForRoot(page, "ready");
         await waitForCount(page, "rank-load", 1);
         await page.locator("[data-mock-detach-sales]").click();
@@ -42,47 +41,16 @@ async function verifyRankStatusSurvivesTransientRemount(origin) {
         await waitForRootCount(page, 0);
         await resolveFixtureRead(page, "rank-status");
         await drainFixtureTasks(page);
-        assert.equal(await readCount(page, "rank-order-load"), 0);
         await page.locator("[data-mock-restore-sales]").click();
         await waitForRoot(page, "ready");
         await page.locator(toggleSelector).first().click();
-        await waitForCount(page, "rank-order-load", 1);
+        await drainFixtureTasks(page);
         assert.equal(
             await readCount(page, "rank-load"),
             1,
             "rank status resolved while absent must clear loading and be reused after remount"
         );
         assert.equal(await page.locator(rootSelector).count(), 1);
-    });
-}
-
-async function verifyRankOrderSurvivesRoomRemount(origin) {
-    await withFixturePage(origin, "?rank=ready&rank-order=deferred-once", async (page) => {
-        await waitForRoot(page, "ready");
-        await page.locator(toggleSelector).first().click();
-        await waitForCount(page, "rank-order-load", 1);
-        await page.locator("[data-mock-detach-sales]").click();
-        await waitForMarker(page, "waiting-native-sales-setting");
-        await waitForRootCount(page, 0);
-        assert.equal(
-            await readCount(page, "rank-order-cancel"),
-            0,
-            "transient native DOM loss must not cancel a facility rank-order read"
-        );
-        await resolveFixtureRead(page, "rank-order");
-        await drainFixtureTasks(page);
-        await page.locator("[data-mock-restore-sales]").click();
-        await waitForRoot(page, "ready");
-        assert.equal(await page.locator(toggleSelector).first().getAttribute("aria-expanded"), "true");
-        await page.locator(toggleSelector).nth(1).click();
-        await drainFixtureTasks(page);
-        assert.equal(
-            await readCount(page, "rank-order-load"),
-            1,
-            "room A then room B on one Sales surface must share one facility rank-order read"
-        );
-        assert.equal(await page.locator(rootSelector).count(), 1);
-        assert.equal(await page.locator(rootSelector).getAttribute(stateAttribute), "ready");
     });
 }
 
@@ -114,17 +82,17 @@ async function verifyInitialBatchStopsWithoutNativeSurface(origin) {
 }
 
 async function verifyHiddenAndRouteTransitions(origin) {
-    await withFixturePage(origin, "?rank=ready&rank-order=deferred-once", async (page) => {
+    await withFixturePage(origin, "?rank=deferred-once", async (page) => {
         await waitForRoot(page, "ready");
         await page.locator(toggleSelector).first().click();
-        await waitForCount(page, "rank-order-load", 1);
+        await waitForCount(page, "rank-load", 1);
         await setFixtureVisibility(page, "hidden");
         await waitForMarker(page, "suspended-hidden");
         await waitForRootCount(page, 0);
-        await waitForCount(page, "rank-order-cancel", 1);
+        await waitForCount(page, "rank-cancel", 1);
         await setFixtureVisibility(page, "visible");
         await waitForRoot(page, "ready");
-        await waitForCount(page, "rank-order-load", 2);
+        await waitForCount(page, "rank-load", 2);
         assert.equal(
             await page.locator(toggleSelector).first().getAttribute("aria-expanded"),
             "true",
@@ -152,15 +120,14 @@ async function verifyHiddenAndRouteTransitions(origin) {
 }
 
 async function verifyAbsentSurfaceStayDateReset(origin) {
-    await withFixturePage(origin, "?rank=ready&rank-order=deferred-once", async (page) => {
+    await withFixturePage(origin, "?rank=ready", async (page) => {
         await waitForRoot(page, "ready");
         await page.locator(toggleSelector).first().click();
-        await waitForCount(page, "rank-order-load", 1);
+        await waitForCount(page, "rank-load", 1);
         await page.locator("[data-mock-detach-sales]").click();
         await waitForMarker(page, "waiting-native-sales-setting");
         const dataResetBeforeStayChange = await readCount(page, "data-reset");
         const rankResetBeforeStayChange = await readCount(page, "rank-reset");
-        const orderResetBeforeStayChange = await readCount(page, "rank-order-reset");
         await page.locator("[data-mock-stay-next]").click();
         await page.waitForURL(/2026-08-13$/u);
         await page.waitForFunction(
@@ -170,12 +137,10 @@ async function verifyAbsentSurfaceStayDateReset(origin) {
             { attribute: countAttribute("data-reset"), minimum: dataResetBeforeStayChange + 1 }
         );
         assert.equal(await readCount(page, "rank-reset"), rankResetBeforeStayChange + 1);
-        assert.equal(await readCount(page, "rank-order-reset"), orderResetBeforeStayChange + 1);
-        await resolveFixtureRead(page, "rank-order");
         await page.locator("[data-mock-restore-sales]").click();
         await waitForRoot(page, "ready");
         await page.locator(toggleSelector).first().click();
-        await waitForCount(page, "rank-order-load", 2);
+        await waitForCount(page, "rank-load", 2);
         assert.equal(
             await readCount(page, "rank-load"),
             2,

@@ -589,16 +589,15 @@ rank response dataset の first contract:
 - output は、`pickupRooms`、`transientPickupRooms`、`groupPickupRooms`、`adrChange`、`salesChange`、`revparLikeChange`、`netPickup`、`baselineDelta`、`diagnostics` を持つ。
 - 実価格または rank price table が取れるまで、価格変化率や価格弾力性は出力しない。`rank response` は rank transition 後の需要、ADR、sales の反応を表す分析用 dataset とする。
 
-Analyze試験表示の最小slice (`RAU-RR-64`):
+Analyze試験表示の廃止 (`RAU-RR-64`, `RAU-UX-169`):
 
-- first contract全体を一度に永続datasetへせず、まず確認済みroom-groupの個人`transient`について、既存rank eventと保存済みcurrent / referenceをmemoryで接続する。粒度は`facilityId x stayDate x roomGroupId x rankChangeEvent`を維持するが、`reflector_name`は不要かつ個人名になり得るためNextへ取り込まない。
-- startはrank変更日、endは次の変更前日または現在as-ofとする。変更後の観測がない、currentまたはreferenceのexact LTが欠ける場合は`比較準備中`とし、0、隣接LT、別roomGroupで補わない。直近型 / 季節型それぞれで`gap(t) = transient rooms(t) - reference rooms at same LT`と`gap(end) - gap(start)`を出し、2つのreferenceを単一scoreへ混ぜない。
-- 過去時点のreference snapshotを保存していないため、これは`現在の参考線で再評価`した観測である。因果効果、価格弾力性、推奨rankの正しさ、調整成功を断定しない。rank順は`/api/v1/rank_sequences`の設定画面配列順だけを高rankから低rankとして使い、取得失敗時は数値観測と方向解釈を分ける。
-- このsliceで追加するreadは、可視な標準booking curveまたは可視な販売設定surfaceで使う既存rank status最大1 GETに加え、対象rank eventが1件以上あるroom curveを明示的に開いた場合だけ開始する`/api/v1/rank_sequences`最大1 GET / facility / Analyze表示contextとする。両surfaceは同じmemory-only coordinatorを使い、tabを順に切り替えても両runtime合算のrank statusをfacility + stay date最大1 GET、rank sequencesをfacility最大1 GETにする。rank履歴empty / error、hotel scope、閉じた販売設定cardではrank sequencesを開始しない。一方のsurface離脱だけで他方が使用中の取得をabortせず、全consumer解放時だけ未完了取得をabortする。route / facility / stay date変更で全consumerがresetした場合は成功 / 失敗cacheを破棄し、同一keyへの再入場もfreshに読む。自動retryなしとし、response / evaluationの保存、background取得、ADR / sales評価、推奨金額、Revenue Assistant write、自動 / 一括反映を追加しない。
+- `RAU-RR-64`で追加したevent別`調整後のペース`は、履歴件数に比例して肥大化し、booking curve、rank marker、Tooltip、折りたたみrank履歴と重複するため、standalone / embeddedの双方で表示しない。
+- event別pace評価と方向解釈をruntime view modelから外し、その目的だけで開始していた`GET /api/v1/rank_sequences`もAnalyze表示時に実行しない。既存rank status最大1 GET、rank marker / Tooltip / details、`reflector_name`非取得 / 非表示は維持する。
+- `RAU-RR-64`の表示廃止は`RAU-RR-66`のsanitized rank-learning DB、coverage、episode modelを削除または移行する理由にしない。次回判断に使う傾向はevent全件の再掲ではなく、guard済みの集約として`RAU-RR-67`で扱う。
 
 次回調整の期待値へ進む学習coverage slice (`RAU-RR-66`):
 
-- 主な問いは、1件ずつのrank変更を振り返ることではなく、調整候補room groupについて、隣接rankへ動かした過去の類似episodeから3日後 / 7日後の個人予約反応を将来示せるかである。`RAU-RR-64`のevent別表示は根拠監査の詳細として残すが、期待値の主導線とは扱わない。
+- 主な問いは、1件ずつのrank変更を振り返ることではなく、調整候補room groupについて、隣接rankへ動かした過去の類似episodeから3日後 / 7日後の個人予約反応を将来示せるかである。過去event全件は再掲せず、個別確認はbooking curveのrank marker / Tooltip / detailsへ集約する。
 - first sliceは期待値、確率、推奨rankの妥当性を表示しない。既存Top calendarが可視範囲へ最大1 GETするrank status responseを、facility label guard、valid facility / as-of / visible range、current generation、document visibleが揃った場合だけ再利用し、追加のrank status / rank sequence / booking curve GETを開始しない。writerはtransport、`fetch`、Revenue Assistant writeを持たず、保存失敗をcalendar表示、booking curve取得、既存rank badgeの失敗へ広げない。
 - 保存先はNext専用IndexedDB `revenue-assistant-next-rank-learning` version 1とし、object store `rank-events`と`rank-status-coverages`を新設する。既存Next / Classic DBのversion、store、record、retentionは変更しない。新規DBなので既存data migrationと一括copyは行わない。code rollbackはcapture writer / readerを外してDBをinertに残し、既存recordを自動削除しない。DB削除は将来の明示操作だけにする。
 - `rank-events`は、`facilityId`、`stayDate`、`roomGroupId`、`reflectedAt`、`reflectedDate`、`daysBeforeStay`、`beforeRankName`、`afterRankName`、`capturedAt`、`sourceRangeFrom`、`sourceRangeTo`、schema version、deterministic record keyだけを保持する。`rank-status-coverages`は、`facilityId`、`asOfDate`、`rangeFrom`、`rangeTo`、`capturedAt`、有効event件数、不正event件数、schema version、deterministic record keyだけを保持する。`reflector_name`、room名、raw response / 未知field、request / response body、HAR、価格・在庫、予約・顧客情報、Cookie、token、credentialは取り込まない。
@@ -608,6 +607,12 @@ Analyze試験表示の最小slice (`RAU-RR-64`):
 - 3日後 / 7日後の結果は、変更日のexact `transient.this_year_room_sum`と変更日 + 3 / 7日のexact値の差とする。start / end欠損は補間せず、endがanalysis as-ofより未来、宿泊日後、または評価窓内に次のrank変更がある場合をpending / censored / excludedに分ける。同一room / 同一日に複数rank変更があり日次curveでは分離できないcase、rank順未確認、2段以上の変更も別diagnosticへ分ける。キャンセルを含む負のpickupは0へ丸めない。
 - 最初のsanitized coverage reportは、独立decision cluster数、stay date member数、room group / transition別episode、3日 / 7日exact coverage、censor / exclusion内訳、no-change controlを有効化できない理由を返す。利用者向け期待値の件数guard、同room group不足時のfacility fallback、matching距離、確度、中央値 / 中央50%範囲は実分布を確認する後続`RAU-RR-67`で固定する。policy未確定時は期待値を出さず`判定材料不足`とする。
 - このsliceは過去のrank変更後に観測されたassociationを準備するもので、因果効果、成功率、価格弾力性、ADR / sales / RevPAR / 利益、推奨金額、どの1段も同じ効果とは主張しない。current-rank日次snapshot、backgroundでの過去rank取得、未確認API、Revenue Assistant write、自動 / 一括反映、`RAU-RR-65`のdry-runは含めない。
+
+次回調整の期待反応UI target (`RAU-RR-67`):
+
+- `RAU-RR-66`の実分布から件数guard、matching距離、facility fallback、確度を固定できた場合だけ、Analyze上部へ選択中stay date / room groupの短い判断要約を置く。表示語は命令形の`上げるべき / 下げるべき`ではなく、`上げ検討 / 下げ注意 / 維持 / 判定材料不足`とする。
+- rank順と隣接候補を確認できる場合だけ、rank変更UI付近へ`現rank -> 候補rank（1段）`を表示する。first phaseは隣接1段に限定し、根拠なく複数段の移動数を提案しない。rank順、current rank、期待値guardのいずれかが不足する場合は候補rankを出さない。
+- 要約は3日 / 7日の期待レンジ、独立decision cluster数、same-room / facility fallback、試験確度、主な注意へ絞り、過去event cardを並べない。詳細確認はbooking curveへ、実変更は明示2段階の単一候補rank変更UIへ分け、同じ説明を両方へ重複表示しない。
 
 推奨 rank 算出の first contract:
 

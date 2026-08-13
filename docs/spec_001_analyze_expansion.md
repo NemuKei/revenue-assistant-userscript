@@ -529,21 +529,19 @@ Next booking curve rank-change contract (`RAU-UX-150` 第三段階B):
 - response、正規化event、request / response body、HAR、Cookie、token、credentialをstorageへ保存しない。`reflector_name`はmarker判断に不要で個人名になり得るためNextのmodelと表示へ取り込まない。月・隣接日・他stay dateの取得、background prefetch、Revenue AssistantのPOST / PUT / PATCH / DELETE、自動反映、一括反映を追加しない。
 - room-group scopeのcurrent booking curveに反映日以前の直接取得値があるeventだけを、LT bucket間を線形配置したrank markerとして全体panelと選択中の個人 / 団体panelへ描く。個人値は`transient`だけを使い、`all - group`で補わない。値がないeventはchart上へ推測配置せず、テキスト履歴には残す。markerは色だけに依存しない形と補助線を持ち、mouse、keyboard focus、tapでLT、反映日、変更前後rankを確認できる。全有効eventはhover不要のdetails / tableでも確認でき、empty / invalid response / request errorをcurrent / reference不足と区別する。
 
-Next booking curve adjustment-response experiment (`RAU-RR-64`):
+Next booking curve adjustment-response display retirement (`RAU-UX-169`):
 
-- 確認済みroom-group scopeでrank履歴がreadyの場合だけ、2 chartの直後へ`調整後のペース（試験）`を置く。主評価は部屋タイプごとの個人`transient`とし、全体 / 団体を合成して評価対象を作らない。hotel scope、履歴loading / empty / errorでは、方向や評価値を推測せず理由を短く示す。
-- rank change eventごとに、変更日をstartとする。次のrank変更があるeventはその前日、最後のeventは現在のas-ofをendとし、endがstart以前なら`変更後データ待ち`とする。currentは保存済みcurrent responseのstart / end日以前にある直接取得値、referenceは同じstart / endのexact LTで算出できた値だけを使う。LT bucketの表示値や近隣日から評価値を補間しない。
-- 直近型と季節型を別々に、`gap(t) = transient rooms(t) - reference rooms at same LT`、`差の変化 = gap(end) - gap(start)`で評価する。表示中のreference toggleに対応する行だけを示し、両方OFFなら参考線を表示すると評価できることを示す。変更前後rank、観測期間、start / endの差、差の変化はhoverなしで読めるようにする。
-- このsliceは過去の意思決定時点にreferenceを凍結保存しないため、`現在の参考線で再評価`と常時明記する。`差の変化`は調整後に観測された関連であり、rank変更の因果効果、成功判定、価格弾力性と呼ばない。下げ方向では正の変化を`ペース上向き`、負を`ペース下向き`、上げ方向では負の変化かつend gapが非負のときだけ`先行を保って抑制`と説明し、end gapが負なら`参考線を下回る`とする。方向不明でも数値は表示できるが、方向を含む解釈は`方向未確認`とする。
-- rank方向は既に観測済みの`GET /api/v1/rank_sequences`を、可視な標準booking curve、または販売設定card内で利用者が明示的に開いたroom booking curve、facility guard、確認済みroom-group scope、対象rank eventが1件以上揃った場合だけ使う。rank履歴がempty / error、hotel scope、閉じた販売設定cardではこのGETを開始しない。同じfacilityのAnalyze表示contextでは、標準booking curve runtimeと販売設定runtimeのin-flight / 結果 / 失敗をmemory共有し、両surface合算で施設最大1 GETとする。runtime validation済みの配列順を設定画面と同じ高rankから低rankの順とし、`default_sequence`やrank名の文字パターンを方向へ使わない。tab切替では追加取得せず、一方のsurface離脱だけで他方が使用中の取得をabortしない。自動retryせず、route、stay date、facilityの変更で全consumerがresetした場合は成功 / 失敗cacheを破棄し、document visibilityの離脱で全consumerが解放した未完了取得はabortする。取得またはvalidation失敗はrank履歴、current / reference chart、差の数値を止めない。
-- response、rank order、評価結果をstorageへ保存せず、新規IndexedDB / migration / retention、raw response、request / response body、HAR、Cookie、token、credentialを追加しない。ADR / sales / RevPAR、類似非変更日、推奨金額、Revenue Assistant write、自動 / 一括反映はこの試験sliceに含めない。
-- fixtureでは、下げ後の正 / 負、上げ後の先行維持 / 参考線割れ、複数変更のwindow分離、exact LT欠損、変更後観測なし、rank順取得失敗、reference toggle、desktop / 390px、標準chart維持、duplicate root 0、Revenue Assistant write 0を確認する。共有coordinatorのfocused regressionでは、同じAnalyze contextで両runtimeが同じkeyを順次または同時に読んでも追加GETがrank status 1 + rank sequences 1を超えず、consumer片側の離脱が他方のin-flight取得を止めず、全consumer解放時だけ未完了取得をabortすること、異なるkeyへのhandoff中も新keyを停止しないこと、route reset後の同一keyは成功 / 失敗cacheを再利用せずfreshに読み直すことを確認する。公開後の通常Chromeでは販売設定から標準booking curveへのtab切替を含むlive request budgetを別途確認する。
+- standalone booking curveと販売設定card内のembedded booking curveの双方で、2 chart後の`調整後のペース`section、event別card、pace解釈を表示しない。過去のrank変更はcurrent curve上の小丸marker、通常Tooltip、初期折りたたみ`データ条件とランク履歴`のtableで確認し、同じ履歴を別blockへ再掲しない。
+- 廃止したevent別pace評価だけが所有していた`GET /api/v1/rank_sequences`はAnalyze表示時に開始しない。既存rank statusは同じfacility + stay dateのAnalyze表示contextで両surface合算最大1 GETを維持し、marker / Tooltip / detailsと`RAU-RR-66`の学習captureを継続する。
+- `RAU-RR-66`のNext専用rank-learning DB、sanitized event / coverage、retention、episode modelは変更、削除、migrationしない。UI廃止を保存済み学習dataの削除条件にしない。
+- 次回調整の方向や候補rankは`RAU-RR-67`の件数guard、matching、確度を満たした別sliceで扱う。現段階で`調整後のペース`を単純な方向表示へ置き換えず、根拠不足時は何も推測しない。
+- fixtureでは、standalone / embedded双方で`調整後のペース`と専用attributeが0、標準chart、Next 2 panel、rank marker / Tooltip、折りたたみrank履歴が維持され、desktop / 390pxでNext root overflow 0、tab切替を含むrank sequences追加GET 0、Revenue Assistant write 0であることを確認する。
 
 Next rank-response learning coverage contract (`RAU-RR-66`):
 
 - 利用者が次の調整時にrank変更後の個人予約反応を判断できる期待値へ進む前に、既存Top calendarの可視範囲rank status 1 GETから、runtime validation済みの非PII eventと取得coverageだけを追加GETなしでNext専用storageへ蓄積する。新しいnetwork owner、background prefetch、current-rank snapshot、Revenue Assistant writeを追加しない。
 - captureはfacility / as-of / visible stay-date range / document visible / current generationが一致したready responseだけを対象にする。stale / aborted / invalid / auth・rate-limit errorではwrite 0とし、writer / store失敗は既存calendar badge、booking curve取得、Analyze rank表示を止めない。保存field、DB / store / key、retention、migration / rollback、episode / 3日・7日coverage、no-change control停止条件は`docs/spec_003_rank_recommendation_signal.md`の`RAU-RR-66`契約を正とする。
-- このsliceの本番UIは既存`RAU-RR-64`表示を維持し、新しい期待値、確率、成功判定、推奨金額を出さない。first acceptanceはsyntheticなrank event / booking curveで独立episode、3日 / 7日exact coverage、censor / exclusion、事例不足を再現し、通常Chromeでは可視範囲rank statusが従来どおり最大1 GET、Revenue Assistant write 0、既存標準UI / Next root非干渉、sanitized store add / duplicate skip / pruneを確認する。
+- このsliceの本番UIは`RAU-RR-64`のevent別pace blockを表示せず、新しい期待値、確率、成功判定、推奨金額も出さない。first acceptanceはsyntheticなrank event / booking curveで独立episode、3日 / 7日exact coverage、censor / exclusion、事例不足を再現し、通常Chromeでは可視範囲rank statusが従来どおり最大1 GET、Revenue Assistant write 0、既存標準UI / Next root非干渉、sanitized store add / duplicate skip / pruneを確認する。
 
 Next 90-day price trend read-only comparison contract (`RAU-UX-150` 第四段階):
 

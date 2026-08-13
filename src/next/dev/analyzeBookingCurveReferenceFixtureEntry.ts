@@ -23,10 +23,6 @@ import type {
     BookingCurveRankStatusDataSource,
     BookingCurveRankStatusLoadResult
 } from "../analyze/bookingCurveRankStatusDataSource";
-import type {
-    BookingCurveRankOrderDataSource,
-    BookingCurveRankOrderLoadResult
-} from "../analyze/bookingCurveRankOrderDataSource";
 import { startBookingCurveReferenceRuntime } from "../analyze/bookingCurveReferenceRuntime";
 
 const FACILITY_ID = "yad:fixture";
@@ -42,9 +38,7 @@ const SCOPES: readonly BookingCurveReferenceScope[] = [
 const fixtureParams = new URLSearchParams(window.location.search);
 const fixtureMode = fixtureParams.get("state") ?? "ready";
 const rankFixtureMode = fixtureParams.get("rank") ?? "ready";
-const rankOrderFixtureMode = fixtureParams.get("rank-order") ?? "ready";
 let rankLoadCount = 0;
-let rankOrderLoadCount = 0;
 
 const dataSource: BookingCurveReferenceDataSource = {
     cancel() {},
@@ -145,46 +139,8 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
     stop() {}
 };
 
-const rankOrderDataSource: BookingCurveRankOrderDataSource = {
-    cancel() {},
-    async load(facilityId): Promise<BookingCurveRankOrderLoadResult> {
-        rankOrderLoadCount += 1;
-        document.documentElement.setAttribute(
-            "data-mock-rank-order-load-count",
-            String(rankOrderLoadCount)
-        );
-        const contextKey = facilityId;
-        if (rankOrderFixtureMode === "loading") {
-            return new Promise(() => undefined);
-        }
-        if (rankOrderFixtureMode === "error" || rankOrderFixtureMode === "aborted") {
-            return {
-                status: "error",
-                contextKey,
-                reason: rankOrderFixtureMode === "aborted" ? "aborted" : "request-failed"
-            };
-        }
-        return {
-            status: "ready",
-            contextKey,
-            facilityId,
-            snapshot: {
-                entries: rankOrderFixtureMode === "empty"
-                    ? []
-                    : Array.from({ length: 20 }, (_, index) => ({
-                        code: String(index + 1),
-                        name: String(index + 1)
-                    }))
-            }
-        };
-    },
-    reset() {},
-    stop() {}
-};
-
 startBookingCurveReferenceRuntime(document, window, {
     dataSource,
-    rankOrderDataSource,
     rankStatusDataSource,
     resolveAsOfDate: () => AS_OF_DATE,
     resolveStayDate: (location) => location.pathname.includes("/dev/fixtures/next-analyze-booking-curve/")

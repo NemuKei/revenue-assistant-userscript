@@ -121,7 +121,7 @@ assert.match(
     "a stay-date change must reset rank and data context even while the native surface is absent"
 );
 assert.match(runtimeSource, /rankFacilityId !== facilityId/u);
-assert.match(runtimeSource, /rankOrderFacilityId !== facilityId/u);
+assert.doesNotMatch(runtimeSource, /rankOrder|rank-order|rank_sequences/u);
 assert.doesNotMatch(runtimeSource, /\bfetch\s*\(|XMLHttpRequest|POST|PUT|PATCH|DELETE/u);
 assert.match(viewSource, /"ランク変更履歴"/u);
 for (const segmentLabel of ["全体", "個人", "団体"]) {
@@ -144,11 +144,11 @@ assert.match(fixtureEntry, /fixtureMode === "missing"/u);
 assert.match(fixtureEntry, /fixtureMode === "deferred-once"/u);
 assert.match(fixtureEntry, /rankMode === "empty"/u);
 assert.match(fixtureEntry, /rankMode === "deferred-once"/u);
-assert.match(fixtureEntry, /rankOrderMode === "deferred-once"/u);
+assert.doesNotMatch(fixtureEntry, /rankOrder|rank-order|adjustment-response/u);
 for (const control of ["detach-sales", "restore-sales", "stay-next"]) {
     assert.match(fixture, new RegExp(`data-mock-${control}`, "u"));
 }
-for (const counter of ["data-cancel", "data-reset", "rank-cancel", "rank-reset", "rank-order-cancel", "rank-order-reset"]) {
+for (const counter of ["data-cancel", "data-reset", "rank-cancel", "rank-reset"]) {
     assert.match(fixtureEntry, new RegExp(`setFixtureCount\\("${counter}"`, "u"));
 }
 

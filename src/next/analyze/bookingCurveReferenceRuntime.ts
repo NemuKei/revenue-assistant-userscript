@@ -12,7 +12,6 @@ import {
 } from "./bookingCurveReferenceDataSource";
 import {
     buildBookingCurveReferenceViewModel,
-    type BookingCurveAdjustmentRankOrderState,
     type BookingCurveReferenceSecondarySegment,
     type BookingCurveReferenceVisibility,
     type BookingCurveReferenceViewModel
@@ -22,12 +21,6 @@ import {
     type BookingCurveRankHistoryViewState,
     type BookingCurveRankStatusSnapshot
 } from "./bookingCurveRankMarkerModel";
-import {
-    createBookingCurveRankOrderDataSource,
-    type BookingCurveRankOrderDataSource,
-    type BookingCurveRankOrderLoadResult
-} from "./bookingCurveRankOrderDataSource";
-import type { BookingCurveRankOrderSnapshot } from "./bookingCurveRankOrderModel";
 import {
     createBookingCurveRankStatusDataSource,
     type BookingCurveRankStatusDataSource,
@@ -73,7 +66,6 @@ export interface BookingCurveReferenceRuntimeHandle {
 
 export interface StartBookingCurveReferenceRuntimeOptions {
     dataSource?: BookingCurveReferenceDataSource;
-    rankOrderDataSource?: BookingCurveRankOrderDataSource;
     rankStatusDataSource?: BookingCurveRankStatusDataSource;
     resolveAsOfDate?: (documentHost: Document) => string | null;
     resolveStayDate?: (location: Location) => string | null;
@@ -95,21 +87,6 @@ export function parseBookingCurveReferenceAnalyzeStayDate(pathname: string): str
         : null;
 }
 
-export function shouldStartBookingCurveRankOrderLoad(options: {
-    hasError: boolean;
-    hasSnapshot: boolean;
-    loading: boolean;
-    rankHistory: BookingCurveRankHistoryViewState;
-    scopeKind: BookingCurveReferenceViewModel["scope"]["kind"];
-}): boolean {
-    return options.scopeKind === "roomGroup"
-        && options.rankHistory.status === "ready"
-        && options.rankHistory.events.length > 0
-        && !options.hasSnapshot
-        && !options.hasError
-        && !options.loading;
-}
-
 export function startBookingCurveReferenceRuntime(
     documentHost: Document = document,
     windowHost: Window = window,
@@ -118,8 +95,6 @@ export function startBookingCurveReferenceRuntime(
     const dataSource = options.dataSource ?? createBookingCurveReferenceDataSource({ windowHost });
     const rankStatusDataSource = options.rankStatusDataSource
         ?? createBookingCurveRankStatusDataSource({ windowHost });
-    const rankOrderDataSource = options.rankOrderDataSource
-        ?? createBookingCurveRankOrderDataSource({ windowHost });
     const resolveStayDate = options.resolveStayDate
         ?? ((location: Location) => parseBookingCurveReferenceAnalyzeStayDate(location.pathname));
     const resolveAsOfDate = options.resolveAsOfDate ?? parseLiveSimilarityLensAsOfDate;
@@ -128,11 +103,8 @@ export function startBookingCurveReferenceRuntime(
     let activeStayDate: string | null = null;
     let activeAsOfDate: string | null = null;
     let activeRankSnapshot: BookingCurveRankStatusSnapshot | null = null;
-    let activeRankOrderSnapshot: BookingCurveRankOrderSnapshot | null = null;
     let rankLoadError: Extract<BookingCurveRankStatusLoadResult, { status: "error" }>["reason"] | null = null;
-    let rankOrderLoadError: Extract<BookingCurveRankOrderLoadResult, { status: "error" }>["reason"] | null = null;
     let rankLoading = false;
-    let rankOrderLoading = false;
     let selectedScopeKey = "hotel";
     let secondarySegment: BookingCurveReferenceSecondarySegment = "transient";
     let visibility: BookingCurveReferenceVisibility = { recent: true, seasonal: true };
@@ -141,7 +113,6 @@ export function startBookingCurveReferenceRuntime(
     let contextBlocked = false;
     let loadGeneration = 0;
     let rankLoadGeneration = 0;
-    let rankOrderLoadGeneration = 0;
     let scheduledReconcileTimer: number | null = null;
     let scheduledDataRefreshTimer: number | null = null;
     let narrow = windowHost.innerWidth <= 680;
@@ -220,19 +191,14 @@ export function startBookingCurveReferenceRuntime(
     function resetContext(stayDate: string, asOfDate: string | null): void {
         loadGeneration += 1;
         rankLoadGeneration += 1;
-        rankOrderLoadGeneration += 1;
         dataSource.reset();
         rankStatusDataSource.reset();
-        rankOrderDataSource.reset();
         activeStayDate = stayDate;
         activeAsOfDate = asOfDate;
         activeData = null;
         activeRankSnapshot = null;
-        activeRankOrderSnapshot = null;
         rankLoadError = null;
-        rankOrderLoadError = null;
         rankLoading = false;
-        rankOrderLoading = false;
         contextBlocked = false;
         selectedScopeKey = "hotel";
         secondarySegment = "transient";
@@ -273,15 +239,10 @@ export function startBookingCurveReferenceRuntime(
         if (!hasLiveFacilityContextLabel(facilityHints, result.facilityLabel)) {
             activeData = null;
             activeRankSnapshot = null;
-            activeRankOrderSnapshot = null;
             rankLoadError = null;
-            rankOrderLoadError = null;
             rankLoading = false;
-            rankOrderLoading = false;
             rankLoadGeneration += 1;
-            rankOrderLoadGeneration += 1;
             rankStatusDataSource.reset();
-            rankOrderDataSource.reset();
             contextBlocked = true;
             state = { status: "error", stayDate, reason: "facility-context-mismatch" };
             removeBookingCurveReferenceArtifacts(documentHost);
@@ -304,7 +265,6 @@ export function startBookingCurveReferenceRuntime(
             return;
         }
         const rankHistory = resolveRankHistory(activeData.scope);
-        const rankOrder = resolveRankOrder(activeData.scope);
         const model = buildBookingCurveReferenceViewModel({
             asOfDate: activeData.asOfDate,
             facilityId: activeData.facilityId,
@@ -312,7 +272,6 @@ export function startBookingCurveReferenceRuntime(
             records: activeData.records,
             rankEvents: rankHistory.status === "ready" ? rankHistory.events : [],
             rankHistory,
-            rankOrder,
             scope: activeData.scope,
             scopes: activeData.scopes,
             secondarySegment,
@@ -336,32 +295,7 @@ export function startBookingCurveReferenceRuntime(
             && !rankLoading
         ) {
             startRankLoad(activeData.facilityId, activeData.stayDate);
-            return;
         }
-        if (shouldStartBookingCurveRankOrderLoad({
-            hasError: rankOrderLoadError !== null,
-            hasSnapshot: activeRankOrderSnapshot !== null,
-            loading: rankOrderLoading,
-            rankHistory,
-            scopeKind: activeData.scope.kind
-        })) {
-            startRankOrderLoad(activeData.facilityId);
-        }
-    }
-
-    function resolveRankOrder(
-        scope: BookingCurveReferenceViewModel["scope"]
-    ): BookingCurveAdjustmentRankOrderState {
-        if (scope.kind !== "roomGroup") {
-            return { status: "error" };
-        }
-        if (activeRankOrderSnapshot !== null) {
-            return { status: "ready", entries: activeRankOrderSnapshot.entries };
-        }
-        if (rankOrderLoadError !== null) {
-            return { status: "error" };
-        }
-        return { status: "loading" };
     }
 
     function resolveRankHistory(
@@ -400,31 +334,6 @@ export function startBookingCurveReferenceRuntime(
             } else {
                 activeRankSnapshot = result.snapshot;
                 rankLoadError = null;
-            }
-            rebuildState();
-        });
-    }
-
-    function startRankOrderLoad(facilityId: string): void {
-        const generation = ++rankOrderLoadGeneration;
-        rankOrderLoading = true;
-        rankOrderLoadError = null;
-        rebuildState();
-        void rankOrderDataSource.load(facilityId).then((result) => {
-            if (
-                stopped
-                || generation !== rankOrderLoadGeneration
-                || activeData?.facilityId !== facilityId
-            ) {
-                return;
-            }
-            rankOrderLoading = false;
-            if (result.status === "error") {
-                rankOrderLoadError = result.reason;
-                activeRankOrderSnapshot = null;
-            } else {
-                activeRankOrderSnapshot = result.snapshot;
-                rankOrderLoadError = null;
             }
             rebuildState();
         });
@@ -569,17 +478,12 @@ export function startBookingCurveReferenceRuntime(
     function suspendForInactiveRoute(): void {
         loadGeneration += 1;
         rankLoadGeneration += 1;
-        rankOrderLoadGeneration += 1;
         dataSource.reset();
         rankStatusDataSource.reset();
-        rankOrderDataSource.reset();
         activeData = null;
         activeRankSnapshot = null;
-        activeRankOrderSnapshot = null;
         rankLoadError = null;
-        rankOrderLoadError = null;
         rankLoading = false;
-        rankOrderLoading = false;
         contextBlocked = false;
         activeStayDate = null;
         activeAsOfDate = null;
@@ -596,13 +500,10 @@ export function startBookingCurveReferenceRuntime(
     function suspendForInactiveSurface(finalState: string): void {
         loadGeneration += 1;
         rankLoadGeneration += 1;
-        rankOrderLoadGeneration += 1;
         dataSource.cancel();
         rankStatusDataSource.cancel();
-        rankOrderDataSource.cancel();
         activeData = null;
         rankLoading = false;
-        rankOrderLoading = false;
         contextBlocked = false;
         state = { status: "idle" };
         removeBookingCurveReferenceArtifacts(documentHost);
@@ -624,11 +525,9 @@ export function startBookingCurveReferenceRuntime(
         stopped = true;
         loadGeneration += 1;
         rankLoadGeneration += 1;
-        rankOrderLoadGeneration += 1;
         unsubscribeDataSource();
         dataSource.stop();
         rankStatusDataSource.stop();
-        rankOrderDataSource.stop();
         abortController.abort();
         observer.disconnect();
         if (scheduledReconcileTimer !== null) {

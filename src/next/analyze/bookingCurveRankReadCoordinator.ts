@@ -1,17 +1,11 @@
 import { toCompactDateKey } from "../../curveCore";
 import {
-    createBookingCurveRankOrderDataSource,
-    type BookingCurveRankOrderDataSource,
-    type BookingCurveRankOrderLoadResult
-} from "./bookingCurveRankOrderDataSource";
-import {
     createBookingCurveRankStatusDataSource,
     type BookingCurveRankStatusDataSource,
     type BookingCurveRankStatusLoadResult
 } from "./bookingCurveRankStatusDataSource";
 
 export interface BookingCurveRankReadConsumer {
-    rankOrderDataSource: BookingCurveRankOrderDataSource;
     rankStatusDataSource: BookingCurveRankStatusDataSource;
     stop(): void;
 }
@@ -22,7 +16,6 @@ export interface BookingCurveRankReadCoordinator {
 }
 
 export interface CreateBookingCurveRankReadCoordinatorOptions {
-    createRankOrderDataSource?: () => BookingCurveRankOrderDataSource;
     createRankStatusDataSource?: () => BookingCurveRankStatusDataSource;
     windowHost?: Window;
 }
@@ -63,13 +56,8 @@ interface RankStatusContext {
     key: string;
 }
 
-interface RankOrderContext {
-    facilityId: string;
-    key: string;
-}
-
 /**
- * Shares the two bounded rank reads between Analyze surfaces for one page
+ * Shares the bounded rank-status read between Analyze surfaces for one page
  * runtime. Results remain memory-only while their bounded context is current;
  * an individual surface owns only its lease on an in-flight read.
  */
@@ -81,18 +69,9 @@ export function createBookingCurveRankReadCoordinator(
             options.windowHost === undefined ? {} : { windowHost: options.windowHost }
         )
     ));
-    const createRankOrderSource = options.createRankOrderDataSource ?? (() => (
-        createBookingCurveRankOrderDataSource(
-            options.windowHost === undefined ? {} : { windowHost: options.windowHost }
-        )
-    ));
     const rankStatusCache: SharedReadCache<
         BookingCurveRankStatusLoadResult,
         BookingCurveRankStatusDataSource
-    > = { entries: new Map(), newestKey: null };
-    const rankOrderCache: SharedReadCache<
-        BookingCurveRankOrderLoadResult,
-        BookingCurveRankOrderDataSource
     > = { entries: new Map(), newestKey: null };
     let stopped = false;
 
@@ -102,13 +81,10 @@ export function createBookingCurveRankReadCoordinator(
                 throw new Error("booking-curve-rank-consumer-id-required");
             }
             const rankStatusDataSource = createRankStatusConsumer();
-            const rankOrderDataSource = createRankOrderConsumer();
             return {
-                rankOrderDataSource,
                 rankStatusDataSource,
                 stop() {
                     rankStatusDataSource.stop();
-                    rankOrderDataSource.stop();
                 }
             };
         },
@@ -118,7 +94,6 @@ export function createBookingCurveRankReadCoordinator(
             }
             stopped = true;
             stopEntries(rankStatusCache);
-            stopEntries(rankOrderCache);
         }
     };
 
@@ -192,72 +167,6 @@ export function createBookingCurveRankReadCoordinator(
         };
     }
 
-    function createRankOrderConsumer(): BookingCurveRankOrderDataSource {
-        let activeLease: ActiveLease<
-            BookingCurveRankOrderLoadResult,
-            BookingCurveRankOrderDataSource
-        > | null = null;
-        let lastEntry: SharedReadEntry<
-            BookingCurveRankOrderLoadResult,
-            BookingCurveRankOrderDataSource
-        > | null = null;
-        let consumerStopped = false;
-
-        const release = (): void => {
-            activeLease?.release();
-            activeLease = null;
-        };
-        const reset = (): void => {
-            const entry = activeLease?.entry ?? lastEntry;
-            if (entry !== null) {
-                entry.invalidated = true;
-            }
-            release();
-            if (entry !== null) {
-                releaseUnusedEntry(rankOrderCache, entry);
-            }
-            lastEntry = null;
-        };
-
-        return {
-            cancel: release,
-            load(facilityId) {
-                const context = createRankOrderContext(facilityId);
-                if (consumerStopped || stopped) {
-                    return Promise.resolve(createAbortedRankOrderResult(context.key));
-                }
-                if (context.facilityId === "") {
-                    if (activeLease?.entry.key !== context.key) {
-                        release();
-                    }
-                    return Promise.resolve({
-                        status: "error",
-                        contextKey: context.key,
-                        reason: "facility-id-invalid"
-                    });
-                }
-                if (activeLease?.entry.key === context.key) {
-                    return activeLease.promise;
-                }
-                release();
-                const entry = getOrCreateRankOrderEntry(context);
-                lastEntry = entry;
-                activeLease = attachLease(
-                    entry,
-                    createAbortedRankOrderResult(context.key),
-                    () => stopped || consumerStopped,
-                    () => releaseUnusedEntry(rankOrderCache, entry)
-                );
-                return activeLease.promise;
-            },
-            reset,
-            stop() {
-                consumerStopped = true;
-                release();
-            }
-        };
-    }
-
     function getOrCreateRankStatusEntry(context: {
         compactStayDate: string;
         facilityId: string;
@@ -290,35 +199,6 @@ export function createBookingCurveRankReadCoordinator(
         return entry;
     }
 
-    function getOrCreateRankOrderEntry(
-        context: RankOrderContext
-    ): SharedReadEntry<BookingCurveRankOrderLoadResult, BookingCurveRankOrderDataSource> {
-        const existing = rankOrderCache.entries.get(context.key);
-        if (existing !== undefined) {
-            selectNewestEntry(rankOrderCache, context.key);
-            return existing;
-        }
-        selectNewestEntry(rankOrderCache, context.key);
-        const source = createRankOrderSource();
-        const entry: SharedReadEntry<
-            BookingCurveRankOrderLoadResult,
-            BookingCurveRankOrderDataSource
-        > = {
-            invalidated: false,
-            key: context.key,
-            leases: new Set(),
-            promise: Promise.resolve(createAbortedRankOrderResult(context.key)),
-            settled: false,
-            source
-        };
-        entry.promise = safelyLoad(
-            () => source.load(context.facilityId),
-            () => createFailedRankOrderResult(context.key)
-        ).then((result) => validateRankOrderResult(result, context));
-        markSettled(entry);
-        rankOrderCache.entries.set(context.key, entry);
-        return entry;
-    }
 }
 
 function attachLease<Result, Source extends SharedSource>(
@@ -441,14 +321,6 @@ function createRankStatusContext(facilityId: string, stayDate: string): RankStat
     };
 }
 
-function createRankOrderContext(facilityId: string): RankOrderContext {
-    const normalizedFacilityId = facilityId.trim();
-    return {
-        facilityId: normalizedFacilityId,
-        key: normalizedFacilityId || "invalid"
-    };
-}
-
 function validateRankStatusResult(
     result: BookingCurveRankStatusLoadResult,
     context: { compactStayDate: string; facilityId: string; key: string }
@@ -468,31 +340,10 @@ function validateRankStatusResult(
     return result;
 }
 
-function validateRankOrderResult(
-    result: BookingCurveRankOrderLoadResult,
-    context: RankOrderContext
-): BookingCurveRankOrderLoadResult {
-    if (
-        result.contextKey !== context.key
-        || (result.status === "ready" && result.facilityId !== context.facilityId)
-    ) {
-        return createFailedRankOrderResult(context.key);
-    }
-    return result;
-}
-
 function createAbortedRankStatusResult(contextKey: string): BookingCurveRankStatusLoadResult {
     return { status: "error", contextKey, reason: "aborted" };
 }
 
 function createFailedRankStatusResult(contextKey: string): BookingCurveRankStatusLoadResult {
-    return { status: "error", contextKey, reason: "request-failed" };
-}
-
-function createAbortedRankOrderResult(contextKey: string): BookingCurveRankOrderLoadResult {
-    return { status: "error", contextKey, reason: "aborted" };
-}
-
-function createFailedRankOrderResult(contextKey: string): BookingCurveRankOrderLoadResult {
     return { status: "error", contextKey, reason: "request-failed" };
 }

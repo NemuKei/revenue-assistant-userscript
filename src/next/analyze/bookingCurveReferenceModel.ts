@@ -28,13 +28,6 @@ import type {
     NextBookingCurveSourceRecord
 } from "../bookingCurve/bookingCurveSourceStore";
 import type { BookingCurveReferenceScope } from "./bookingCurveReferenceDataSource";
-import {
-    buildBookingCurveAdjustmentEvaluationTicks,
-    buildBookingCurveAdjustmentEvaluationWindows,
-    buildBookingCurveAdjustmentResponses,
-    type BookingCurveAdjustmentResponse
-} from "./bookingCurveAdjustmentResponseModel";
-import type { BookingCurveRankOrderEntry } from "./bookingCurveRankOrderModel";
 import type {
     BookingCurveRankHistoryViewState,
     BookingCurveRankStatusEvent
@@ -102,24 +95,7 @@ export interface BookingCurveReferenceCurrentSummary {
     transient: BookingCurveReferenceMetricSummary;
 }
 
-export type BookingCurveAdjustmentRankOrderState =
-    | { status: "loading" }
-    | { status: "ready"; entries: readonly BookingCurveRankOrderEntry[] }
-    | { status: "error" };
-
-export type BookingCurveAdjustmentResponseState =
-    | { status: "scope-required" }
-    | { status: "loading" }
-    | { status: "empty" }
-    | { status: "error" }
-    | {
-        status: "ready";
-        events: readonly BookingCurveAdjustmentResponse[];
-        rankOrderStatus: BookingCurveAdjustmentRankOrderState["status"];
-    };
-
 export interface BookingCurveReferenceViewModel {
-    adjustmentResponse: BookingCurveAdjustmentResponseState;
     asOfDate: string;
     capacityRooms: number | null;
     currentSummary: BookingCurveReferenceCurrentSummary;
@@ -156,7 +132,6 @@ export function buildBookingCurveReferenceViewModel(options: {
     records: readonly unknown[];
     rankEvents?: readonly BookingCurveRankStatusEvent[];
     rankHistory?: BookingCurveRankHistoryViewState;
-    rankOrder?: BookingCurveAdjustmentRankOrderState;
     scope: BookingCurveReferenceScope;
     scopes: readonly BookingCurveReferenceScope[];
     secondarySegment?: BookingCurveReferenceSecondarySegment;
@@ -278,16 +253,10 @@ export function buildBookingCurveReferenceViewModel(options: {
     });
     const secondarySegment = options.secondarySegment ?? "transient";
     const visibility = options.visibility ?? { recent: true, seasonal: true };
-    const rankHistory = resolveAdjustmentRankHistory(options);
+    const rankHistory = resolveRankHistory(options);
     const rankEvents = options.scope.kind === "roomGroup" && rankHistory.status === "ready"
         ? rankHistory.events
         : [];
-    const evaluationWindows = buildBookingCurveAdjustmentEvaluationWindows({
-        asOfDate: normalizedAsOfDate,
-        events: rankEvents,
-        stayDate: normalizedStayDate
-    });
-    const evaluationTicks = buildBookingCurveAdjustmentEvaluationTicks(evaluationWindows);
     const panels = (["all", secondarySegment] as const).map((segment): BookingCurveReferencePanel => {
         const current = buildCurrentSeries(currentRecord, normalizedStayDate, normalizedAsOfDate, segment);
         const recentZeroDay = buildRecentZeroDayReference(
@@ -356,24 +325,9 @@ export function buildBookingCurveReferenceViewModel(options: {
         return { status: "empty", reason: "no-records" };
     }
 
-    const adjustmentResponse = buildAdjustmentResponseState({
-        asOfDate: normalizedAsOfDate,
-        currentRecord,
-        evaluationTicks,
-        evaluationWindows,
-        input,
-        rankHistory,
-        rankOrder: options.rankOrder ?? { status: "error" },
-        records,
-        scope: options.scope,
-        stayDate: normalizedStayDate,
-        weekday
-    });
-
     return {
         status: "ready",
         viewModel: {
-            adjustmentResponse,
             asOfDate,
             capacityRooms: normalizeNonNegativeNumber(currentRecord?.response.max_room_count),
             currentSummary,
@@ -391,7 +345,7 @@ export function buildBookingCurveReferenceViewModel(options: {
     };
 }
 
-function resolveAdjustmentRankHistory(options: {
+function resolveRankHistory(options: {
     rankEvents?: readonly BookingCurveRankStatusEvent[];
     rankHistory?: BookingCurveRankHistoryViewState;
     scope: BookingCurveReferenceScope;
@@ -406,77 +360,6 @@ function resolveAdjustmentRankHistory(options: {
     return events.length === 0
         ? { status: "empty", invalidEventCount: 0 }
         : { status: "ready", events, invalidEventCount: 0 };
-}
-
-function buildAdjustmentResponseState(options: {
-    asOfDate: string;
-    currentRecord: BookingCurveRawSourceRecord | null;
-    evaluationTicks: readonly number[];
-    evaluationWindows: ReturnType<typeof buildBookingCurveAdjustmentEvaluationWindows>;
-    input: ReturnType<typeof buildCurveInputFromBookingCurveResponses>;
-    rankHistory: BookingCurveRankHistoryViewState;
-    rankOrder: BookingCurveAdjustmentRankOrderState;
-    records: readonly BookingCurveRawSourceRecord[];
-    scope: BookingCurveReferenceScope;
-    stayDate: string;
-    weekday: number;
-}): BookingCurveAdjustmentResponseState {
-    switch (options.rankHistory.status) {
-        case "scope-required":
-            return { status: "scope-required" };
-        case "loading":
-            return { status: "loading" };
-        case "empty":
-            return { status: "empty" };
-        case "error":
-            return { status: "error" };
-        case "ready":
-            break;
-    }
-
-    const seasonalLanding = buildSeasonalLandingReference(
-        options.records,
-        "transient",
-        options.stayDate.slice(0, 7),
-        options.weekday
-    );
-    const evaluationReferenceTicks = Array.from(new Set<CurveTick>([
-        ...LEAD_TIME_BUCKET_TICKS,
-        ...options.evaluationTicks
-    ]));
-    const recentReference = buildRecentWeighted90ReferenceCurve(options.input, {
-        scope: options.scope.kind,
-        ...(options.scope.roomGroupId === null ? {} : { roomGroupId: options.scope.roomGroupId }),
-        segment: "transient",
-        ticks: evaluationReferenceTicks,
-        targetStayDate: options.stayDate,
-        asOfDate: options.asOfDate
-    });
-    const seasonalReference = buildSeasonalComponentReferenceCurve(options.input, {
-        scope: options.scope.kind,
-        ...(options.scope.roomGroupId === null ? {} : { roomGroupId: options.scope.roomGroupId }),
-        segment: "transient",
-        ticks: evaluationReferenceTicks,
-        targetMonth: options.stayDate.slice(0, 7),
-        weekday: options.weekday,
-        asOfDate: options.asOfDate,
-        finalRooms: seasonalLanding.finalRooms
-    });
-    return {
-        status: "ready",
-        events: buildBookingCurveAdjustmentResponses({
-            allowZeroDayCurrent: options.currentRecord !== null
-                && isZeroDayObservationTrusted(options.currentRecord),
-            currentResponse: options.currentRecord?.response ?? null,
-            rankOrderEntries: options.rankOrder.status === "ready"
-                ? options.rankOrder.entries
-                : null,
-            recentReference,
-            seasonalReference,
-            windows: options.evaluationWindows
-        }),
-        rankOrderStatus: options.rankOrder.status
-    };
 }
 
 function buildCurrentSummary(

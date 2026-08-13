@@ -71,7 +71,6 @@ function startNextCandidateRuntime(): void {
             documentHost: document,
             windowHost: window
         }),
-        rankOrderDataSource: bookingCurveReferenceRankReads.rankOrderDataSource,
         rankStatusDataSource: bookingCurveReferenceRankReads.rankStatusDataSource
     });
     startSalesSettingClassicRuntime(document, window, {
@@ -80,7 +79,6 @@ function startNextCandidateRuntime(): void {
             documentHost: document,
             windowHost: window
         }),
-        rankOrderDataSource: salesSettingRankReads.rankOrderDataSource,
         rankStatusDataSource: salesSettingRankReads.rankStatusDataSource
     });
     startPriceTrendComparisonRuntime(document, window);
