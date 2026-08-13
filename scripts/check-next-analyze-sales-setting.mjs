@@ -91,8 +91,12 @@ for (const selector of [
 }
 assert.match(entrySource, /startSalesSettingClassicRuntime\(document, window, \{/u);
 assert.match(entrySource, /startSalesSettingClassicRuntime[\s\S]*acquisition: bookingCurveAcquisition/u);
-assert.match(runtimeSource, /for \(const scope of activeScopes\)[\s\S]*await dataSource\.load/u);
-assert.doesNotMatch(runtimeSource, /Promise\.all\([\s\S]*dataSource\.load/u);
+assert.match(
+    runtimeSource,
+    /const roomScopes = activeScopes\.filter[\s\S]*await Promise\.all\(roomScopes\.map\(async \(scope\) => \{[\s\S]*dataSource\.load/u,
+    "room current loads must enter the shared queue concurrently after the hotel is ready"
+);
+assert.doesNotMatch(runtimeSource, /for \(const scope of activeScopes\)[\s\S]*await dataSource\.load/u);
 assert.match(
     runtimeSource,
     /dataSource\.load\(stayDate, asOfDate, "hotel", \{\s*currentPriority: "critical-current",\s*referencePriority: null/u,
@@ -101,7 +105,7 @@ assert.match(
 assert.match(
     runtimeSource,
     /dataSource\.prioritize\?\.\(stayDate, asOfDate, "hotel", \{\s*currentPriority: "critical-current",\s*referencePriority: "visible-reference"\s*\}\);\s*scopeBatchLoading = false/u,
-    "hotel reference must be admitted only after the room-current loop"
+    "hotel reference must be admitted only after the room-current batch"
 );
 assert.match(
     runtimeSource,
@@ -117,11 +121,15 @@ assert.match(runtimeSource, /dataSource\.cancel\(\);\s*scopeBatchLoading = true;
 assert.match(runtimeSource, /addEventListener\("load", scheduleReconcile/u);
 assert.match(runtimeSource, /addEventListener\("pageshow", scheduleReconcile/u);
 assert.doesNotMatch(runtimeSource, /seasonal:\s*false/u);
-const roomScopeLoop = runtimeSource.match(
-    /scopeBatchLoading = true;[\s\S]*for \(const scope of activeScopes\) \{([\s\S]*?)\n {8}\}\n {8}dataSource\.prioritize/u
+const roomScopeBatch = runtimeSource.match(
+    /const roomScopes = activeScopes\.filter[\s\S]*await Promise\.all\(roomScopes\.map\(async \(scope\) => \{([\s\S]*?)\n {8}\}\)\);\n {8}if \(!isCurrentLoad/u
 );
-assert.notEqual(roomScopeLoop, null, "room scopes must remain sequential while their redraw is batched");
-assert.doesNotMatch(roomScopeLoop?.[1] ?? "", /renderCurrentState\(\)/u);
+assert.notEqual(roomScopeBatch, null, "room scopes must load concurrently after the hotel result");
+assert.match(
+    roomScopeBatch?.[1] ?? "",
+    /activeData\.set\(scope\.key, result\);[\s\S]*rebuildCurves\(\);\s*renderCurrentState\(\);/u,
+    "each ready room must render progressively without waiting for every room"
+);
 assert.match(
     runtimeSource,
     /scopeBatchLoading = false;\s*initialScopeBatchLoading = false;\s*rebuildCurves\(\);\s*renderCurrentState\(\);/u,

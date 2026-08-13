@@ -297,10 +297,8 @@ export function startSalesSettingClassicRuntime(
         renderCurrentState();
         startRankLoad(hotelResult.facilityId, stayDate);
 
-        for (const scope of activeScopes) {
-            if (scope.kind !== "roomGroup") {
-                continue;
-            }
+        const roomScopes = activeScopes.filter((scope) => scope.kind === "roomGroup");
+        await Promise.all(roomScopes.map(async (scope) => {
             const result = await dataSource.load(stayDate, asOfDate, scope.key, {
                 currentPriority: "visible-current",
                 referencePriority: openScopes.has(scope.key) ? "selected-reference" : null
@@ -312,10 +310,16 @@ export function startSalesSettingClassicRuntime(
                 activeData.set(scope.key, result);
                 ensurePreference(scope.key);
                 updateAnalyzePerformanceCohort(result);
-            } else if (result.reason === "facility-context-mismatch") {
-                blockMismatchedContext();
+                rebuildCurves();
+                renderCurrentState();
                 return;
             }
+            if (result.reason === "facility-context-mismatch") {
+                blockMismatchedContext();
+            }
+        }));
+        if (!isCurrentLoad(generation, stayDate, asOfDate)) {
+            return;
         }
         dataSource.prioritize?.(stayDate, asOfDate, "hotel", {
             currentPriority: "critical-current",

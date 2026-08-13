@@ -133,18 +133,19 @@ export function createBookingCurveReferenceDataSource(
     const windowHost = options.windowHost ?? window;
     const transport = options.transport ?? createBrowserNextReadTransport(windowHost);
     const primaryKeyReader = options.primaryKeyReader ?? readExistingIndexedDbRecordsByPrimaryKeys;
-    let activeController: AbortController | null = null;
-    let activeLoad: Promise<BookingCurveReferenceDataLoadResult> | null = null;
-    let activeLoadKey: string | null = null;
+    const activeLoads = new Map<string, {
+        controller: AbortController;
+        load: Promise<BookingCurveReferenceDataLoadResult>;
+    }>();
     let context: BookingCurveReferenceContext | null = null;
     let priorityController: AbortController | null = null;
     let stopped = false;
 
     const cancel = (): void => {
-        activeController?.abort();
-        activeController = null;
-        activeLoad = null;
-        activeLoadKey = null;
+        for (const active of activeLoads.values()) {
+            active.controller.abort();
+        }
+        activeLoads.clear();
         priorityController?.abort();
         priorityController = null;
     };
@@ -169,17 +170,19 @@ export function createBookingCurveReferenceDataSource(
                 return Promise.resolve({ status: "error", contextKey, reason: "as-of-invalid" });
             }
             const loadKey = `${contextKey}|${scopeKey}`;
-            if (activeLoadKey === loadKey && activeLoad !== null) {
-                return activeLoad;
+            const existingLoad = activeLoads.get(loadKey);
+            if (existingLoad !== undefined) {
+                return existingLoad.load;
             }
             if (context !== null && context.contextKey !== contextKey) {
+                for (const active of activeLoads.values()) {
+                    active.controller.abort();
+                }
+                activeLoads.clear();
                 priorityController?.abort();
                 priorityController = null;
             }
-            activeController?.abort();
             const controller = new AbortController();
-            activeController = controller;
-            activeLoadKey = loadKey;
             const load = loadBookingCurveReferenceData({
                 asOfDate: compactAsOfDate,
                 ...(options.acquisition === undefined ? {} : { acquisition: options.acquisition }),
@@ -211,14 +214,12 @@ export function createBookingCurveReferenceDataSource(
                 }
                 return result;
             });
-            activeLoad = load;
+            activeLoads.set(loadKey, { controller, load });
             void load.finally(() => {
-                if (activeLoad !== load) {
+                if (activeLoads.get(loadKey)?.load !== load) {
                     return;
                 }
-                activeController = null;
-                activeLoad = null;
-                activeLoadKey = null;
+                activeLoads.delete(loadKey);
             });
             return load;
         },
@@ -359,7 +360,6 @@ async function loadBookingCurveReferenceData(options: {
             { status: "ready" }
         >["acquisitionDiagnostics"];
         if (acquisition !== undefined) {
-            await acquisition.startBackground(acquisitionContext);
             const current = await acquisition.ensureCurrent({
                 context: acquisitionContext,
                 priority: options.currentPriority,

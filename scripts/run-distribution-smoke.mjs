@@ -1045,7 +1045,7 @@ function collectModeMetricsInPage(selectedMode) {
             }
         })();
         const nextPerformanceSummary = fetchPerformanceSummary?.schemaVersion === "rau-next-performance-v1"
-            && fetchPerformanceSummary?.requestProfile === "booking-curve-50ms-20"
+            && fetchPerformanceSummary?.requestProfile === "booking-curve-50ms-20-analyze-uncapped"
             && typeof fetchPerformanceSummary?.sourceRevision === "string"
             && fetchPerformanceSummary?.milestones !== null
             && typeof fetchPerformanceSummary?.milestones === "object"

@@ -169,8 +169,10 @@ export function startBookingCurveAcquisitionRuntime(
             }
             if (surface.kind === "calendar") {
                 options.calendarSummary?.setContext(context);
+                await options.coordinator.startBackground(context);
+                return;
             }
-            await options.coordinator.startBackground(context);
+            setRuntimeState("foreground-only");
         }).catch(() => {
             if (!controller.signal.aborted) {
                 options.calendarSummary?.clear();

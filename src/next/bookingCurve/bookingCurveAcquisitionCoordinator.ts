@@ -7,7 +7,6 @@ import {
     NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT,
     NEXT_BOOKING_CURVE_CONCURRENCY,
     NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT,
-    NEXT_BOOKING_CURVE_INTERACTIVE_RESERVE,
     NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS,
     buildNextBookingCurveBackgroundTasks,
     buildNextBookingCurveCurrentTasks,
@@ -118,6 +117,7 @@ interface QueuedTask {
 }
 
 export interface CreateNextBookingCurveAcquisitionCoordinatorOptions {
+    backgroundRequestLimits?: Partial<Record<NextBookingCurveAcquisitionMode, number>>;
     legacySeedReader?: NextBookingCurveLegacySeedReader;
     now?: () => Date;
     performanceRecorder?: NextPerformanceRecorder;
@@ -146,11 +146,12 @@ export function createNextBookingCurveAcquisitionCoordinator(
     let activeRequestCount = 0;
     let currentContextKey: string | null = null;
     let currentFacilityId: string | null = null;
+    let backgroundRequestCount = 0;
     let drainTimer: number | null = null;
     let lastRequestStartedAt = 0;
     let stopped = false;
     let planningGeneration = 0;
-    let sessionRequestLimit = NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT;
+    let backgroundRequestLimit = NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT;
     let consecutiveErrorCount = 0;
 
     return {
@@ -219,12 +220,18 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 coverage < NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD
                     ? "bootstrap"
                     : "daily-delta";
-            sessionRequestLimit = mode === "bootstrap"
-                ? NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT
-                : NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT;
+            backgroundRequestLimit = normalizeRequestLimit(
+                options.backgroundRequestLimits?.[mode],
+                mode === "bootstrap"
+                    ? NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT
+                    : NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT
+            );
+            const queuedBackgroundCount = queue.filter(
+                (queued) => queued.activity === "background"
+            ).length;
             const backgroundLimit = Math.max(
                 0,
-                sessionRequestLimit - NEXT_BOOKING_CURVE_INTERACTIVE_RESERVE - state.requestCount
+                backgroundRequestLimit - backgroundRequestCount - queuedBackgroundCount
             );
             const dueTasks = selectNextBookingCurveDueTasks({
                 asOfDate: context.asOfDate,
@@ -280,11 +287,10 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 targetStayDate
             });
             const existing = await readExistingForTasks({ context, tasks });
-            const remainingBudget = Math.max(0, sessionRequestLimit - state.requestCount);
             const dueTasks = selectNextBookingCurveDueTasks({
                 asOfDate: context.asOfDate,
                 existingRecords: existing,
-                limit: remainingBudget,
+                limit: tasks.length,
                 tasks
             });
             for (const task of dueTasks) {
@@ -335,6 +341,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         legacySeedBySourceKey.clear();
         if (facilityChanged) {
             state = createInitialState();
+            backgroundRequestCount = 0;
         } else {
             state = {
                 ...createInitialState(),
@@ -429,10 +436,6 @@ export function createNextBookingCurveAcquisitionCoordinator(
             maybeComplete();
             return;
         }
-        if (state.requestCount >= sessionRequestLimit) {
-            suspendRun("budget-reached");
-            return;
-        }
         const delay = Math.max(
             0,
             NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS - (Date.now() - lastRequestStartedAt)
@@ -451,6 +454,9 @@ export function createNextBookingCurveAcquisitionCoordinator(
         }
         activeRequestCount += 1;
         lastRequestStartedAt = Date.now();
+        if (next.activity === "background") {
+            backgroundRequestCount += 1;
+        }
         state = {
             ...state,
             requestCount: state.requestCount + 1,
@@ -468,10 +474,14 @@ export function createNextBookingCurveAcquisitionCoordinator(
     }
 
     function takeNextTask(): QueuedTask | null {
+        const interactivePending = queue.some((queued) => queued.activity === "interactive");
         let selectedIndex = -1;
         for (let index = 0; index < queue.length; index += 1) {
             const candidate = queue[index];
-            if (candidate === undefined) {
+            if (
+                candidate === undefined
+                || (interactivePending && candidate.activity !== "interactive")
+            ) {
                 continue;
             }
             const selected = selectedIndex < 0 ? undefined : queue[selectedIndex];
@@ -817,6 +827,12 @@ function createAcquisitionDiagnostics(
         dueTaskCount: Math.max(0, Math.trunc(dueTaskCount)),
         outcome
     };
+}
+
+function normalizeRequestLimit(value: number | undefined, fallback: number): number {
+    return Number.isFinite(value)
+        ? Math.max(0, Math.floor(value ?? fallback))
+        : fallback;
 }
 
 function getPerformanceHttpClassification(

@@ -6,6 +6,10 @@ const coordinatorSource = await readFile(
     new URL("../src/next/bookingCurve/bookingCurveAcquisitionCoordinator.ts", import.meta.url),
     "utf8"
 );
+const runtimeSource = await readFile(
+    new URL("../src/next/bookingCurve/bookingCurveAcquisitionRuntime.ts", import.meta.url),
+    "utf8"
+);
 const model = await importBundledTypeScript(
     "../src/next/bookingCurve/bookingCurveAcquisitionModel.ts",
     import.meta.url
@@ -43,20 +47,25 @@ assert.match(
     coordinatorSource,
     /const NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD = 0\.8;/u
 );
+assert.match(
+    runtimeSource,
+    /if \(surface\.kind === "calendar"\) \{[\s\S]*await options\.coordinator\.startBackground\(context\);[\s\S]*return;[\s\S]*setRuntimeState\("foreground-only"\);/u,
+    "Analyze route context discovery must not start the Top background planner"
+);
 assert.equal(storeModule.NEXT_BOOKING_CURVE_SOURCE_RETENTION_LIMIT, 4_096);
 assert.equal(
     runtimeModule.formatNextBookingCurveAcquisitionState({
         errorCount: 0,
         mode: "bootstrap",
-        processedCount: 768,
-        requestCount: 768,
+        processedCount: 800,
+        requestCount: 800,
         skippedCount: 0,
         status: "complete",
         stopReason: null,
-        storedCount: 768,
-        totalCount: 768
+        storedCount: 800,
+        totalCount: 800
     }),
-    "今回分完了 768/768（保存 768・重複回避 0・エラー 0・残りは次回確認）",
+    "今回分完了 800/800（保存 800・重複回避 0・エラー 0・残りは次回確認）",
     "bounded bootstrap completion must not imply that every source is ready"
 );
 assert.equal(
@@ -846,6 +855,53 @@ assert.equal(
 );
 performanceCoordinator.stop();
 
+const separateBudgetRecords = [];
+const separateBudgetRequests = [];
+const separateBudgetCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    backgroundRequestLimits: { bootstrap: 1, "daily-delta": 1 },
+    store: {
+        async addAndPrune(records) {
+            separateBudgetRecords.push(...records);
+            return { addedCount: records.length, deletedCount: 0 };
+        },
+        async readLatestBySourceKeys(sourceKeys) {
+            return separateBudgetRecords.filter((record) => sourceKeys.includes(record.sourceKey));
+        }
+    },
+    transport: {
+        async read(request) {
+            separateBudgetRequests.push(request);
+            return { stay_date: request.stayDate, booking_curve: [] };
+        }
+    },
+    windowHost: fakeWindow
+});
+await separateBudgetCoordinator.startBackground(oneScopeContext);
+await new Promise((resolve) => setTimeout(resolve, 80));
+assert.equal(
+    separateBudgetRequests.length,
+    1,
+    "Top background must stop at its own request-count budget"
+);
+await separateBudgetCoordinator.ensureCurrent({
+    context: oneScopeContext,
+    signal: new AbortController().signal,
+    stayDate: "20260724"
+});
+assert.equal(
+    separateBudgetRequests.length,
+    2,
+    "Analyze foreground current must start after the Top background budget is exhausted"
+);
+await separateBudgetCoordinator.startBackground(oneScopeContext);
+await new Promise((resolve) => setTimeout(resolve, 80));
+assert.equal(
+    separateBudgetRequests.length,
+    2,
+    "foreground bypass must not replenish or expand the Top background budget"
+);
+separateBudgetCoordinator.stop();
+
 let releasePriorityRequest;
 const priorityRequestGate = new Promise((resolve) => {
     releasePriorityRequest = resolve;
@@ -949,7 +1005,6 @@ assert.deepEqual(
     [
         { kind: "booking-curve", roomGroupId: null, stayDate: "20260723" },
         { kind: "booking-curve", roomGroupId: "b", stayDate: "20260723" },
-        { kind: "booking-curve", roomGroupId: "a", stayDate: "20260723" },
         {
             kind: "booking-curve",
             roomGroupId: selectedPriorityTask.roomGroupId,
@@ -959,9 +1014,10 @@ assert.deepEqual(
             kind: "booking-curve",
             roomGroupId: visiblePriorityTask.roomGroupId,
             stayDate: visiblePriorityTask.stayDate
-        }
+        },
+        { kind: "booking-curve", roomGroupId: "a", stayDate: "20260723" }
     ],
-    "the queue must admit critical current, visible current, selected reference, and visible reference in order"
+    "the queue must finish queued interactive work before admitting another background request"
 );
 assert.equal(
     priorityPerformanceEvents.some((event) => event.event === "background-paused"),

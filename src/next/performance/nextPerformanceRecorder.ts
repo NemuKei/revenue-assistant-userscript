@@ -1,7 +1,7 @@
 export const NEXT_PERFORMANCE_MARKER_ATTRIBUTE = "data-ra-fetch-performance-summary";
 export const NEXT_PERFORMANCE_SCHEMA_VERSION = "rau-next-performance-v1";
 export const NEXT_PERFORMANCE_DEBUG_STORAGE_KEY = "revenue-assistant:debug:fetch-performance";
-export const NEXT_PERFORMANCE_REQUEST_PROFILE = "booking-curve-50ms-20";
+export const NEXT_PERFORMANCE_REQUEST_PROFILE = "booking-curve-50ms-20-analyze-uncapped";
 
 export type NextPerformanceRoute = "analyze" | "competitor" | "top";
 export type NextPerformanceOperation =

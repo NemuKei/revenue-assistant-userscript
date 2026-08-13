@@ -854,26 +854,27 @@
   - `decision: D-20260813-005`
   - `risk: bounded request density change; planned task set, session cap and scope unchanged; realized starts before abort can increase`
 
-#### RAU-PERF-22 interactive admissionとroom数縮退を条件付きで設計する
+#### RAU-PERF-22 Top / Analyze budget分離とAnalyze progressive loadを実装する
 
 - 状態:
-  - docs-first設計をNowへ昇格した。公開Next `0.2.0.27`のcold Top 768 + Analyze 32でsession上限800へ達した後、選択room currentは23msでreadyだがreference根拠が20秒以内にsettleしない事象を1 controlled run観測し、利用者がTop background完了よりAnalyzeの取得テンポを優先すると明示した。既存session上限内のbackground admission / foreground reserve再配分は追加再現を待たず設計する。総request上限、scope、long-session tokenを増やす場合は、同じ原因の3 controlled runまたは同一cohort 20 sampleとYellow zone decisionを従来どおり必須とする。runtimeは未変更である。
+  - source / spec / focused / full local gateまで完了し、manual publicationと通常Chrome gate待ち。利用者がTopとAnalyzeの枠分離、Analyze foregroundの固定件数上限撤廃、全体summaryと各curveの数秒表示、coldでも数十秒待たせないことを明示承認し、`D-20260813-007`でYellow zoneのbefore / after、endpoint、有限scope、storage unchanged、負荷guard、停止、rollbackを固定した。
 - 設計順:
-  - 最初にactive surfaceのcritical taskがpendingの間だけ、新しいbackground startを止める共有admission signalを検討する。開始済みGETはabortせず、tab / route / facility / document visibility変更では既存guardで止める。
-  - Top background plannerが同じsessionのAnalyze headroomを使い切らないよう、overall current、1〜room数bandのcurrent、最初に開く1 roomのselected referenceに必要なpure task countを分け、既存800 / 200内のbounded foreground reserveを固定する。reserveは固定32の単純増加ではなく、room数bandとcandidate / due countの上限、未使用枠のbackground返却、rollbackを同時に設計する。
+  - Top backgroundのstarted / queued countだけを800 / 200へ数え、interactive current / referenceはそのcounterを参照しない。単一priority queue、50ms / 20、due / dedupe、停止条件は共有する。
+  - Analyze routeではbackground plannerを開始せず、hotel current後の全room currentを並列queueへ入れ、ready scopeから描画する。未選択room referenceは遅延し、open roomだけselected referenceへ上げる。
   - endpoint別の401 / 403 / 429とstop sourceを計測し、rank statusの失敗がbooking current全体を止める結合がSLO missとして観測された場合だけ、global auth / rate-limit stopとendpoint-local permission / data errorを分ける。停止条件を緩めて自動retryを増やさない。
-  - pauseだけで不足する場合に限り、backgroundが消費できないbounded critical tokenを検討する。Top / Analyzeの同一sessionで何回補充するか、総request上限、long session上限、追加request / 操作を、`RAU-PERF-20`のlatency / queue-wait evidenceとendpoint別request countの両方から決める。count-only evidenceだけでは枠を増やさない。
+  - performance profileを`booking-curve-50ms-20-analyze-uncapped`へ分け、旧shared-cap sampleと混ぜない。公開後はAnalyzeのplanned / started / aborted、overall / all room / selected current / selected evidence、max concurrency、HTTP / stop分類を同じwindowで確認する。
   - room数は`1〜6`、`7〜12`、`13〜20`、`21以上`で計測し、room数が増えてもhotel summaryと明示選択roomのSLOを優先する。未選択room reference、遠距離background、全room完了の順に縮退し、silent dropや無制限queueにしない。
 - 合格条件:
-  - interactive pending中の新規background start 0、critical start wait p95 250ms以内、active request非中断、同一request dedupe、auth / permission / rate-limit即停止をfixtureとlive markerで確認する。
-  - request budgetまたはscopeを変える前に、利用目的、契約アカウント / 自施設 / 権限の再確認、対象endpoint、before / afterのsession・操作・日次request上限、latency / queue-wait / request count / 429・errorの負荷証拠、保存範囲、retention、削除方針、停止条件、rollbackをYellow zone decisionと対象specへ固定する。保存を変えない場合も`storage unchanged`と明記する。
+  - Top background上限到達後もAnalyze current / selected referenceが開始でき、Analyze foregroundはTop counterを増やさない。interactive pending中の新規background start 0、critical start wait p95 250ms以内、active request非中断、同一request dedupe、auth / permission / rate-limit即停止をfixtureとlive markerで確認する。
+  - hotel currentを先に描画し、1 / 6 / 12 / 20 room currentが逐次awaitで直列化されない。cold / revalidateでoverall 3秒、個別current 3秒、1〜12 room summary 5秒、selected evidence 5秒を目標にし、20 sample未満はprovisionalとして実測値を報告する。
   - rollbackはadmission / token変更を外して`RAU-PERF-21`のqueue orderへ戻せることとし、保存dataのmigration / 削除を前提にしない。
 - metadata:
   - `depends-on: RAU-PERF-20, RAU-PERF-21, RAU-PERF-21B first stage and measured SLO miss`
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
-  - `risk: yellow-zone if request budget or scope changes`
+  - `decision: D-20260813-007`
+  - `risk: approved Yellow-zone foreground budget separation; task scope remains finite and read-only`
 
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 
@@ -966,7 +967,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage は、Nowを`RAU-PERF-22`の既存session上限内foreground再配分設計とする。利用者の判断原則は、Top background完了よりAnalyzeの全体、選択room current、選択room根拠のテンポを優先することである。最初にpure plannerでroom数band別currentと1 selected referenceのcandidate / due task数を算出し、Top background admission、未使用枠の返却、active request非abort、rollbackを含むbounded reserveを固定する。総上限800 / 200、50ms / concurrency 20、endpoint、scope、storage、retry / stopは維持し、追加request枠やlong-session tokenだけは3 controlled runまたは同一cohort 20 sampleとYellow zone decisionを別gateに残す。`RAU-PERF-21B`の負荷安全sub-gateは通過したが、control反復とSLO cohortは未充足のため達成主張はprovisionalとする。35msと`RAU-WC-34`はforeground保護後に再判断する。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triage は、Nowを`RAU-PERF-22` source candidateのmanual publicationと通常Chrome gateとする。Top background 800 / 200とAnalyze foregroundを分離し、Analyze routeのbackground plan 0、hotel後のroom current並列queue / progressive描画、未選択room reference 0、50ms / concurrency 20、due / dedupe、storage / retention / stop / write 0をsourceで固定した。公開後はprofile `booking-curve-50ms-20-analyze-uncapped`でoverall revalidate 3秒、個別current 3秒、1〜12 room summary 5秒、selected evidence 5秒をdescriptiveに確認し、20 sample未満はprovisionalとする。35msと`RAU-WC-34`はこのforeground gate後に再判断する。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 
