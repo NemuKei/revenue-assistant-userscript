@@ -126,7 +126,7 @@ Next first phase の候補では次を行う。Classic への公開済み変更�
 
 ### Next Operational SLO v0.1 (`RAU-PERF-20`)
 
-Nextの性能目標は、全background取得の完了時間ではなく、RMがTopまたはAnalyzeで次の判断へ進める状態までの時間を正とする。v0.1は達成済みの保証ではなく、計測と改善判断に使うperformance budgetである。sourceには段階別のprivacy-safe markerとQA collectorを実装したが、現在配布中のNext `0.2.0.24`には未反映で、最新公開版のlive cold / warm baselineも未取得である。
+Nextの性能目標は、全background取得の完了時間ではなく、RMがTopまたはAnalyzeで次の判断へ進める状態までの時間を正とする。v0.1は達成済みの保証ではなく、計測と改善判断に使うperformance budgetである。段階別のprivacy-safe markerとQA collectorは公開Next `0.2.0.25`へ反映し、Top、Analyze、選択room、競合価格の初回live baselineを各1 sample取得した。全cohortは20件未満のprovisionalであり、SLO合否はまだ判定しない。
 
 計測開始点は、Next runtimeが対象routeと標準hostを安全に確認した時点、または利用者が基準日、room card、競合価格tabを明示操作した時点とする。Revenue Assistant本体のnavigation開始から標準host出現までをNextのlatencyへ混ぜないが、host確認後のfacility / as-of確認、cache read、API取得、描画は含める。標準UIを覆わず操作可能なこと、Revenue Assistant write 0、別施設 / 別routeのstale結果を描画しないことは、latencyとは別のhard guardとする。
 
