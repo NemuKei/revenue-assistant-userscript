@@ -39,9 +39,11 @@ const SCOPES: readonly BookingCurveReferenceScope[] = [
 const params = new URLSearchParams(window.location.search);
 const fixtureMode = params.get("state") ?? "ready";
 const rankMode = params.get("rank") ?? "ready";
+const referenceMode = params.get("reference") ?? "ready";
 let loadCount = 0;
 let dataCancelCount = 0;
 let dataResetCount = 0;
+let priorityCount = 0;
 let rankLoadCount = 0;
 let rankCancelCount = 0;
 let rankResetCount = 0;
@@ -51,7 +53,7 @@ const dataSource: BookingCurveReferenceDataSource = {
         dataCancelCount += 1;
         setFixtureCount("data-cancel", dataCancelCount);
     },
-    async load(stayDate, asOfDate, scopeKey): Promise<BookingCurveReferenceDataLoadResult> {
+    async load(stayDate, asOfDate, scopeKey, options): Promise<BookingCurveReferenceDataLoadResult> {
         loadCount += 1;
         document.documentElement.setAttribute("data-mock-sales-setting-load-count", String(loadCount));
         const scope = SCOPES.find((item) => item.key === scopeKey);
@@ -67,8 +69,20 @@ const dataSource: BookingCurveReferenceDataSource = {
         if (fixtureMode === "missing" && scope.kind === "roomGroup") {
             return buildReadyResult(scope, { status: "missing", reason: "database-missing" }, []);
         }
-        const records = buildFixtureRecords(scope);
-        return buildReadyResult(scope, { status: "ready", records }, records);
+        const referenceDeferred = options?.referencePriority === null;
+        const records = referenceMode === "deferred" && referenceDeferred
+            ? [createRawRecord(scope, STAY_DATE)]
+            : buildFixtureRecords(scope);
+        return buildReadyResult(
+            scope,
+            { status: "ready", records },
+            records,
+            referenceMode === "deferred" ? referenceDeferred : undefined
+        );
+    },
+    prioritize() {
+        priorityCount += 1;
+        setFixtureCount("priority", priorityCount);
     },
     reset() {
         dataResetCount += 1;
@@ -166,10 +180,20 @@ function waitForFixtureSignal(name: "data" | "rank-status"): Promise<void> {
 function buildReadyResult(
     scope: BookingCurveReferenceScope,
     readStatus: Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }>["readStatus"],
-    records: readonly BookingCurveRawSourceRecord[]
+    records: readonly BookingCurveRawSourceRecord[],
+    referenceDeferred?: boolean
 ): Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }> {
     return {
         status: "ready",
+        ...(referenceDeferred === undefined
+            ? {}
+            : {
+                acquisitionDiagnostics: {
+                    current: { candidateTaskCount: 1, dueTaskCount: 0, outcome: "ready" as const },
+                    reference: { candidateTaskCount: 0, dueTaskCount: 0, outcome: "ready" as const },
+                    referenceDeferred
+                }
+            }),
         asOfDate: AS_OF_DATE,
         contextKey: `${STAY_DATE}|${AS_OF_DATE}`,
         facilityId: FACILITY_ID,

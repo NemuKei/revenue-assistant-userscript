@@ -853,6 +853,35 @@ const priorityRequestGate = new Promise((resolve) => {
 const priorityRequests = [];
 const priorityPerformanceEvents = [];
 let priorityPerformanceGeneration = 1;
+const priorityContext = {
+    ...context,
+    roomScopes: roomScopes.slice(0, 3),
+    visibleStayDates: ["20260723"]
+};
+const selectedPriorityTasks = model.buildNextBookingCurveReferenceTasks({
+    context: priorityContext,
+    scopeKey: "room:b",
+    targetStayDate: "20260812"
+});
+const visiblePriorityTasks = model.buildNextBookingCurveReferenceTasks({
+    context: priorityContext,
+    scopeKey: "hotel",
+    targetStayDate: "20260812"
+});
+const selectedPriorityTask = selectedPriorityTasks[0];
+const visiblePriorityTask = visiblePriorityTasks[0];
+assert.notEqual(selectedPriorityTask, undefined);
+assert.notEqual(visiblePriorityTask, undefined);
+const priorityExistingRecords = [
+    ...selectedPriorityTasks.slice(1),
+    ...visiblePriorityTasks.slice(1)
+].map((task) => model.createNextBookingCurveSourceRecord({
+    asOfDate: priorityContext.asOfDate,
+    facilityId: priorityContext.facilityId,
+    fetchedAt: "2026-07-23T00:00:00.000Z",
+    response: { stay_date: task.stayDate, booking_curve: [] },
+    task
+}));
 const priorityCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
     performanceRecorder: {
         ...performanceRecorder,
@@ -867,8 +896,9 @@ const priorityCoordinator = coordinatorModule.createNextBookingCurveAcquisitionC
         async addAndPrune() {
             return { addedCount: 1, deletedCount: 0 };
         },
-        async readLatestBySourceKeys() {
-            return [];
+        async readLatestBySourceKeys(sourceKeys) {
+            const requested = new Set(sourceKeys);
+            return priorityExistingRecords.filter((record) => requested.has(record.sourceKey));
         }
     },
     transport: {
@@ -885,16 +915,25 @@ const priorityCoordinator = coordinatorModule.createNextBookingCurveAcquisitionC
     },
     windowHost: fakeWindow
 });
-const priorityContext = {
-    ...context,
-    roomScopes: roomScopes.slice(0, 2),
-    visibleStayDates: ["20260723"]
-};
 await priorityCoordinator.startBackground(priorityContext);
 priorityPerformanceGeneration = 2;
+const criticalCurrent = priorityCoordinator.ensureCurrent({
+    context: priorityContext,
+    priority: "critical-current",
+    scopeKeys: ["room:b"],
+    signal: new AbortController().signal,
+    stayDate: "20260723"
+});
 await priorityCoordinator.startReference({
     context: priorityContext,
-    scopeKey: "room:a",
+    priority: "visible-reference",
+    scopeKey: "hotel",
+    targetStayDate: "20260812"
+});
+await priorityCoordinator.startReference({
+    context: priorityContext,
+    priority: "selected-reference",
+    scopeKey: "room:b",
     targetStayDate: "20260812"
 });
 assert.equal(
@@ -902,12 +941,27 @@ assert.equal(
     false,
     "interactive enqueue alone must not claim that background admission paused"
 );
-await new Promise((resolve) => setTimeout(resolve, 320));
-assert.equal(priorityRequests.length >= 2, true);
-assert.equal(
-    priorityRequests[1].roomGroupId,
-    "a",
-    "the selected room reference must run ahead of the remaining background backlog"
+await new Promise((resolve) => setTimeout(resolve, 520));
+await criticalCurrent;
+assert.equal(priorityRequests.length >= 5, true);
+assert.deepEqual(
+    priorityRequests.slice(0, 5),
+    [
+        { kind: "booking-curve", roomGroupId: null, stayDate: "20260723" },
+        { kind: "booking-curve", roomGroupId: "b", stayDate: "20260723" },
+        { kind: "booking-curve", roomGroupId: "a", stayDate: "20260723" },
+        {
+            kind: "booking-curve",
+            roomGroupId: selectedPriorityTask.roomGroupId,
+            stayDate: selectedPriorityTask.stayDate
+        },
+        {
+            kind: "booking-curve",
+            roomGroupId: visiblePriorityTask.roomGroupId,
+            stayDate: visiblePriorityTask.stayDate
+        }
+    ],
+    "the queue must admit critical current, visible current, selected reference, and visible reference in order"
 );
 assert.equal(
     priorityPerformanceEvents.some((event) => event.event === "background-paused"),
@@ -929,6 +983,76 @@ assert.equal(
     false,
     "stopped background work must not be reported as settled"
 );
+
+for (const roomCount of [1, 6, 12, 20]) {
+    let releaseRoomBandRequest;
+    const roomBandRequestGate = new Promise((resolve) => {
+        releaseRoomBandRequest = resolve;
+    });
+    const bandRoomScopes = [
+        { key: "hotel", kind: "hotel", roomGroupId: null },
+        ...Array.from({ length: roomCount }, (_, index) => ({
+            key: `room:${index + 1}`,
+            kind: "roomGroup",
+            roomGroupId: String(index + 1)
+        }))
+    ];
+    const roomBandContext = {
+        ...context,
+        roomScopes: bandRoomScopes,
+        visibleStayDates: ["20260723"]
+    };
+    const roomBandExistingRecords = model.buildNextBookingCurveBackgroundTasks(roomBandContext)
+        .filter((task) => task.role !== "current")
+        .map((task) => model.createNextBookingCurveSourceRecord({
+            asOfDate: roomBandContext.asOfDate,
+            facilityId: roomBandContext.facilityId,
+            fetchedAt: "2026-07-23T00:00:00.000Z",
+            response: { stay_date: task.stayDate, booking_curve: [] },
+            task
+        }));
+    const roomBandRequests = [];
+    const roomBandCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+        store: {
+            async addAndPrune() {
+                return { addedCount: 1, deletedCount: 0 };
+            },
+            async readLatestBySourceKeys(sourceKeys) {
+                const requested = new Set(sourceKeys);
+                return roomBandExistingRecords.filter((record) => requested.has(record.sourceKey));
+            }
+        },
+        transport: {
+            async read(request) {
+                roomBandRequests.push(request);
+                if (roomBandRequests.length === 1) {
+                    await roomBandRequestGate;
+                }
+                return { stay_date: request.stayDate, booking_curve: [] };
+            }
+        },
+        windowHost: fakeWindow
+    });
+    await roomBandCoordinator.startBackground(roomBandContext);
+    const selectedScope = `room:${roomCount}`;
+    const selectedCurrent = roomBandCoordinator.ensureCurrent({
+        context: roomBandContext,
+        priority: "critical-current",
+        scopeKeys: [selectedScope],
+        signal: new AbortController().signal,
+        stayDate: "20260723"
+    });
+    await new Promise((resolve) => setTimeout(resolve, roomCount === 1 ? 120 : 220));
+    await selectedCurrent;
+    assert.deepEqual(
+        roomBandRequests.slice(0, roomCount === 1 ? 2 : 3).map((request) => request.roomGroupId),
+        roomCount === 1 ? [null, "1"] : [null, String(roomCount), "1"],
+        `${roomCount} room scopes must prioritize the selected current ahead of remaining visible current`
+    );
+    roomBandCoordinator.stop();
+    releaseRoomBandRequest();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 let releaseStaleBackgroundRequest;
 const staleBackgroundRequestGate = new Promise((resolve) => {

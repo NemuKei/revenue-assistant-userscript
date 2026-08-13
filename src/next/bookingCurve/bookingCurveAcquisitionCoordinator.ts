@@ -38,6 +38,21 @@ const NEXT_BOOKING_CURVE_CONSECUTIVE_ERROR_LIMIT = 3;
 
 export type NextBookingCurveAcquisitionMode = "bootstrap" | "daily-delta";
 
+export type NextBookingCurveCurrentPriority = "critical-current" | "visible-current";
+export type NextBookingCurveReferencePriority = "selected-reference" | "visible-reference";
+type NextBookingCurveTaskPriority =
+    | NextBookingCurveCurrentPriority
+    | NextBookingCurveReferencePriority
+    | "background";
+type NextBookingCurveTaskActivity = "background" | "interactive";
+const NEXT_BOOKING_CURVE_PRIORITY_ORDER: Readonly<Record<NextBookingCurveTaskPriority, number>> = {
+    "critical-current": 0,
+    "visible-current": 1,
+    "selected-reference": 2,
+    "visible-reference": 3,
+    background: 4
+};
+
 export type NextBookingCurveAcquisitionStopReason =
     | "aborted"
     | "budget-reached"
@@ -65,6 +80,7 @@ export interface NextBookingCurveAcquisitionState {
 export interface NextBookingCurveAcquisitionCoordinator {
     ensureCurrent(options: {
         context: NextBookingCurveAcquisitionContext;
+        priority?: NextBookingCurveCurrentPriority;
         scopeKeys?: readonly string[];
         signal: AbortSignal;
         stayDate: string;
@@ -73,6 +89,7 @@ export interface NextBookingCurveAcquisitionCoordinator {
     startBackground(context: NextBookingCurveAcquisitionContext): Promise<void>;
     startReference(options: {
         context: NextBookingCurveAcquisitionContext;
+        priority?: NextBookingCurveReferencePriority;
         scopeKey: string;
         targetStayDate: string;
     }): Promise<NextBookingCurveAcquisitionDiagnostics>;
@@ -88,10 +105,11 @@ export interface NextBookingCurveAcquisitionDiagnostics {
 }
 
 interface QueuedTask {
+    activity: NextBookingCurveTaskActivity;
     backgroundPerformanceGeneration: number | null;
     completion: Promise<void>;
     interactivePerformanceGeneration: number | null;
-    priority: "background" | "interactive";
+    priority: NextBookingCurveTaskPriority;
     performanceGeneration: number | null;
     reject: (reason?: unknown) => void;
     resolve: () => void;
@@ -136,7 +154,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
     let consecutiveErrorCount = 0;
 
     return {
-        async ensureCurrent({ context, scopeKeys, signal, stayDate }) {
+        async ensureCurrent({ context, priority = "critical-current", scopeKeys, signal, stayDate }) {
             if (stopped || signal.aborted) {
                 return createAcquisitionDiagnostics(0, 0, "aborted");
             }
@@ -154,7 +172,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 tasks
             });
             const pending = dueTasks
-                .map((task) => enqueueTask(task, "interactive"));
+                .map((task) => enqueueTask(task, priority, "interactive"));
             await Promise.all(pending.map((promise) => raceWithAbort(promise, signal)
                 .catch(() => undefined)));
             return createAcquisitionDiagnostics(
@@ -224,7 +242,12 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 totalCount: state.processedCount + queue.length + activeRequestCount + dueTasks.length
             };
             for (const task of dueTasks) {
-                void enqueueTask(task, "background", performanceGeneration).catch(() => undefined);
+                void enqueueTask(
+                    task,
+                    task.role === "current" ? "visible-current" : "background",
+                    "background",
+                    performanceGeneration
+                ).catch(() => undefined);
             }
             if (
                 dueTasks.length === 0
@@ -241,7 +264,12 @@ export function createNextBookingCurveAcquisitionCoordinator(
             emit();
             drain();
         },
-        async startReference({ context, scopeKey, targetStayDate }) {
+        async startReference({
+            context,
+            priority = "selected-reference",
+            scopeKey,
+            targetStayDate
+        }) {
             if (stopped) {
                 return createAcquisitionDiagnostics(0, 0, "aborted");
             }
@@ -260,7 +288,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 tasks
             });
             for (const task of dueTasks) {
-                void enqueueTask(task, "interactive").catch(() => undefined);
+                void enqueueTask(task, priority, "interactive").catch(() => undefined);
             }
             if (dueTasks.length > 0) {
                 state = {
@@ -323,19 +351,25 @@ export function createNextBookingCurveAcquisitionCoordinator(
     function enqueueTask(
         task: NextBookingCurveAcquisitionTask,
         priority: QueuedTask["priority"],
+        activity: NextBookingCurveTaskActivity,
         performanceGenerationOverride?: number | null
     ): Promise<void> {
         const taskKey = `${task.sourceKey}|asOf:${currentContextKey?.split("|")[1] ?? ""}`;
         const pending = pendingByTaskKey.get(taskKey);
         if (pending !== undefined) {
-            if (
-                priority === "interactive"
-                && pending.priority === "background"
-                && queue.includes(pending)
-            ) {
-                pending.priority = "interactive";
-                pending.interactivePerformanceGeneration = getPerformanceGeneration();
-                recordInteractiveQueued(pending.interactivePerformanceGeneration, 1);
+            if (queue.includes(pending)) {
+                const priorityRaised = isHigherPriority(priority, pending.priority);
+                if (priorityRaised) {
+                    pending.priority = priority;
+                }
+                if (
+                    activity === "interactive"
+                    && (pending.activity === "background" || priorityRaised)
+                ) {
+                    pending.activity = "interactive";
+                    pending.interactivePerformanceGeneration = getPerformanceGeneration();
+                    recordInteractiveQueued(pending.interactivePerformanceGeneration, 1);
+                }
             }
             return pending.completion;
         }
@@ -349,11 +383,12 @@ export function createNextBookingCurveAcquisitionCoordinator(
             ? getPerformanceGeneration()
             : performanceGenerationOverride;
         const queued: QueuedTask = {
-            backgroundPerformanceGeneration: priority === "background"
+            activity,
+            backgroundPerformanceGeneration: activity === "background"
                 ? performanceGeneration
                 : null,
             completion,
-            interactivePerformanceGeneration: priority === "interactive"
+            interactivePerformanceGeneration: activity === "interactive"
                 ? performanceGeneration
                 : null,
             performanceGeneration,
@@ -367,7 +402,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         queue.push(queued);
         registerBackgroundTask(queued.backgroundPerformanceGeneration);
         recordForGeneration(queued.performanceGeneration, { count: 1, event: "planned" });
-        if (priority === "interactive") {
+        if (activity === "interactive") {
             recordInteractiveQueued(queued.performanceGeneration, 1);
         }
         state = {
@@ -442,7 +477,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
             const selected = selectedIndex < 0 ? undefined : queue[selectedIndex];
             if (
                 selected === undefined
-                || (candidate.priority === "interactive" && selected.priority === "background")
+                || isHigherPriority(candidate.priority, selected.priority)
             ) {
                 selectedIndex = index;
             }
@@ -597,7 +632,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
     }
 
     function recordRequestStarted(queued: QueuedTask, concurrentRequests: number): void {
-        recordForGeneration(getTaskActivityPerformanceGeneration(queued), queued.priority === "interactive"
+        recordForGeneration(getTaskActivityPerformanceGeneration(queued), queued.activity === "interactive"
             ? { activeRequestCount: concurrentRequests, event: "interactive-started" }
             : { activeRequestCount: concurrentRequests, event: "started" });
     }
@@ -762,6 +797,14 @@ function createInitialState(): NextBookingCurveAcquisitionState {
         storedCount: 0,
         totalCount: 0
     };
+}
+
+function isHigherPriority(
+    candidate: NextBookingCurveTaskPriority,
+    current: NextBookingCurveTaskPriority
+): boolean {
+    return NEXT_BOOKING_CURVE_PRIORITY_ORDER[candidate]
+        < NEXT_BOOKING_CURVE_PRIORITY_ORDER[current];
 }
 
 function createAcquisitionDiagnostics(

@@ -23,6 +23,7 @@ try {
     assert.notEqual(origin, undefined, "Vite did not expose a local fixture URL");
     browser = await launchBrowser();
     await verifyPerformanceMarkers(origin);
+    await verifyDeferredReferenceDoesNotPrematurelySettle(origin);
     await verifyRankStatusSurvivesTransientRemount(origin);
     await verifyInitialBatchStopsWithoutNativeSurface(origin);
     await verifyHiddenAndRouteTransitions(origin);
@@ -31,6 +32,22 @@ try {
 } finally {
     await browser?.close();
     await server.close();
+}
+
+async function verifyDeferredReferenceDoesNotPrematurelySettle(origin) {
+    await withFixturePage(origin, "?rank=empty&reference=deferred", async (page) => {
+        await waitForRoot(page, "ready");
+        await page.locator(toggleSelector).first().click();
+        await drainFixtureTasks(page);
+        const roomSummary = await readPerformanceSummary(page);
+        assert.equal(roomSummary.operation, "room-open");
+        assert.equal(roomSummary.milestones.selectedRoomCurrentSettled.outcome, "ready");
+        assert.equal(
+            roomSummary.milestones.selectedRoomEvidenceSettled,
+            undefined,
+            "deferred references must remain pending instead of first-writing a terminal partial milestone"
+        );
+    });
 }
 
 async function verifyPerformanceMarkers(origin) {
@@ -50,7 +67,9 @@ async function verifyPerformanceMarkers(origin) {
         });
         assert.equal(await page.locator("[data-ra-fetch-performance-summary]").count(), 1);
 
+        const priorityCount = await readCount(page, "priority");
         await page.locator(toggleSelector).first().click();
+        await waitForCount(page, "priority", priorityCount + 1);
         await drainFixtureTasks(page);
         const roomSummary = await readPerformanceSummary(page);
         assert.equal(roomSummary.operation, "room-open");

@@ -33,7 +33,9 @@ import {
 } from "../bookingCurve/bookingCurveAcquisitionModel";
 import type {
     NextBookingCurveAcquisitionCoordinator,
-    NextBookingCurveAcquisitionDiagnostics
+    NextBookingCurveAcquisitionDiagnostics,
+    NextBookingCurveCurrentPriority,
+    NextBookingCurveReferencePriority
 } from "../bookingCurve/bookingCurveAcquisitionCoordinator";
 import {
     createBrowserNextReadTransport,
@@ -55,6 +57,7 @@ export type BookingCurveReferenceDataLoadResult =
         acquisitionDiagnostics?: {
             current: NextBookingCurveAcquisitionDiagnostics;
             reference: NextBookingCurveAcquisitionDiagnostics;
+            referenceDeferred: boolean;
         };
         contextKey: string;
         facilityId: string;
@@ -81,10 +84,26 @@ export type BookingCurveReferenceDataLoadResult =
 
 export interface BookingCurveReferenceDataSource {
     cancel(): void;
-    load(stayDate: string, asOfDate: string, scopeKey: string): Promise<BookingCurveReferenceDataLoadResult>;
+    load(
+        stayDate: string,
+        asOfDate: string,
+        scopeKey: string,
+        priorities?: BookingCurveReferenceLoadPriorities
+    ): Promise<BookingCurveReferenceDataLoadResult>;
+    prioritize?(
+        stayDate: string,
+        asOfDate: string,
+        scopeKey: string,
+        priorities?: BookingCurveReferenceLoadPriorities
+    ): void;
     reset(): void;
     subscribe?(listener: () => void): () => void;
     stop(): void;
+}
+
+export interface BookingCurveReferenceLoadPriorities {
+    currentPriority?: NextBookingCurveCurrentPriority;
+    referencePriority?: NextBookingCurveReferencePriority | null;
 }
 
 export type ExistingIndexedDbPrimaryKeyReader = <T>(
@@ -118,6 +137,7 @@ export function createBookingCurveReferenceDataSource(
     let activeLoad: Promise<BookingCurveReferenceDataLoadResult> | null = null;
     let activeLoadKey: string | null = null;
     let context: BookingCurveReferenceContext | null = null;
+    let priorityController: AbortController | null = null;
     let stopped = false;
 
     const cancel = (): void => {
@@ -125,6 +145,8 @@ export function createBookingCurveReferenceDataSource(
         activeController = null;
         activeLoad = null;
         activeLoadKey = null;
+        priorityController?.abort();
+        priorityController = null;
     };
     const reset = (): void => {
         cancel();
@@ -133,7 +155,7 @@ export function createBookingCurveReferenceDataSource(
 
     return {
         cancel,
-        load(stayDate, asOfDate, scopeKey) {
+        load(stayDate, asOfDate, scopeKey, priorities = {}) {
             if (stopped) {
                 return Promise.resolve({ status: "error", contextKey: "stopped", reason: "aborted" });
             }
@@ -150,6 +172,10 @@ export function createBookingCurveReferenceDataSource(
             if (activeLoadKey === loadKey && activeLoad !== null) {
                 return activeLoad;
             }
+            if (context !== null && context.contextKey !== contextKey) {
+                priorityController?.abort();
+                priorityController = null;
+            }
             activeController?.abort();
             const controller = new AbortController();
             activeController = controller;
@@ -158,12 +184,16 @@ export function createBookingCurveReferenceDataSource(
                 asOfDate: compactAsOfDate,
                 ...(options.acquisition === undefined ? {} : { acquisition: options.acquisition }),
                 context,
+                currentPriority: priorities.currentPriority ?? "critical-current",
                 facilityContextHints: options.acquisition === undefined
                     ? null
                     : options.documentHost === undefined
                         ? []
                         : readLiveFacilityContextHints(options.documentHost),
                 primaryKeyReader,
+                referencePriority: priorities.referencePriority === undefined
+                    ? "selected-reference"
+                    : priorities.referencePriority,
                 scopeKey,
                 signal: controller.signal,
                 stayDate: compactStayDate,
@@ -191,6 +221,61 @@ export function createBookingCurveReferenceDataSource(
                 activeLoadKey = null;
             });
             return load;
+        },
+        prioritize(stayDate, asOfDate, scopeKey, priorities = {}) {
+            const acquisition = options.acquisition;
+            const compactStayDate = toCompactDateKey(stayDate);
+            const compactAsOfDate = toCompactDateKey(asOfDate);
+            const resolvedContext = context;
+            if (
+                stopped
+                || acquisition === undefined
+                || compactStayDate === null
+                || compactAsOfDate === null
+                || resolvedContext === null
+                || resolvedContext.contextKey !== `${compactStayDate}|${compactAsOfDate}`
+                || options.documentHost === undefined
+                || !hasLiveFacilityContextLabel(
+                    readLiveFacilityContextHints(options.documentHost),
+                    resolvedContext.facilityLabel
+                )
+                || !resolvedContext.scopes.some((scope) => scope.key === scopeKey)
+            ) {
+                return;
+            }
+            if (priorityController === null || priorityController.signal.aborted) {
+                priorityController = new AbortController();
+            }
+            const signal = priorityController.signal;
+            const currentPriority = priorities.currentPriority ?? "critical-current";
+            const referencePriority = priorities.referencePriority === undefined
+                ? "selected-reference"
+                : priorities.referencePriority;
+            const acquisitionContext = buildAcquisitionContext(
+                resolvedContext,
+                compactAsOfDate,
+                compactStayDate
+            );
+            void acquisition.ensureCurrent({
+                context: acquisitionContext,
+                priority: currentPriority,
+                scopeKeys: [scopeKey],
+                signal,
+                stayDate: compactStayDate
+            }).then(async (current) => {
+                if (signal.aborted || current.outcome === "aborted") {
+                    return;
+                }
+                if (referencePriority === null) {
+                    return;
+                }
+                await acquisition.startReference({
+                    context: acquisitionContext,
+                    priority: referencePriority,
+                    scopeKey,
+                    targetStayDate: compactStayDate
+                });
+            }).catch(() => undefined);
         },
         reset,
         subscribe(listener) {
@@ -220,8 +305,10 @@ async function loadBookingCurveReferenceData(options: {
     acquisition?: NextBookingCurveAcquisitionCoordinator;
     asOfDate: string;
     context: BookingCurveReferenceContext | null;
+    currentPriority: NextBookingCurveCurrentPriority;
     facilityContextHints: readonly string[] | null;
     primaryKeyReader: ExistingIndexedDbPrimaryKeyReader;
+    referencePriority: NextBookingCurveReferencePriority | null;
     scopeKey: string;
     signal: AbortSignal;
     stayDate: string;
@@ -275,17 +362,26 @@ async function loadBookingCurveReferenceData(options: {
             await acquisition.startBackground(acquisitionContext);
             const current = await acquisition.ensureCurrent({
                 context: acquisitionContext,
+                priority: options.currentPriority,
                 scopeKeys: [scope.key],
                 signal: options.signal,
                 stayDate: options.stayDate
             });
-            const reference = await acquisition.startReference({
-                context: acquisitionContext,
-                scopeKey: scope.key,
-                targetStayDate: options.stayDate
-            });
+            const reference: NextBookingCurveAcquisitionDiagnostics =
+                options.referencePriority === null
+                    ? { candidateTaskCount: 0, dueTaskCount: 0, outcome: "ready" }
+                    : await acquisition.startReference({
+                        context: acquisitionContext,
+                        priority: options.referencePriority,
+                        scopeKey: scope.key,
+                        targetStayDate: options.stayDate
+                    });
             if (isAcquisitionDiagnostics(current) && isAcquisitionDiagnostics(reference)) {
-                acquisitionDiagnostics = { current, reference };
+                acquisitionDiagnostics = {
+                    current,
+                    reference,
+                    referenceDeferred: options.referencePriority === null
+                };
             }
         }
         const nextSourceKeys = buildBookingCurveReferenceSourceKeys({

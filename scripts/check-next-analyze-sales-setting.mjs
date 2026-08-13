@@ -93,12 +93,32 @@ assert.match(entrySource, /startSalesSettingClassicRuntime\(document, window, \{
 assert.match(entrySource, /startSalesSettingClassicRuntime[\s\S]*acquisition: bookingCurveAcquisition/u);
 assert.match(runtimeSource, /for \(const scope of activeScopes\)[\s\S]*await dataSource\.load/u);
 assert.doesNotMatch(runtimeSource, /Promise\.all\([\s\S]*dataSource\.load/u);
+assert.match(
+    runtimeSource,
+    /dataSource\.load\(stayDate, asOfDate, "hotel", \{\s*currentPriority: "critical-current",\s*referencePriority: null/u,
+    "hotel current must load without starting reference work ahead of room current"
+);
+assert.match(
+    runtimeSource,
+    /dataSource\.prioritize\?\.\(stayDate, asOfDate, "hotel", \{\s*currentPriority: "critical-current",\s*referencePriority: "visible-reference"\s*\}\);\s*scopeBatchLoading = false/u,
+    "hotel reference must be admitted only after the room-current loop"
+);
+assert.match(
+    runtimeSource,
+    /dataSource\.load\(stayDate, asOfDate, scope\.key, \{\s*currentPriority: "visible-current",\s*referencePriority: openScopes\.has\(scope\.key\) \? "selected-reference" : null/u,
+    "remaining room current must not enqueue unopened room reference work, while an open room refresh may settle it"
+);
+assert.match(
+    runtimeSource,
+    /beginAnalyzePerformance\("room-open", scopeKey\);[\s\S]*dataSource\.prioritize\?\.\(activeStayDate, activeAsOfDate, scopeKey\)/u,
+    "opening a room must upgrade only its queued current and reference work"
+);
 assert.match(runtimeSource, /dataSource\.cancel\(\);\s*scopeBatchLoading = true;/u);
 assert.match(runtimeSource, /addEventListener\("load", scheduleReconcile/u);
 assert.match(runtimeSource, /addEventListener\("pageshow", scheduleReconcile/u);
 assert.doesNotMatch(runtimeSource, /seasonal:\s*false/u);
 const roomScopeLoop = runtimeSource.match(
-    /scopeBatchLoading = true;[\s\S]*for \(const scope of activeScopes\) \{([\s\S]*?)\n {8}\}\n {8}scopeBatchLoading = false;/u
+    /scopeBatchLoading = true;[\s\S]*for \(const scope of activeScopes\) \{([\s\S]*?)\n {8}\}\n {8}dataSource\.prioritize/u
 );
 assert.notEqual(roomScopeLoop, null, "room scopes must remain sequential while their redraw is batched");
 assert.doesNotMatch(roomScopeLoop?.[1] ?? "", /renderCurrentState\(\)/u);

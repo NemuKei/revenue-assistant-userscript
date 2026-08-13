@@ -16,16 +16,16 @@ analyze 日付ページで、団体室数の把握と販売設定の差分確認
 
 TopからAnalyzeへ進む一連のSLO、計測母集団、privacy-safe markerは`docs/spec_003_rank_recommendation_signal.md`の`Next Operational SLO v0.1`を正とする。このsectionはAnalyzeの取得順と現行実装との差を所有する。
 
-現行Nextのbooking curveは、画面に必要なcurrent / referenceを`interactive`としてbackgroundより先に開始できる。ただし、TopとAnalyzeはentry単位の同じacquisition coordinator、`requestCount`、bootstrap 800 / daily 200のsession上限を共有し、backgroundが32件分を空けるだけである。したがって、Analyze foregroundが日次上限と完全に別枠であるとは扱わない。同じfacilityでTopからAnalyzeへ移った場合もrequest countは維持され、上限到達後はinteractive currentも`budget-reached`で開始できない可能性がある。
+現行Next sourceのbooking curve queueは、`critical-current`、`visible-current`、`selected-reference`、`visible-reference`、`background`の順に開始する。ただし、TopとAnalyzeはentry単位の同じacquisition coordinator、`requestCount`、bootstrap 800 / daily 200のsession上限を共有し、backgroundが32件分を空けるだけである。したがって、Analyze foregroundが日次上限と完全に別枠であるとは扱わない。同じfacilityでTopからAnalyzeへ移った場合もrequest countは維持され、上限到達後はcritical currentも`budget-reached`で開始できない可能性がある。
 
-販売設定はhotel scopeを先に描画し、room scopeを順番に読む。現行data sourceは各scopeのcurrent完了後にreferenceを同じ`interactive` priorityへ投入するため、hotel referenceが後続room currentより先に並ぶ場合がある。entry内のacquisition runtime、Top lens、Analyze booking curve / sales settingは別data sourceからfacility / current settings contextを確認するため、同じexact contextのGETが重なる可能性もある。同じcontext内ではpriority elevationだけを理由にactive background requestをpreemptしない一方、route / facility / as-of / visible-range context変更ではqueued / in-flightをabortする。booking curve、競合価格、90日価格推移はそれぞれ独立schedulerで動くため、active tabのforegroundを画面横断で保護するadmission controlもまだない。これらは現状認識であり、SLO達成済みの根拠にはしない。
+販売設定はhotel currentをcritical、全確認済みroom currentをvisibleとしてreferenceより先に進め、hotel scopeを先に描画する。hotel referenceはvisible referenceとしてcurrentの後ろへ置き、未選択roomのreferenceは初期queueへ入れない。利用者がroom cardを開いた場合だけ、そのscopeのqueued currentをcritical、referenceをselectedへ昇格または追加する。同じtaskはdedupeし、priority elevationだけを理由にactive requestをpreemptしない。route / facility / as-of / visible-range context変更では従来どおりqueued / in-flightをabortする。entry内のacquisition runtime、Top lens、Analyze booking curve / sales settingは別data sourceからfacility / current settings contextを確認するため、同じexact contextのGETが重なる可能性は残る。booking curve、競合価格、90日価格推移も独立schedulerのままで、active tabのforegroundを画面横断で保護するadmission controlはまだない。これらは現状認識であり、公開版のSLO達成済み根拠にはしない。
 
 booking curveの`開始間隔 / concurrency`は、同じdue task集合をどの時間密度で開始するかを制御する。`取得対象 / due判定 / session上限 / 表示外scope`は計画task数とsession最大件数を制御する別契約である。開始間隔だけを短くしてbootstrap 800 / daily 200、interactive reserve 32、due task集合を維持する試験は、計画taskやsession cap、半年coverageを増やす変更と同一視しない。ただしroute / hidden abortまたは429 responseが返るまでの短い時間窓では、実際に開始済みとなる件数とin-flightがcontrolより増え得る。profileごとにplanned / started / aborted、開始間隔、最大同時数、HTTP status、stop reason、interactive latencyを測り、段階的に切り替える。
 
 最適化は次の順で行う。
 
 1. `RAU-PERF-20`でNextへelapsed time / count / fixed enumだけの計測を追加し、request対象、件数、開始間隔、concurrency、保存schema、表示順を変えず、Top / Analyze / 競合価格のwarm / revalidate baselineを取る。
-2. `RAU-PERF-21`で同じrequest総数と上限を維持したまま、booking curve queueを`critical-current`、`visible-current`、`selected-reference`、`visible-reference`、`background`へ分ける。明示選択したscopeのpending taskはpriorityを上げるが、同じcontextでactiveなrequestはpriority elevationだけを理由に中断しない。referenceをcurrentと同順位にせず、hotel referenceがroom currentを待たせるhead-of-line blockingを外す。
+2. `RAU-PERF-21`のsourceでは、request上限を維持したままbooking curve queueを`critical-current`、`visible-current`、`selected-reference`、`visible-reference`、`background`へ分けた。明示選択したscopeのpending taskはpriorityを上げるが、同じcontextでactiveなrequestはpriority elevationだけを理由に中断しない。未選択room referenceをopen時まで遅延し、hotel referenceがroom currentを待たせるhead-of-line blockingを外した。公開版反映とlive before / afterは別gateである。
 3. `RAU-PERF-21B`でqueue順変更と切り分けたrequest pace試験を行う。最初のcandidateは50ms以上 / concurrency 20以下とし、`RAU-PERF-21`を100ms / 30で公開・検証した同じsource revisionのcontrolに対して、理論開始rateを最大10件/秒から20件/秒へ上げる。bootstrap 800 / daily 200、background実効768 / 168、interactive reserve 32、取得対象、due判定、保存、停止条件は変えない。SLO complianceに必要な20 sampleとは分け、controlで通常利用由来のNext booking curve GETを合計50件以上、HTTP / runtime error、401 / 403 / 429、Revenue Assistant write 0で観測できれば可逆試験を開始してよい。
 4. control / 50ms candidateそれぞれで対応するTop / Analyze操作を各3 controlled run以上行い、candidateの少なくとも1つの自然な連続windowで20 request starts以上またはconcurrency 10以上、最大同時20以下、HTTP / runtime error、401 / 403 / 429、Revenue Assistant write 0、標準UIとSLO milestoneの非悪化を確認する。candidate合計50 GETだけを細切れwindowで満たした場合は採用済みとしない。これを満たしてもSLO complianceの20 sample未達cohortはprovisionalを維持する。なおrequest paceが律速である場合だけ、旧Classic warm cacheの上限だった35ms以上 / concurrency 30以下を別profileで試す。35msは旧Analyze referenceの設定ではなく、旧warm cacheの設定であり、現行Nextで十分な件数を継続観測したfresh安全証拠とは扱わない。失敗時は100ms / 30へ戻す。
 5. `RAU-PERF-21` / `RAU-PERF-21B`後もSLO未達、またはshared budgetによるinteractive停止が観測された場合だけ、`RAU-PERF-22`でactive tabのinteractive admission、background pause、boundedなcritical tokenを検討する。総request上限、scope、standard画面より多い取得を変える場合はYellow zoneとして、before / after、追加request上限、停止条件、rollbackをdecisionへ固定してから実装する。
@@ -262,9 +262,9 @@ BCL-tuned first wave の定義:
 
 - 取得を開始できるのは、可視なcalendarまたは`/analyze/YYYY-MM-DD`、document visible、現在の`as_of_date`、`/api/v2/yad/info`とvisible headerのfacility label一致、`current_settings`で確認できたroom groupが揃う場合だけとする。
 - 初回bootstrapは、表示中stay dateのホテル全体と全room groupのcurrent source、およびホテル全体の直近型reference coreが各lead-time目盛りに必要とするsourceを対象にする。現在の360〜0日前目盛りでは`as_of_date - 90日`から最大`as_of_date + 360日`のうちcoreが返すtarget weekdayだけであり、任意の連続日prefetchではない。同じsourceは1 taskへdedupeする。
-- 選択中Analyze stay date、または基準日レンズの選択stay dateのcurrent sourceを最優先にする。currentはホテル全体と確認済みroom groupを対象にし、当日`as_of_date`と一致するrecordを優先する。
+- 選択中Analyze stay date、または基準日レンズの選択stay dateのcurrent sourceを`critical-current`として最優先にする。表示中stay dateの残りの確認済みroom group currentは`visible-current`とし、当日`as_of_date`と一致するrecordを優先する。
 - 基準日レンズでstay dateを選んだ場合は、選択日のcurrent taskを完了し、保存済み根拠を画面へ投影してから、表示期間全体のbackground計画を開始する。全期間のcoverage確認やreference補充を、青い`団n`と選択日の根拠表示のbarrierにしない。この順序変更でrequest対象、due判定、開始間隔、concurrency、session上限は変えない。
-- Analyzeで表示中scopeのreference sourceは、ホテル全体を初期scopeとして、room groupはそのroom groupを選択したときに不足分だけ段階取得し、選択中currentの次にbackground backlogより優先する。直近型はcoreが必要とする同曜日source、季節型は前年同月と2年前同月のtarget weekdayだけを対象とし、全部屋タイプ分を初回bootstrapで一括取得しない。
+- Analyzeのホテル全体referenceは`visible-reference`として全currentの後ろ、backgroundの前へ置く。room group referenceはそのcardを開いたときだけ`selected-reference`として不足分を追加し、未選択room分を初期queueへ入れない。直近型はcoreが必要とする同曜日source、季節型は前年同月と2年前同月のtarget weekdayだけを対象とし、全部屋タイプ分を初回bootstrapで一括取得しない。
 - 独立した`-14日 / -7日 / +7日 / +14日`同曜日補助線、表示中scope以外の季節型reference、表示範囲外の週 / 月 / 隣接日prefetchは対象外とする。直近型coreがtarget weekdayと同じsourceを選ぶ既存算出意味は維持するが、別の同曜日線や別queueは作らない。
 - current lineは選択日のcurrent sourceが保存できた時点で先に描画し、直近型referenceはsource coverageの増加に合わせて段階更新する。reference完了をcurrent描画のbarrierにしない。
 
@@ -296,7 +296,7 @@ BCL-tuned first wave の定義:
 
 - `/api/v4/booking_curve`のrequest開始間隔は100ms以上、同時実行数は30以下とする。Revenue Assistant本体の標準requestはこのcountへ含めない。総request数はClassic seed、Next store、due判定、session上限で先に抑える。
 - 上記は現在の既定profileであり、`RAU-PERF-21B`を公開するまでは変更しない。`RAU-PERF-21B`の第一段階candidateは50ms以上 / concurrency 20以下とする。profile変更は開始密度だけに限定し、取得対象、due判定、bootstrap / daily上限、interactive reserve、保存schema / retention、停止条件を同じ変更で広げない。50ms profileのlive gateとrollback条件を満たした後もpaceが律速の場合だけ、35ms以上 / concurrency 30以下を第二段階candidateにできる。
-- coverage 80%未満のbounded bootstrapは最大800 request / session、coverage 80%以上のdaily deltaは最大200 request / sessionとする。選択中currentはqueue先頭へ上げるが、同時実行数と開始間隔を迂回しない。
+- coverage 80%未満のbounded bootstrapは最大800 request / session、coverage 80%以上のdaily deltaは最大200 request / sessionとする。選択中currentはqueued taskだけをqueue先頭へ上げるが、active request、同時実行数、開始間隔を迂回しない。
 - HTTP 401はログイン確認、403は権限 / 施設確認、429はrate limitとしてqueueを即停止する。同一run内の自動retryは行わない。その他のrequest / validation / storage errorは記録して次taskへ進められるが、連続3 errorで停止する。
 - document hidden、calendar / Analyze以外へのroute変更、facility label不一致、facility / as-of変更、runtime停止では未完了requestをabortし、次の安全な可視contextで保存済みsourceから再計画する。
 - fixtureではwriterとnetwork acquisitionを完全に無効化する。

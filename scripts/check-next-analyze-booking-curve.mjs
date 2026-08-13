@@ -842,6 +842,96 @@ assert.equal(primaryReads[1].keys.every((key) => key.includes("scope:roomGroup")
 dataSource.stop();
 assert.equal((await dataSource.load("20260812", "20260723", "hotel")).reason, "aborted");
 
+const acquisitionPriorityCalls = [];
+const visibleFacilityElement = {
+    closest() {
+        return null;
+    },
+    getBoundingClientRect() {
+        return { height: 20, width: 120 };
+    },
+    hidden: false,
+    ownerDocument: { defaultView: undefined },
+    parentElement: null,
+    textContent: "施設A（mock）"
+};
+const priorityDataSource = dataSourceModule.createBookingCurveReferenceDataSource({
+    acquisition: {
+        async ensureCurrent(options) {
+            acquisitionPriorityCalls.push({ kind: "current", priority: options.priority, scopeKeys: options.scopeKeys });
+            return { candidateTaskCount: 1, dueTaskCount: 0, outcome: "ready" };
+        },
+        async readLatest() {
+            return [];
+        },
+        async startBackground() {
+            acquisitionPriorityCalls.push({ kind: "background" });
+        },
+        async startReference(options) {
+            acquisitionPriorityCalls.push({ kind: "reference", priority: options.priority, scopeKey: options.scopeKey });
+            return { candidateTaskCount: 1, dueTaskCount: 0, outcome: "ready" };
+        },
+        subscribe() {
+            return () => undefined;
+        },
+        suspend() {},
+        stop() {}
+    },
+    documentHost: {
+        querySelectorAll() {
+            return [visibleFacilityElement];
+        }
+    },
+    primaryKeyReader: async () => ({ status: "ready", records: [] }),
+    transport: {
+        async read(request) {
+            if (request.kind === "facility") {
+                return { yad_no: "fixture", name: "施設A（mock）" };
+            }
+            if (request.kind === "current-settings") {
+                return {
+                    suggest_output_current_settings: [{
+                        stay_date: "20260812",
+                        rm_room_groups: [{ rm_room_group_id: "single", rm_room_group_name: "シングル（mock）" }]
+                    }]
+                };
+            }
+            throw new Error(`unexpected request ${request.kind}`);
+        }
+    },
+    windowHost: {}
+});
+const hotelPriorityLoad = await priorityDataSource.load("20260812", "20260723", "hotel", {
+    currentPriority: "critical-current",
+    referencePriority: null
+});
+const roomPriorityLoad = await priorityDataSource.load("20260812", "20260723", "room:single", {
+    currentPriority: "visible-current",
+    referencePriority: null
+});
+assert.equal(hotelPriorityLoad.status, "ready");
+assert.equal(hotelPriorityLoad.acquisitionDiagnostics?.referenceDeferred, true);
+assert.equal(roomPriorityLoad.status, "ready");
+assert.equal(roomPriorityLoad.acquisitionDiagnostics?.referenceDeferred, true);
+priorityDataSource.prioritize("20260812", "20260723", "hotel", {
+    currentPriority: "critical-current",
+    referencePriority: "visible-reference"
+});
+await new Promise((resolve) => setTimeout(resolve, 0));
+priorityDataSource.prioritize("20260812", "20260723", "room:single");
+await new Promise((resolve) => setTimeout(resolve, 0));
+assert.deepEqual(acquisitionPriorityCalls, [
+    { kind: "background" },
+    { kind: "current", priority: "critical-current", scopeKeys: ["hotel"] },
+    { kind: "background" },
+    { kind: "current", priority: "visible-current", scopeKeys: ["room:single"] },
+    { kind: "current", priority: "critical-current", scopeKeys: ["hotel"] },
+    { kind: "reference", priority: "visible-reference", scopeKey: "hotel" },
+    { kind: "current", priority: "critical-current", scopeKeys: ["room:single"] },
+    { kind: "reference", priority: "selected-reference", scopeKey: "room:single" }
+], "Analyze load and room-open promotion must use the five-level queue contract without extra context reads");
+priorityDataSource.stop();
+
 let guardedAcquisitionStartCount = 0;
 const guardedDataSource = dataSourceModule.createBookingCurveReferenceDataSource({
     acquisition: {

@@ -265,7 +265,10 @@ export function startSalesSettingClassicRuntime(
     }
 
     async function loadAllScopes(generation: number, stayDate: string, asOfDate: string): Promise<void> {
-        const hotelResult = await dataSource.load(stayDate, asOfDate, "hotel");
+        const hotelResult = await dataSource.load(stayDate, asOfDate, "hotel", {
+            currentPriority: "critical-current",
+            referencePriority: null
+        });
         if (!isCurrentLoad(generation, stayDate, asOfDate)) {
             return;
         }
@@ -298,7 +301,10 @@ export function startSalesSettingClassicRuntime(
             if (scope.kind !== "roomGroup") {
                 continue;
             }
-            const result = await dataSource.load(stayDate, asOfDate, scope.key);
+            const result = await dataSource.load(stayDate, asOfDate, scope.key, {
+                currentPriority: "visible-current",
+                referencePriority: openScopes.has(scope.key) ? "selected-reference" : null
+            });
             if (!isCurrentLoad(generation, stayDate, asOfDate)) {
                 return;
             }
@@ -311,6 +317,10 @@ export function startSalesSettingClassicRuntime(
                 return;
             }
         }
+        dataSource.prioritize?.(stayDate, asOfDate, "hotel", {
+            currentPriority: "critical-current",
+            referencePriority: "visible-reference"
+        });
         scopeBatchLoading = false;
         initialScopeBatchLoading = false;
         rebuildCurves();
@@ -627,6 +637,7 @@ export function startSalesSettingClassicRuntime(
         } else if (
             currentReady
             && rankSettled
+            && selectedData?.acquisitionDiagnostics?.referenceDeferred === false
             && selectedData?.acquisitionDiagnostics?.reference.dueTaskCount === 0
         ) {
             recorder.mark(generation, {
@@ -671,6 +682,9 @@ export function startSalesSettingClassicRuntime(
                 } else {
                     openScopes.add(scopeKey);
                     beginAnalyzePerformance("room-open", scopeKey);
+                    if (activeStayDate !== null && activeAsOfDate !== null) {
+                        dataSource.prioritize?.(activeStayDate, activeAsOfDate, scopeKey);
+                    }
                 }
                 renderCurrentState();
                 focusControl(SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE, scopeKey, scopeKey);
