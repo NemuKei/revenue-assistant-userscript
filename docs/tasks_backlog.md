@@ -810,7 +810,7 @@
 #### RAU-PERF-21 current優先でbooking curveのhead-of-lineを外す
 
 - 状態:
-  - source実装、local gate、main同期、Next `0.2.0.26` manual publication、公開artifact / Classic baseline照合まで完了。既存request上限、100ms / 30 control profile、保存・停止契約を維持して5段階queueへ分離し、未選択room referenceをcard openまで遅延した。Tampermonkey更新と通常Chrome before / afterを残す。
+  - 完了。source実装、local gate、main同期、Next `0.2.0.26` manual publication、公開artifact / Classic baseline照合、Tampermonkey更新、通常Chrome before / afterまで完了した。既存request上限、100ms / 30 control profile、保存・停止契約を維持して5段階queueへ分離し、未選択room referenceをcard openまで遅延した。
 - 解決する問題:
   - 現行はhotel current後のreferenceを`interactive` FIFOへ入れるため、後続room currentがhotel referenceの後ろで待つ場合がある。Top / Analyzeの同一coordinatorとrequest count共有、room scope逐次loadも、全体summaryと選択roomの待ち時間を増やし得る。
 - 実装scope:
@@ -833,7 +833,7 @@
 #### RAU-PERF-21B Next booking curveのrequest paceを段階緩和する
 
 - 状態:
-  - `RAU-PERF-20`のmarkerを使い、`RAU-PERF-21`を100ms / 30で公開・検証したcontrol後に行う可逆なNext候補。SLO complianceの20 sampleを待たず、そのsource revisionで通常利用由来のbooking curve GET合計50件以上が安全条件を通れば第一段階を開始できる。
+  - 第一段階source candidateを実装し、local gateを通過した。公開Next `0.2.0.26`の100ms / 30 controlでは、cache削除やscope拡張をせず通常操作の可視windowでTop 21件、選択room 44件、別room 3件の計68 booking curve startを観測した。最大同時16、scheduler error / 401 / 403 / 429は0、外部timestampを取った3件の最短開始間隔は107ms、同区間のRevenue Assistant write / HTTP / runtime errorは0だった。次はsource commit / publicationと、別profile `booking-curve-50ms-20`としての通常Chrome gateである。
 - 解決する問題:
   - 現行NextはClassic read-through、Next store、source単位due判定、pending dedupeにより同日再計画が0 GETへ収束する一方、dueが79件ある観測では開始間隔最小105ms、最大同時10だった。100msは旧Classic warm cacheの35msより開始rateが約2.86倍保守的で、coldまたはdueが多い日の最後のrequest開始までの待ち時間を延ばす。
   - 旧ClassicのAnalyze referenceは100ms / 30であり、35ms / 30はwarm cache profileだった。35msを十分な件数で継続したfresh live安全証拠はrepo内にないため、旧設定をそのままNext既定へ戻さない。
@@ -842,7 +842,7 @@
   - bootstrap 800 / daily 200、background実効768 / 168、interactive reserve 32、取得対象、due判定、pending dedupe、保存schema / retention、同一run retryなし、401 / 403 / 429即停止、連続3 error停止、Revenue Assistant write 0を維持する。TopからAnalyzeへ移った際のrequest count共有も変えない。
   - profile定数は100ms / 30へ単独rollbackできる境界に置き、queue順、storage、data semanticsと同じflagへ束ねない。
 - 合格条件:
-  - pure / scheduler fixtureで50ms未満の開始、concurrency 20超過、budget超過、pending dedupe破壊、停止後の新規startを検出する。401 / 403 / 429はrunを即停止し、429、連続error停止、設定上限超過、標準UIまたはinteractive latencyの悪化では100ms / 30へ戻せることを固定する。
+  - pure / scheduler fixtureで開始間隔50ms、concurrency 20、budget、pending dedupe、停止後の新規startを固定した。401 / 403 / 429はrunを即停止し、429、連続error停止、設定上限超過、標準UIまたはinteractive latencyの悪化では100ms / 30へ戻せる境界を維持する。
   - 公開候補の通常Chromeで、自然に発生したNext booking curve GET合計50件以上、最大同時20以下、HTTP / runtime error、401 / 403 / 429、Revenue Assistant write 0を確認する。scheduler自身のmonotonic start markerとfixtureでは開始間隔50ms以上を必須とする。CDP等の外部timestampで45ms以上をlive許容値に使う場合は、観測clockの丸め / event配送jitterだけを許容する5ms toleranceとして別fieldへ明記し、scheduler契約を45msへ緩めない。planned / started / abortedと、429またはcontext abort前に開始済みとなった件数をcontrol / candidateの両方で報告する。
   - controlとcandidateは、対応する同じroute / 操作 / warm・revalidate / room数bandで、別source revision / request profileとしてdecision-ready / explanation latency、coverage、標準UI操作を比較する。profileを変えたsampleを同じp95母集団へ混ぜない。
   - 第一段階の採用判定は、control / candidateそれぞれで対応するTop / Analyze操作を各3 controlled run以上行い、かつcandidateの少なくとも1つの自然な連続windowで20件以上のrequest start、またはconcurrency 10以上を観測したうえで行う。candidate合計50 GETだけを細切れwindowで満たして、20 starts/s相当の時間密度を一度も観測していない場合は採用済みとしない。20件のSLO compliance母数を満たさないcohortは、速度profile採用後もSLO provisionalを維持する。
@@ -965,7 +965,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage は、Nowを公開Next `0.2.0.26`へのTampermonkey更新と、100ms・30 controlの通常Chrome live before / afterとする。5段階queue、未選択room reference遅延、1 / 6 / 12 / 20 roomのlocal gate、main同期、manual publication、公開artifact / Classic baseline照合は完了した。`RAU-PERF-20`の各cohortは1 sampleでprovisionalのため、通常利用のTop基準日判断、warm / revalidate、各20 sample収集も並行継続する。次は`RAU-PERF-21`公開revisionで通常利用由来のNext booking curve GET合計50件以上と安全条件を確認した後に、`RAU-PERF-21B`の50ms / concurrency 20 pace試験とする。SLO complianceの20 sampleはpace試験開始の必須条件にしない。`RAU-PERF-22`は`RAU-PERF-21B`第一段階後も同一cohortのSLO missまたは3 controlled run以上の同一原因再現がある場合だけ、request budget / scope変更候補として開始する。`RAU-WC-34`のcount-only live range gateは`RAU-PERF-21` / `RAU-PERF-21B`第一段階通過後、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goであり、compact UIと`RAU-RR-65`一括調整dry-runは各gate通過後に限る。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145`はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は、Nowを`RAU-PERF-21B`の50ms / concurrency 20 source commit、Next manual publication、Tampermonkey更新後の通常Chrome candidate gateとする。`RAU-PERF-21`の5段階queue、未選択room reference遅延、1 / 6 / 12 / 20 room local gate、公開Next `0.2.0.26`、100ms / 30 control計68 starts、最大同時16、error / 401 / 403 / 429 / write 0は完了した。candidateはcontrolと別profileでTop / Analyzeを各3 controlled run以上、自然な連続window 20 starts以上またはconcurrency 10以上、合計50 GET、最大同時20以下、HTTP / runtime error、401 / 403 / 429、Revenue Assistant write 0、標準UIとSLO milestone非悪化を確認するまで採用済みとしない。`RAU-PERF-20`の各cohortは20 sample未満でprovisionalのため、通常利用のTop基準日判断、warm / revalidate、各20 sample収集も並行継続する。`RAU-PERF-22`は第一段階後も同一cohortのSLO missまたは3 controlled run以上の同一原因再現がある場合だけ、request budget / scope変更候補として開始する。`RAU-WC-34`のcount-only live range gateは`RAU-PERF-21B`第一段階通過後、通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goであり、compact UIと`RAU-RR-65`一括調整dry-runは各gate通過後に限る。`RAU-WC-34`はrank statusの小chunkとbooking curveの距離別cadenceを分離し、半年全roomの日次取得を採用しない。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145`はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

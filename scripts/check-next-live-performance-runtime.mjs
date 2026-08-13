@@ -40,7 +40,7 @@ try {
         });
         const topSummary = await readPerformanceSummary(page);
         assert.equal(topSummary.schemaVersion, "rau-next-performance-v1");
-        assert.equal(topSummary.requestProfile, "booking-curve-100ms-30");
+        assert.equal(topSummary.requestProfile, "booking-curve-50ms-20");
         assert.equal(topSummary.route, "top");
         assert.equal(topSummary.counts.eligibleVisibleDates > 0, true);
         assert.equal(

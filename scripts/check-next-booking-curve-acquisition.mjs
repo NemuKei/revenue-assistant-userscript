@@ -37,8 +37,8 @@ const transportModule = await importBundledTypeScript(
 
 assert.equal(model.NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT, 800);
 assert.equal(model.NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT, 200);
-assert.equal(model.NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS, 100);
-assert.equal(model.NEXT_BOOKING_CURVE_CONCURRENCY, 30);
+assert.equal(model.NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS, 50);
+assert.equal(model.NEXT_BOOKING_CURVE_CONCURRENCY, 20);
 assert.match(
     coordinatorSource,
     /const NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD = 0\.8;/u
