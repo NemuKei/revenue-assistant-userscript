@@ -744,7 +744,7 @@
 - 実装境界:
   - standalone booking curveと販売設定card内のembedded booking curveの双方から、`調整後のペース`sectionとevent別pace解釈を外す。block専用のrank順GET、parser / data source / model、共有read coordinatorのrank-order経路も外す。
   - current / reference chart、current curve上のrank marker、通常Tooltip、初期折りたたみrank履歴、rank status最大1 GET、`RAU-RR-66`のsanitized capture / coverage DBは維持する。既存保存dataは削除・移行しない。
-  - 次回調整の方向と候補rankは、この変更で推測表示しない。`RAU-RR-67`の実分布と件数guardを通した後、Analyze上部の短い要約とrank変更UI付近の隣接1段候補として別sliceで扱う。
+  - 次回調整の方向と候補rankは、この変更で推測表示しない。`RAU-RR-67`の実分布、最低停止線、matching / fallback / censor / exclusion / 確度policy、backtest、fixed scenario testをすべて通した後に限り、Analyze上部の短い要約とrank変更UI付近の隣接1段候補として別sliceで扱う。
 - 合格条件:
   - standalone / embedded双方でblockと専用attributeが0で、chart 2 panel、rank marker / Tooltip、折りたたみrank履歴が維持される。
   - rank sequences追加GET 0、Revenue Assistant write 0、desktop / 390pxのNext root overflow 0、duplicate root 0、console error 0をfixtureで確認する。
@@ -759,7 +759,7 @@
 ### RAU-RR-66 次回調整の期待値へ向けたrank学習coverageを作る
 
 - 状態:
-  - Now。source / focused / full checks / main同期 / Next `0.2.0.22` manual publication / 公開artifact照合は完了した。installed runtimeは後続のNext `0.2.0.23`へ更新済みだが、Top calendarにおける新DB件数・field allowlistの実値非表示確認は未実施である。利用者が、部屋タイプごとの振り返りを主目的にせず、次の調整時にrankをどう変えると個人予約がどの程度変わりそうかを示す方向へ進めることを確認した。`D-20260812-003`で新規storage / retention、追加GETなし、非PII保存、no-change control停止条件をspec-firstで固定した。
+  - 完了。source / focused / full checks / main同期 / Next `0.2.0.22` manual publication / 公開artifact照合に加え、後続のinstalled Next `0.2.0.23`でTop calendar live gateを通した。値を返さないreadonly shape probeでDB version 1、`rank-events` 266件、`rank-status-coverages` 1件、keyPath / index / field allowlist一致を確認した。利用者が、部屋タイプごとの振り返りを主目的にせず、次の調整時にrankをどう変えると個人予約がどの程度変わりそうかを示す方向へ進めることを確認した。`D-20260812-003`で新規storage / retention、追加GETなし、非PII保存、no-change control停止条件をspec-firstで固定した。
 - 解決する問題:
   - 廃止した`RAU-RR-64`のevent別表示は表示中stay dateのeventをmemory評価していたため、複数の過去調整を独立episodeとして集計できず、期待値を出せる母集団が何件あるか分からなかった。
   - 週ブロックや同時調整を宿泊日数・部屋タイプ数で水増しせず、変更日 / 3日後 / 7日後の個人予約をexactに評価できる範囲と不足理由を把握する必要がある。
@@ -775,7 +775,7 @@
   - sanitized parser / writer / two-store IndexedDB、同一transaction add / prune、施設別Web Lock / fallback、abort rollback、pure coverage modelを実装した。既存Top calendar responseへの相乗りだけで、transportと新規GETは追加していない。
   - 実Chrome IndexedDB fixtureでevent 4,096 + 512の古512 prune、coverage 120 + 1の古1 prune、同一payload dedupe、active transaction abortを確認した。`npm run check:next`、`npm run check`、`npm run check:classic-publication`、`git diff --check`は通過した。
   - Validate Main run `31583779690`とmanual workflow run `31583889500`はboth successで、公開Next `0.2.0.22`は366,252 bytes、SHA-256 `483D9E370BC0615EF591603EB3F4506B8B64939FBC6CC02DE45D5F4F962106B3`、source mapは1,418,836 bytes、SHA-256 `3FDAF988FD291E942D401346D1952CB765D13912DFFC8F7160B337ACD01FFC67`でmanifestと一致した。Classic userscript / source mapは固定baselineのままである。
-  - 残りはTampermonkey更新、通常Chromeの追加GET 0 / Revenue Assistant write 0 / standard UI非干渉 / 保存fieldと件数の実値非表示確認である。
+  - 通常Chromeの次月表示 / 今月復帰のtruncatedなし監視区間は各rank status 1 GET、rank sequences 0、booking curve追加GET 0、Revenue Assistant write 0、HTTP失敗 / runtime例外 / CDP log error 0だった。Top runtime / live / acquisitionはready-read-only / mounted-read-only / complete、Next overflow 0、標準`販売設定を一括反映`button 1を維持した。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
@@ -786,7 +786,7 @@
 ### RAU-RR-67 独立episodeから隣接rankの期待反応を試験表示する
 
 - 状態:
-  - Next。`RAU-RR-66`の実分布で独立decision cluster、3日 / 7日exact coverage、censor、room group別件数を確認してから、表示policyを固定する。
+  - Next / data accumulation。`RAU-RR-66`のlive実分布を確認したが、現時点はUI実装no-goである。266 event、隣接1段140 member、22 independent decision clusterのうち、3日exact observedは71、7日exact observedは51だった。同一room group・transitionでobserved独立3 cluster以上は3日2 group / 7日0 group、leave-one-cluster-out方向安定は3日1 group / 7日0 groupに留まる。通常利用でdataが増えた後にfresh再集計し、未達時は`判定材料不足`を維持する。
 - 解決する問題:
   - 調整候補room groupについて、現在のLT・個人pace・capacity等が近い過去caseから、隣接rankへ動かした後の個人予約反応を、件数と不確実性を含めて短時間で判断できない。
 - 最初のscope:
@@ -797,10 +797,13 @@
 - 合格条件:
   - 3日 / 7日の中央値、中央50%範囲、独立decision cluster数、same-room / facility fallback、censor率、leave-one-cluster-outでの方向安定性をbacktestし、future leakageを拒否する。
   - UIはAnalyze上部のcompact summaryとrank変更UI付近の隣接1段候補で、変更対象room group、方向、期待レンジ、根拠件数、試験確度、主な注意を短時間で読める。booking curve内へevent別cardを戻さず、推奨金額、ADR / 売上効果、Revenue Assistant write、一括反映は含めない。
+  - 同一room group・transitionで3日 / 7日ともobserved独立3 decision cluster以上を不足時の強制停止線とする。現時点は7日0 groupのため未達であり、UIを実装しない。通過してもgoとはせず、matching距離、facility fallback条件 / 上限、1 cluster依存上限、censor / exclusion上限、確度を実分布で固定する。
+  - fixed scenario testで、ちょうど3 cluster、偶数cluster中央値、中央値0 / tie、cluster内符号割れ、片方のhorizonだけ欠損、LOO符号反転、censor / exclusion上限超過、matching / fallback境界を確認する。RR-66 reportの`minimumSamplePolicy: "not-fixed"`は維持し、RR-67の別policy layerとして実装・検証する。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260813-002`
   - `depends-on: RAU-RR-66 coverage accepted`
 
 ### RAU-RR-65 明示選択した複数候補の一括調整をdry-runで再評価する
@@ -823,7 +826,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage のNowは追加GETなしでrank event / coverageを蓄積する`RAU-RR-66`、Nextは実分布から期待値guardを決める`RAU-RR-67`、After Nextは明示選択した一括調整をdry-runから再評価する`RAU-RR-65`とする。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
+Remaining Task Triage は`RAU-RR-66`を完了、Nowを通常利用によるdata蓄積と`RAU-RR-67`のfresh再集計・policy確定・backtest / fixed scenario test、Nextをそれらすべての通過後に限るcompact UI、After Nextを明示選択した一括調整のdry-run再評価`RAU-RR-65`とする。現時点の`RAU-RR-67`は7日observed独立3 cluster以上が0 groupのためUI実装no-goである。`RAU-MP-09`の西暦比較表示は利用者確認済みで、次のruntime変更の通常Chrome gateでは月次routeのrequest count / Revenue Assistant write 0を再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeはtask進行から推論せず別gateのまま残す。`RAU-UX-145` はNextが旧stacked railを採用していないため再採用せず、同じhost構造を採用する将来変更時だけ再開する。
 
 ## 2026-06-29 Docs Governance Profile
 

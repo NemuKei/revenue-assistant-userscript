@@ -613,6 +613,8 @@ Analyze試験表示の廃止 (`RAU-RR-64`, `RAU-UX-169`):
 - `RAU-RR-66`の実分布から件数guard、matching距離、facility fallback、確度を固定できた場合だけ、Analyze上部へ選択中stay date / room groupの短い判断要約を置く。表示語は命令形の`上げるべき / 下げるべき`ではなく、`上げ検討 / 下げ注意 / 維持 / 判定材料不足`とする。
 - rank順と隣接候補を確認できる場合だけ、rank変更UI付近へ`現rank -> 候補rank（1段）`を表示する。first phaseは隣接1段に限定し、根拠なく複数段の移動数を提案しない。rank順、current rank、期待値guardのいずれかが不足する場合は候補rankを出さない。
 - 要約は3日 / 7日の期待レンジ、独立decision cluster数、same-room / facility fallback、試験確度、主な注意へ絞り、過去event cardを並べない。詳細確認はbooking curveへ、実変更は明示2段階の単一候補rank変更UIへ分け、同じ説明を両方へ重複表示しない。
+- first live distribution gateでは、同一room group・transitionについて3日 / 7日の双方でobservedな独立decision clusterが3件以上あることを、UI実装可を意味しない最低停止線とする。いずれかのhorizonが3 cluster未満なら必ず`判定材料不足`とし、候補方向・期待レンジを出さない。このpre-filterを通過しても、matching距離、same-roomからfacility fallbackする条件と上限、1 cluster依存上限、censor / exclusion上限、確度を実分布で固定し、future leakageを拒否するbacktestとfixed scenario testを通すまではUI実装へ進めない。RR-66 reportの`minimumSamplePolicy: "not-fixed"`はcapture / coverage層が表示policyを所有しない境界として維持し、停止線と後続policyはRR-67の別layerで評価する。
+- 後続policyでは、各cluster内の同一horizonにある複数stay dateのpickupをcluster中央値へ畳む。cluster中央値または全cluster中央値が0、leave-one-cluster-outで残りcluster中央値の符号が全体と不一致、片方のhorizonだけobserved、censor / exclusion率が未固定または上限超過の場合は`判定材料不足`とする。偶数clusterの中央値、同率、cluster内の符号割れ、3日 / 7日の対象cluster集合、matching / fallback、censor / exclusion上限の最終定義はfixed scenario testと同じ変更集合で確定し、未確定の間はno-goを維持する。
 
 推奨 rank 算出の first contract:
 
