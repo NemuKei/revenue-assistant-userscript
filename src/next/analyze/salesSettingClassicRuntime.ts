@@ -113,6 +113,7 @@ export function startSalesSettingClassicRuntime(
     let rankGeneration = 0;
     let scheduledReconcileTimer: number | null = null;
     let scheduledDataRefreshTimer: number | null = null;
+    let dataRefreshPending = false;
     let narrow = windowHost.innerWidth <= 680;
     let stopped = false;
     let performanceContextSequence = 0;
@@ -120,6 +121,7 @@ export function startSalesSettingClassicRuntime(
     let performanceOperation: "analyze-surface" | "room-open" | null = null;
     let performanceSelectedScope: string | null = null;
     let performanceWarmth: "revalidate" | "unknown" | "warm" = "unknown";
+    const performanceSourceByScope = new Map<string, NextPerformanceSource>();
     let selectedScopeReadyAtOpen = false;
     const openScopes = new Set<string>();
     const secondarySegments = new Map<string, BookingCurveReferenceSecondarySegment>();
@@ -248,6 +250,8 @@ export function startSalesSettingClassicRuntime(
         openScopes.clear();
         secondarySegments.clear();
         visibilities.clear();
+        dataRefreshPending = false;
+        performanceSourceByScope.clear();
         clearPerformanceContext();
         removeMountedArtifacts();
     }
@@ -267,7 +271,8 @@ export function startSalesSettingClassicRuntime(
     async function loadAllScopes(generation: number, stayDate: string, asOfDate: string): Promise<void> {
         const hotelResult = await dataSource.load(stayDate, asOfDate, "hotel", {
             currentPriority: "critical-current",
-            referencePriority: null
+            referencePriority: null,
+            waitForCurrent: false
         });
         if (!isCurrentLoad(generation, stayDate, asOfDate)) {
             return;
@@ -301,7 +306,8 @@ export function startSalesSettingClassicRuntime(
         await Promise.all(roomScopes.map(async (scope) => {
             const result = await dataSource.load(stayDate, asOfDate, scope.key, {
                 currentPriority: "visible-current",
-                referencePriority: openScopes.has(scope.key) ? "selected-reference" : null
+                referencePriority: openScopes.has(scope.key) ? "selected-reference" : null,
+                waitForCurrent: false
             });
             if (!isCurrentLoad(generation, stayDate, asOfDate)) {
                 return;
@@ -330,6 +336,9 @@ export function startSalesSettingClassicRuntime(
         rebuildCurves();
         renderCurrentState();
         setRuntimeMarker("mounted-classic-ui");
+        if (dataRefreshPending) {
+            scheduleDataRefresh();
+        }
     }
 
     function isCurrentLoad(generation: number, stayDate: string, asOfDate: string): boolean {
@@ -468,7 +477,7 @@ export function startSalesSettingClassicRuntime(
                     ...card,
                     scopeKey: `pending:${index}`
                 })),
-                { narrow, openScopes }
+                { narrow, openScopes, revalidatingScopes: new Set() }
             );
             markAnalyzeShell();
             return;
@@ -482,7 +491,10 @@ export function startSalesSettingClassicRuntime(
         });
         renderSalesSettingClassic(root, { status: "ready", viewModel: model }, nativeCards, {
             narrow,
-            openScopes
+            openScopes,
+            revalidatingScopes: new Set(Array.from(activeData)
+                .filter(([, data]) => isCurrentRevalidating(data))
+                .map(([scopeKey]) => scopeKey))
         });
         recordAnalyzeMilestones(model);
     }
@@ -495,6 +507,9 @@ export function startSalesSettingClassicRuntime(
         performanceOperation = operation;
         performanceSelectedScope = operation === "room-open" ? scopeKey : null;
         selectedScopeReadyAtOpen = scopeKey !== null && activeData.has(scopeKey);
+        if (scopeKey !== null && isCurrentRevalidating(activeData.get(scopeKey))) {
+            selectedScopeReadyAtOpen = false;
+        }
         performanceWarmth = selectedScopeReadyAtOpen ? "warm" : "unknown";
         if (recorder === undefined) {
             performanceGeneration = null;
@@ -538,6 +553,14 @@ export function startSalesSettingClassicRuntime(
             performanceWarmth = result.acquisitionDiagnostics.current.dueTaskCount > 0
                 ? "revalidate"
                 : performanceWarmth === "unknown" ? "warm" : performanceWarmth;
+            if (result.acquisitionDiagnostics.current.dueTaskCount > 0) {
+                performanceSourceByScope.set(
+                    result.scope.key,
+                    result.records.length > 0 ? "mixed" : "network"
+                );
+            } else if (!performanceSourceByScope.has(result.scope.key)) {
+                performanceSourceByScope.set(result.scope.key, "cache");
+            }
         }
         recorder.setCohort(performanceGeneration, {
             roomBand: resolveNextPerformanceRoomBand(roomScopeCount()),
@@ -557,7 +580,7 @@ export function startSalesSettingClassicRuntime(
         if (performanceOperation === "analyze-surface") {
             const hotelData = activeData.get("hotel");
             const hotelCurrentReady = isExactCurrentReady(model.overall.curve);
-            if (hotelData !== undefined) {
+            if (hotelData !== undefined && !isCurrentRevalidating(hotelData)) {
                 recorder.mark(generation, {
                     freshness: hotelCurrentReady ? "fresh" : "unknown",
                     name: "overallSettled",
@@ -569,21 +592,27 @@ export function startSalesSettingClassicRuntime(
                 const requiredRoomScopes = model.cards.length;
                 const readyRequiredRoomScopes = model.cards.filter((card) => (
                     isExactCurrentReady(card.curve)
+                    && !isCurrentRevalidating(activeData.get(card.scope.key))
                 )).length;
-                recorder.mark(generation, {
-                    counts: {
-                        readyRequiredRoomScopes,
-                        requiredRoomScopes
-                    },
-                    freshness: readyRequiredRoomScopes === requiredRoomScopes
-                        && requiredRoomScopes > 0 ? "fresh" : "unknown",
-                    name: "allRoomSummarySettled",
-                    outcome: requiredRoomScopes > 0
-                        && readyRequiredRoomScopes === requiredRoomScopes
-                        ? "ready"
-                        : "partial",
-                    source: combineAcquisitionSources(Array.from(activeData.values()))
-                });
+                const revalidationPending = model.cards.some((card) => (
+                    isCurrentRevalidating(activeData.get(card.scope.key))
+                ));
+                if (!revalidationPending) {
+                    recorder.mark(generation, {
+                        counts: {
+                            readyRequiredRoomScopes,
+                            requiredRoomScopes
+                        },
+                        freshness: readyRequiredRoomScopes === requiredRoomScopes
+                            && requiredRoomScopes > 0 ? "fresh" : "unknown",
+                        name: "allRoomSummarySettled",
+                        outcome: requiredRoomScopes > 0
+                            && readyRequiredRoomScopes === requiredRoomScopes
+                            ? "ready"
+                            : "partial",
+                        source: combineAcquisitionSources(Array.from(activeData.values()))
+                    });
+                }
             }
             return;
         }
@@ -597,7 +626,8 @@ export function startSalesSettingClassicRuntime(
             return;
         }
         const selectedData = activeData.get(performanceSelectedScope);
-        const currentReady = isExactCurrentReady(selectedCard.curve);
+        const currentReady = isExactCurrentReady(selectedCard.curve)
+            && !isCurrentRevalidating(selectedData);
         if (currentReady) {
             recorder.mark(generation, {
                 freshness: "fresh",
@@ -660,9 +690,19 @@ export function startSalesSettingClassicRuntime(
     function acquisitionSource(
         data: Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }>
     ): NextPerformanceSource {
+        const trackedSource = performanceSourceByScope.get(data.scope.key);
+        if (trackedSource !== undefined) {
+            return trackedSource;
+        }
         return data.acquisitionDiagnostics?.current.dueTaskCount === undefined
             ? "cache"
             : data.acquisitionDiagnostics.current.dueTaskCount > 0 ? "network" : "cache";
+    }
+
+    function isCurrentRevalidating(
+        data: Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }> | undefined
+    ): boolean {
+        return (data?.acquisitionDiagnostics?.current.dueTaskCount ?? 0) > 0;
     }
 
     function combineAcquisitionSources(
@@ -769,15 +809,20 @@ export function startSalesSettingClassicRuntime(
             stopped
             || activeStayDate === null
             || activeAsOfDate === null
-            || state !== "ready"
-            || scopeBatchLoading
             || root === null
             || !root.isConnected
             || surface === null
-            || scheduledDataRefreshTimer !== null
         ) {
             return;
         }
+        if (scopeBatchLoading) {
+            dataRefreshPending = true;
+            return;
+        }
+        if (state !== "ready" || scheduledDataRefreshTimer !== null) {
+            return;
+        }
+        dataRefreshPending = false;
         scheduledDataRefreshTimer = windowHost.setTimeout(() => {
             scheduledDataRefreshTimer = null;
             if (
@@ -792,7 +837,7 @@ export function startSalesSettingClassicRuntime(
                 return;
             }
             startLoadAll(activeStayDate, activeAsOfDate, false);
-        }, 1_500);
+        }, 250);
     }
 
     function blockMismatchedContext(): void {
@@ -803,6 +848,7 @@ export function startSalesSettingClassicRuntime(
         rankFacilityId = null;
         scopeBatchLoading = false;
         initialScopeBatchLoading = false;
+        dataRefreshPending = false;
         contextBlocked = true;
         removeMountedArtifacts();
         setRuntimeMarker("suspended-facility-context-mismatch");
@@ -833,12 +879,14 @@ export function startSalesSettingClassicRuntime(
         openScopes.clear();
         secondarySegments.clear();
         visibilities.clear();
+        dataRefreshPending = false;
         clearPerformanceContext();
         removeMountedArtifacts();
         setRuntimeMarker("suspended-route");
     }
 
     function suspendForInactiveSurface(finalState: string): void {
+        dataRefreshPending = false;
         clearPerformanceContext();
         if (rankLoading) {
             rankGeneration += 1;
@@ -875,6 +923,7 @@ export function startSalesSettingClassicRuntime(
     }
 
     function waitForNativeSalesSettingSurface(): void {
+        dataRefreshPending = false;
         clearPerformanceContext();
         if (scheduledDataRefreshTimer !== null) {
             windowHost.clearTimeout(scheduledDataRefreshTimer);
@@ -921,6 +970,7 @@ export function startSalesSettingClassicRuntime(
         performanceSelectedScope = null;
         selectedScopeReadyAtOpen = false;
         performanceWarmth = "unknown";
+        performanceSourceByScope.clear();
     }
 
     function stop(finalState = "stopped-classic-ui"): void {
@@ -944,6 +994,7 @@ export function startSalesSettingClassicRuntime(
             windowHost.clearTimeout(scheduledDataRefreshTimer);
             scheduledDataRefreshTimer = null;
         }
+        dataRefreshPending = false;
         removeMountedArtifacts();
         setRuntimeMarker(finalState);
     }

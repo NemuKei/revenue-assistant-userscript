@@ -778,6 +778,63 @@ assert.equal(
 );
 coordinator.stop();
 
+let releaseDeferredCurrent;
+const deferredCurrentGate = new Promise((resolve) => {
+    releaseDeferredCurrent = resolve;
+});
+const deferredCurrentRequests = [];
+const deferredCurrentCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    store: {
+        async addAndPrune() {
+            return { addedCount: 1, deletedCount: 0 };
+        },
+        async readLatestBySourceKeys() {
+            return [];
+        }
+    },
+    transport: {
+        async read(request) {
+            deferredCurrentRequests.push(request);
+            await deferredCurrentGate;
+            return {
+                stay_date: request.stayDate,
+                booking_curve: [{
+                    date: "2026-07-23",
+                    all: { this_year_room_sum: 5 },
+                    transient: { this_year_room_sum: 4 },
+                    group: { this_year_room_sum: 1 }
+                }]
+            };
+        }
+    },
+    windowHost: fakeWindow
+});
+const deferredCurrentDiagnostics = await Promise.race([
+    deferredCurrentCoordinator.ensureCurrent({
+        context: oneScopeContext,
+        signal,
+        stayDate: "20260723",
+        waitForCompletion: false
+    }),
+    new Promise((_, reject) => setTimeout(
+        () => reject(new Error("deferred current planning waited for network completion")),
+        250
+    ))
+]);
+assert.deepEqual(deferredCurrentDiagnostics, {
+    candidateTaskCount: 1,
+    dueTaskCount: 1,
+    outcome: "ready"
+});
+assert.deepEqual(deferredCurrentRequests, [{
+    kind: "booking-curve",
+    roomGroupId: null,
+    stayDate: "20260723"
+}], "deferred current must enqueue the same finite due request before returning");
+releaseDeferredCurrent();
+await new Promise((resolve) => setTimeout(resolve, 20));
+deferredCurrentCoordinator.stop();
+
 const performanceEvents = [];
 const performanceRequests = [];
 const performanceRecorder = {

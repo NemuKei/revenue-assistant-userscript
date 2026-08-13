@@ -47,6 +47,7 @@ let priorityCount = 0;
 let rankLoadCount = 0;
 let rankCancelCount = 0;
 let rankResetCount = 0;
+let revalidationResolved = false;
 
 const dataSource: BookingCurveReferenceDataSource = {
     cancel() {
@@ -77,7 +78,8 @@ const dataSource: BookingCurveReferenceDataSource = {
             scope,
             { status: "ready", records },
             records,
-            referenceMode === "deferred" ? referenceDeferred : undefined
+            referenceMode === "deferred" ? referenceDeferred : undefined,
+            fixtureMode === "revalidate" && !revalidationResolved ? 1 : 0
         );
     },
     prioritize() {
@@ -87,6 +89,14 @@ const dataSource: BookingCurveReferenceDataSource = {
     reset() {
         dataResetCount += 1;
         setFixtureCount("data-reset", dataResetCount);
+    },
+    subscribe(listener) {
+        const handleRevalidate = (): void => {
+            revalidationResolved = true;
+            listener();
+        };
+        document.addEventListener("mock-resolve-revalidate", handleRevalidate);
+        return () => document.removeEventListener("mock-resolve-revalidate", handleRevalidate);
     },
     stop() {}
 };
@@ -181,17 +191,22 @@ function buildReadyResult(
     scope: BookingCurveReferenceScope,
     readStatus: Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }>["readStatus"],
     records: readonly BookingCurveRawSourceRecord[],
-    referenceDeferred?: boolean
+    referenceDeferred?: boolean,
+    currentDueTaskCount = 0
 ): Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }> {
     return {
         status: "ready",
-        ...(referenceDeferred === undefined
+        ...(referenceDeferred === undefined && currentDueTaskCount === 0
             ? {}
             : {
                 acquisitionDiagnostics: {
-                    current: { candidateTaskCount: 1, dueTaskCount: 0, outcome: "ready" as const },
+                    current: {
+                        candidateTaskCount: 1,
+                        dueTaskCount: currentDueTaskCount,
+                        outcome: "ready" as const
+                    },
                     reference: { candidateTaskCount: 0, dueTaskCount: 0, outcome: "ready" as const },
-                    referenceDeferred
+                    referenceDeferred: referenceDeferred ?? true
                 }
             }),
         asOfDate: AS_OF_DATE,

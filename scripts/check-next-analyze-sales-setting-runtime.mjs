@@ -23,6 +23,7 @@ try {
     assert.notEqual(origin, undefined, "Vite did not expose a local fixture URL");
     browser = await launchBrowser();
     await verifyPerformanceMarkers(origin);
+    await verifyRevalidatingCachePaint(origin);
     await verifyDeferredReferenceDoesNotPrematurelySettle(origin);
     await verifyRankStatusSurvivesTransientRemount(origin);
     await verifyInitialBatchStopsWithoutNativeSurface(origin);
@@ -92,6 +93,40 @@ async function verifyPerformanceMarkers(origin) {
         ]) {
             assert.equal(serialized.includes(forbidden), false, forbidden);
         }
+    });
+}
+
+async function verifyRevalidatingCachePaint(origin) {
+    await withFixturePage(origin, "?state=revalidate&rank=empty", async (page) => {
+        await waitForRoot(page, "ready");
+        await page.waitForFunction(() => (
+            globalThis.document.querySelectorAll("[data-ra-next-sales-setting-revalidating]").length === 3
+        ));
+        const pendingSummary = await readPerformanceSummary(page);
+        assert.equal(
+            pendingSummary.milestones.overallSettled,
+            undefined,
+            "last-known hotel paint must not settle the fresh overall milestone"
+        );
+        assert.equal(
+            pendingSummary.milestones.allRoomSummarySettled,
+            undefined,
+            "last-known room paint must not settle the fresh all-room milestone"
+        );
+        assert.equal(await page.locator(toggleSelector).count(), 2, "cached room curves must remain usable while revalidating");
+
+        await page.evaluate(() => {
+            globalThis.document.dispatchEvent(new Event("mock-resolve-revalidate"));
+        });
+        await page.waitForFunction(() => (
+            globalThis.document.querySelectorAll("[data-ra-next-sales-setting-revalidating]").length === 0
+        ));
+        await page.waitForFunction(() => {
+            const marker = globalThis.document.querySelector("[data-ra-fetch-performance-summary]");
+            const summary = marker === null ? null : JSON.parse(marker.textContent ?? "null");
+            return summary?.milestones?.overallSettled?.outcome === "ready"
+                && summary?.milestones?.allRoomSummarySettled?.outcome === "ready";
+        });
     });
 }
 

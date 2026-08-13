@@ -857,10 +857,11 @@
 #### RAU-PERF-22 Top / Analyze budget分離とAnalyze progressive loadを実装する
 
 - 状態:
-  - source / spec / focused / full local gateまで完了し、manual publicationと通常Chrome gate待ち。利用者がTopとAnalyzeの枠分離、Analyze foregroundの固定件数上限撤廃、全体summaryと各curveの数秒表示、coldでも数十秒待たせないことを明示承認し、`D-20260813-007`でYellow zoneのbefore / after、endpoint、有限scope、storage unchanged、負荷guard、停止、rollbackを固定した。
+  - Top / Analyze枠分離と並列currentはsource / spec / full local gate、main同期、Next `0.2.0.28` publication、Tampermonkey更新まで完了した。ホテル関西の自然なrevalidateでoverall 1,135msに対し6 room summary 14,861msとなり、due current response待ちが保存済みcache readのbarrierになる後続原因を確認した。`D-20260814-001`の保存済み先行表示と非同期revalidateはsource / spec / focused / full local gateまで完了し、再publicationと通常Chrome gate待ちである。利用者がTopとAnalyzeの枠分離、Analyze foregroundの固定件数上限撤廃、全体summaryと各curveの数秒表示、coldでも数十秒待たせないことを明示承認し、`D-20260813-007`でYellow zoneのbefore / after、endpoint、有限scope、storage unchanged、負荷guard、停止、rollbackを固定した。
 - 設計順:
   - Top backgroundのstarted / queued countだけを800 / 200へ数え、interactive current / referenceはそのcounterを参照しない。単一priority queue、50ms / 20、due / dedupe、停止条件は共有する。
   - Analyze routeではbackground plannerを開始せず、hotel current後の全room currentを並列queueへ入れ、ready scopeから描画する。未選択room referenceは遅延し、open roomだけselected referenceへ上げる。
+  - currentがdueでも有効なlast-known sourceがあるscopeはcache readをnetwork完了で止めず、`最新データを更新中（保存済みデータを表示）`と明示して先に描画する。保存済みsourceがないcold scopeは`比較準備中`を維持し、取得完了scopeから250ms程度でcoalesceしてprogressive再描画する。stale paintをdecision-ready milestoneへ数えない。
   - endpoint別の401 / 403 / 429とstop sourceを計測し、rank statusの失敗がbooking current全体を止める結合がSLO missとして観測された場合だけ、global auth / rate-limit stopとendpoint-local permission / data errorを分ける。停止条件を緩めて自動retryを増やさない。
   - performance profileを`booking-curve-50ms-20-analyze-uncapped`へ分け、旧shared-cap sampleと混ぜない。公開後はAnalyzeのplanned / started / aborted、overall / all room / selected current / selected evidence、max concurrency、HTTP / stop分類を同じwindowで確認する。
   - room数は`1〜6`、`7〜12`、`13〜20`、`21以上`で計測し、room数が増えてもhotel summaryと明示選択roomのSLOを優先する。未選択room reference、遠距離background、全room完了の順に縮退し、silent dropや無制限queueにしない。

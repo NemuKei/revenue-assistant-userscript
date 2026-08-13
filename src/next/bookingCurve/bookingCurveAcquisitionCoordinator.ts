@@ -83,6 +83,7 @@ export interface NextBookingCurveAcquisitionCoordinator {
         scopeKeys?: readonly string[];
         signal: AbortSignal;
         stayDate: string;
+        waitForCompletion?: boolean;
     }): Promise<NextBookingCurveAcquisitionDiagnostics>;
     readLatest(sourceKeys: readonly string[]): Promise<NextBookingCurveSourceRecord[]>;
     startBackground(context: NextBookingCurveAcquisitionContext): Promise<void>;
@@ -155,7 +156,14 @@ export function createNextBookingCurveAcquisitionCoordinator(
     let consecutiveErrorCount = 0;
 
     return {
-        async ensureCurrent({ context, priority = "critical-current", scopeKeys, signal, stayDate }) {
+        async ensureCurrent({
+            context,
+            priority = "critical-current",
+            scopeKeys,
+            signal,
+            stayDate,
+            waitForCompletion = true
+        }) {
             if (stopped || signal.aborted) {
                 return createAcquisitionDiagnostics(0, 0, "aborted");
             }
@@ -174,8 +182,13 @@ export function createNextBookingCurveAcquisitionCoordinator(
             });
             const pending = dueTasks
                 .map((task) => enqueueTask(task, priority, "interactive"));
-            await Promise.all(pending.map((promise) => raceWithAbort(promise, signal)
+            const completion = Promise.all(pending.map((promise) => raceWithAbort(promise, signal)
                 .catch(() => undefined)));
+            if (waitForCompletion) {
+                await completion;
+            } else {
+                void completion;
+            }
             return createAcquisitionDiagnostics(
                 tasks.length,
                 dueTasks.length,

@@ -136,7 +136,12 @@ assert.match(
     "a completed initial room batch must clear both loading guards before one final render"
 );
 assert.match(runtimeSource, /hotelResult\.status === "error"\) \{\s*scopeBatchLoading = false;/u);
-assert.match(runtimeSource, /state !== "ready"\s*\|\| scopeBatchLoading/u);
+assert.match(runtimeSource, /referencePriority: null,\s*waitForCurrent: false/u);
+assert.match(runtimeSource, /referencePriority: openScopes\.has\(scope\.key\) \? "selected-reference" : null,\s*waitForCurrent: false/u);
+assert.match(runtimeSource, /if \(scopeBatchLoading\) \{\s*dataRefreshPending = true;\s*return;/u);
+assert.match(runtimeSource, /\}, 250\);/u);
+assert.match(runtimeSource, /!isCurrentRevalidating\(hotelData\)/u);
+assert.match(runtimeSource, /!isCurrentRevalidating\(activeData\.get\(card\.scope\.key\)\)/u);
 assert.match(runtimeSource, /function cancelScopeBatchForInactiveSurface\(\): void/u);
 assert.match(
     runtimeSource,
@@ -159,6 +164,7 @@ assert.match(viewSource, /"区分", "室数", "1日前", "7日前", "30日前"/u
 assert.match(viewSource, /"ブッキングカーブを開く"/u);
 assert.match(viewSource, /"ブッキングカーブを閉じる"/u);
 assert.match(viewSource, /message\.textContent = "比較準備中"/u);
+assert.match(viewSource, /message\.textContent = "最新データを更新中（保存済みデータを表示）"/u);
 assert.match(viewSource, /createEmbeddedBookingCurveReference/u);
 assert.match(viewSource, /replaceAll\([\s\S]*BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE/u);
 assert.notEqual(

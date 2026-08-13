@@ -104,6 +104,7 @@ export interface BookingCurveReferenceDataSource {
 export interface BookingCurveReferenceLoadPriorities {
     currentPriority?: NextBookingCurveCurrentPriority;
     referencePriority?: NextBookingCurveReferencePriority | null;
+    waitForCurrent?: boolean;
 }
 
 export type ExistingIndexedDbPrimaryKeyReader = <T>(
@@ -200,7 +201,8 @@ export function createBookingCurveReferenceDataSource(
                 scopeKey,
                 signal: controller.signal,
                 stayDate: compactStayDate,
-                transport
+                transport,
+                waitForCurrent: priorities.waitForCurrent ?? true
             }).then((result) => {
                 if (result.status === "ready") {
                     context = {
@@ -314,6 +316,7 @@ async function loadBookingCurveReferenceData(options: {
     signal: AbortSignal;
     stayDate: string;
     transport: NextReadTransport;
+    waitForCurrent: boolean;
 }): Promise<BookingCurveReferenceDataLoadResult> {
     const contextKey = `${options.stayDate}|${options.asOfDate}`;
     try {
@@ -365,7 +368,8 @@ async function loadBookingCurveReferenceData(options: {
                 priority: options.currentPriority,
                 scopeKeys: [scope.key],
                 signal: options.signal,
-                stayDate: options.stayDate
+                stayDate: options.stayDate,
+                waitForCompletion: options.waitForCurrent
             });
             const reference: NextBookingCurveAcquisitionDiagnostics =
                 options.referencePriority === null

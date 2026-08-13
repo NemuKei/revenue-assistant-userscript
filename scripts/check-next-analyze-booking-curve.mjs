@@ -866,7 +866,12 @@ const visibleFacilityElement = {
 const priorityDataSource = dataSourceModule.createBookingCurveReferenceDataSource({
     acquisition: {
         async ensureCurrent(options) {
-            acquisitionPriorityCalls.push({ kind: "current", priority: options.priority, scopeKeys: options.scopeKeys });
+            acquisitionPriorityCalls.push({
+                kind: "current",
+                priority: options.priority,
+                scopeKeys: options.scopeKeys,
+                waitForCompletion: options.waitForCompletion
+            });
             return { candidateTaskCount: 1, dueTaskCount: 0, outcome: "ready" };
         },
         async readLatest() {
@@ -911,7 +916,8 @@ const priorityDataSource = dataSourceModule.createBookingCurveReferenceDataSourc
 });
 const hotelPriorityLoad = await priorityDataSource.load("20260812", "20260723", "hotel", {
     currentPriority: "critical-current",
-    referencePriority: null
+    referencePriority: null,
+    waitForCurrent: false
 });
 const roomPriorityLoad = await priorityDataSource.load("20260812", "20260723", "room:single", {
     currentPriority: "visible-current",
@@ -929,11 +935,11 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 priorityDataSource.prioritize("20260812", "20260723", "room:single");
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.deepEqual(acquisitionPriorityCalls, [
-    { kind: "current", priority: "critical-current", scopeKeys: ["hotel"] },
-    { kind: "current", priority: "visible-current", scopeKeys: ["room:single"] },
-    { kind: "current", priority: "critical-current", scopeKeys: ["hotel"] },
+    { kind: "current", priority: "critical-current", scopeKeys: ["hotel"], waitForCompletion: false },
+    { kind: "current", priority: "visible-current", scopeKeys: ["room:single"], waitForCompletion: true },
+    { kind: "current", priority: "critical-current", scopeKeys: ["hotel"], waitForCompletion: undefined },
     { kind: "reference", priority: "visible-reference", scopeKey: "hotel" },
-    { kind: "current", priority: "critical-current", scopeKeys: ["room:single"] },
+    { kind: "current", priority: "critical-current", scopeKeys: ["room:single"], waitForCompletion: undefined },
     { kind: "reference", priority: "selected-reference", scopeKey: "room:single" }
 ], "Analyze foreground must use the five-level queue contract without starting background work or extra context reads");
 priorityDataSource.stop();

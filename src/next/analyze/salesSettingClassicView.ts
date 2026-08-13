@@ -28,6 +28,7 @@ const SUMMARY_TABLE_ATTRIBUTE = "data-ra-next-sales-setting-summary-table";
 const SUMMARY_ROW_ATTRIBUTE = "data-ra-next-sales-setting-summary-row";
 const SUMMARY_TONE_ATTRIBUTE = "data-ra-next-sales-setting-summary-tone";
 const PREPARING_ATTRIBUTE = "data-ra-next-sales-setting-comparison-preparing";
+const REVALIDATING_ATTRIBUTE = "data-ra-next-sales-setting-revalidating";
 const CURVE_SECTION_ATTRIBUTE = "data-ra-next-sales-setting-curve-section";
 
 export interface SalesSettingClassicNativeCard {
@@ -78,7 +79,11 @@ export function renderSalesSettingClassic(
     root: HTMLElement,
     state: SalesSettingClassicRenderState,
     nativeCards: readonly SalesSettingClassicNativeCard[],
-    options: { narrow: boolean; openScopes: ReadonlySet<string> }
+    options: {
+        narrow: boolean;
+        openScopes: ReadonlySet<string>;
+        revalidatingScopes: ReadonlySet<string>;
+    }
 ): void {
     root.setAttribute("data-ra-next-sales-setting-classic-state", state.status);
     if (state.status === "loading") {
@@ -94,7 +99,12 @@ export function renderSalesSettingClassic(
     if (rankOverview !== null) {
         children.push(rankOverview);
     }
-    children.push(createOverallSummary(root.ownerDocument, viewModel, options.narrow));
+    children.push(createOverallSummary(
+        root.ownerDocument,
+        viewModel,
+        options.narrow,
+        options.revalidatingScopes.has("hotel")
+    ));
     root.replaceChildren(...children);
 
     const currentCardElements = new Set(nativeCards.map((card) => card.cardElement));
@@ -111,7 +121,8 @@ export function renderSalesSettingClassic(
             nativeCard,
             cardByScope.get(nativeCard.scopeKey) ?? null,
             options.openScopes.has(nativeCard.scopeKey),
-            options.narrow
+            options.narrow,
+            options.revalidatingScopes.has(nativeCard.scopeKey)
         );
     }
 }
@@ -139,7 +150,8 @@ function renderLoadingSupplements(nativeCards: readonly SalesSettingClassicNativ
 function createOverallSummary(
     documentHost: Document,
     viewModel: SalesSettingClassicViewModel,
-    narrow: boolean
+    narrow: boolean,
+    isRevalidating: boolean
 ): HTMLElement {
     const section = documentHost.createElement("section");
     section.setAttribute(OVERALL_ATTRIBUTE, "");
@@ -156,7 +168,11 @@ function createOverallSummary(
         viewModel.overall.capacityRooms
     )}`;
     row.append(title, metric);
-    section.append(row, createSummaryTable(documentHost, viewModel.overall.summary));
+    section.append(row);
+    if (isRevalidating) {
+        section.append(createRevalidatingMessage(documentHost));
+    }
+    section.append(createSummaryTable(documentHost, viewModel.overall.summary));
     if (hasMissingSummaryValue(viewModel.overall.summary)) {
         section.append(createPreparingMessage(documentHost));
     }
@@ -221,7 +237,8 @@ function renderNativeCard(
     nativeCard: SalesSettingClassicNativeCard,
     card: SalesSettingClassicCardViewModel | null,
     isOpen: boolean,
-    narrow: boolean
+    narrow: boolean,
+    isRevalidating: boolean
 ): void {
     const supplement = ensureNativeSupplement(nativeCard);
     supplement.setAttribute(SALES_SETTING_CLASSIC_SCOPE_ATTRIBUTE, nativeCard.scopeKey);
@@ -229,7 +246,11 @@ function renderNativeCard(
         supplement.replaceChildren(createPreparingMessage(supplement.ownerDocument));
         return;
     }
-    const children: HTMLElement[] = [createSummaryTable(supplement.ownerDocument, card.curve.currentSummary)];
+    const children: HTMLElement[] = [];
+    if (isRevalidating) {
+        children.push(createRevalidatingMessage(supplement.ownerDocument));
+    }
+    children.push(createSummaryTable(supplement.ownerDocument, card.curve.currentSummary));
     if (hasMissingSummaryValue(card.curve.currentSummary)) {
         children.push(createPreparingMessage(supplement.ownerDocument));
     }
@@ -379,6 +400,13 @@ function createPreparingMessage(documentHost: Document): HTMLElement {
     return message;
 }
 
+function createRevalidatingMessage(documentHost: Document): HTMLElement {
+    const message = documentHost.createElement("p");
+    message.setAttribute(REVALIDATING_ATTRIBUTE, "");
+    message.textContent = "最新データを更新中（保存済みデータを表示）";
+    return message;
+}
+
 function hasMissingSummaryValue(summary: BookingCurveReferenceCurrentSummary): boolean {
     return [summary.all, summary.transient, summary.group].some((metric) => (
         metric.currentValue === null
@@ -489,6 +517,11 @@ function getSalesSettingClassicStyles(): string {
 [${PREPARING_ATTRIBUTE}] {
     width: fit-content; margin: 2px 0 8px; padding: 5px 8px;
     border-radius: 5px; background: #f2f5f7; color: #65788a;
+    font-size: 12px; font-weight: 700; line-height: 1.4;
+}
+[${REVALIDATING_ATTRIBUTE}] {
+    width: fit-content; margin: 2px 0 4px; padding: 5px 8px;
+    border-radius: 5px; background: #eef4ff; color: #456792;
     font-size: 12px; font-weight: 700; line-height: 1.4;
 }
 [${SALES_SETTING_CLASSIC_SUPPLEMENT_ATTRIBUTE}] {
