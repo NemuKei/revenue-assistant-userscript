@@ -934,7 +934,7 @@
 #### RAU-PERF-25 full reference保存通知をtrailingで1回反映する
 
 - 状態:
-  - source / local gate完了、Next publication / ホテル関西live gate待ち。公開Next `0.2.0.33`で初期 / selected evidenceは数秒以内へ入ったが、reference batchの保存中にfull scopeを反復hydrateして最大1秒超のfreeze要因が残ったため、通信緩和より先に描画cadenceを整えた。
+  - source / local gate、Next `0.2.0.34` publication完了、Tampermonkey更新後のホテル関西live gate待ち。公開Next `0.2.0.33`で初期 / selected evidenceは数秒以内へ入ったが、reference batchの保存中にfull scopeを反復hydrateして最大1秒超のfreeze要因が残ったため、通信緩和より先に描画cadenceを整えた。
 - 解決する問題:
   - opened roomのselected reference 62件はerror / stop 0で完了したが、250msのleading-edge refreshが連続保存中に繰り返され、同じscopeのIndexedDB read、curve model、DOM更新を29回相当のLong Taskとして実行した。取得開始を速めてもこの反復処理を集中させるだけである。
 - 実装scope:
