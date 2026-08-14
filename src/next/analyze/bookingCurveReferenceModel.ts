@@ -242,6 +242,8 @@ export function buildBookingCurveReferenceViewModel(options: {
         ? selectedStayDateRecord
         : null;
     const currentSummary = buildCurrentSummary(currentRecord?.response ?? null, normalizedAsOfDate);
+    const secondarySegment = options.secondarySegment ?? "transient";
+    const visibility = options.visibility ?? { recent: true, seasonal: true };
     const sources = records.map((record): BookingCurveResponseSource => ({
         response: buildReferenceResponse(record),
         scope: options.scope.kind,
@@ -250,10 +252,9 @@ export function buildBookingCurveReferenceViewModel(options: {
     const input = buildCurveInputFromBookingCurveResponses({
         facilityId: options.facilityId,
         asOfDate: normalizedAsOfDate,
-        sources
+        sources,
+        segments: ["all", secondarySegment]
     });
-    const secondarySegment = options.secondarySegment ?? "transient";
-    const visibility = options.visibility ?? { recent: true, seasonal: true };
     const rankHistory = resolveRankHistory(options);
     const rankEvents = options.scope.kind === "roomGroup" && rankHistory.status === "ready"
         ? rankHistory.events

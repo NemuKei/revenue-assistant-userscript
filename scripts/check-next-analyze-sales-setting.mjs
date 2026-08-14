@@ -16,14 +16,18 @@ const [
     viewSource,
     fixture,
     fixtureEntry,
-    classicSource
+    classicSource,
+    referenceModelSource,
+    curveCoreSource
 ] = await Promise.all([
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/salesSettingClassicRuntime.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/next/analyze/salesSettingClassicView.ts", import.meta.url), "utf8"),
     readFile(new URL("../dev/fixtures/next-analyze-sales-setting/index.html", import.meta.url), "utf8"),
     readFile(new URL("../src/next/dev/analyzeSalesSettingClassicFixtureEntry.ts", import.meta.url), "utf8"),
-    readFile(new URL("../src/main.ts", import.meta.url), "utf8")
+    readFile(new URL("../src/main.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/next/analyze/bookingCurveReferenceModel.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/curveCore.ts", import.meta.url), "utf8")
 ]);
 
 const hotelScope = { key: "hotel", kind: "hotel", label: "ホテル全体", roomGroupId: null };
@@ -137,8 +141,28 @@ assert.doesNotMatch(
 );
 assert.match(
     runtimeSource,
-    /scopeBatchLoading = false;\s*initialScopeBatchLoading = false;\s*rebuildCurves\(\);\s*renderCurrentState\(\);/u,
-    "a completed initial room batch must clear both loading guards before one final render"
+    /scopeBatchLoading = false;\s*initialScopeBatchLoading = false;\s*rebuildCurves\(new Set\(roomScopes\.map\(\(scope\) => scope\.key\)\)\);\s*renderCurrentState\(\);/u,
+    "a completed initial room batch must rebuild only room summaries and preserve the already-built hotel curve"
+);
+assert.match(
+    runtimeSource,
+    /function startRankLoad[\s\S]*rankLoading = true;\s*if \(!scopeBatchLoading\) \{\s*rebuildOpenRoomCurves\(\);\s*renderCurrentState\(\);[\s\S]*function rebuildOpenRoomCurves[\s\S]*openScopes\.has\(scope\.key\)/u,
+    "rank state changes must rebuild only curves that are actually open"
+);
+assert.doesNotMatch(
+    runtimeSource.match(/function startRankLoad[\s\S]*?function rebuildOpenRoomCurves/u)?.[0] ?? "",
+    /rebuildCurves\(\);/u,
+    "rank loading must not rebuild the hotel and every closed room curve"
+);
+assert.match(
+    referenceModelSource,
+    /segments: \["all", secondarySegment\]/u,
+    "Analyze must materialize only the two segments displayed by the curve"
+);
+assert.match(
+    curveCoreSource,
+    /const requestedLeadTimes = new Set\(options\.ticks\.filter[\s\S]*const observationsByLt = new Map<number, CurveObservation\[\]>\(\);[\s\S]*!requestedLeadTimes\.has\(observation\.lt\)[\s\S]*buildRecentWeightedSamplesForLt\(observationsByLt\.get\(tick\) \?\? \[\], asOfDate, tick\)/u,
+    "recent reference ticks must reuse one lead-time index instead of rescanning every observation per tick"
 );
 assert.match(runtimeSource, /hotelResult\.status === "error"\) \{\s*scopeBatchLoading = false;/u);
 assert.match(runtimeSource, /referencePriority: null,\s*waitForCurrent: false/u);

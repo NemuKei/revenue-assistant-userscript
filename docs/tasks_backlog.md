@@ -985,7 +985,7 @@
 #### RAU-PERF-26 reference batch中のmain-thread stallをphase別に分ける
 
 - 状態:
-  - source / local gate、Next `0.2.0.36` publication完了、Tampermonkey更新後のホテル関西live gate待ち。`rau-next-performance-v2`へ固定phaseとLong Task集計を追加し、request / storage / write契約とforeground 35ms / concurrency 20、Top 50ms / 20を維持した。公開liveで原因phaseを確定するまでconcurrency 20からの再緩和は保留する。
+  - 完了。source / local gate、Next `0.2.0.36` publication、Tampermonkey更新後のホテル関西live gateまで実施し、warm cacheからの`curveBuild`がmain-thread stallの主因と確定した。通信paceではないためconcurrency 20からの再緩和は行わず、重複計算の削減を`RAU-PERF-27`へ分けた。
 - 解決する問題:
   - `RAU-PERF-25`はfull scopeの反復hydrateをtrailing 1回へまとめたが、軽量marker readは62件の処理中に周期的なstallを示した。request開始、response compact、IndexedDB write、performance marker publish、final full hydrateの責務を分けないままconcurrencyを上げると、通信完了を速めてもUI freezeを悪化させ得る。
 - 最初のscope:
@@ -1000,12 +1000,35 @@
   - 1 current GETのfixtureでinstrumentation後もrequest列は同一1件、scheduler eventはplanned / queued / startedのまま、responseから保存通知までのphaseだけが追加された。62 compact eventは明示flushまでmarker DOM writeを0件追加しない。合成Analyze room openはcurrent 67ms、evidence 315ms、referenceRead 94ms、curveBuild 212ms、curveRender最大11ms、Long Task 0、marker 1、console warning / error 0だった。
   - `npm run check:next`、`npm run check`、Classic publication boundary、distribution / booking curve smoke fixture、`git diff --check`は通過した。synthetic publicationは372,425 bytes、SHA-256 `B4781A379EF80EC315DCBB5CDE1A7C1FEC8425ADE6FF72D6CDC8473547C8BB3F`、source mapは1,485,140 bytes、SHA-256 `23FE67063AB2503121A80378FC073110EF2A6C83C15432136E8A23FBDE2D63F3`だった。公開版とホテル関西の自然な差分windowは未確認である。
   - source `eaa506711b32aeb40a8fbb12c534a923aa183a35`はValidate Main run `31789824441`を通過し、manual workflow run `31789929625`、run number 36、attempt 1で公開Next `0.2.0.36`へ配信した。公開Nextは372,426 bytes、SHA-256 `7FB915C3566ED4E2D8AF0B5C06C1A18DB73EEFAD45FC2916ED96D33D0C89F88B`、source mapは1,485,140 bytes、SHA-256 `23FE67063AB2503121A80378FC073110EF2A6C83C15432136E8A23FBDE2D63F3`でmanifestと一致した。Classic userscript / source mapは固定baselineと同一だった。
+  - Tampermonkey更新後のホテル関西・翌日宿泊日のwarm Analyzeでは、shell 3ms、overall 1,197ms、6 room summary 4,282ms、booking acquisition planned / started 0 / 0だった。初期windowはLong Task 6件、合計4,096ms、最大1,599msで、`curveBuild` 4回、合計3,700ms、最大1,579msに一致し、`curveRender`最大13ms、marker publish最大0msだった。room openはcurrent 17ms、evidence 1,285ms、reference read 515ms、`curveBuild` 1回756ms、`curveRender`最大14ms、Long Task 2件、最大814ms、planned / started 0 / 0だった。したがって保存済みデータのcurve model構築が主因であり、request並列数の追加緩和は現時点で逆効果となり得る。retained network windowはtruncatedのため全通信件数の証明には使わず、保持範囲ではHTTP 4xx / 5xxとwrite methodは0だった。
 - metadata:
   - `depends-on: RAU-PERF-25 live gate`
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `risk: performance instrumentation and bounded main-thread work only; request / storage / write contracts unchanged`
+
+#### RAU-PERF-27 Analyze curveBuildの重複計算と不要segment走査を減らす
+
+- 状態:
+  - source / local gate完了、Next publicationとTampermonkey更新後のホテル関西live比較待ち。`RAU-PERF-26`のwarm liveで通信0件でも初期`curveBuild` 4回 / 3,700ms、room open 1回 / 756msを観測したため、request profileを変えず計算経路だけを狭めた。
+- 解決する問題:
+  - 初期hotel curveを構築した直後、room batch完了とrank loading / settledでhotelと閉じたroomを含むcurveを繰り返し再構築していた。reference modelは画面に出す`全体 + 選択中の個人または団体`の2区分に対して3区分すべてのobservationを作り、直近型はLT tickごとに同じ全observationを再走査していた。
+- 実装scope:
+  - 初期hotel curveは保持し、room batch完了時はroom scopeだけを構築する。rank loading / settledではcard側のrank stateを再描画し、rank markerを持つcurve modelは実際に開いているroomだけを再構築する。
+  - reference inputは`全体 + 選択中secondary segment`だけをmaterializeし、直近型はobservationをLTで1回index化して各tickから再利用する。表示するcurrent / recent / seasonal、rank marker、source count、欠損理由は変えない。
+  - foreground 35ms / concurrency 20、Top 50ms / 20、planned task集合、endpoint、storage / retention / deletion、retry / stop、Revenue Assistant write 0を変更しない。liveで初期 / room openのLong Taskと`curveBuild`が低下するまでconcurrency再緩和を行わない。
+- 合格条件:
+  - focused checkで初期room batchがhotel curveを保持し、rank変化が閉じたroomを再構築せず、open roomのrank markerは更新することを固定する。reference curveの既存fixture値、current / recent / seasonal、segment切替、rank marker、scope別DOM reuseを維持する。
+  - typecheck、lint、Analyze sales setting / booking curve、similarity model、booking acquisition、runtime remount、booking curve smoke、build、`git diff --check`を通す。公開後は同じホテル関西・翌日宿泊日のwarm runで、初期`curveBuild` countが2以下、overall 2秒以内、6 room summary 3秒程度、room evidence 2秒以内を目安に、Long Task / max phase、planned / started、HTTP / stop / write、標準UI、console errorを再比較する。20 sample未満のSLOはprovisionalとする。
+- 進捗:
+  - focused / Next全check、typecheck、lint、Classic build、Next fixture build、booking curve smoke、`git diff --check`は通過した。合成Sales Setting Browser QAはNext root 1、hotel curve、room card 2、open room 1、閉じたroom 1、全体 / 個人panel各2、ランク変更履歴、console warning / error 0を確認した。synthetic publicationは372,744 bytes、SHA-256 `D0913E1D707311637B941EB74A500862874C008CD3AFE0FB5336723D2C91DA30`、source mapは1,486,622 bytes、SHA-256 `D326ED67DFC8CCBA9BA35D3F968E3390FDEB622244DAB8D6741D4B5C70A75441`で、runtime payloadはcandidateと一致した。
+- metadata:
+  - `depends-on: RAU-PERF-26 live gate`
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `risk: in-memory curve calculation only; request / storage / write contracts unchanged`
 
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 
@@ -1098,7 +1121,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triageは、Nowを公開Next `0.2.0.31`へのTampermonkey更新とホテル関西の再観測とする。Analyze selected evidence、planned / started / aborted、最大同時20以下、HTTP / stop、標準UI、console / page error、Revenue Assistant write 0と、idle / 取得中の軽量DOM応答を比較し、20 sample未満のSLOはprovisionalとする。cache削除や強制全取得でsampleを作らない。`RAU-WC-34`はforeground保護完了後のNext候補とし、実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、Nowを`RAU-PERF-27`のNext publicationとTampermonkey更新後のホテル関西live比較とする。初期 / room openの`curveBuild`、Long Task、overall / 6 room / selected evidence、planned / started、HTTP / stop、標準UI、console error、Revenue Assistant write 0を比較し、20 sample未満のSLOはprovisionalとする。cache削除や強制全取得でsampleを作らない。`RAU-WC-34`はforeground保護とPERF-27 live gate後のNext候補とし、実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 

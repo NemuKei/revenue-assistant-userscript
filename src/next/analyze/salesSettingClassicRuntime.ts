@@ -339,7 +339,7 @@ export function startSalesSettingClassicRuntime(
         });
         scopeBatchLoading = false;
         initialScopeBatchLoading = false;
-        rebuildCurves();
+        rebuildCurves(new Set(roomScopes.map((scope) => scope.key)));
         renderCurrentState();
         setRuntimeMarker("mounted-classic-ui");
         if (dataRefreshPending || dirtyScopeKeys.size > 0) {
@@ -418,8 +418,8 @@ export function startSalesSettingClassicRuntime(
         const generation = ++rankGeneration;
         rankFacilityId = facilityId;
         rankLoading = true;
-        rebuildCurves();
         if (!scopeBatchLoading) {
+            rebuildOpenRoomCurves();
             renderCurrentState();
         }
         void rankStatusDataSource.load(facilityId, stayDate).then((result) => {
@@ -439,11 +439,20 @@ export function startSalesSettingClassicRuntime(
                 activeRankSnapshot = null;
                 rankLoadError = result.reason;
             }
-            rebuildCurves();
             if (!scopeBatchLoading) {
+                rebuildOpenRoomCurves();
                 renderCurrentState();
             }
         });
+    }
+
+    function rebuildOpenRoomCurves(): void {
+        const scopeKeys = new Set(activeScopes
+            .filter((scope) => scope.kind === "roomGroup" && openScopes.has(scope.key))
+            .map((scope) => scope.key));
+        if (scopeKeys.size > 0) {
+            rebuildCurves(scopeKeys);
+        }
     }
 
     function rankState(): SalesSettingClassicRankState {

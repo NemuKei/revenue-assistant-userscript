@@ -561,6 +561,16 @@ export function buildRecentWeighted90ReferenceCurve(input: CurveInput, options: 
     const scopedObservations = selectObservations(input.observations, options)
         .filter((observation) => getUtcWeekday(observation.stayDate) === targetWeekday);
     const sourceStayDates = new Set(scopedObservations.map((observation) => observation.stayDate));
+    const requestedLeadTimes = new Set(options.ticks.filter((tick): tick is number => typeof tick === "number"));
+    const observationsByLt = new Map<number, CurveObservation[]>();
+    for (const observation of scopedObservations) {
+        if (!requestedLeadTimes.has(observation.lt)) {
+            continue;
+        }
+        const current = observationsByLt.get(observation.lt) ?? [];
+        current.push(observation);
+        observationsByLt.set(observation.lt, current);
+    }
 
     const points = options.ticks.map((tick): CurvePoint => {
         if (tick === "ACT") {
@@ -572,7 +582,7 @@ export function buildRecentWeighted90ReferenceCurve(input: CurveInput, options: 
             };
         }
 
-        const samples = buildRecentWeightedSamplesForLt(scopedObservations, asOfDate, tick);
+        const samples = buildRecentWeightedSamplesForLt(observationsByLt.get(tick) ?? [], asOfDate, tick);
         return {
             lt: tick,
             rooms: weightedAverage(samples),
