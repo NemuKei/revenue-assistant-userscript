@@ -7,6 +7,8 @@ import {
     NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT,
     NEXT_BOOKING_CURVE_CONCURRENCY,
     NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT,
+    NEXT_BOOKING_CURVE_INTERACTIVE_CONCURRENCY,
+    NEXT_BOOKING_CURVE_INTERACTIVE_REQUEST_INTERVAL_MS,
     NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS,
     buildNextBookingCurveBackgroundTasks,
     buildNextBookingCurveCurrentTasks,
@@ -93,9 +95,14 @@ export interface NextBookingCurveAcquisitionCoordinator {
         scopeKey: string;
         targetStayDate: string;
     }): Promise<NextBookingCurveAcquisitionDiagnostics>;
+    subscribeStored?(listener: (event: NextBookingCurveStoredSourceEvent) => void): () => void;
     subscribe(listener: (state: NextBookingCurveAcquisitionState) => void): () => void;
     suspend(reason: NextBookingCurveAcquisitionStopReason): void;
     stop(): void;
+}
+
+export interface NextBookingCurveStoredSourceEvent {
+    scopeKey: string;
 }
 
 export interface NextBookingCurveAcquisitionDiagnostics {
@@ -137,6 +144,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         ?? createNextBookingCurveLegacySeedReader();
     const now = options.now ?? (() => new Date());
     const listeners = new Set<(state: NextBookingCurveAcquisitionState) => void>();
+    const storedSourceListeners = new Set<(event: NextBookingCurveStoredSourceEvent) => void>();
     const legacySeedBySourceKey = new Map<string, NextBookingCurveSourceRecord>();
     const pendingByTaskKey = new Map<string, QueuedTask>();
     const pendingBackgroundCountByPerformanceGeneration = new Map<number, number>();
@@ -328,6 +336,12 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 listeners.delete(listener);
             };
         },
+        subscribeStored(listener) {
+            storedSourceListeners.add(listener);
+            return () => {
+                storedSourceListeners.delete(listener);
+            };
+        },
         suspend(reason) {
             suspendRun(reason);
         },
@@ -336,6 +350,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
             suspendRun("stopped");
             legacySeedBySourceKey.clear();
             listeners.clear();
+            storedSourceListeners.clear();
         }
     };
 
@@ -439,11 +454,18 @@ export function createNextBookingCurveAcquisitionCoordinator(
     }
 
     function drain(): void {
+        const interactivePending = queue.some((queued) => queued.activity === "interactive");
+        const concurrencyLimit = interactivePending
+            ? NEXT_BOOKING_CURVE_INTERACTIVE_CONCURRENCY
+            : NEXT_BOOKING_CURVE_CONCURRENCY;
+        const requestIntervalMs = interactivePending
+            ? NEXT_BOOKING_CURVE_INTERACTIVE_REQUEST_INTERVAL_MS
+            : NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS;
         if (
             stopped
             || state.status === "stopped"
             || drainTimer !== null
-            || activeRequestCount >= NEXT_BOOKING_CURVE_CONCURRENCY
+            || activeRequestCount >= concurrencyLimit
             || queue.length === 0
         ) {
             maybeComplete();
@@ -451,7 +473,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         }
         const delay = Math.max(
             0,
-            NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS - (Date.now() - lastRequestStartedAt)
+            requestIntervalMs - (Date.now() - lastRequestStartedAt)
         );
         if (lastRequestStartedAt > 0 && delay > 0) {
             drainTimer = windowHost.setTimeout(() => {
@@ -550,6 +572,9 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 skippedCount: state.skippedCount + (result.addedCount === 0 ? 1 : 0),
                 storedCount: state.storedCount + result.addedCount
             };
+            if (result.addedCount > 0) {
+                emitStoredSource(queued.task);
+            }
             consecutiveErrorCount = 0;
             queued.resolve();
             emit();
@@ -583,6 +608,24 @@ export function createNextBookingCurveAcquisitionCoordinator(
             }
             if (consecutiveErrorCount >= NEXT_BOOKING_CURVE_CONSECUTIVE_ERROR_LIMIT) {
                 suspendRun("consecutive-errors", getTaskActivityPerformanceGeneration(queued));
+            }
+        }
+    }
+
+    function emitStoredSource(task: NextBookingCurveAcquisitionTask): void {
+        const scopeKey = task.scope === "hotel"
+            ? "hotel"
+            : task.roomGroupId === null
+                ? null
+                : `room:${task.roomGroupId}`;
+        if (scopeKey === null) {
+            return;
+        }
+        for (const listener of storedSourceListeners) {
+            try {
+                listener({ scopeKey });
+            } catch {
+                // A UI refresh observer must never turn a successful read into an acquisition error.
             }
         }
     }

@@ -43,6 +43,8 @@ assert.equal(model.NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT, 800);
 assert.equal(model.NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT, 200);
 assert.equal(model.NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS, 50);
 assert.equal(model.NEXT_BOOKING_CURVE_CONCURRENCY, 20);
+assert.equal(model.NEXT_BOOKING_CURVE_INTERACTIVE_REQUEST_INTERVAL_MS, 35);
+assert.equal(model.NEXT_BOOKING_CURVE_INTERACTIVE_CONCURRENCY, 30);
 assert.match(
     coordinatorSource,
     /const NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD = 0\.8;/u
@@ -99,6 +101,14 @@ assert.equal(
     backgroundTasks.filter((task) => task.role === "current").length,
     9,
     "bootstrap must include visible stay dates across hotel and all confirmed room scopes"
+);
+assert.deepEqual(
+    backgroundTasks
+        .filter((task) => task.role === "current")
+        .slice(0, context.visibleStayDates.length)
+        .map((task) => ({ scope: task.scope, stayDate: task.stayDate })),
+    context.visibleStayDates.map((stayDate) => ({ scope: "hotel", stayDate })),
+    "Top background must fill every visible hotel date before room-level current"
 );
 assert.equal(
     backgroundTasks.some((task) => task.role === "recent-reference"),
@@ -740,6 +750,10 @@ const coordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinat
     windowHost: fakeWindow
 });
 const oneScopeContext = { ...context, roomScopes: [roomScopes[0]], visibleStayDates: ["20260723"] };
+const storedSourceEvents = [];
+const unsubscribeStoredSources = coordinator.subscribeStored((event) => {
+    storedSourceEvents.push(event);
+});
 await coordinator.ensureCurrent({
     context: oneScopeContext,
     signal,
@@ -756,6 +770,11 @@ assert.deepEqual(requests, [{
     stayDate: "20260723"
 }]);
 assert.equal(inMemoryRecords.length, 1, "exact current record must be reused without another GET");
+assert.deepEqual(
+    storedSourceEvents,
+    [{ scopeKey: "hotel" }],
+    "a stored source must identify only the scope that needs an Analyze refresh"
+);
 const nextDayContext = { ...oneScopeContext, asOfDate: "20260724" };
 await coordinator.ensureCurrent({
     context: nextDayContext,
@@ -768,6 +787,8 @@ await coordinator.ensureCurrent({
     stayDate: "20260723"
 });
 assert.equal(requests.length, 2, "the next observation day adds one bounded tail request");
+assert.deepEqual(storedSourceEvents, [{ scopeKey: "hotel" }, { scopeKey: "hotel" }]);
+unsubscribeStoredSources();
 assert.equal(
     inMemoryRecords
         .filter((record) => record.sourceKey === inMemoryRecords[0]?.sourceKey)
@@ -958,6 +979,86 @@ assert.equal(
     "foreground bypass must not replenish or expand the Top background budget"
 );
 separateBudgetCoordinator.stop();
+
+for (const profile of [
+    {
+        concurrency: 20,
+        intervalMs: 50,
+        name: "Top background",
+        start: (coordinator) => coordinator.startBackground({
+            ...context,
+            roomScopes: [
+                { key: "hotel", kind: "hotel", roomGroupId: null },
+                ...Array.from({ length: 24 }, (_, index) => ({
+                    key: `room:${index + 1}`,
+                    kind: "roomGroup",
+                    roomGroupId: String(index + 1)
+                }))
+            ],
+            visibleStayDates: ["20260723"]
+        })
+    },
+    {
+        concurrency: 30,
+        intervalMs: 35,
+        name: "Analyze interactive",
+        start: (coordinator) => coordinator.startReference({
+            context: oneScopeContext,
+            priority: "selected-reference",
+            scopeKey: "hotel",
+            targetStayDate: "20260812"
+        })
+    }
+]) {
+    let releaseProfileRequests;
+    const profileGate = new Promise((resolve) => {
+        releaseProfileRequests = resolve;
+    });
+    const profileStartTimes = [];
+    let profileActiveCount = 0;
+    let profileMaxActiveCount = 0;
+    const profileCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+        store: {
+            async addAndPrune() {
+                return { addedCount: 1, deletedCount: 0 };
+            },
+            async readLatestBySourceKeys() {
+                return [];
+            }
+        },
+        transport: {
+            async read(request) {
+                profileStartTimes.push(Date.now());
+                profileActiveCount += 1;
+                profileMaxActiveCount = Math.max(profileMaxActiveCount, profileActiveCount);
+                await profileGate;
+                profileActiveCount -= 1;
+                return { stay_date: request.stayDate, booking_curve: [] };
+            }
+        },
+        windowHost: fakeWindow
+    });
+    await profile.start(profileCoordinator);
+    const profileDeadline = Date.now() + 3_000;
+    while (profileMaxActiveCount < profile.concurrency && Date.now() < profileDeadline) {
+        await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    assert.equal(
+        profileMaxActiveCount,
+        profile.concurrency,
+        `${profile.name} must use its bounded concurrency profile`
+    );
+    assert.equal(
+        Math.min(...profileStartTimes.slice(1).map((startedAt, index) => (
+            startedAt - (profileStartTimes[index] ?? startedAt)
+        ))) >= profile.intervalMs,
+        true,
+        `${profile.name} must retain its minimum request start interval`
+    );
+    profileCoordinator.stop();
+    releaseProfileRequests();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+}
 
 let releasePriorityRequest;
 const priorityRequestGate = new Promise((resolve) => {

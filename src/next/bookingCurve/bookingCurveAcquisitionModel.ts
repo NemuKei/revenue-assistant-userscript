@@ -27,6 +27,8 @@ export const NEXT_BOOKING_CURVE_BOOTSTRAP_REQUEST_LIMIT = 800;
 export const NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT = 200;
 export const NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS = 50;
 export const NEXT_BOOKING_CURVE_CONCURRENCY = 20;
+export const NEXT_BOOKING_CURVE_INTERACTIVE_REQUEST_INTERVAL_MS = 35;
+export const NEXT_BOOKING_CURVE_INTERACTIVE_CONCURRENCY = 30;
 export const NEXT_BOOKING_CURVE_POINT_LIMIT = 512;
 
 export interface NextBookingCurveScope {
@@ -396,8 +398,9 @@ function compareTaskOrder(
     left: NextBookingCurveAcquisitionTask,
     right: NextBookingCurveAcquisitionTask
 ): number {
-    return left.stayDate.localeCompare(right.stayDate)
+    return (left.role === "current" ? 0 : 1) - (right.role === "current" ? 0 : 1)
         || (left.scope === "hotel" ? 0 : 1) - (right.scope === "hotel" ? 0 : 1)
+        || left.stayDate.localeCompare(right.stayDate)
         || (left.roomGroupId ?? "").localeCompare(right.roomGroupId ?? "")
         || left.sourceKey.localeCompare(right.sourceKey);
 }

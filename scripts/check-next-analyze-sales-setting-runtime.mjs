@@ -25,6 +25,7 @@ try {
     await verifyPerformanceMarkers(origin);
     await verifyRevalidatingCachePaint(origin);
     await verifyDeferredReferenceDoesNotPrematurelySettle(origin);
+    await verifyStoredScopeRefreshIsBounded(origin);
     await verifyRankStatusSurvivesTransientRemount(origin);
     await verifyInitialBatchStopsWithoutNativeSurface(origin);
     await verifyHiddenAndRouteTransitions(origin);
@@ -56,7 +57,7 @@ async function verifyPerformanceMarkers(origin) {
         await waitForRoot(page, "ready");
         const surfaceSummary = await readPerformanceSummary(page);
         assert.equal(surfaceSummary.schemaVersion, "rau-next-performance-v1");
-        assert.equal(surfaceSummary.requestProfile, "booking-curve-50ms-20-analyze-uncapped");
+        assert.equal(surfaceSummary.requestProfile, "booking-curve-top-50ms-20-foreground-35ms-30");
         assert.equal(surfaceSummary.operation, "analyze-surface");
         assert.equal(surfaceSummary.route, "analyze");
         assert.equal(surfaceSummary.milestones.shellPainted.outcome, "ready");
@@ -94,6 +95,45 @@ async function verifyPerformanceMarkers(origin) {
             assert.equal(serialized.includes(forbidden), false, forbidden);
         }
     });
+}
+
+async function verifyStoredScopeRefreshIsBounded(origin) {
+    await withFixturePage(origin, "?rank=empty", async (page) => {
+        await waitForRoot(page, "ready");
+        const before = await readScopeLoadCounts(page);
+        await page.evaluate(() => {
+            globalThis.document.dispatchEvent(new Event("mock-refresh-room-single"));
+            globalThis.document.dispatchEvent(new Event("mock-refresh-room-single"));
+        });
+        await page.waitForFunction(
+            ({ attribute, minimum }) => Number(
+                globalThis.document.documentElement.getAttribute(attribute) ?? "0"
+            ) >= minimum,
+            {
+                attribute: "data-mock-sales-setting-load-room-single-count",
+                minimum: before.single + 1
+            }
+        );
+        await drainFixtureTasks(page);
+        const after = await readScopeLoadCounts(page);
+        assert.equal(after.hotel, before.hotel, "a room write must not reread hotel evidence");
+        assert.equal(after.single, before.single + 1, "duplicate room writes must coalesce into one scope read");
+        assert.equal(after.twin, before.twin, "a room write must not reread other room evidence");
+    });
+}
+
+async function readScopeLoadCounts(page) {
+    return page.evaluate(() => ({
+        hotel: Number(globalThis.document.documentElement.getAttribute(
+            "data-mock-sales-setting-load-hotel-count"
+        ) ?? "0"),
+        single: Number(globalThis.document.documentElement.getAttribute(
+            "data-mock-sales-setting-load-room-single-count"
+        ) ?? "0"),
+        twin: Number(globalThis.document.documentElement.getAttribute(
+            "data-mock-sales-setting-load-room-twin-count"
+        ) ?? "0")
+    }));
 }
 
 async function verifyRevalidatingCachePaint(origin) {

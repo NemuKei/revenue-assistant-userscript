@@ -97,7 +97,7 @@ export interface BookingCurveReferenceDataSource {
         priorities?: BookingCurveReferenceLoadPriorities
     ): void;
     reset(): void;
-    subscribe?(listener: () => void): () => void;
+    subscribe?(listener: (scopeKey?: string) => void): () => void;
     stop(): void;
 }
 
@@ -285,6 +285,11 @@ export function createBookingCurveReferenceDataSource(
             if (options.acquisition === undefined) {
                 return () => undefined;
             }
+            if (options.acquisition.subscribeStored !== undefined) {
+                return options.acquisition.subscribeStored(({ scopeKey }) => {
+                    listener(scopeKey);
+                });
+            }
             let storedCount = -1;
             return options.acquisition.subscribe((nextState) => {
                 if (storedCount < 0) {
@@ -293,7 +298,7 @@ export function createBookingCurveReferenceDataSource(
                 }
                 if (nextState.storedCount !== storedCount) {
                     storedCount = nextState.storedCount;
-                    listener();
+                    listener(undefined);
                 }
             });
         },

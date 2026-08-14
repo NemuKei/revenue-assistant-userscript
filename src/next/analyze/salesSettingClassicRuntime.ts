@@ -114,6 +114,7 @@ export function startSalesSettingClassicRuntime(
     let scheduledReconcileTimer: number | null = null;
     let scheduledDataRefreshTimer: number | null = null;
     let dataRefreshPending = false;
+    const dirtyScopeKeys = new Set<string>();
     let narrow = windowHost.innerWidth <= 680;
     let stopped = false;
     let performanceContextSequence = 0;
@@ -132,7 +133,9 @@ export function startSalesSettingClassicRuntime(
             scheduleReconcile();
         }
     });
-    const unsubscribeDataSource = dataSource.subscribe?.(scheduleDataRefresh) ?? (() => undefined);
+    const unsubscribeDataSource = dataSource.subscribe?.((scopeKey) => {
+        scheduleDataRefresh(scopeKey ?? null);
+    }) ?? (() => undefined);
 
     documentHost.addEventListener("click", handleDocumentClick, {
         capture: true,
@@ -250,7 +253,7 @@ export function startSalesSettingClassicRuntime(
         openScopes.clear();
         secondarySegments.clear();
         visibilities.clear();
-        dataRefreshPending = false;
+        discardPendingDataRefresh();
         performanceSourceByScope.clear();
         clearPerformanceContext();
         removeMountedArtifacts();
@@ -259,6 +262,8 @@ export function startSalesSettingClassicRuntime(
     function startLoadAll(stayDate: string, asOfDate: string, showLoading: boolean): void {
         const generation = ++loadGeneration;
         dataSource.cancel();
+        dirtyScopeKeys.clear();
+        dataRefreshPending = false;
         scopeBatchLoading = true;
         initialScopeBatchLoading = showLoading;
         if (showLoading) {
@@ -316,8 +321,6 @@ export function startSalesSettingClassicRuntime(
                 activeData.set(scope.key, result);
                 ensurePreference(scope.key);
                 updateAnalyzePerformanceCohort(result);
-                rebuildCurves();
-                renderCurrentState();
                 return;
             }
             if (result.reason === "facility-context-mismatch") {
@@ -336,8 +339,8 @@ export function startSalesSettingClassicRuntime(
         rebuildCurves();
         renderCurrentState();
         setRuntimeMarker("mounted-classic-ui");
-        if (dataRefreshPending) {
-            scheduleDataRefresh();
+        if (dataRefreshPending || dirtyScopeKeys.size > 0) {
+            schedulePendingDataRefresh();
         }
     }
 
@@ -804,7 +807,16 @@ export function startSalesSettingClassicRuntime(
         }, 0);
     }
 
-    function scheduleDataRefresh(): void {
+    function scheduleDataRefresh(scopeKey: string | null): void {
+        if (scopeKey === null) {
+            dirtyScopeKeys.add("*");
+        } else if (scopeKey !== "") {
+            dirtyScopeKeys.add(scopeKey);
+        }
+        schedulePendingDataRefresh();
+    }
+
+    function schedulePendingDataRefresh(): void {
         if (
             stopped
             || activeStayDate === null
@@ -819,7 +831,11 @@ export function startSalesSettingClassicRuntime(
             dataRefreshPending = true;
             return;
         }
-        if (state !== "ready" || scheduledDataRefreshTimer !== null) {
+        if (
+            state !== "ready"
+            || dirtyScopeKeys.size === 0
+            || scheduledDataRefreshTimer !== null
+        ) {
             return;
         }
         dataRefreshPending = false;
@@ -836,8 +852,88 @@ export function startSalesSettingClassicRuntime(
             ) {
                 return;
             }
-            startLoadAll(activeStayDate, activeAsOfDate, false);
+            const requestedScopeKeys = takeDirtyScopeKeys();
+            if (requestedScopeKeys.length === 0) {
+                return;
+            }
+            startScopeRefresh(activeStayDate, activeAsOfDate, requestedScopeKeys);
         }, 250);
+    }
+
+    function takeDirtyScopeKeys(): string[] {
+        const refreshAll = dirtyScopeKeys.has("*");
+        const requested = new Set(dirtyScopeKeys);
+        dirtyScopeKeys.clear();
+        return activeScopes
+            .filter((scope) => refreshAll || requested.has(scope.key))
+            .map((scope) => scope.key);
+    }
+
+    function startScopeRefresh(
+        stayDate: string,
+        asOfDate: string,
+        scopeKeys: readonly string[]
+    ): void {
+        const generation = ++loadGeneration;
+        scopeBatchLoading = true;
+        initialScopeBatchLoading = false;
+        dataRefreshPending = false;
+        void refreshScopes(generation, stayDate, asOfDate, scopeKeys);
+    }
+
+    async function refreshScopes(
+        generation: number,
+        stayDate: string,
+        asOfDate: string,
+        scopeKeys: readonly string[]
+    ): Promise<void> {
+        const requested = new Set(scopeKeys);
+        const scopes = activeScopes.filter((scope) => requested.has(scope.key));
+        const results = await Promise.all(scopes.map((scope) => dataSource.load(
+            stayDate,
+            asOfDate,
+            scope.key,
+            {
+                currentPriority: scope.kind === "hotel" ? "critical-current" : "visible-current",
+                referencePriority: scope.kind === "hotel"
+                    ? "visible-reference"
+                    : openScopes.has(scope.key)
+                        ? "selected-reference"
+                        : null,
+                waitForCurrent: false
+            }
+        )));
+        if (!isCurrentLoad(generation, stayDate, asOfDate)) {
+            return;
+        }
+        for (const result of results) {
+            if (result.status === "ready") {
+                activeData.set(result.scope.key, result);
+                ensurePreference(result.scope.key);
+                updateAnalyzePerformanceCohort(result);
+                continue;
+            }
+            if (result.reason === "facility-context-mismatch") {
+                blockMismatchedContext();
+                return;
+            }
+        }
+        scopeBatchLoading = false;
+        rebuildCurves();
+        renderCurrentState();
+        setRuntimeMarker("mounted-classic-ui");
+        if (dataRefreshPending || dirtyScopeKeys.size > 0) {
+            schedulePendingDataRefresh();
+        }
+    }
+
+    function discardPendingDataRefresh(): void {
+        if (scheduledDataRefreshTimer !== null) {
+            windowHost.clearTimeout(scheduledDataRefreshTimer);
+            scheduledDataRefreshTimer = null;
+        }
+        dataRefreshPending = false;
+        dirtyScopeKeys.clear();
     }
 
     function blockMismatchedContext(): void {
@@ -848,7 +944,7 @@ export function startSalesSettingClassicRuntime(
         rankFacilityId = null;
         scopeBatchLoading = false;
         initialScopeBatchLoading = false;
-        dataRefreshPending = false;
+        discardPendingDataRefresh();
         contextBlocked = true;
         removeMountedArtifacts();
         setRuntimeMarker("suspended-facility-context-mismatch");
@@ -879,14 +975,14 @@ export function startSalesSettingClassicRuntime(
         openScopes.clear();
         secondarySegments.clear();
         visibilities.clear();
-        dataRefreshPending = false;
+        discardPendingDataRefresh();
         clearPerformanceContext();
         removeMountedArtifacts();
         setRuntimeMarker("suspended-route");
     }
 
     function suspendForInactiveSurface(finalState: string): void {
-        dataRefreshPending = false;
+        discardPendingDataRefresh();
         clearPerformanceContext();
         if (rankLoading) {
             rankGeneration += 1;
@@ -923,12 +1019,8 @@ export function startSalesSettingClassicRuntime(
     }
 
     function waitForNativeSalesSettingSurface(): void {
-        dataRefreshPending = false;
+        discardPendingDataRefresh();
         clearPerformanceContext();
-        if (scheduledDataRefreshTimer !== null) {
-            windowHost.clearTimeout(scheduledDataRefreshTimer);
-            scheduledDataRefreshTimer = null;
-        }
         cancelScopeBatchForInactiveSurface();
         removeMountedArtifacts();
         setRuntimeMarker("waiting-native-sales-setting");
@@ -990,11 +1082,7 @@ export function startSalesSettingClassicRuntime(
             windowHost.clearTimeout(scheduledReconcileTimer);
             scheduledReconcileTimer = null;
         }
-        if (scheduledDataRefreshTimer !== null) {
-            windowHost.clearTimeout(scheduledDataRefreshTimer);
-            scheduledDataRefreshTimer = null;
-        }
-        dataRefreshPending = false;
+        discardPendingDataRefresh();
         removeMountedArtifacts();
         setRuntimeMarker(finalState);
     }

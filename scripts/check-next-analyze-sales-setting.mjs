@@ -117,7 +117,7 @@ assert.match(
     /beginAnalyzePerformance\("room-open", scopeKey\);[\s\S]*dataSource\.prioritize\?\.\(activeStayDate, activeAsOfDate, scopeKey\)/u,
     "opening a room must upgrade only its queued current and reference work"
 );
-assert.match(runtimeSource, /dataSource\.cancel\(\);\s*scopeBatchLoading = true;/u);
+assert.match(runtimeSource, /dataSource\.cancel\(\);\s*dirtyScopeKeys\.clear\(\);\s*dataRefreshPending = false;\s*scopeBatchLoading = true;/u);
 assert.match(runtimeSource, /addEventListener\("load", scheduleReconcile/u);
 assert.match(runtimeSource, /addEventListener\("pageshow", scheduleReconcile/u);
 assert.doesNotMatch(runtimeSource, /seasonal:\s*false/u);
@@ -127,8 +127,13 @@ const roomScopeBatch = runtimeSource.match(
 assert.notEqual(roomScopeBatch, null, "room scopes must load concurrently after the hotel result");
 assert.match(
     roomScopeBatch?.[1] ?? "",
-    /activeData\.set\(scope\.key, result\);[\s\S]*rebuildCurves\(\);\s*renderCurrentState\(\);/u,
-    "each ready room must render progressively without waiting for every room"
+    /activeData\.set\(scope\.key, result\);[\s\S]*updateAnalyzePerformanceCohort\(result\);\s*return;/u,
+    "ready rooms must update the batch without rebuilding every graph per scope"
+);
+assert.doesNotMatch(
+    roomScopeBatch?.[1] ?? "",
+    /rebuildCurves\(\)|renderCurrentState\(\)/u,
+    "the initial parallel room batch must render once after all cache reads settle"
 );
 assert.match(
     runtimeSource,
@@ -139,6 +144,14 @@ assert.match(runtimeSource, /hotelResult\.status === "error"\) \{\s*scopeBatchLo
 assert.match(runtimeSource, /referencePriority: null,\s*waitForCurrent: false/u);
 assert.match(runtimeSource, /referencePriority: openScopes\.has\(scope\.key\) \? "selected-reference" : null,\s*waitForCurrent: false/u);
 assert.match(runtimeSource, /if \(scopeBatchLoading\) \{\s*dataRefreshPending = true;\s*return;/u);
+assert.match(runtimeSource, /subscribe\?\.\(\(scopeKey\) => \{\s*scheduleDataRefresh\(scopeKey \?\? null\);/u);
+assert.match(runtimeSource, /function startScopeRefresh\([\s\S]*void refreshScopes/u);
+assert.match(runtimeSource, /const requested = new Set\(scopeKeys\);\s*const scopes = activeScopes\.filter\(\(scope\) => requested\.has\(scope\.key\)\)/u);
+assert.doesNotMatch(
+    runtimeSource.match(/function startScopeRefresh[\s\S]*?async function refreshScopes/u)?.[0] ?? "",
+    /dataSource\.cancel\(\)/u,
+    "a stored-source refresh must not abort in-flight Analyze acquisition"
+);
 assert.match(runtimeSource, /\}, 250\);/u);
 assert.match(runtimeSource, /!isCurrentRevalidating\(hotelData\)/u);
 assert.match(runtimeSource, /!isCurrentRevalidating\(activeData\.get\(card\.scope\.key\)\)/u);

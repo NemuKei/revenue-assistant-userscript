@@ -48,6 +48,7 @@ let rankLoadCount = 0;
 let rankCancelCount = 0;
 let rankResetCount = 0;
 let revalidationResolved = false;
+const loadCountByScope = new Map<string, number>();
 
 const dataSource: BookingCurveReferenceDataSource = {
     cancel() {
@@ -57,6 +58,12 @@ const dataSource: BookingCurveReferenceDataSource = {
     async load(stayDate, asOfDate, scopeKey, options): Promise<BookingCurveReferenceDataLoadResult> {
         loadCount += 1;
         document.documentElement.setAttribute("data-mock-sales-setting-load-count", String(loadCount));
+        const scopeLoadCount = (loadCountByScope.get(scopeKey) ?? 0) + 1;
+        loadCountByScope.set(scopeKey, scopeLoadCount);
+        document.documentElement.setAttribute(
+            `data-mock-sales-setting-load-${scopeKey.replace(/[^a-z0-9]+/giu, "-")}-count`,
+            String(scopeLoadCount)
+        );
         const scope = SCOPES.find((item) => item.key === scopeKey);
         if (scope === undefined) {
             return { status: "error", contextKey: `${stayDate}|${asOfDate}`, reason: "scope-invalid" };
@@ -95,8 +102,15 @@ const dataSource: BookingCurveReferenceDataSource = {
             revalidationResolved = true;
             listener();
         };
+        const handleSingleScopeRefresh = (): void => {
+            listener("room:single");
+        };
         document.addEventListener("mock-resolve-revalidate", handleRevalidate);
-        return () => document.removeEventListener("mock-resolve-revalidate", handleRevalidate);
+        document.addEventListener("mock-refresh-room-single", handleSingleScopeRefresh);
+        return () => {
+            document.removeEventListener("mock-resolve-revalidate", handleRevalidate);
+            document.removeEventListener("mock-refresh-room-single", handleSingleScopeRefresh);
+        };
     },
     stop() {}
 };

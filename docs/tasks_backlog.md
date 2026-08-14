@@ -781,7 +781,7 @@
   - `decision: D-20260813-003`
   - `supersedes: RAU-UX-168 reflector_name non-display only`
 
-### RAU-PERF-20〜22 Top / Analyzeを判断可能時間SLOで最適化する
+### RAU-PERF-20〜23 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
 
@@ -877,6 +877,32 @@
   - `decision: D-20260813-007`
   - `risk: approved Yellow-zone foreground budget separation; task scope remains finite and read-only`
 
+#### RAU-PERF-23 Topの団体cue優先とAnalyze foreground / redrawを緩和する
+
+- 状態:
+  - source実装とlocal gate完了、公開前。Topの可視hotel current優先、foreground 35ms / 30、scope別再読込とbatch描画を実装した。公開版、Tampermonkey、通常Chromeのpost-change sampleは未確認である。
+- 解決する問題:
+  - Top backgroundがstay dateごとにhotel / roomを並べるため、room currentが先に挟まり、hotel sourceだけで描画できる団体cueが長く歯抜けになる。
+  - 公開Next `0.2.0.29`の選択room sampleはreference planned 67、ready 12,418ms、ready時started 32、最大同時20で、HTTP / stop errorなしのまま50ms / 20上限へ達した。
+  - source保存ごとのaggregate `storedCount`通知が、Analyzeのhotelと全roomを250msごとに再読込し、ready roomごとに全curveを再構築・描画していたため、通信中のmain-thread負荷を増やしていた。
+- 実装scope:
+  - Top backgroundの自動取得は50ms以上 / concurrency 20以下、bootstrap 800 / daily 200を維持する。current taskは可視stay dateのhotel全体を全日分先に開始し、その後room groupへ進める。referenceは全current後のままとする。
+  - AnalyzeまたはTopの明示操作によるfinite foregroundだけを35ms以上 / concurrency 30以下へする。foreground queueが空になればbackgroundの50ms / 20へ戻し、取得対象、due判定、dedupe、Top count上限を増やさない。
+  - source保存通知はscope keyだけを渡し、Analyze販売設定は250ms内の同scope通知をdedupeして更新scopeだけを再読込する。初期room cache readは`Promise.all`後に1回、後続scope batchも1回だけcurve再構築 / 描画する。通知observerの例外は取得成功をerrorへ変えない。
+  - performance profileは`booking-curve-top-50ms-20-foreground-35ms-30`へ分け、旧profile sampleと混ぜない。
+- 合格条件:
+  - scheduler fixtureでTopは50ms / 20、foregroundは35ms / 30、Top hotel全日優先、interactive優先、budget分離、dedupe、429 / abort / error停止、request列を固定する。
+  - Analyze実ブラウザfixtureで同一roomの複数保存通知が1 scope readへまとまり、hotelと他roomを再読込せず、初期room batch内にscopeごとの全chart再描画がないことを確認する。
+  - typecheck、lint、Next全check、fixture / candidate / Classic build、publication / Classic boundary、distribution / booking curve smoke、`git diff --check`を通す。公開後はTop団体cue coverage、Analyze selected evidence、planned / started / aborted、最大同時30以下、HTTP / stop、console / page error、Revenue Assistant write 0を通常Chromeで確認する。20 sample未満のSLOはprovisionalとする。
+  - rollbackはforegroundを50ms / 20へ戻し、scope通知をaggregate refreshへ戻せることとし、storage migration / deletionを必要としない。
+- metadata:
+  - `depends-on: RAU-PERF-21B 50ms live gate, RAU-PERF-22 budget separation, D-20260814-001 cache-first rendering`
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260814-002`
+  - `risk: approved bounded request-density change; planned task set, Top caps, endpoint, storage and write boundary unchanged`
+
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 
 - 状態:
@@ -968,7 +994,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triageは、Nowを通常利用の次の自然revalidateで`RAU-PERF-22`の公開版sampleを追加する観測とする。実装・manual publication・Tampermonkey更新はNext `0.2.0.29`まで完了し、ホテル関西warmでoverall / 6 room summary各8ms、選択room current 19msを確認した。自然revalidateではoverall 3秒、個別current 3秒、1〜12 room summary 5秒、selected evidence 5秒をdescriptiveに確認し、20 sample未満はprovisionalとする。cache削除、強制全取得、35ms化はこの観測のために行わない。`RAU-WC-34`はforeground保護完了後のNext候補とし、実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、Nowを`RAU-PERF-23`のlocal closeout、Next manual publication、Tampermonkey更新、ホテル関西の通常Chrome post-change観測とする。Top団体cue、Analyze selected evidence、planned / started / aborted、最大同時数、HTTP / stop、標準UI、console / page error、Revenue Assistant write 0を確認し、20 sample未満のSLOはprovisionalとする。cache削除や強制全取得でsampleを作らない。`RAU-WC-34`はforeground保護完了後のNext候補とし、実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 
