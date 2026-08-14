@@ -57,7 +57,7 @@ async function verifyPerformanceMarkers(origin) {
         await waitForRoot(page, "ready");
         const surfaceSummary = await readPerformanceSummary(page);
         assert.equal(surfaceSummary.schemaVersion, "rau-next-performance-v1");
-        assert.equal(surfaceSummary.requestProfile, "booking-curve-top-50ms-20-foreground-35ms-30");
+        assert.equal(surfaceSummary.requestProfile, "booking-curve-top-50ms-20-foreground-35ms-20");
         assert.equal(surfaceSummary.operation, "analyze-surface");
         assert.equal(surfaceSummary.route, "analyze");
         assert.equal(surfaceSummary.milestones.shellPainted.outcome, "ready");

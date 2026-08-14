@@ -44,7 +44,7 @@ assert.equal(model.NEXT_BOOKING_CURVE_DAILY_REQUEST_LIMIT, 200);
 assert.equal(model.NEXT_BOOKING_CURVE_REQUEST_INTERVAL_MS, 50);
 assert.equal(model.NEXT_BOOKING_CURVE_CONCURRENCY, 20);
 assert.equal(model.NEXT_BOOKING_CURVE_INTERACTIVE_REQUEST_INTERVAL_MS, 35);
-assert.equal(model.NEXT_BOOKING_CURVE_INTERACTIVE_CONCURRENCY, 30);
+assert.equal(model.NEXT_BOOKING_CURVE_INTERACTIVE_CONCURRENCY, 20);
 assert.match(
     coordinatorSource,
     /const NEXT_BOOKING_CURVE_BOOTSTRAP_COVERAGE_THRESHOLD = 0\.8;/u
@@ -999,7 +999,7 @@ for (const profile of [
         })
     },
     {
-        concurrency: 30,
+        concurrency: 20,
         intervalMs: 35,
         name: "Analyze interactive",
         start: (coordinator) => coordinator.startReference({

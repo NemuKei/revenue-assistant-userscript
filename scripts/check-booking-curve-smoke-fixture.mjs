@@ -14,20 +14,20 @@ const SCENARIOS = {
         ]
     },
     "safe-active": {
-        description: "Enough RAU-tagged requests with HTTP 200, high-throughput start spacing, and concurrency <= 30.",
+        description: "Enough RAU-tagged requests with HTTP 200, high-throughput start spacing, and concurrency <= 20.",
         expectFailure: false,
         expectFallback: false,
         entries: [
             rauEntry(0, 200, 1),
             rauEntry(35, 200, 10),
             rauEntry(70, 200, 20),
-            rauEntry(105, 200, 30),
-            rauEntry(140, 200, 30),
-            rauEntry(175, 200, 30),
-            rauEntry(210, 200, 30),
-            rauEntry(245, 200, 30),
-            rauEntry(280, 200, 30),
-            rauEntry(315, 200, 30)
+            rauEntry(105, 200, 20),
+            rauEntry(140, 200, 20),
+            rauEntry(175, 200, 20),
+            rauEntry(210, 200, 20),
+            rauEntry(245, 200, 20),
+            rauEntry(280, 200, 20),
+            rauEntry(315, 200, 20)
         ]
     },
     "unsafe-fast": {
@@ -38,13 +38,13 @@ const SCENARIOS = {
             rauEntry(0, 200, 1),
             rauEntry(10, 200, 10),
             rauEntry(20, 200, 20),
-            rauEntry(30, 200, 30),
-            rauEntry(40, 200, 30),
-            rauEntry(50, 200, 30),
-            rauEntry(60, 200, 30),
-            rauEntry(70, 200, 30),
-            rauEntry(80, 200, 30),
-            rauEntry(90, 200, 30)
+            rauEntry(30, 200, 20),
+            rauEntry(40, 200, 20),
+            rauEntry(50, 200, 20),
+            rauEntry(60, 200, 20),
+            rauEntry(70, 200, 20),
+            rauEntry(80, 200, 20),
+            rauEntry(90, 200, 20)
         ]
     },
     "unsafe-concurrent": {
@@ -55,13 +55,13 @@ const SCENARIOS = {
             rauEntry(0, 200, 1),
             rauEntry(35, 200, 10),
             rauEntry(70, 200, 20),
-            rauEntry(105, 200, 31),
-            rauEntry(140, 200, 31),
-            rauEntry(175, 200, 31),
-            rauEntry(210, 200, 31),
-            rauEntry(245, 200, 31),
-            rauEntry(280, 200, 31),
-            rauEntry(315, 200, 31)
+            rauEntry(105, 200, 21),
+            rauEntry(140, 200, 21),
+            rauEntry(175, 200, 21),
+            rauEntry(210, 200, 21),
+            rauEntry(245, 200, 21),
+            rauEntry(280, 200, 21),
+            rauEntry(315, 200, 21)
         ]
     },
     "http-error": {
@@ -72,13 +72,13 @@ const SCENARIOS = {
             rauEntry(0, 200, 1),
             rauEntry(35, 200, 10),
             rauEntry(70, 500, 20),
-            rauEntry(105, 200, 30),
-            rauEntry(140, 200, 30),
-            rauEntry(175, 200, 30),
-            rauEntry(210, 200, 30),
-            rauEntry(245, 200, 30),
-            rauEntry(280, 200, 30),
-            rauEntry(315, 200, 30)
+            rauEntry(105, 200, 20),
+            rauEntry(140, 200, 20),
+            rauEntry(175, 200, 20),
+            rauEntry(210, 200, 20),
+            rauEntry(245, 200, 20),
+            rauEntry(280, 200, 20),
+            rauEntry(315, 200, 20)
         ]
     }
 };
