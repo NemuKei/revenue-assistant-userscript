@@ -488,7 +488,6 @@ export function createNextBookingCurveAcquisitionCoordinator(
             return;
         }
         activeRequestCount += 1;
-        lastRequestStartedAt = Date.now();
         if (next.activity === "background") {
             backgroundRequestCount += 1;
         }
@@ -537,11 +536,16 @@ export function createNextBookingCurveAcquisitionCoordinator(
     async function runTask(queued: QueuedTask): Promise<void> {
         const signal = activeController.signal;
         try {
-            const payload = await transport.read({
+            const transportRead = transport.read({
                 kind: "booking-curve",
                 roomGroupId: queued.task.roomGroupId,
                 stayDate: queued.task.stayDate
             }, signal);
+            // Start the next interval after transport.read() has handed off the
+            // request. Recording it earlier can make two actual request starts one
+            // millisecond closer than the selected profile at a clock boundary.
+            lastRequestStartedAt = Date.now();
+            const payload = await transportRead;
             const response = compactNextBookingCurveResponse(payload, queued.task.stayDate);
             if (response === null) {
                 throw new Error("booking-curve-response-invalid");

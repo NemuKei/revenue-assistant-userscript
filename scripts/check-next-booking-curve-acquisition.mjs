@@ -1048,12 +1048,15 @@ for (const profile of [
         profile.concurrency,
         `${profile.name} must use its bounded concurrency profile`
     );
-    assert.equal(
-        Math.min(...profileStartTimes.slice(1).map((startedAt, index) => (
+    const profileMinimumStartInterval = Math.min(
+        ...profileStartTimes.slice(1).map((startedAt, index) => (
             startedAt - (profileStartTimes[index] ?? startedAt)
-        ))) >= profile.intervalMs,
+        ))
+    );
+    assert.equal(
+        profileMinimumStartInterval >= profile.intervalMs,
         true,
-        `${profile.name} must retain its minimum request start interval`
+        `${profile.name} must retain its minimum request start interval: ${profileMinimumStartInterval}ms`
     );
     profileCoordinator.stop();
     releaseProfileRequests();
