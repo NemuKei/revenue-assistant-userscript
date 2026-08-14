@@ -273,7 +273,7 @@ Nextは`/monthly-progress/YYYY-MM`だけで起動し、既存top / analyzeの同
 Next公開 userscript URL:
 [https://nemukei.github.io/revenue-assistant-userscript/next/revenue-assistant-next.user.js](https://nemukei.github.io/revenue-assistant-userscript/next/revenue-assistant-next.user.js)
 
-現在の公開Nextはversion `0.2.0.32`、source `5e61e822454c5f65e2ec8d1e16bba057e1e729ce`、manual workflow run `31779175865`です。userscriptは368,402 bytes、SHA-256 `800756CB0D50E4CFF18D26DD1EDDE3D1B27803DAF09CF05E954FC4BF5CEFB943`、source mapは1,461,398 bytes、SHA-256 `B342CC7A442F679526CE8C219A9C4C403DA60F506952B093B3D2A9265C7C6CC3`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。
+現在の公開Nextはversion `0.2.0.40`、source `afb1f92a09d869afc9f1276a32aea522c94d0a3c`、manual workflow run `31795060685`です。userscriptは374,401 bytes、SHA-256 `18F243AFE997251DFB2BAA204FF95BFC9DBCB8DE43D0D21FB4D1E86F3591AB09`、source mapは1,495,944 bytes、SHA-256 `332EBC484E6823DF9A512564FA58A9038181F679DA1D8C7A3C9670E5C080824A`でrelease manifestと一致し、Classic userscript / source mapは固定baselineと同一byte列です。
 
 将来Classic release gateを再開する場合、production metadata付きbuildには `GITHUB_PAGES_BASE_URL` を使えますが、現verify-only workflowはbuildも配布も行いません。
 

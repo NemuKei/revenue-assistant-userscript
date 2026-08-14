@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-08-14
+最終更新: 2026-08-15
 
 ## Current Task Bundle
 
@@ -85,16 +85,12 @@
 
 ## Next Re-entry
 
-1. 公開中のNextは`0.2.0.32`で、sourceは`5e61e822454c5f65e2ec8d1e16bba057e1e729ce`、manual workflow runは`31779175865`である。Tampermonkey更新後のホテル関西でschema `rau-next-performance-v1`、profile `booking-curve-top-50ms-20-foreground-35ms-20`、source revisionを照合し、自然な差分64件を持つ2 roomでselected evidence 1,488〜1,658ms、Long Task 0、軽量DOM probe 28 / 28成功を確認した。初期6 room summary 7,258msの単発観測と各cohort 20 sample未満だけを通常利用で継続観測する。
-2. `RAU-UX-169`では、event件数に比例して縦へ肥大化し、booking curveと内容が重複していた`調整後のペース`を廃止した。standalone / embeddedの表示、event別pace model、block専用rank-order read pathを同じsliceで外した。
-3. current / reference chart、rank marker、通常Tooltip、初期折りたたみ`データ条件とランク履歴`、rank status read、`RAU-RR-66`のsanitized learning DBは維持した。保存済みdataの削除、migration、Revenue Assistant write、Classic変更は行っていない。
-4. desktop / 390px fixtureで対象block 0、Next panel 2、rank marker 4、details 1、rank status load 1、rank-order load属性なし、Next root overflow 0、console error 0を確認した。標準fixture hostのmobile固定幅overflowは既存どおりNext外である。
-5. focused / full checks、candidate artifact、Classic publication baseline、distribution / booking curve smoke、`git diff --check`、main同期、Next manual publication、公開artifact照合、利用者のTampermonkey更新、通常Chrome QAまで完了した。販売設定2 room、標準booking curveのroom scope、販売設定への復帰の安定区間で対象block、rank sequences追加GET、Revenue Assistant write、HTTP失敗、runtime例外は各0だった。
-6. `RAU-RR-66`のlive gateでは266 event、22 independent decision cluster、隣接1段140 memberを確認した。exact観測は3日71 / 7日51 memberだが、同一room group・transitionで独立3 cluster以上かつleave-one-cluster-out方向安定は3日1組、7日0組だった。
-7. 後続`RAU-RR-67`は現時点no-goとし、追加の通常利用で学習dataが増えるのを待つ。独立3 cluster以上は不足時の強制停止線であり、通過しても実装許可にはしない。matching / fallback / censor・exclusion / 確度のpolicyとfixed scenario testを確定し、future leakageなしのbacktestを通すまでは`判定材料不足`とする。命令形、複数段の推測、全event再掲は行わない。
-8. `RAU-UX-170`は変更者をpage-memoryのTooltip / aria labelだけへ戻し、focused / full checks、desktop / 390px合成Browser QA、main同期、Next `0.2.0.24` publication、remote照合を通した。後続Next `0.2.0.25`へのTampermonkey更新と通常Chrome起動を確認した。
-9. 半年取得は`RAU-WC-34`として分離した。rank statusの小chunk coverage差分とbooking curveの距離別cadenceを同一拡張にせず、count-only live range gateとYellow zone decisionを先に通す。
-10. `RAU-PERF-20`、`RAU-PERF-21`、`RAU-PERF-21B`は公開Next `0.2.0.25`〜`0.2.0.27`と通常Chrome baselineまで完了した。`RAU-PERF-22`はTop / Analyze枠分離をNext `0.2.0.28`、保存済み先行表示をNext `0.2.0.29`へ公開した。`RAU-PERF-23`はTop hotel優先とscope別通知をNext `0.2.0.30`、foreground 35ms / 20補正を`0.2.0.31`、dirty scope差分model / DOM更新を`0.2.0.32`へ公開し、更新後のホテル関西live比較まで完了した。20 sample SLOだけを通常利用で継続し、半年取得はこのforeground保護後に置く。
+1. 公開中のNextは`0.2.0.40`で、sourceは`afb1f92a09d869afc9f1276a32aea522c94d0a3c`、manual workflow runは`31795060685`である。2026-08-15にTampermonkey更新後の実画面で、利用者が部屋タイプ別競合価格の取得・表示を確認した。Classic公開baselineは不変である。
+2. Analyzeの判断可能時間と操作中のfreeze回避を、Top backgroundの完了や半年分の網羅より優先する。Top backgroundは50ms / concurrency 20と800 / 200の枠内、Analyze foregroundは35ms / concurrency 20の有限due taskをTop枠外で処理し、保存済み表示を先行する。取得対象、endpoint、storage / retention、retry / stop、Revenue Assistant write 0を変えずに最適化してきた。
+3. 次の性能入口は`RAU-PERF-27`の公開後live比較である。ホテル関西の同条件warm runで初期 / room openの`curveBuild`、Long Task、overall / 6 room summary / selected evidence、planned / started、HTTP / stop、標準UI、console error、Revenue Assistant write 0をfresh確認する。公開後に後続版へ更新されているため、installed versionとperformance markerのsource revisionを先に照合する。main-thread stallが改善した証拠なしにconcurrencyを20から緩和しない。
+4. 半年取得は`RAU-WC-34`として分離する。rank statusの小chunk coverage差分とbooking curveの距離別cadenceを同一拡張にせず、foreground保護、count-only live range gate、Yellow zone decisionを先に通す。半年全roomの日次取得は採用しない。
+5. `RAU-RR-67`は現時点no-goである。通常利用でdataが増えた後にfresh再集計し、matching / fallback / censor・exclusion / 確度のpolicy、fixed scenario test、future leakageなしのbacktestを通すまでは`判定材料不足`とする。命令形、複数段の推測、全event再掲は行わない。
+6. current / reference chart、rank marker、通常Tooltip、初期折りたたみ`データ条件とランク履歴`、rank status read、`RAU-RR-66`のsanitized learning DBを維持する。保存済みdataの削除・再解釈、Classic変更、未調査endpoint、Revenue Assistant write、自動反映・一括反映は別gateのままとする。
 
 ## Verify / Confirmation State
 
@@ -220,7 +216,7 @@
 
 - 競合履歴は利用者が標準競合価格本文を表示した stay date だけ厚くなる。観測頻度を網羅性や鮮度保証と誤読せず、background prefetchを必要とする場合は別判断にする。
 - Next専用DBの削除UIはまだ持たない。競合履歴は同一施設・stay dateで120観測超過分、価格推移はscopeごとの旧record、当日〜89日先の範囲外、施設単位1,440件超過分だけを各保存成功時に自動削除する。
-- Tampermonkeyの現在の有効 / 無効とinstalled versionは、公開版更新やbrowser reloadで変わり得るため次のlive作業前にもfresh確認する。最後の確認ではinstalled Next `0.2.0.23`が通常Chromeで動作し、`RAU-UX-169`と`RAU-RR-66`の表示 / read / write / storage境界を確認した。月次実績画面の西暦比較・実保存値は別gateとして残る。
+- Tampermonkeyの現在の有効 / 無効とinstalled versionは、公開版更新やbrowser reloadで変わり得るため次のlive作業前にもfresh確認する。最後の利用者確認は2026-08-15の公開Next `0.2.0.40`で、部屋タイプ別競合価格の取得・表示を受け入れた。性能計測を再開する場合はinstalled version、performance markerのsource revision、対象cohortを改めて照合する。月次実績画面の西暦比較・実保存値は別gateとして残る。
 - `RAU-RR-67`は実分布不足のため現時点ではUI実装へ進めない。特に7日後は同一room group・transitionで独立3 cluster以上のobserved groupが0で、3日後もleave-one-cluster-out方向安定は1 groupだけである。通常利用によるdata追加後にfresh再集計し、guardを満たす範囲が増えるまで`上げ検討 / 下げ注意 / 維持`を一般表示しない。
 - `RAU-UX-159`の通常Chromeで、保存済み履歴を起点にした不足tailだけの取得、100ms以上の開始間隔、30以下のconcurrency、同日GET 0への収束を確認した。Classic / Nextの保存元別件数はbrowser storageを直接調べておらず、Classic read-through自体の採用条件とlazy promotionはpure / fixture確認を正とする。翌営業日をまたぐ通常利用は、次に新しく増えたsourceだけを補うか継続観察する。
 - `RAU-UX-174`でJalan側の指定なし + 5部屋タイプ単独条件を当日不足分だけ保存するが、Revenue Assistantのroom groupとの対応とsnapshot freshnessは断定しない。保存済みrecordの存在と取得時刻を、価格判断の十分条件として扱わない。
