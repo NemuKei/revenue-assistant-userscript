@@ -859,7 +859,7 @@
 ### RAU-UX-174 Next競合価格の部屋タイプ別snapshot取得を復元する
 
 - 状態:
-  - source実装とlocal gateまで完了した。main同期、Next manual publication、公開artifact / Classic baseline照合を残す。
+  - 完了。source実装、local gate、main同期、Next `0.2.0.40` manual publication、公開artifact / Classic baseline照合まで完了した。Tampermonkey更新後の実画面で、表示中stay dateの不足specific scopeが補完され、部屋タイプfilterへ反映されることを確認する。
 - 解決する問題:
   - 競合価格の指定なしresponseは各部屋タイプを網羅する契約ではなく、`TWIN`など単独指定時だけ返るplanがある。現行Nextだけで利用を続けると、部屋タイプfilterが指定なしsnapshotへfallbackし、当日のspecific最安値が欠け得る。
 - 実装境界:
@@ -879,6 +879,8 @@
 - local検証:
   - focused testで競合一覧1 + price 6、指定なし / 5 specific query、price最大同時2、全response完了前write 0、同日6 scope時0 GET、指定なし既存時specific 5件だけ、invalid response時write 0、key互換 / 一意性、保持720件を確認した。
   - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker、distribution / booking curve smoke、`git diff --check`が通過した。candidateは374,196 bytes、SHA-256 `6271ED530EBED5D7A3EB76853ED58BC9040F52ECA16DBDFE4136B2B83DB9CFB8`、synthetic publicationは374,400 bytes、SHA-256 `E04DB49DC277E77456009A2C9CBD664C4C3D207F1E185F882FFB6C2093579FF7`、source mapは1,495,944 bytes、SHA-256 `332EBC484E6823DF9A512564FA58A9038181F679DA1D8C7A3C9670E5C080824A`だった。
+- publication:
+  - source `afb1f92a09d869afc9f1276a32aea522c94d0a3c`はValidate Main run `31794968117`を通過し、manual workflow run `31795060685`、run number 40、attempt 1でNext `0.2.0.40`へ配信した。公開Nextは374,401 bytes、SHA-256 `18F243AFE997251DFB2BAA204FF95BFC9DBCB8DE43D0D21FB4D1E86F3591AB09`、source mapは1,495,944 bytes、SHA-256 `332EBC484E6823DF9A512564FA58A9038181F679DA1D8C7A3C9670E5C080824A`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。
 
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
