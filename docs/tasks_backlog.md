@@ -810,7 +810,7 @@
 ### RAU-UX-172 booking curve / 90日価格推移のbrowser native Tooltip重複を除く
 
 - 状態:
-  - source gate完了。競合価格で解消したSVG `title`とNext Tooltipの併存が、standalone / 販売設定内booking curveと90日価格推移にも残っていることを合成Browserとsourceで確認し、同じaccessibility契約へ揃えた。main同期とNext publicationはこのsource gate後に行う。
+  - source実装、focused / full check、合成Browser QA、main同期、Next `0.2.0.38` publication、公開artifact / Classic baseline照合まで完了した。Tampermonkey更新後の実画面確認を残す。
 - 解決する問題:
   - booking curveまたは90日価格推移を操作した際に、LT / 施設別のNext TooltipへSVG全体のbrowser native Tooltipが重なる可能性がある。
 - 実装境界:
@@ -823,7 +823,9 @@
   - 合成Browserでbooking curveはSVG 2、`title` 0、`aria-label` / `desc` / `aria-describedby`各2、Next Tooltip 2のうちvisible 1を確認した。90日価格推移はSVG 4、`title` 0、`aria-label` / `desc` / `aria-describedby`各4、Next Tooltip 4のうちvisible 1で、console warning / errorは0だった。
   - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`が通過した。candidateは372,670 bytes、SHA-256 `D95CD525EC445E0B2955DAA1489F1852022D52C94055CC19AC9A54A166C054A3`、synthetic publicationは372,874 bytes、SHA-256 `4F3E7528857EF2F926C61C6E6550F46EB6BABB1A4F047D8C749BC05005DC6219`、source mapは1,486,956 bytes、SHA-256 `D6B4E469A960711377C2213CF4EA3437BB0B30FE993361418C084B12797DECD6`だった。
 - publication:
-  - source gate後にmain同期とmanual Next publicationを行い、公開artifact / Classic baselineを照合する。
+  - source `1394ad74652605dfd2d28030c707787604c39fef`はValidate Main run `31792943210`を通過し、manual workflow run `31792953944`、run number 38、attempt 1でNext `0.2.0.38`へ配信した。公開Nextは372,875 bytes、SHA-256 `651579AFD1A7CDB04F61391C5CB8E9E9ECDB207980DC4FB658EF89B286476E58`、source mapは1,486,956 bytes、SHA-256 `D6B4E469A960711377C2213CF4EA3437BB0B30FE993361418C084B12797DECD6`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。
+- live検証:
+  - Tampermonkeyを公開Next `0.2.0.38`へ更新後、booking curveと90日価格推移でbrowser native Tooltipが重ならず、Next Tooltipだけが表示されることを確認する。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
