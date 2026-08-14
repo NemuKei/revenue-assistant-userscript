@@ -221,6 +221,9 @@ export function getCompetitorHistoryStyles(): string {
     outline: 3px solid #d98200;
     outline-offset: 2px;
 }
+[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [${COMPETITOR_HISTORY_HITBOX_ATTRIBUTE}]:focus:not(:focus-visible) {
+    outline: none;
+}
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-legend] {
     display: flex;
     flex-wrap: wrap;
@@ -601,11 +604,12 @@ function createChart(
     svg.setAttribute(COMPETITOR_HISTORY_SVG_ATTRIBUTE, String(panel.guestCount));
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.setAttribute("role", "img");
-    const title = documentHost.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = `${panel.guestCount}名の競合価格保存履歴`;
+    svg.setAttribute("aria-label", `${panel.guestCount}名の競合価格保存履歴`);
     const description = documentHost.createElementNS("http://www.w3.org/2000/svg", "desc");
+    description.id = `ra-next-competitor-history-chart-description-${panel.guestCount}`;
     description.textContent = `${observationDates.length}日分の施設別最安値。各取得日の値はフォーカス時の説明または読み上げ表で確認できます。`;
-    svg.append(title, description);
+    svg.setAttribute("aria-describedby", description.id);
+    svg.append(description);
 
     const ticks = buildPriceTicks(domain.min, domain.max, 5);
     for (const [tickIndex, tick] of ticks.entries()) {

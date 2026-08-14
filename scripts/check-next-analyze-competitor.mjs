@@ -155,6 +155,7 @@ assert.match(styles, /border-radius: 2px/u);
 assert.match(styles, /rgba\(47, 111, 187, 0\.08\)/u);
 assert.match(styles, /data-ra-next-competitor-history-guide-line/u);
 assert.match(styles, /data-ra-next-competitor-history-accessible-table/u);
+assert.match(styles, /focus:not\(:focus-visible\)[^{]*\{\s*outline: none;/u);
 assert.match(viewSource, /title\.textContent = "競合価格 最安値推移"/u);
 assert.match(
     viewSource,
@@ -167,6 +168,9 @@ assert.match(viewSource, /\["施設", "部屋タイプ", "価格", "前回差分
 assert.match(viewSource, /const width = 760/u);
 assert.match(viewSource, /const height = 220/u);
 assert.match(viewSource, /const padding = \{ top: 18, right: 24, bottom: 34, left: 54 \}/u);
+assert.match(viewSource, /svg\.setAttribute\("aria-label", `\$\{panel\.guestCount\}名の競合価格保存履歴`\)/u);
+assert.match(viewSource, /svg\.setAttribute\("aria-describedby", description\.id\)/u);
+assert.doesNotMatch(viewSource, /createElementNS\("http:\/\/www\.w3\.org\/2000\/svg", "title"\)/u);
 assert.match(viewSource, /resolvePanelPriceDomain\(panel\)/u);
 assert.match(viewSource, /Math\.max\(160, \(Math\.max\(2, count\) - 1\) \* 140\)/u);
 assert.match(viewSource, /for \(const index of observationDates\.keys\(\)\)/u);

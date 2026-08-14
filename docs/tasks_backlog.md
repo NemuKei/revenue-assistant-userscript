@@ -781,7 +781,29 @@
   - `decision: D-20260813-003`
   - `supersedes: RAU-UX-168 reflector_name non-display only`
 
-### RAU-PERF-20〜25 Top / Analyzeを判断可能時間SLOで最適化する
+### RAU-UX-171 競合価格のbrowser native Tooltip重複を除く
+
+- 状態:
+  - source実装、focused / full check、合成Browser QA完了。公開Next `0.2.0.34`のホテル関西で、各人数panelにNext Tooltipと同じSVG `title`があり、browser native Tooltipの`1名の競合価格保存履歴`等が重なることを確認した。Next publicationと更新後live gateを残す。
+- 解決する問題:
+  - 競合価格graphへhoverすると、日付・施設別のNext Tooltipに加え、SVG全体のbrowser native Tooltipが重なり、同じ操作に2つの説明boxが表示される。
+  - SVG hitboxをマウスでclickした時はbrowser既定outlineも表示され、keyboard focus ringと区別されていなかった。
+- 実装境界:
+  - SVG `title`を外し、同じ読み上げ名を`aria-label`、既存説明を固有IDの`desc` + `aria-describedby`へ移す。日付hitboxの`aria-label`、accessible table、Next Tooltip本文、位置、filter、chart dataは変更しない。
+  - hitboxの`:focus:not(:focus-visible)`だけoutlineを消し、keyboardの`:focus-visible`は橙色3pxを維持する。API request、capture、IndexedDB、retention、Revenue Assistant writeは変更しない。
+- 合格条件:
+  - 4 SVGの直下`title`が0、読み上げ名4件、Next Tooltip DOM 4件のうち操作中visible 1件となる。マウスclick時のoutlineはnone、Tab操作時は橙色3pxを維持する。
+  - focused / Next全check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`を通す。合成Browserでframework overlay、console warning / error、duplicate rootを出さない。
+- local検証:
+  - 合成BrowserでSVG `title` 0、`aria-label` 4、visible Next Tooltip 1、pointer focus outline none、keyboard focus orange 3px、console warning / error 0を確認した。
+  - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`が通過した。synthetic publicationは369,554 bytes、SHA-256 `A7FF5B7CD102A8F23A504696F0F135DF875470FC651D2D9049026F616F6534C5`、source map 1,466,427 bytes、SHA-256 `5E8CBADEFE2C9B56AC12539B0BFB7167F8F716BF12156E2E72DA325FD4CF6568`だった。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `risk: rendered tooltip and focus treatment only; request / storage / write contracts unchanged`
+
+### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
 
@@ -934,7 +956,7 @@
 #### RAU-PERF-25 full reference保存通知をtrailingで1回反映する
 
 - 状態:
-  - source / local gate、Next `0.2.0.34` publication完了、Tampermonkey更新後のホテル関西live gate待ち。公開Next `0.2.0.33`で初期 / selected evidenceは数秒以内へ入ったが、reference batchの保存中にfull scopeを反復hydrateして最大1秒超のfreeze要因が残ったため、通信緩和より先に描画cadenceを整えた。
+  - 完了。source / local gate、Next `0.2.0.34` publication、Tampermonkey更新後のホテル関西live gateまで実施した。trailing refreshはfixtureで固定し、liveのoverall / all room / selected evidenceは数秒以内を維持したが、軽量marker readに500ms超のstallが残ったため、concurrency再緩和は行わず残課題を`RAU-PERF-26`へ分ける。
 - 解決する問題:
   - opened roomのselected reference 62件はerror / stop 0で完了したが、250msのleading-edge refreshが連続保存中に繰り返され、同じscopeのIndexedDB read、curve model、DOM更新を29回相当のLong Taskとして実行した。取得開始を速めてもこの反復処理を集中させるだけである。
 - 実装scope:
@@ -945,6 +967,9 @@
   - runtime fixtureでfull reference pending中の150ms間隔3通知が最終1 refreshへまとまり、current-only / current due / fallback / mixed dirtyは先行更新を阻害しないことを固定する。静止後はfresh full dataを反映し、selected evidenceがreadyへ進む。
   - scope別DOM reuse、unopened room current-only、opened room full、rank empty / ready / error、route / hidden / context abort、console warning / error 0を維持する。
   - typecheck、lint、Next全check、実Browser fixture、Next fixture / candidate / Classic build、publication / Classic boundary、distribution / booking curve smoke、`git diff --check`を通す。公開後にホテル関西でoverall / all room summary、selected current / evidence、Long Task、軽量probe、planned / started / max concurrency、HTTP / stop / write 0を比較する。
+- live検証:
+  - 公開Next `0.2.0.34`、ホテル関西の翌日宿泊日で、warmのoverall / 6 room summaryは各20ms、未展開room currentは22ms、selected evidenceは1,535msだった。reference planned / started 62 / 62、最大同時20、scheduler error / stop 0、queue wait 1msで、Next root、6 room、直近型 / 季節型を維持した。
+  - 100ms間隔相当の軽量marker read 120回は通常19〜50msだが最大833ms、50ms超21回、100ms超18回、500ms超8回だった。Browser経路では`PerformanceLongTaskTiming` observerとretained network streamを取得できず、Long Task件数、HTTP全件、Revenue Assistant write 0はfresh外部証拠未取得である。freeze解消と追加concurrency余力は確認できないため35ms / 20を維持する。
 - metadata:
   - `depends-on: RAU-PERF-24 live gate`
   - `spec-impact: yes`
@@ -952,6 +977,26 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260814-006`
   - `risk: dirty refresh timing only; request profile, task set, endpoint, storage and write boundary unchanged`
+
+#### RAU-PERF-26 reference batch中のmain-thread stallをphase別に分ける
+
+- 状態:
+  - 次のperformance task。runtime未変更。`0.2.0.34`で判断材料は数秒以内へ入った一方、62 referenceの開始・response処理・保存・最終hydrateのどこで500〜833ms stallが残るかは未分離であり、concurrency 20からの再緩和は保留する。
+- 解決する問題:
+  - `RAU-PERF-25`はfull scopeの反復hydrateをtrailing 1回へまとめたが、軽量marker readは62件の処理中に周期的なstallを示した。request開始、response compact、IndexedDB write、performance marker publish、final full hydrateの責務を分けないままconcurrencyを上げると、通信完了を速めてもUI freezeを悪化させ得る。
+- 最初のscope:
+  - existing performance markerへoperation中だけのsanitized phase count / elapsedとLong Task count / maxを追加する候補を比較する。facility、stay date、room ID / 名、価格・在庫、request / response body、storage keyを出さず、永続保存、console常時出力、API requestを追加しない。
+  - 62件相当のfixtureでresponse compact / store notificationを再現し、marker publish、source write、final hydrateの単独時間とcombined main-thread delayを測る。計測自体のDOM mutationとobserver costをcontrol比較し、原因phaseを確定してから局所修正を選ぶ。
+  - foreground 35ms / concurrency 20、Top 50ms / 20、task集合、endpoint、storage / retention / deletion、retry / stop、Revenue Assistant write 0を維持する。35ms / 30候補は同等の連続windowでLong Task 0または許容内、軽量probe非悪化、HTTP / stop / write 0を確認した後の別gateとする。
+- 合格条件:
+  - instrumentationなしcontrolとcandidateでrequest順、planned / started、保存record、描画内容が一致し、markerは固定enum / count / elapsedだけを持つ。observer非対応時はunknownとし0件へ読み替えない。
+  - 合成fixtureと公開Next liveでselected current / evidence、Long Task、軽量probe、最大同時数、HTTP / stop / writeを同じoperation windowで確認し、原因phaseとrollbackを正本化する。
+- metadata:
+  - `depends-on: RAU-PERF-25 live gate`
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `risk: performance instrumentation and bounded main-thread work only; request / storage / write contracts unchanged`
 
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 
