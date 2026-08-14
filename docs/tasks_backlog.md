@@ -985,7 +985,7 @@
 #### RAU-PERF-26 reference batch中のmain-thread stallをphase別に分ける
 
 - 状態:
-  - source gate完了、公開Next / ホテル関西live gate待ち。`rau-next-performance-v2`へ固定phaseとLong Task集計を追加し、request / storage / write契約とforeground 35ms / concurrency 20、Top 50ms / 20を維持した。公開liveで原因phaseを確定するまでconcurrency 20からの再緩和は保留する。
+  - source / local gate、Next `0.2.0.36` publication完了、Tampermonkey更新後のホテル関西live gate待ち。`rau-next-performance-v2`へ固定phaseとLong Task集計を追加し、request / storage / write契約とforeground 35ms / concurrency 20、Top 50ms / 20を維持した。公開liveで原因phaseを確定するまでconcurrency 20からの再緩和は保留する。
 - 解決する問題:
   - `RAU-PERF-25`はfull scopeの反復hydrateをtrailing 1回へまとめたが、軽量marker readは62件の処理中に周期的なstallを示した。request開始、response compact、IndexedDB write、performance marker publish、final full hydrateの責務を分けないままconcurrencyを上げると、通信完了を速めてもUI freezeを悪化させ得る。
 - 最初のscope:
@@ -999,6 +999,7 @@
   - response body read / parse、compact、source read / build / write、保存通知、acquisition publish、reference read、curve build / render、marker publishをallowlist集計し、requestごとのphase更新はmemory内だけ、sales-setting render / scheduler milestoneでbounded publishする。Long Task observerはcontext originより前を除外し、非対応 / 初期化errorを明示する。
   - 1 current GETのfixtureでinstrumentation後もrequest列は同一1件、scheduler eventはplanned / queued / startedのまま、responseから保存通知までのphaseだけが追加された。62 compact eventは明示flushまでmarker DOM writeを0件追加しない。合成Analyze room openはcurrent 67ms、evidence 315ms、referenceRead 94ms、curveBuild 212ms、curveRender最大11ms、Long Task 0、marker 1、console warning / error 0だった。
   - `npm run check:next`、`npm run check`、Classic publication boundary、distribution / booking curve smoke fixture、`git diff --check`は通過した。synthetic publicationは372,425 bytes、SHA-256 `B4781A379EF80EC315DCBB5CDE1A7C1FEC8425ADE6FF72D6CDC8473547C8BB3F`、source mapは1,485,140 bytes、SHA-256 `23FE67063AB2503121A80378FC073110EF2A6C83C15432136E8A23FBDE2D63F3`だった。公開版とホテル関西の自然な差分windowは未確認である。
+  - source `eaa506711b32aeb40a8fbb12c534a923aa183a35`はValidate Main run `31789824441`を通過し、manual workflow run `31789929625`、run number 36、attempt 1で公開Next `0.2.0.36`へ配信した。公開Nextは372,426 bytes、SHA-256 `7FB915C3566ED4E2D8AF0B5C06C1A18DB73EEFAD45FC2916ED96D33D0C89F88B`、source mapは1,485,140 bytes、SHA-256 `23FE67063AB2503121A80378FC073110EF2A6C83C15432136E8A23FBDE2D63F3`でmanifestと一致した。Classic userscript / source mapは固定baselineと同一だった。
 - metadata:
   - `depends-on: RAU-PERF-25 live gate`
   - `spec-impact: yes`
