@@ -912,7 +912,7 @@
 #### RAU-PERF-24 未展開roomのreference hydrationをopen時まで遅延する
 
 - 状態:
-  - source / local gate完了、Next publication / ホテル関西live gate待ち。公開Next `0.2.0.32`のホテル関西liveで初期6 room summaryがcache sourceだけでも7,258msだったため、通信paceを変える前にlocal cache read / curve modelの対象を狭めた。
+  - source / local gate、Next `0.2.0.33` publication完了、Tampermonkey更新後のホテル関西live gate待ち。公開Next `0.2.0.32`のホテル関西liveで初期6 room summaryがcache sourceだけでも7,258msだったため、通信paceを変える前にlocal cache read / curve modelの対象を狭めた。公開後にAnalyzeを再読込した時点のinstalled runtimeは`0.2.0.32`だったため、`0.2.0.33`のlive比較には数えていない。
 - 解決する問題:
   - 未選択roomはreference GETを初期queueへ入れていない一方、local readでは直近型 / 季節型の全source keyを読み、closed card用にもfull curve modelを構築している。全room summaryに必要なのはtarget stay dateのcurrent sourceだけであり、初期表示へ不要なIndexedDB readと計算を含めている。
 - 実装scope:
