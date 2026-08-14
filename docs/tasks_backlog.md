@@ -857,7 +857,7 @@
 #### RAU-PERF-22 Top / Analyze budget分離とAnalyze progressive loadを実装する
 
 - 状態:
-  - Top / Analyze枠分離と並列currentはsource / spec / full local gate、main同期、Next `0.2.0.28` publication、Tampermonkey更新まで完了した。ホテル関西の自然なrevalidateでoverall 1,135msに対し6 room summary 14,861msとなり、due current response待ちが保存済みcache readのbarrierになる後続原因を確認した。`D-20260814-001`の保存済み先行表示と非同期revalidateはsource / spec / focused / full local gateまで完了し、再publicationと通常Chrome gate待ちである。利用者がTopとAnalyzeの枠分離、Analyze foregroundの固定件数上限撤廃、全体summaryと各curveの数秒表示、coldでも数十秒待たせないことを明示承認し、`D-20260813-007`でYellow zoneのbefore / after、endpoint、有限scope、storage unchanged、負荷guard、停止、rollbackを固定した。
+  - 実装・公開完了。Top / Analyze枠分離と並列currentをNext `0.2.0.28`、保存済み先行表示と非同期revalidateをNext `0.2.0.29`へ公開し、Tampermonkeyを更新した。ホテル関西warmでoverall / 6 room summary各8ms、選択room current 19msを確認し、fixtureで更新中表示、staleのfresh非算入、250ms後再描画を固定した。公開版の自然revalidateは通常利用の次の差分窓で観測を続け、20 sample未満のSLOはprovisionalとする。利用者がTopとAnalyzeの枠分離、Analyze foregroundの固定件数上限撤廃、全体summaryと各curveの数秒表示、coldでも数十秒待たせないことを明示承認し、`D-20260813-007`でYellow zoneのbefore / after、endpoint、有限scope、storage unchanged、負荷guard、停止、rollbackを固定した。
 - 設計順:
   - Top backgroundのstarted / queued countだけを800 / 200へ数え、interactive current / referenceはそのcounterを参照しない。単一priority queue、50ms / 20、due / dedupe、停止条件は共有する。
   - Analyze routeではbackground plannerを開始せず、hotel current後の全room currentを並列queueへ入れ、ready scopeから描画する。未選択room referenceは遅延し、open roomだけselected referenceへ上げる。
@@ -968,7 +968,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triage は、Nowを`RAU-PERF-22` source candidateのmanual publicationと通常Chrome gateとする。Top background 800 / 200とAnalyze foregroundを分離し、Analyze routeのbackground plan 0、hotel後のroom current並列queue / progressive描画、未選択room reference 0、50ms / concurrency 20、due / dedupe、storage / retention / stop / write 0をsourceで固定した。公開後はprofile `booking-curve-50ms-20-analyze-uncapped`でoverall revalidate 3秒、個別current 3秒、1〜12 room summary 5秒、selected evidence 5秒をdescriptiveに確認し、20 sample未満はprovisionalとする。35msと`RAU-WC-34`はこのforeground gate後に再判断する。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、Nowを通常利用の次の自然revalidateで`RAU-PERF-22`の公開版sampleを追加する観測とする。実装・manual publication・Tampermonkey更新はNext `0.2.0.29`まで完了し、ホテル関西warmでoverall / 6 room summary各8ms、選択room current 19msを確認した。自然revalidateではoverall 3秒、個別current 3秒、1〜12 room summary 5秒、selected evidence 5秒をdescriptiveに確認し、20 sample未満はprovisionalとする。cache削除、強制全取得、35ms化はこの観測のために行わない。`RAU-WC-34`はforeground保護完了後のNext候補とし、実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 
