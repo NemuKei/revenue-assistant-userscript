@@ -102,6 +102,19 @@ async function verifyStoredScopeRefreshIsBounded(origin) {
         await waitForRoot(page, "ready");
         const before = await readScopeLoadCounts(page);
         await page.evaluate(() => {
+            const findSupplement = (scopeKey) => globalThis.document.querySelector(
+                `[data-ra-next-sales-setting-classic-supplement]`
+                + `[data-ra-next-sales-setting-classic-scope="${scopeKey}"]`
+            );
+            globalThis.__mockSalesSettingRefreshNodes = {
+                overallCurve: globalThis.document.querySelector(
+                    '[data-ra-next-sales-setting-curve-section="overall"]'
+                ),
+                singleContent: findSupplement("room:single")?.firstElementChild ?? null,
+                twinContent: findSupplement("room:twin")?.firstElementChild ?? null
+            };
+        });
+        await page.evaluate(() => {
             globalThis.document.dispatchEvent(new Event("mock-refresh-room-single"));
             globalThis.document.dispatchEvent(new Event("mock-refresh-room-single"));
         });
@@ -119,6 +132,23 @@ async function verifyStoredScopeRefreshIsBounded(origin) {
         assert.equal(after.hotel, before.hotel, "a room write must not reread hotel evidence");
         assert.equal(after.single, before.single + 1, "duplicate room writes must coalesce into one scope read");
         assert.equal(after.twin, before.twin, "a room write must not reread other room evidence");
+        const nodeReuse = await page.evaluate(() => {
+            const previous = globalThis.__mockSalesSettingRefreshNodes;
+            const findSupplement = (scopeKey) => globalThis.document.querySelector(
+                `[data-ra-next-sales-setting-classic-supplement]`
+                + `[data-ra-next-sales-setting-classic-scope="${scopeKey}"]`
+            );
+            return {
+                overallCurve: previous.overallCurve === globalThis.document.querySelector(
+                    '[data-ra-next-sales-setting-curve-section="overall"]'
+                ),
+                singleContent: previous.singleContent === findSupplement("room:single")?.firstElementChild,
+                twinContent: previous.twinContent === findSupplement("room:twin")?.firstElementChild
+            };
+        });
+        assert.equal(nodeReuse.overallCurve, true, "a room write must reuse the overall curve DOM");
+        assert.equal(nodeReuse.singleContent, false, "the dirty room must rerender its current summary");
+        assert.equal(nodeReuse.twinContent, true, "a room write must preserve unrelated room DOM");
     });
 }
 

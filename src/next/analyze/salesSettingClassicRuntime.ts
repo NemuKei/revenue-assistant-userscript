@@ -360,9 +360,14 @@ export function startSalesSettingClassicRuntime(
         }
     }
 
-    function rebuildCurves(): void {
-        const curves = new Map<string, BookingCurveReferenceViewModel>();
+    function rebuildCurves(scopeKeys?: ReadonlySet<string>): void {
+        const curves = scopeKeys === undefined
+            ? new Map<string, BookingCurveReferenceViewModel>()
+            : new Map(activeCurves);
         for (const [scopeKey, data] of activeData) {
+            if (scopeKeys !== undefined && !scopeKeys.has(scopeKey)) {
+                continue;
+            }
             const rankHistory = resolveRankHistory(data.scope);
             const result = buildBookingCurveReferenceViewModel({
                 asOfDate: data.asOfDate,
@@ -379,6 +384,8 @@ export function startSalesSettingClassicRuntime(
             });
             if (result.status === "ready") {
                 curves.set(scopeKey, result.viewModel);
+            } else {
+                curves.delete(scopeKey);
             }
         }
         activeCurves = curves;
@@ -467,7 +474,7 @@ export function startSalesSettingClassicRuntime(
         ensureSalesSettingClassicStyles(documentHost);
     }
 
-    function renderCurrentState(): void {
+    function renderCurrentState(changedScopeKeys?: ReadonlySet<string>): void {
         if (root === null || !root.isConnected || surface === null) {
             return;
         }
@@ -493,6 +500,7 @@ export function startSalesSettingClassicRuntime(
             todayDate: getLocalTodayDate()
         });
         renderSalesSettingClassic(root, { status: "ready", viewModel: model }, nativeCards, {
+            changedScopeKeys,
             narrow,
             openScopes,
             revalidatingScopes: new Set(Array.from(activeData)
@@ -733,7 +741,7 @@ export function startSalesSettingClassicRuntime(
                         dataSource.prioritize?.(activeStayDate, activeAsOfDate, scopeKey);
                     }
                 }
-                renderCurrentState();
+                renderCurrentState(new Set([scopeKey]));
                 focusControl(SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE, scopeKey, scopeKey);
             }
             return;
@@ -745,8 +753,9 @@ export function startSalesSettingClassicRuntime(
             if (scopeKey !== null && (value === "transient" || value === "group")) {
                 event.preventDefault();
                 secondarySegments.set(scopeKey, value);
-                rebuildCurves();
-                renderCurrentState();
+                const changedScopeKeys = new Set([scopeKey]);
+                rebuildCurves(changedScopeKeys);
+                renderCurrentState(changedScopeKeys);
                 focusControl(BOOKING_CURVE_REFERENCE_SEGMENT_ATTRIBUTE, value, scopeKey);
             }
             return;
@@ -763,8 +772,9 @@ export function startSalesSettingClassicRuntime(
         event.preventDefault();
         const current = visibilities.get(scopeKey) ?? { recent: true, seasonal: true };
         visibilities.set(scopeKey, { ...current, [value]: !current[value] });
-        rebuildCurves();
-        renderCurrentState();
+        const changedScopeKeys = new Set([scopeKey]);
+        rebuildCurves(changedScopeKeys);
+        renderCurrentState(changedScopeKeys);
         focusControl(BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE, value, scopeKey);
     }
 
@@ -919,8 +929,8 @@ export function startSalesSettingClassicRuntime(
             }
         }
         scopeBatchLoading = false;
-        rebuildCurves();
-        renderCurrentState();
+        rebuildCurves(requested);
+        renderCurrentState(requested);
         setRuntimeMarker("mounted-classic-ui");
         if (dataRefreshPending || dirtyScopeKeys.size > 0) {
             schedulePendingDataRefresh();

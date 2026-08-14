@@ -35,7 +35,8 @@ booking curveの`開始間隔 / concurrency`は、同じdue task集合をどの�
 5. `RAU-PERF-22`では、Top background counterとAnalyze foregroundを分離し、Analyzeは固定request-count ceilingを持たない。販売設定のroom currentを並列queue / progressive描画へ変える。currentがdueでも同じfacility / stay date / scopeの有効な保存済みsourceがある場合は、そのlast-known curve / summaryを先に描画し、fresh currentは同じqueueで非同期にrevalidateする。`D-20260813-007`の目的、対象endpoint、before / after、storage unchanged、負荷guard、停止、rollback、利用者承認をYellow zone contractとし、実装後はcold / delta双方をlive markerで確認する。
 6. `RAU-PERF-23`では、公開Next `0.2.0.29`の選択room referenceがplanned 67、12,418ms、最大同時20まで達した自然利用sampleと、利用者の取得中jank報告を根拠に、Top backgroundを50ms / 20のまま維持し、有限foregroundだけを35ms / 30へ分ける。Top backgroundは可視hotel currentを全日分先に開始して団体cueを早く埋め、その後room currentへ進む。Analyzeは保存通知のscopeだけを再読込し、250ms内の複数通知を1回の描画へまとめる。取得対象、due判定、Top 800 / 200、storage / retention、retry / stopは変えない。
 7. 公開Next `0.2.0.30`のホテル関西liveでは35ms pace、全件GET / HTTP 200、error / write 0を確認できた一方、foreground最大同時30の取得中に軽量DOM応答がidle最大31msから4,123msへ悪化し、3秒timeoutも再現した。開始間隔35msは維持し、foreground concurrencyだけ20へ戻す。request profileを分け、再公開後に同じ操作でjank、selected evidence、開始間隔、最大同時数、HTTP / stop、write 0を再確認する。
-8. 表示範囲外の半年取得`RAU-WC-34`は、SLO baselineとforeground保護を先に通し、余力だけを使う別scheduler / cadenceとして扱う。半年coverageの完了をTop / Analyze描画のbarrierにしない。
+8. 公開Next `0.2.0.31`では最大同時20、全件GET / HTTP 200、write 0を維持したが、uncached room差分後に最大3,927msのLong Taskを3件再現した。scope保存通知後にhotel + 全roomを再計算 / 再描画していたため、通信profileは維持し、dirty scopeだけcurve modelを再構築する。room更新では全体curve DOMと無関係room DOMを再利用し、全体summary / rank overviewとdirty roomだけを更新する。初期load、rank snapshot変更、native surface再構築はfull renderを維持する。
+9. 表示範囲外の半年取得`RAU-WC-34`は、SLO baselineとforeground保護を先に通し、余力だけを使う別scheduler / cadenceとして扱う。半年coverageの完了をTop / Analyze描画のbarrierにしない。
 
 Analyzeの完了点は、route全体の「全部取得」1点へまとめない。`shell`、`overall current`、`selected room current`、`selected room reference / rank marker`、`all room summary`、`competitor cache`、`competitor fresh`を分ける。room数が多い場合も、全room summary / 未選択room referenceをhotel summaryまたは明示選択roomのbarrierにしない。partial、empty、error、auth stop、rate-limit stopをdecision-readyへ数えず、判断に必要なfieldが欠ける場合は不足理由を`explanation latency`として別計測する。exact source / room coverageはlatencyと別の分子・分母で確認する。
 
@@ -134,7 +135,7 @@ Analyzeの完了点は、route全体の「全部取得」1点へまとめない�
 - 生データ保存は日次のまま維持し、圧縮するのは表示だけとする
 - 初期表示は、全体 block は `開いた状態`、各室タイプ card は `閉じた状態` を既定とする
 - 利用の流れは、最初にサマリーで調整対象を絞り込み、その後に必要な室タイプだけ booking curve を開いて確認してから調整する運用を前提とする
-- Next販売設定の初期読込はhotel scopeを先に表示し、確認済みroom scopeはrequestを並列化せず順番に読む。各room scopeの完了ごとに販売設定全体を再描画せず、room batch終了後にcurveとUIを1回更新する。途中でroute、tab、facility、stay dateが変わった場合は旧batchを破棄し、待ち状態を次contextへ残さない
+- Next販売設定の初期読込はhotel scopeを先に表示し、確認済みroom scopeのcurrent readを並列投入する。初期room batchは完了後にcurveとUIを1回更新し、後続source保存通知は250ms内でscope別にまとめる。後続refreshではdirty scopeだけcurve modelを再構築し、room更新時は全体curveと無関係roomのDOMを再利用して、全体summary / rank overviewとdirty roomだけを更新する。途中でroute、tab、facility、stay dateが変わった場合は旧batchを破棄し、待ち状態を次contextへ残さない
 - `0日前` とは別に `ACT` を独立した tick として扱う。値が存在しない stay_date では `ACT` は空でよい
 - LT 圧縮は bucket 集約とし、各 bucket の代表値は平均ではなく `bucket の最後の日` の値を使う
 - 仕様上の LT tick は次を正とする

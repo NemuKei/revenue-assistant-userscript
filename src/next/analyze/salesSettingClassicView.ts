@@ -80,6 +80,7 @@ export function renderSalesSettingClassic(
     state: SalesSettingClassicRenderState,
     nativeCards: readonly SalesSettingClassicNativeCard[],
     options: {
+        changedScopeKeys?: ReadonlySet<string> | undefined;
         narrow: boolean;
         openScopes: ReadonlySet<string>;
         revalidatingScopes: ReadonlySet<string>;
@@ -94,29 +95,52 @@ export function renderSalesSettingClassic(
 
     const { viewModel } = state;
     const cardByScope = new Map(viewModel.cards.map((card) => [card.scope.key, card]));
+    const existingOverallCurve = options.changedScopeKeys !== undefined
+        && !options.changedScopeKeys.has("hotel")
+        && viewModel.overall.curve !== null
+        ? root.querySelector<HTMLElement>(
+            `[${OVERALL_ATTRIBUTE}] [${CURVE_SECTION_ATTRIBUTE}="overall"]`
+        )
+        : null;
     const children: HTMLElement[] = [];
     const rankOverview = createRankOverview(root.ownerDocument, viewModel.cards);
     if (rankOverview !== null) {
         children.push(rankOverview);
     }
-    children.push(createOverallSummary(
+    const overallSummary = createOverallSummary(
         root.ownerDocument,
         viewModel,
         options.narrow,
-        options.revalidatingScopes.has("hotel")
-    ));
+        options.revalidatingScopes.has("hotel"),
+        existingOverallCurve === null
+    );
+    if (existingOverallCurve !== null) {
+        overallSummary.append(existingOverallCurve);
+    }
+    children.push(overallSummary);
     root.replaceChildren(...children);
 
-    const currentCardElements = new Set(nativeCards.map((card) => card.cardElement));
-    for (const stale of root.ownerDocument.querySelectorAll<HTMLElement>(`[${SALES_SETTING_CLASSIC_SUPPLEMENT_ATTRIBUTE}]`)) {
-        if (stale.parentElement === null || !currentCardElements.has(stale.parentElement)) {
-            stale.remove();
+    if (options.changedScopeKeys === undefined) {
+        const currentCardElements = new Set(nativeCards.map((card) => card.cardElement));
+        for (const stale of root.ownerDocument.querySelectorAll<HTMLElement>(`[${SALES_SETTING_CLASSIC_SUPPLEMENT_ATTRIBUTE}]`)) {
+            if (stale.parentElement === null || !currentCardElements.has(stale.parentElement)) {
+                stale.remove();
+            }
+        }
+        for (const detail of root.ownerDocument.querySelectorAll<HTMLElement>(`[${SALES_SETTING_CLASSIC_RANK_DETAIL_ATTRIBUTE}]`)) {
+            detail.remove();
         }
     }
-    for (const detail of root.ownerDocument.querySelectorAll<HTMLElement>(`[${SALES_SETTING_CLASSIC_RANK_DETAIL_ATTRIBUTE}]`)) {
-        detail.remove();
-    }
     for (const nativeCard of nativeCards) {
+        if (
+            options.changedScopeKeys !== undefined
+            && !options.changedScopeKeys.has(nativeCard.scopeKey)
+        ) {
+            continue;
+        }
+        if (options.changedScopeKeys !== undefined) {
+            removeNativeRankDetails(nativeCard);
+        }
         renderNativeCard(
             nativeCard,
             cardByScope.get(nativeCard.scopeKey) ?? null,
@@ -151,7 +175,8 @@ function createOverallSummary(
     documentHost: Document,
     viewModel: SalesSettingClassicViewModel,
     narrow: boolean,
-    isRevalidating: boolean
+    isRevalidating: boolean,
+    includeCurve = true
 ): HTMLElement {
     const section = documentHost.createElement("section");
     section.setAttribute(OVERALL_ATTRIBUTE, "");
@@ -176,7 +201,7 @@ function createOverallSummary(
     if (hasMissingSummaryValue(viewModel.overall.summary)) {
         section.append(createPreparingMessage(documentHost));
     }
-    if (viewModel.overall.curve !== null) {
+    if (includeCurve && viewModel.overall.curve !== null) {
         const curveSection = documentHost.createElement("div");
         curveSection.setAttribute(CURVE_SECTION_ATTRIBUTE, "overall");
         curveSection.append(createEmbeddedBookingCurveReference(
@@ -277,6 +302,14 @@ function renderNativeCard(
     }
     supplement.replaceChildren(...children);
     renderRankDetail(nativeCard, card);
+}
+
+function removeNativeRankDetails(nativeCard: SalesSettingClassicNativeCard): void {
+    for (const detail of nativeCard.cardElement.querySelectorAll<HTMLElement>(
+        `[${SALES_SETTING_CLASSIC_RANK_DETAIL_ATTRIBUTE}]`
+    )) {
+        detail.remove();
+    }
 }
 
 function ensureNativeSupplement(nativeCard: SalesSettingClassicNativeCard): HTMLElement {
