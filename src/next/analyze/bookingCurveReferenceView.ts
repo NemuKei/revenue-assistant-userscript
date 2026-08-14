@@ -1,4 +1,3 @@
-import { LEAD_TIME_BUCKET_VISIBLE_TICKS } from "../../leadTimeBuckets";
 import type {
     BookingCurveReferencePanel,
     BookingCurveReferenceRankMarker,
@@ -16,6 +15,8 @@ export const BOOKING_CURVE_REFERENCE_SEGMENT_ATTRIBUTE = "data-ra-next-booking-c
 export const BOOKING_CURVE_REFERENCE_VISIBILITY_ATTRIBUTE = "data-ra-next-booking-curve-reference-visibility";
 export const BOOKING_CURVE_REFERENCE_PANEL_ATTRIBUTE = "data-ra-next-booking-curve-reference-panel";
 export const BOOKING_CURVE_REFERENCE_SVG_ATTRIBUTE = "data-ra-next-booking-curve-reference-svg";
+export const BOOKING_CURVE_REFERENCE_X_AXIS_LABEL_ATTRIBUTE =
+    "data-ra-next-booking-curve-reference-x-axis-label";
 export const BOOKING_CURVE_REFERENCE_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-reference-hitbox";
 export const BOOKING_CURVE_REFERENCE_COMPONENT_ATTRIBUTE = "data-ra-next-booking-curve-reference-component";
 export const BOOKING_CURVE_REFERENCE_SERIES_ATTRIBUTE = "data-ra-next-booking-curve-reference-series";
@@ -42,8 +43,29 @@ export type BookingCurveReferenceRenderState =
         viewModel: BookingCurveReferenceViewModel;
     };
 
-const DISPLAY_TICKS = new Set([...LEAD_TIME_BUCKET_VISIBLE_TICKS, 0]);
-const NARROW_DISPLAY_TICKS = new Set([360, 180, 90, 30, 7, "ACT"]);
+const DISPLAY_TICKS = new Set<BookingCurveReferenceSeriesPoint["tick"]>([
+    360,
+    270,
+    180,
+    90,
+    60,
+    45,
+    30,
+    21,
+    14,
+    7,
+    3,
+    0,
+    "ACT"
+]);
+const NARROW_DISPLAY_TICKS = new Set<BookingCurveReferenceSeriesPoint["tick"]>([
+    360,
+    180,
+    90,
+    30,
+    7,
+    "ACT"
+]);
 const SERIES_STYLE = {
     current: { color: "#1f5fbf", dash: "", width: 3 },
     recent: { color: "#b7791f", dash: "8 5", width: 2.4 },
@@ -448,13 +470,15 @@ function createChart(
     }
 
     for (const [index, point] of panel.current.points.entries()) {
-        if (!displayTicks.has(point.tick as never)) {
+        if (!displayTicks.has(point.tick)) {
             continue;
         }
         const label = documentHost.createElementNS("http://www.w3.org/2000/svg", "text");
-        label.setAttribute("x", scaleX(index, panel.current.points.length, padding.left, plotWidth).toFixed(2));
+        const labelX = scaleX(index, panel.current.points.length, padding.left, plotWidth) + (point.tick === 0 ? 2 : 0);
+        label.setAttribute(BOOKING_CURVE_REFERENCE_X_AXIS_LABEL_ATTRIBUTE, String(point.tick));
+        label.setAttribute("x", labelX.toFixed(2));
         label.setAttribute("y", String(height - 12));
-        label.setAttribute("text-anchor", "middle");
+        label.setAttribute("text-anchor", point.tick === 0 ? "end" : point.tick === "ACT" ? "start" : "middle");
         label.textContent = formatTick(point.tick);
         svg.append(label);
     }

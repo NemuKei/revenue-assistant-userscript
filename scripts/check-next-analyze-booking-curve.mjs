@@ -503,6 +503,34 @@ for (const svg of embeddedRoomSvgs) {
     assert.notEqual(description, undefined);
     assert.equal(svg.getAttribute("aria-describedby"), description.getAttribute("id"));
 }
+const wideAxisLabels = findVirtualElementsByAttribute(
+    embeddedRoomSvgs[0],
+    "data-ra-next-booking-curve-reference-x-axis-label"
+);
+assert.deepEqual(
+    wideAxisLabels.map((label) => label.getAttribute("data-ra-next-booking-curve-reference-x-axis-label")),
+    ["360", "270", "180", "90", "60", "45", "30", "21", "14", "7", "3", "0", "ACT"],
+    "wide charts retain decision milestones without the overlapping 150/120-day labels"
+);
+assert.equal(wideAxisLabels.find((label) => label.textContent === "0日前").getAttribute("text-anchor"), "end");
+assert.equal(wideAxisLabels.find((label) => label.textContent === "ACT").getAttribute("text-anchor"), "start");
+assert.equal(wideAxisLabels.find((label) => label.textContent === "90日前").getAttribute("text-anchor"), "middle");
+
+const narrowRoomCurve = view.createEmbeddedBookingCurveReference(
+    embeddedDocument,
+    roomRankBuilt.viewModel,
+    singleRankHistory,
+    { narrow: true, titleId: "narrow-room-booking-curve-title" }
+);
+const narrowAxisLabels = findVirtualElementsByAttribute(
+    findVirtualElementsByAttribute(narrowRoomCurve, "data-ra-next-booking-curve-reference-svg")[0],
+    "data-ra-next-booking-curve-reference-x-axis-label"
+);
+assert.deepEqual(
+    narrowAxisLabels.map((label) => label.getAttribute("data-ra-next-booking-curve-reference-x-axis-label")),
+    ["360", "180", "90", "30", "7", "ACT"],
+    "narrow charts keep their smaller readable milestone set"
+);
 assert.equal(
     findVirtualElementsByAttribute(embeddedRoomCurve, "data-ra-next-booking-curve-adjustment-response").length,
     0,

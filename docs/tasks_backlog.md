@@ -832,6 +832,26 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `risk: rendered tooltip accessibility only; request / storage / write contracts unchanged`
 
+### RAU-UX-173 booking curve横軸labelの重なりを解消する
+
+- 状態:
+  - source実装、focused / full check、desktop / 390px合成Browser QA、artifact gateまで完了した。main同期とNext publicationを続ける。
+- 解決する問題:
+  - 広幅chartで`180 / 150 / 120 / 90日前`が重なり、終端の`0日前 / ACT`も重なるため、横軸の節目を短時間で読めない。
+- 実装境界:
+  - 全LTのpoint、hitbox、Tooltip、accessible tableは維持し、横軸labelだけを広幅13節目、狭幅6節目へ整理する。`0日前`と`ACT`は外側へ開き、データ系列、reference計算、rank marker、API request、storage、Revenue Assistant writeは変更しない。
+- 合格条件:
+  - focused checkで広幅 / 狭幅のlabel集合と終端anchorを固定する。合成Browserのdesktop / 390pxで隣接labelのbounding box重複0、全LT hitbox、Next Tooltip、console warning / error 0を確認する。
+  - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`を通す。
+- local検証:
+  - 修正前は広幅で`180 / 150`、`150 / 120`、`120 / 90`、`0 / ACT`の4組が重なった。修正後は広幅2 chartと390pxの狭幅2 chartで重なり0、広幅label 13件、狭幅label 6件、全LT hitbox 90件、Tooltip表示、console warning / error 0を確認した。
+  - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`が通過した。candidateは372,792 bytes、SHA-256 `AA896686F793F9934AA00B8170FAB27CAE7C4F36FD0C98F938590C4D3B3352B2`、synthetic publicationは372,996 bytes、SHA-256 `44595A43D0EF5FD2F3F03FC6F4B5E0DD05045F978FBD1D99A974BEB9E2723438`、source mapは1,487,498 bytes、SHA-256 `5B7EC506C0015A11E778A1DAE8BD5B53C770DA56AAEBC905A4386A24DD1068AD`だった。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `risk: rendered axis labels only; data / request / storage / write contracts unchanged`
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
