@@ -1011,7 +1011,7 @@
 #### RAU-PERF-27 Analyze curveBuildの重複計算と不要segment走査を減らす
 
 - 状態:
-  - source / local gate完了、Next publicationとTampermonkey更新後のホテル関西live比較待ち。`RAU-PERF-26`のwarm liveで通信0件でも初期`curveBuild` 4回 / 3,700ms、room open 1回 / 756msを観測したため、request profileを変えず計算経路だけを狭めた。
+  - source / local gate、Next `0.2.0.37` publication完了、Tampermonkey更新後のホテル関西live比較待ち。`RAU-PERF-26`のwarm liveで通信0件でも初期`curveBuild` 4回 / 3,700ms、room open 1回 / 756msを観測したため、request profileを変えず計算経路だけを狭めた。
 - 解決する問題:
   - 初期hotel curveを構築した直後、room batch完了とrank loading / settledでhotelと閉じたroomを含むcurveを繰り返し再構築していた。reference modelは画面に出す`全体 + 選択中の個人または団体`の2区分に対して3区分すべてのobservationを作り、直近型はLT tickごとに同じ全observationを再走査していた。
 - 実装scope:
@@ -1023,6 +1023,7 @@
   - typecheck、lint、Analyze sales setting / booking curve、similarity model、booking acquisition、runtime remount、booking curve smoke、build、`git diff --check`を通す。公開後は同じホテル関西・翌日宿泊日のwarm runで、初期`curveBuild` countが2以下、overall 2秒以内、6 room summary 3秒程度、room evidence 2秒以内を目安に、Long Task / max phase、planned / started、HTTP / stop / write、標準UI、console errorを再比較する。20 sample未満のSLOはprovisionalとする。
 - 進捗:
   - focused / Next全check、typecheck、lint、Classic build、Next fixture build、booking curve smoke、`git diff --check`は通過した。合成Sales Setting Browser QAはNext root 1、hotel curve、room card 2、open room 1、閉じたroom 1、全体 / 個人panel各2、ランク変更履歴、console warning / error 0を確認した。synthetic publicationは372,744 bytes、SHA-256 `D0913E1D707311637B941EB74A500862874C008CD3AFE0FB5336723D2C91DA30`、source mapは1,486,622 bytes、SHA-256 `D326ED67DFC8CCBA9BA35D3F968E3390FDEB622244DAB8D6741D4B5C70A75441`で、runtime payloadはcandidateと一致した。
+  - source `df841a9c21a390760c6e966270af775e6cd92606`はValidate Main run `31791443484`を通過し、manual workflow run `31791534674`、run number 37、attempt 1で公開Next `0.2.0.37`へ配信した。公開Nextは372,745 bytes、SHA-256 `82AF5100156AAB7CC8562F74984C64B492DB5D356AEBC921BAF60A0F46D481ED`、source mapは1,486,622 bytes、SHA-256 `D326ED67DFC8CCBA9BA35D3F968E3390FDEB622244DAB8D6741D4B5C70A75441`でmanifestと一致した。Classic userscript / source mapは固定baselineと同一だった。
 - metadata:
   - `depends-on: RAU-PERF-26 live gate`
   - `spec-impact: yes`
