@@ -784,7 +784,7 @@
 ### RAU-UX-171 競合価格のbrowser native Tooltip重複を除く
 
 - 状態:
-  - source実装、focused / full check、合成Browser QA、main同期、Next `0.2.0.35` publication、公開artifact / Classic baseline照合まで完了。公開Next `0.2.0.34`のホテル関西で、各人数panelにNext Tooltipと同じSVG `title`があり、browser native Tooltipの`1名の競合価格保存履歴`等が重なることを確認した。Tampermonkey更新後のlive gateを残す。
+  - 完了。公開Next `0.2.0.34`のホテル関西で、各人数panelにNext Tooltipと同じSVG `title`があり、browser native Tooltipの`1名の競合価格保存履歴`等が重なることを確認した。source実装、focused / full check、合成Browser QA、main同期、Next `0.2.0.35` publication、公開artifact / Classic baseline照合、Tampermonkey更新後の利用者確認まで通し、重複解消を確認した。
 - 解決する問題:
   - 競合価格graphへhoverすると、日付・施設別のNext Tooltipに加え、SVG全体のbrowser native Tooltipが重なり、同じ操作に2つの説明boxが表示される。
   - SVG hitboxをマウスでclickした時はbrowser既定outlineも表示され、keyboard focus ringと区別されていなかった。
@@ -799,6 +799,8 @@
   - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`が通過した。synthetic publicationは369,554 bytes、SHA-256 `A7FF5B7CD102A8F23A504696F0F135DF875470FC651D2D9049026F616F6534C5`、source map 1,466,427 bytes、SHA-256 `5E8CBADEFE2C9B56AC12539B0BFB7167F8F716BF12156E2E72DA325FD4CF6568`だった。
 - publication:
   - source `80bfec4bab46f8223475b1f7a434878937a63ff5`、workflow run `31785791690`、run number 35、attempt 1でNext `0.2.0.35`を公開した。userscriptは369,555 bytes、SHA-256 `B5AF4A6A1592DE546FDCE01685F575BE54A9DAF51218DC87AF1344F216944EF0`、source mapは1,466,427 bytes、SHA-256 `5E8CBADEFE2C9B56AC12539B0BFB7167F8F716BF12156E2E72DA325FD4CF6568`でmanifestと一致した。Classic userscript / source mapも固定baselineと一致した。
+- live検証:
+  - Tampermonkeyを公開Next `0.2.0.35`へ更新後、利用者確認で競合価格graphのTooltip重複が解消した。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
