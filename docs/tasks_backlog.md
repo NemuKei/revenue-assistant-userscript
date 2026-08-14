@@ -880,7 +880,7 @@
 #### RAU-PERF-23 Topの団体cue優先とAnalyze foreground / redrawを緩和する
 
 - 状態:
-  - Topの可視hotel current優先、foreground 35ms / 30、scope別再読込とbatch描画をNext `0.2.0.30`へ公開し、最大同時30のjankを受けた35ms / 20補正を`0.2.0.31`へ公開した。更新後のホテル関西でも最大同時20のまま数秒のLong Taskを再現し、dirty room保存後の全scope再計算 / 全DOM再描画を原因へ絞った。dirty scopeだけmodel / DOMを更新するsourceをNext `0.2.0.32`へ公開し、Tampermonkey更新後の同条件live比較を残す。
+  - 完了。Topの可視hotel current優先、foreground 35ms / 30、scope別再読込とbatch描画をNext `0.2.0.30`へ公開し、最大同時30のjankを受けた35ms / 20補正を`0.2.0.31`へ公開した。更新後のホテル関西でも最大同時20のまま数秒のLong Taskを再現し、dirty room保存後の全scope再計算 / 全DOM再描画を原因へ絞った。dirty scopeだけmodel / DOMを更新するsourceをNext `0.2.0.32`へ公開し、Tampermonkey更新後の同条件live比較まで完了した。20 sample未満のSLO判定だけを通常利用へ残す。
 - 解決する問題:
   - Top backgroundがstay dateごとにhotel / roomを並べるため、room currentが先に挟まり、hotel sourceだけで描画できる団体cueが長く歯抜けになる。
   - 公開Next `0.2.0.29`の選択room sampleはreference planned 67、ready 12,418ms、ready時started 32、最大同時20で、HTTP / stop errorなしのまま50ms / 20上限へ達した。
@@ -899,6 +899,7 @@
   - foreground 35ms / 20補正のValidate Main run `31774553503`とmanual workflow run `31774630650`はsuccess。公開Nextはsource `d6d9ef203412be3d274dae6b47074320cbdd946d`、version `0.2.0.31`、367,856 bytes、SHA-256 `3CD3171DFBC41CBB2D01EAAA71933F6EB49716A555CBCFDE87F2E6F6B6E5B797`で、source mapとClassic固定baselineを含めworkflow外照合にも一致した。
   - `0.2.0.31`のホテル関西liveはAnalyze全体1,363ms、6 room summary 6,445ms、uncached room reference 64件 / 根拠4,615〜5,047ms、外部最短37ms、最大同時20、全件GET / HTTP 200、write 0だった。軽量DOM probeは3秒超 / timeoutし、別roomでLong Task 3件、合計11,547ms、最大3,927msを確認した。差分実装のfixtureでは同一room通知を1 scope readへまとめ、hotel / 他roomを再読込せず、全体curve DOMと他room DOMを同一nodeで維持し、dirty roomだけを再描画した。focused / Next全check、typecheck、target eslint、candidate / synthetic publication build、`git diff --check`は通過した。
   - dirty scope差分更新のValidate Main run `31779068749`とmanual workflow run `31779175865`はsuccess。公開Nextはsource `5e61e822454c5f65e2ec8d1e16bba057e1e729ce`、version `0.2.0.32`、368,402 bytes、SHA-256 `800756CB0D50E4CFF18D26DD1EDDE3D1B27803DAF09CF05E954FC4BF5CEFB943`で、source mapとClassic固定baselineを含めworkflow外照合にも一致した。
+  - Tampermonkey更新後のホテル関西Analyzeでinstalled runtime `0.2.0.32`、schema `rau-next-performance-v1`、source revision、profile `booking-curve-top-50ms-20-foreground-35ms-20`を照合した。初期overallは1,133ms、6 room summaryは7,258msだった。自然な差分64件を持つ2 roomはcurrent各10ms、evidence 1,658 / 1,488ms、最大同時20、scheduler error / stop 0で、Long Taskは各0、軽量DOM probeは14 / 14を2回とも成功した。最大応答は60 / 809msで、旧版の3秒超 / timeoutは再現しなかった。CDP retained windowはtruncatedのため全64件の外部証明には使わず、保持された35 request / 35 responseはすべてGET / HTTP 200、loading failure / Revenue Assistant write 0だった。標準button、Next root、open room curveを維持し、overlay、Classic root、console warning / errorは各0だった。初期6 room summaryの単発7,258msと20 sample未満のSLOはprovisionalとする。
   - rollbackはforegroundを50ms / 20へ戻せる。差分model / DOM更新だけを戻す場合はscope通知とscope別再読込を維持したまま従来のfull rebuild / renderへ戻せ、storage migration / deletionを必要としない。
 - metadata:
   - `depends-on: RAU-PERF-21B 50ms live gate, RAU-PERF-22 budget separation, D-20260814-001 cache-first rendering`
