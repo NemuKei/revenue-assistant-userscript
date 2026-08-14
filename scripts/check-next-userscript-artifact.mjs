@@ -155,7 +155,7 @@ assert.match(artifactText, /data-ra-next-price-trend-state/u);
 assert.match(artifactText, /data-ra-next-monthly-progress-root/u);
 assert.match(artifactText, /data-ra-next-monthly-progress-state/u);
 assert.match(artifactText, /data-ra-fetch-performance-summary/u);
-assert.match(artifactText, /rau-next-performance-v1/u);
+assert.match(artifactText, /rau-next-performance-v2/u);
 assert.match(artifactText, /server-read-only\/local-bounded-history/u);
 assert.equal(countMatches(artifactText, /\bfetch\s*\(/gu), 1, "Next candidate must contain one raw fetch call");
 assert.equal(countMatches(artifactText, /\.fetch\s*\(/gu), 1, "raw fetch must have one call site");

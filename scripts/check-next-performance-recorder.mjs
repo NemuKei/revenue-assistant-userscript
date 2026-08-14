@@ -135,11 +135,36 @@ recorder.mark(analyzeGeneration, {
     outcome: "partial",
     source: "mixed"
 });
+currentTime = 351;
+recorder.measurePhase(analyzeGeneration, "curveBuild", () => {
+    currentTime = 356.4;
+});
+await recorder.measureAsyncPhase(analyzeGeneration, "referenceRead", async () => {
+    currentTime = 364.6;
+});
+recorder.recordPhase(analyzeGeneration, { elapsedMs: 9.2, name: "responseParse" });
+const writesBeforePhaseBurst = documentHost.textWriteCount;
+for (let index = 0; index < 62; index += 1) {
+    recorder.recordPhase(analyzeGeneration, { elapsedMs: 1, name: "responseCompact" });
+}
+assert.equal(
+    documentHost.textWriteCount,
+    writesBeforePhaseBurst,
+    "per-request phase aggregation must stay in memory until an explicit/coalesced flush"
+);
+recorder.flush(analyzeGeneration);
+assert.equal(documentHost.textWriteCount, writesBeforePhaseBurst + 1);
 const parsed = performanceModule.parseNextPerformanceSummary(
     JSON.parse(documentHost.markers[0].textContent)
 );
 assert.notEqual(parsed, null);
 assert.equal(parsed.warmth, "revalidate");
+assert.deepEqual(parsed.phases.curveBuild, { count: 1, maxMs: 5, totalMs: 5 });
+assert.deepEqual(parsed.phases.referenceRead, { count: 1, maxMs: 8, totalMs: 8 });
+assert.deepEqual(parsed.phases.responseParse, { count: 1, maxMs: 9, totalMs: 9 });
+assert.deepEqual(parsed.phases.responseCompact, { count: 62, maxMs: 1, totalMs: 62 });
+assert.equal(parsed.mainThread.observerStatus, "unsupported");
+assert.equal(parsed.mainThread.longTaskCount, 0);
 
 const invalidWithForbiddenField = {
     ...parsed,
@@ -162,6 +187,14 @@ invalidReadyNone.milestones.overallSettled = {
     source: "none"
 };
 assert.equal(performanceModule.parseNextPerformanceSummary(invalidReadyNone), null);
+assert.equal(
+    performanceModule.parseNextPerformanceSummary({
+        ...parsed,
+        phases: { ...parsed.phases, forbiddenPhase: { count: 1, maxMs: 1, totalMs: 1 } }
+    }),
+    null,
+    "phase names must remain allowlisted"
+);
 
 const measuredSamples = Array.from({ length: 20 }, (_, index) => ({
     ...structuredClone(parsed),
@@ -259,6 +292,14 @@ assert.equal(schedulerSummary.interactiveWait.medianMs, 10.5);
 assert.equal(schedulerSummary.plannedRequestCount, 40);
 assert.equal(schedulerSummary.startedRequestCount, 20);
 assert.equal(schedulerSummary.maxConcurrentRequests, 20);
+const phaseSummary = performanceModule.summarizeNextPerformanceSamples(measuredSamples)
+    .cohorts[0].phases;
+assert.deepEqual(phaseSummary.curveBuild, { count: 20, maxMs: 5, totalMs: 100 });
+assert.equal(
+    performanceModule.summarizeNextPerformanceSamples(measuredSamples)
+        .cohorts[0].mainThread.observerStatuses.unsupported,
+    20
+);
 
 recorder.clear(topGeneration);
 assert.equal(
@@ -299,10 +340,88 @@ assert.equal(performanceModule.resolveNextPerformanceRoomBand(21), "21-plus");
 recorder.stop();
 assert.equal(documentHost.markers.length, 0);
 
+let observerCallback = null;
+let observerDisconnected = false;
+class FakePerformanceObserver {
+    static supportedEntryTypes = ["longtask"];
+
+    constructor(callback) {
+        observerCallback = callback;
+    }
+
+    disconnect() {
+        observerDisconnected = true;
+    }
+
+    observe(options) {
+        assert.deepEqual(options, { type: "longtask" });
+    }
+}
+const observerDocument = createDocumentFixture();
+let observerTime = 1_000;
+const observerRecorder = performanceModule.createNextPerformanceRecorder({
+    documentHost: observerDocument,
+    now: () => observerTime,
+    sourceRevision: "observer-fixture",
+    windowHost: {
+        localStorage: { getItem: () => null },
+        performance: { now: () => observerTime },
+        PerformanceObserver: FakePerformanceObserver
+    }
+});
+const observerGeneration = observerRecorder.beginContext({
+    contextToken: "private-observer-context",
+    operation: "room-open",
+    route: "analyze"
+});
+observerCallback({
+    getEntries: () => [
+        { duration: 99.6, entryType: "longtask", startTime: 999 },
+        { duration: 50.4, entryType: "longtask", startTime: 1_001 },
+        { duration: 120.1, entryType: "longtask", startTime: 1_010 }
+    ]
+});
+await Promise.resolve();
+const observerSnapshot = observerRecorder.snapshot();
+assert.equal(observerSnapshot.generation, observerGeneration);
+assert.deepEqual(observerSnapshot.mainThread, {
+    longTaskCount: 2,
+    maxLongTaskMs: 120,
+    observerStatus: "active",
+    totalLongTaskMs: 170
+});
+observerRecorder.stop();
+assert.equal(observerDisconnected, true);
+
+class ObserverWithoutSupportedEntryTypes {}
+const incompleteObserverRecorder = performanceModule.createNextPerformanceRecorder({
+    documentHost: createDocumentFixture(),
+    now: () => 2_000,
+    sourceRevision: "observer-without-static-list",
+    windowHost: {
+        localStorage: { getItem: () => null },
+        performance: { now: () => 2_000 },
+        PerformanceObserver: ObserverWithoutSupportedEntryTypes
+    }
+});
+const incompleteObserverGeneration = incompleteObserverRecorder.beginContext({
+    contextToken: "private-incomplete-observer-context",
+    operation: "room-open",
+    route: "analyze"
+});
+assert.equal(
+    incompleteObserverRecorder.snapshot().mainThread.observerStatus,
+    "unsupported",
+    "an incomplete observer implementation must fail closed instead of breaking the runtime"
+);
+incompleteObserverRecorder.clear(incompleteObserverGeneration);
+incompleteObserverRecorder.stop();
+
 console.log("next performance recorder check passed");
 
 function createDocumentFixture() {
     const markers = [];
+    let textWriteCount = 0;
     const parent = {
         append(element) {
             if (!markers.includes(element)) {
@@ -313,15 +432,25 @@ function createDocumentFixture() {
     };
     return {
         markers,
+        get textWriteCount() {
+            return textWriteCount;
+        },
         head: parent,
         documentElement: parent,
         createElement(tagName) {
             assert.equal(tagName, "script");
             const attributes = new Map();
+            let text = "";
             const element = {
                 attributes,
                 isConnected: false,
-                textContent: "",
+                get textContent() {
+                    return text;
+                },
+                set textContent(value) {
+                    text = value;
+                    textWriteCount += 1;
+                },
                 type: "",
                 setAttribute(name, value) {
                     attributes.set(name, value);

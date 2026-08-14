@@ -857,6 +857,7 @@ await new Promise((resolve) => setTimeout(resolve, 20));
 deferredCurrentCoordinator.stop();
 
 const performanceEvents = [];
+const performancePhaseEvents = [];
 const performanceRequests = [];
 const performanceRecorder = {
     beginContext() {
@@ -865,7 +866,25 @@ const performanceRecorder = {
     currentGeneration() {
         return 1;
     },
+    flush() {},
     mark() {},
+    async measureAsyncPhase(generation, name, run) {
+        try {
+            return await run();
+        } finally {
+            performancePhaseEvents.push({ elapsedMs: 1, generation, name });
+        }
+    },
+    measurePhase(generation, name, run) {
+        try {
+            return run();
+        } finally {
+            performancePhaseEvents.push({ elapsedMs: 1, generation, name });
+        }
+    },
+    recordPhase(generation, input) {
+        performancePhaseEvents.push({ generation, ...input });
+    },
     recordScheduler(generation, event) {
         performanceEvents.push({ generation, ...event });
     },
@@ -886,8 +905,10 @@ const performanceCoordinator = coordinatorModule.createNextBookingCurveAcquisiti
         }
     },
     transport: {
-        async read(request) {
+        async read(request, _signal, diagnostics) {
             performanceRequests.push(request);
+            diagnostics?.recordPhase("responseRead", 2);
+            diagnostics?.recordPhase("responseParse", 3);
             return {
                 stay_date: request.stayDate,
                 booking_curve: [{
@@ -922,6 +943,28 @@ assert.deepEqual(
     "interactive-only work must not report a background pause or settlement"
 );
 assert.equal(performanceEvents[2].activeRequestCount, 1);
+assert.deepEqual(
+    performancePhaseEvents.map((event) => event.name),
+    [
+        "acquisitionPublish",
+        "responseRead",
+        "responseParse",
+        "responseCompact",
+        "sourceRead",
+        "sourceBuild",
+        "sourceWrite",
+        "storedNotify",
+        "acquisitionPublish"
+    ],
+    "phase instrumentation must observe the existing request without adding work"
+);
+assert.equal(
+    performancePhaseEvents.every((event) => (
+        Object.keys(event).every((key) => ["elapsedMs", "generation", "name"].includes(key))
+    )),
+    true,
+    "phase diagnostics must not expose request or source identifiers"
+);
 await performanceCoordinator.startBackground({
     ...oneScopeContext,
     visibleStayDates: []

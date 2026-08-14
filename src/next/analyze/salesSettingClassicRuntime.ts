@@ -364,6 +364,10 @@ export function startSalesSettingClassicRuntime(
     }
 
     function rebuildCurves(scopeKeys?: ReadonlySet<string>): void {
+        measureAnalyzePhase("curveBuild", () => rebuildCurvesNow(scopeKeys));
+    }
+
+    function rebuildCurvesNow(scopeKeys?: ReadonlySet<string>): void {
         const curves = scopeKeys === undefined
             ? new Map<string, BookingCurveReferenceViewModel>()
             : new Map(activeCurves);
@@ -478,6 +482,11 @@ export function startSalesSettingClassicRuntime(
     }
 
     function renderCurrentState(changedScopeKeys?: ReadonlySet<string>): void {
+        measureAnalyzePhase("curveRender", () => renderCurrentStateNow(changedScopeKeys));
+        flushAnalyzePerformance();
+    }
+
+    function renderCurrentStateNow(changedScopeKeys?: ReadonlySet<string>): void {
         if (root === null || !root.isConnected || surface === null) {
             return;
         }
@@ -554,6 +563,35 @@ export function startSalesSettingClassicRuntime(
             outcome: "ready",
             source: "none"
         });
+    }
+
+    function measureAnalyzePhase<T>(
+        name: "curveBuild" | "curveRender",
+        run: () => T
+    ): T {
+        const recorder = options.performanceRecorder;
+        if (recorder === undefined || performanceGeneration === null) {
+            return run();
+        }
+        return recorder.measurePhase(performanceGeneration, name, run);
+    }
+
+    function measureAnalyzeAsyncPhase<T>(
+        name: "referenceRead",
+        run: () => Promise<T>
+    ): Promise<T> {
+        const recorder = options.performanceRecorder;
+        if (recorder === undefined || performanceGeneration === null) {
+            return run();
+        }
+        return recorder.measureAsyncPhase(performanceGeneration, name, run);
+    }
+
+    function flushAnalyzePerformance(): void {
+        const recorder = options.performanceRecorder;
+        if (recorder !== undefined && performanceGeneration !== null) {
+            recorder.flush(performanceGeneration);
+        }
     }
 
     function updateAnalyzePerformanceCohort(
@@ -807,12 +845,17 @@ export function startSalesSettingClassicRuntime(
         }
         const hydrationToken = Symbol(scopeKey);
         hydratingScopeTokens.set(scopeKey, hydrationToken);
-        void dataSource.load(stayDate, asOfDate, scopeKey, {
+        void measureAnalyzeAsyncPhase("referenceRead", () => dataSource.load(
+            stayDate,
+            asOfDate,
+            scopeKey,
+            {
             currentPriority: "visible-current",
             readProfile: "full",
             referencePriority: "selected-reference",
             waitForCurrent: false
-        }).then((result) => {
+            }
+        )).then((result) => {
             if (
                 stopped
                 || activeStayDate !== stayDate
@@ -959,24 +1002,27 @@ export function startSalesSettingClassicRuntime(
     ): Promise<void> {
         const requested = new Set(scopeKeys);
         const scopes = activeScopes.filter((scope) => requested.has(scope.key));
-        const results = await Promise.all(scopes.map((scope) => dataSource.load(
-            stayDate,
-            asOfDate,
-            scope.key,
-            {
-                currentPriority: scope.kind === "hotel" ? "critical-current" : "visible-current",
-                readProfile: scope.kind === "hotel"
-                    || openScopes.has(scope.key)
-                    || activeData.get(scope.key)?.readProfile === "full"
-                    ? "full"
-                    : "current-only",
-                referencePriority: scope.kind === "hotel"
-                    ? "visible-reference"
-                    : openScopes.has(scope.key)
-                        ? "selected-reference"
-                        : null,
-                waitForCurrent: false
-            }
+        const results = await Promise.all(scopes.map((scope) => measureAnalyzeAsyncPhase(
+            "referenceRead",
+            () => dataSource.load(
+                stayDate,
+                asOfDate,
+                scope.key,
+                {
+                    currentPriority: scope.kind === "hotel" ? "critical-current" : "visible-current",
+                    readProfile: scope.kind === "hotel"
+                        || openScopes.has(scope.key)
+                        || activeData.get(scope.key)?.readProfile === "full"
+                        ? "full"
+                        : "current-only",
+                    referencePriority: scope.kind === "hotel"
+                        ? "visible-reference"
+                        : openScopes.has(scope.key)
+                            ? "selected-reference"
+                            : null,
+                    waitForCurrent: false
+                }
+            )
         )));
         if (!isCurrentLoad(generation, stayDate, asOfDate)) {
             return;

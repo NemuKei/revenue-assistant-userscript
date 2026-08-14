@@ -30,6 +30,7 @@ import {
     type NextBookingCurveLegacySeedReader
 } from "./bookingCurveLegacySeedReader";
 import type {
+    NextPerformancePhaseName,
     NextPerformanceRecorder,
     NextPerformanceStopClassification
 } from "../performance/nextPerformanceRecorder";
@@ -497,7 +498,11 @@ export function createNextBookingCurveAcquisitionCoordinator(
             status: "running"
         };
         recordRequestStarted(next, activeRequestCount);
-        emit();
+        measurePhaseForGeneration(
+            getTaskActivityPerformanceGeneration(next),
+            "acquisitionPublish",
+            emit
+        );
         void runTask(next).finally(() => {
             activeRequestCount -= 1;
             settleBackgroundTask(next.backgroundPerformanceGeneration);
@@ -535,18 +540,27 @@ export function createNextBookingCurveAcquisitionCoordinator(
 
     async function runTask(queued: QueuedTask): Promise<void> {
         const signal = activeController.signal;
+        const performanceGeneration = getTaskActivityPerformanceGeneration(queued);
         try {
             const transportRead = transport.read({
                 kind: "booking-curve",
                 roomGroupId: queued.task.roomGroupId,
                 stayDate: queued.task.stayDate
-            }, signal);
+            }, signal, {
+                recordPhase(phase, elapsedMs) {
+                    recordPhaseForGeneration(performanceGeneration, phase, elapsedMs);
+                }
+            });
             // Start the next interval after transport.read() has handed off the
             // request. Recording it earlier can make two actual request starts one
             // millisecond closer than the selected profile at a clock boundary.
             lastRequestStartedAt = Date.now();
             const payload = await transportRead;
-            const response = compactNextBookingCurveResponse(payload, queued.task.stayDate);
+            const response = measurePhaseForGeneration(
+                performanceGeneration,
+                "responseCompact",
+                () => compactNextBookingCurveResponse(payload, queued.task.stayDate)
+            );
             if (response === null) {
                 throw new Error("booking-curve-response-invalid");
             }
@@ -556,18 +570,28 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 throw new DOMException("aborted", "AbortError");
             }
             const result = await withFacilityLock(facilityId, signal, async () => {
-                const previousRecord = (await readNextOrCachedLegacySeed(
-                    queued.task.sourceKey
+                const previousRecord = (await measureAsyncPhaseForGeneration(
+                    performanceGeneration,
+                    "sourceRead",
+                    () => readNextOrCachedLegacySeed(queued.task.sourceKey)
                 ))[0];
-                const record = createNextBookingCurveSourceRecord({
-                    asOfDate,
-                    facilityId,
-                    fetchedAt: now().toISOString(),
-                    ...(previousRecord === undefined ? {} : { previousRecord }),
-                    response,
-                    task: queued.task
-                });
-                return store.addAndPrune([record]);
+                const record = measurePhaseForGeneration(
+                    performanceGeneration,
+                    "sourceBuild",
+                    () => createNextBookingCurveSourceRecord({
+                        asOfDate,
+                        facilityId,
+                        fetchedAt: now().toISOString(),
+                        ...(previousRecord === undefined ? {} : { previousRecord }),
+                        response,
+                        task: queued.task
+                    })
+                );
+                return measureAsyncPhaseForGeneration(
+                    performanceGeneration,
+                    "sourceWrite",
+                    () => store.addAndPrune([record])
+                );
             });
             state = {
                 ...state,
@@ -577,11 +601,15 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 storedCount: state.storedCount + result.addedCount
             };
             if (result.addedCount > 0) {
-                emitStoredSource(queued.task);
+                measurePhaseForGeneration(
+                    performanceGeneration,
+                    "storedNotify",
+                    () => emitStoredSource(queued.task)
+                );
             }
             consecutiveErrorCount = 0;
             queued.resolve();
-            emit();
+            measurePhaseForGeneration(performanceGeneration, "acquisitionPublish", emit);
         } catch (error: unknown) {
             if (signal.aborted || isAbortError(error)) {
                 invalidateBackgroundSettlement(queued.backgroundPerformanceGeneration);
@@ -723,6 +751,48 @@ export function createNextBookingCurveAcquisitionCoordinator(
         } catch {
             // Performance instrumentation must never affect acquisition.
         }
+    }
+
+    function recordPhaseForGeneration(
+        performanceGeneration: number | null,
+        name: NextPerformancePhaseName,
+        elapsedMs: number
+    ): void {
+        if (performanceGeneration === null) {
+            return;
+        }
+        try {
+            const recorder = options.performanceRecorder;
+            if (typeof recorder?.recordPhase === "function") {
+                recorder.recordPhase(performanceGeneration, { elapsedMs, name });
+            }
+        } catch {
+            // Performance instrumentation must never affect acquisition.
+        }
+    }
+
+    function measurePhaseForGeneration<T>(
+        performanceGeneration: number | null,
+        name: NextPerformancePhaseName,
+        run: () => T
+    ): T {
+        const recorder = options.performanceRecorder;
+        if (performanceGeneration === null || typeof recorder?.measurePhase !== "function") {
+            return run();
+        }
+        return recorder.measurePhase(performanceGeneration, name, run);
+    }
+
+    function measureAsyncPhaseForGeneration<T>(
+        performanceGeneration: number | null,
+        name: NextPerformancePhaseName,
+        run: () => Promise<T>
+    ): Promise<T> {
+        const recorder = options.performanceRecorder;
+        if (performanceGeneration === null || typeof recorder?.measureAsyncPhase !== "function") {
+            return run();
+        }
+        return recorder.measureAsyncPhase(performanceGeneration, name, run);
     }
 
     function registerBackgroundTask(performanceGeneration: number | null): void {

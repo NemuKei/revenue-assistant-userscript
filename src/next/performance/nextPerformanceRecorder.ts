@@ -1,5 +1,5 @@
 export const NEXT_PERFORMANCE_MARKER_ATTRIBUTE = "data-ra-fetch-performance-summary";
-export const NEXT_PERFORMANCE_SCHEMA_VERSION = "rau-next-performance-v1";
+export const NEXT_PERFORMANCE_SCHEMA_VERSION = "rau-next-performance-v2";
 export const NEXT_PERFORMANCE_DEBUG_STORAGE_KEY = "revenue-assistant:debug:fetch-performance";
 export const NEXT_PERFORMANCE_REQUEST_PROFILE = "booking-curve-top-50ms-20-foreground-35ms-20";
 
@@ -15,6 +15,20 @@ export type NextPerformanceOutcome = "aborted" | "empty" | "error" | "partial" |
 export type NextPerformanceFreshness = "fresh" | "stale-revalidating" | "unknown";
 export type NextPerformanceWarmth = "revalidate" | "unknown" | "warm";
 export type NextPerformanceRoomBand = "1-6" | "7-12" | "13-20" | "21-plus" | "none";
+export type NextPerformancePhaseName =
+    | "acquisitionPublish"
+    | "curveBuild"
+    | "curveRender"
+    | "markerPublish"
+    | "referenceRead"
+    | "responseCompact"
+    | "responseParse"
+    | "responseRead"
+    | "sourceBuild"
+    | "sourceRead"
+    | "sourceWrite"
+    | "storedNotify";
+export type NextPerformanceLongTaskObserverStatus = "active" | "error" | "unsupported";
 export type NextPerformanceMilestoneName =
     | "allRoomSummarySettled"
     | "baseDecisionSettled"
@@ -80,11 +94,26 @@ export interface NextPerformanceSchedulerSummary {
     stopClassification: NextPerformanceStopClassification;
 }
 
+export interface NextPerformancePhaseSummary {
+    count: number;
+    maxMs: number;
+    totalMs: number;
+}
+
+export interface NextPerformanceMainThreadSummary {
+    longTaskCount: number;
+    maxLongTaskMs: number;
+    observerStatus: NextPerformanceLongTaskObserverStatus;
+    totalLongTaskMs: number;
+}
+
 export interface NextPerformanceSummary {
     counts: NextPerformanceCounts;
     generation: number;
+    mainThread: NextPerformanceMainThreadSummary;
     milestones: Partial<Record<NextPerformanceMilestoneName, NextPerformanceMilestone>>;
     operation: NextPerformanceOperation;
+    phases: Partial<Record<NextPerformancePhaseName, NextPerformancePhaseSummary>>;
     requestProfile: typeof NEXT_PERFORMANCE_REQUEST_PROFILE;
     roomBand: NextPerformanceRoomBand;
     route: NextPerformanceRoute;
@@ -104,12 +133,23 @@ export interface NextPerformanceRecorder {
     }): number;
     clear(generation: number): void;
     currentGeneration(): number | null;
+    flush(generation: number): void;
     mark(generation: number, input: {
         counts?: NextPerformanceCounts;
         freshness?: NextPerformanceFreshness;
         name: NextPerformanceMilestoneName;
         outcome: NextPerformanceOutcome;
         source: NextPerformanceSource;
+    }): void;
+    measureAsyncPhase<T>(
+        generation: number,
+        name: NextPerformancePhaseName,
+        run: () => Promise<T>
+    ): Promise<T>;
+    measurePhase<T>(generation: number, name: NextPerformancePhaseName, run: () => T): T;
+    recordPhase(generation: number, input: {
+        elapsedMs: number;
+        name: NextPerformancePhaseName;
     }): void;
     recordScheduler(generation: number, input: NextPerformanceSchedulerEvent): void;
     setCohort(generation: number, input: {
@@ -157,6 +197,13 @@ export interface NextPerformanceCollectorSummary {
             p95Ms: number | null;
             status: "measured" | "provisional";
         }>>;
+        mainThread: {
+            longTaskCount: number;
+            maxLongTaskMs: number;
+            observerStatuses: Record<NextPerformanceLongTaskObserverStatus, number>;
+            totalLongTaskMs: number;
+        };
+        phases: Partial<Record<NextPerformancePhaseName, NextPerformancePhaseSummary>>;
         scheduler: {
             abortedRequestCount: number;
             errorCount: number;
@@ -200,6 +247,20 @@ const MILESTONE_NAMES: readonly NextPerformanceMilestoneName[] = [
     "competitorCachePainted",
     "competitorFreshSettled"
 ];
+const PHASE_NAMES: readonly NextPerformancePhaseName[] = [
+    "responseRead",
+    "responseParse",
+    "responseCompact",
+    "sourceRead",
+    "sourceBuild",
+    "sourceWrite",
+    "storedNotify",
+    "acquisitionPublish",
+    "referenceRead",
+    "curveBuild",
+    "curveRender",
+    "markerPublish"
+];
 const SHELL_MILESTONES = new Set<NextPerformanceMilestoneName>([
     "routeObserved",
     "surfaceObserved",
@@ -237,6 +298,7 @@ export function createNextPerformanceRecorder(
     let marker: HTMLScriptElement | null = null;
     let schedulerPublishGeneration: number | null = null;
     let stopped = false;
+    const longTaskObserverState = createLongTaskObserver();
 
     return {
         beginContext(input) {
@@ -253,8 +315,15 @@ export function createNextPerformanceRecorder(
             summary = {
                 counts: {},
                 generation,
+                mainThread: {
+                    longTaskCount: 0,
+                    maxLongTaskMs: 0,
+                    observerStatus: longTaskObserverState.status,
+                    totalLongTaskMs: 0
+                },
                 milestones: {},
                 operation: input.operation,
+                phases: {},
                 requestProfile: NEXT_PERFORMANCE_REQUEST_PROFILE,
                 roomBand: input.roomBand ?? "none",
                 route: input.route,
@@ -276,6 +345,11 @@ export function createNextPerformanceRecorder(
             marker = null;
         },
         currentGeneration: () => summary?.generation ?? null,
+        flush(expectedGeneration) {
+            if (isCurrent(expectedGeneration)) {
+                publish();
+            }
+        },
         mark(expectedGeneration, input) {
             if (!isCurrent(expectedGeneration) || summary === null || summary.milestones[input.name] !== undefined) {
                 return;
@@ -290,6 +364,25 @@ export function createNextPerformanceRecorder(
                 summary.counts = mergeCounts(summary.counts, input.counts);
             }
             publish();
+        },
+        async measureAsyncPhase(expectedGeneration, name, run) {
+            const startedAt = safeNow(now);
+            try {
+                return await run();
+            } finally {
+                recordPhase(expectedGeneration, name, safeNow(now) - startedAt);
+            }
+        },
+        measurePhase(expectedGeneration, name, run) {
+            const startedAt = safeNow(now);
+            try {
+                return run();
+            } finally {
+                recordPhase(expectedGeneration, name, safeNow(now) - startedAt);
+            }
+        },
+        recordPhase(expectedGeneration, input) {
+            recordPhase(expectedGeneration, input.name, input.elapsedMs);
         },
         recordScheduler(expectedGeneration, input) {
             if (!isCurrent(expectedGeneration) || summary === null) {
@@ -386,6 +479,7 @@ export function createNextPerformanceRecorder(
             summary = null;
             marker?.remove();
             marker = null;
+            longTaskObserverState.observer?.disconnect();
         }
     };
 
@@ -401,10 +495,78 @@ export function createNextPerformanceRecorder(
         if (summary === null || stopped) {
             return;
         }
-        marker = ensureMarker(documentHost, marker);
-        marker.textContent = JSON.stringify(summary);
-        if (isDebugEnabled(windowHost)) {
-            console.debug("[Revenue Assistant Next] fetch performance", copySummary(summary));
+        const expectedGeneration = summary.generation;
+        const startedAt = safeNow(now);
+        try {
+            marker = ensureMarker(documentHost, marker);
+            marker.textContent = JSON.stringify(summary);
+            if (isDebugEnabled(windowHost)) {
+                console.debug("[Revenue Assistant Next] fetch performance", copySummary(summary));
+            }
+        } finally {
+            recordPhase(expectedGeneration, "markerPublish", safeNow(now) - startedAt);
+        }
+    }
+
+    function recordPhase(
+        expectedGeneration: number,
+        name: NextPerformancePhaseName,
+        elapsedMs: number
+    ): void {
+        if (!isCurrent(expectedGeneration) || summary === null || !PHASE_NAMES.includes(name)) {
+            return;
+        }
+        const duration = safeDuration(elapsedMs);
+        const current = summary.phases[name] ?? { count: 0, maxMs: 0, totalMs: 0 };
+        summary.phases[name] = {
+            count: current.count + 1,
+            maxMs: Math.max(current.maxMs, duration),
+            totalMs: current.totalMs + duration
+        };
+    }
+
+    function createLongTaskObserver(): {
+        observer: PerformanceObserver | null;
+        status: NextPerformanceLongTaskObserverStatus;
+    } {
+        const Observer = (windowHost as Window & {
+            PerformanceObserver?: typeof PerformanceObserver;
+        }).PerformanceObserver;
+        if (typeof Observer !== "function") {
+            return { observer: null, status: "unsupported" };
+        }
+        const supportedEntryTypes = Observer.supportedEntryTypes;
+        if (!Array.isArray(supportedEntryTypes) || !supportedEntryTypes.includes("longtask")) {
+            return { observer: null, status: "unsupported" };
+        }
+        try {
+            const observer = new Observer((list) => {
+                if (summary === null || stopped) {
+                    return;
+                }
+                const expectedGeneration = summary.generation;
+                let changed = false;
+                for (const entry of list.getEntries()) {
+                    if (entry.entryType !== "longtask" || entry.startTime < origin) {
+                        continue;
+                    }
+                    const duration = safeDuration(entry.duration);
+                    summary.mainThread.longTaskCount += 1;
+                    summary.mainThread.totalLongTaskMs += duration;
+                    summary.mainThread.maxLongTaskMs = Math.max(
+                        summary.mainThread.maxLongTaskMs,
+                        duration
+                    );
+                    changed = true;
+                }
+                if (changed && summary?.generation === expectedGeneration) {
+                    scheduleSchedulerPublish();
+                }
+            });
+            observer.observe({ type: "longtask" });
+            return { observer, status: "active" };
+        } catch {
+            return { observer: null, status: "error" };
         }
     }
 
@@ -453,8 +615,10 @@ export function parseNextPerformanceSummary(value: unknown): NextPerformanceSumm
         || !isExactRecord(value, [
             "counts",
             "generation",
+            "mainThread",
             "milestones",
             "operation",
+            "phases",
             "requestProfile",
             "roomBand",
             "route",
@@ -465,7 +629,9 @@ export function parseNextPerformanceSummary(value: unknown): NextPerformanceSumm
         ])
         || !isValidCounts(value.counts)
         || !isValidCoverageCounts(value.counts)
+        || !isValidMainThread(value.mainThread)
         || !isValidMilestones(value.milestones)
+        || !isValidPhases(value.phases)
         || !isValidScheduler(value.scheduler)
     ) {
         return null;
@@ -566,7 +732,9 @@ export function summarizeNextPerformanceSamples(
                     sourceRevision: first.sourceRevision,
                     warmth: first.warmth
                 },
+                mainThread: summarizeMainThread(cohortSamples),
                 milestones,
+                phases: summarizePhases(cohortSamples),
                 scheduler: summarizeScheduler(cohortSamples)
             };
         }),
@@ -663,6 +831,12 @@ function safeCount(value: number): number {
     return Number.isFinite(value) ? Math.max(0, Math.trunc(value)) : 0;
 }
 
+function safeDuration(value: number): number {
+    return Number.isFinite(value)
+        ? Math.max(0, Math.min(Number.MAX_SAFE_INTEGER, Math.round(value)))
+        : 0;
+}
+
 function isDebugEnabled(windowHost: Window): boolean {
     try {
         return windowHost.localStorage.getItem(NEXT_PERFORMANCE_DEBUG_STORAGE_KEY) === "1";
@@ -747,6 +921,37 @@ function isValidMilestones(value: unknown): boolean {
         && isOneOf(milestone.outcome, ["ready", "empty", "partial", "error", "aborted"])
         && isOneOf(milestone.freshness, ["fresh", "stale-revalidating", "unknown"])
         && (milestone.source !== "none" || SHELL_MILESTONES.has(name as NextPerformanceMilestoneName))
+    ));
+}
+
+function isValidMainThread(value: unknown): boolean {
+    return isRecord(value)
+        && isExactRecord(value, [
+            "longTaskCount",
+            "maxLongTaskMs",
+            "observerStatus",
+            "totalLongTaskMs"
+        ])
+        && isSafeNonNegativeInteger(value.longTaskCount)
+        && isSafeNonNegativeInteger(value.maxLongTaskMs)
+        && isSafeNonNegativeInteger(value.totalLongTaskMs)
+        && Number(value.maxLongTaskMs) <= Number(value.totalLongTaskMs)
+        && isOneOf(value.observerStatus, ["active", "unsupported", "error"]);
+}
+
+function isValidPhases(value: unknown): boolean {
+    if (!isRecord(value)) {
+        return false;
+    }
+    return Object.entries(value).every(([name, phase]) => (
+        PHASE_NAMES.includes(name as NextPerformancePhaseName)
+        && isRecord(phase)
+        && isExactRecord(phase, ["count", "maxMs", "totalMs"])
+        && isSafeNonNegativeInteger(phase.count)
+        && isSafeNonNegativeInteger(phase.maxMs)
+        && isSafeNonNegativeInteger(phase.totalMs)
+        && Number(phase.maxMs) <= Number(phase.totalMs)
+        && (Number(phase.count) > 0 || (Number(phase.maxMs) === 0 && Number(phase.totalMs) === 0))
     ));
 }
 
@@ -908,6 +1113,50 @@ function summarizeScheduler(
         startedRequestCount,
         stopClassifications
     };
+}
+
+function summarizeMainThread(
+    samples: readonly NextPerformanceSummary[]
+): NextPerformanceCollectorSummary["cohorts"][number]["mainThread"] {
+    const observerStatuses = createClassificationCounts<NextPerformanceLongTaskObserverStatus>([
+        "active",
+        "unsupported",
+        "error"
+    ]);
+    let longTaskCount = 0;
+    let maxLongTaskMs = 0;
+    let totalLongTaskMs = 0;
+    for (const sample of samples) {
+        observerStatuses[sample.mainThread.observerStatus] += 1;
+        longTaskCount += sample.mainThread.longTaskCount;
+        maxLongTaskMs = Math.max(maxLongTaskMs, sample.mainThread.maxLongTaskMs);
+        totalLongTaskMs += sample.mainThread.totalLongTaskMs;
+    }
+    return { longTaskCount, maxLongTaskMs, observerStatuses, totalLongTaskMs };
+}
+
+function summarizePhases(
+    samples: readonly NextPerformanceSummary[]
+): NextPerformanceCollectorSummary["cohorts"][number]["phases"] {
+    const phases: NextPerformanceCollectorSummary["cohorts"][number]["phases"] = {};
+    for (const name of PHASE_NAMES) {
+        let count = 0;
+        let maxMs = 0;
+        let totalMs = 0;
+        for (const sample of samples) {
+            const phase = sample.phases[name];
+            if (phase === undefined) {
+                continue;
+            }
+            count += phase.count;
+            maxMs = Math.max(maxMs, phase.maxMs);
+            totalMs += phase.totalMs;
+        }
+        if (count > 0) {
+            phases[name] = { count, maxMs, totalMs };
+        }
+    }
+    return phases;
 }
 
 function createClassificationCounts<T extends string>(values: readonly T[]): Record<T, number> {

@@ -985,7 +985,7 @@
 #### RAU-PERF-26 reference batch中のmain-thread stallをphase別に分ける
 
 - 状態:
-  - 次のperformance task。runtime未変更。`0.2.0.34`で判断材料は数秒以内へ入った一方、62 referenceの開始・response処理・保存・最終hydrateのどこで500〜833ms stallが残るかは未分離であり、concurrency 20からの再緩和は保留する。
+  - source gate完了、公開Next / ホテル関西live gate待ち。`rau-next-performance-v2`へ固定phaseとLong Task集計を追加し、request / storage / write契約とforeground 35ms / concurrency 20、Top 50ms / 20を維持した。公開liveで原因phaseを確定するまでconcurrency 20からの再緩和は保留する。
 - 解決する問題:
   - `RAU-PERF-25`はfull scopeの反復hydrateをtrailing 1回へまとめたが、軽量marker readは62件の処理中に周期的なstallを示した。request開始、response compact、IndexedDB write、performance marker publish、final full hydrateの責務を分けないままconcurrencyを上げると、通信完了を速めてもUI freezeを悪化させ得る。
 - 最初のscope:
@@ -993,8 +993,12 @@
   - 62件相当のfixtureでresponse compact / store notificationを再現し、marker publish、source write、final hydrateの単独時間とcombined main-thread delayを測る。計測自体のDOM mutationとobserver costをcontrol比較し、原因phaseを確定してから局所修正を選ぶ。
   - foreground 35ms / concurrency 20、Top 50ms / 20、task集合、endpoint、storage / retention / deletion、retry / stop、Revenue Assistant write 0を維持する。35ms / 30候補は同等の連続windowでLong Task 0または許容内、軽量probe非悪化、HTTP / stop / write 0を確認した後の別gateとする。
 - 合格条件:
-  - instrumentationなしcontrolとcandidateでrequest順、planned / started、保存record、描画内容が一致し、markerは固定enum / count / elapsedだけを持つ。observer非対応時はunknownとし0件へ読み替えない。
+  - instrumentationなしcontrolとcandidateでrequest順、planned / started、保存record、描画内容が一致し、markerは固定enum / count / elapsedだけを持つ。observer非対応時は`unsupported`を明示し、同runの0件を「Long Task観測済み0件」へ読み替えない。非同期I/O phaseの重複するwall elapsedをmain-thread CPU totalへ読み替えない。
   - 合成fixtureと公開Next liveでselected current / evidence、Long Task、軽量probe、最大同時数、HTTP / stop / writeを同じoperation windowで確認し、原因phaseとrollbackを正本化する。
+- 進捗:
+  - response body read / parse、compact、source read / build / write、保存通知、acquisition publish、reference read、curve build / render、marker publishをallowlist集計し、requestごとのphase更新はmemory内だけ、sales-setting render / scheduler milestoneでbounded publishする。Long Task observerはcontext originより前を除外し、非対応 / 初期化errorを明示する。
+  - 1 current GETのfixtureでinstrumentation後もrequest列は同一1件、scheduler eventはplanned / queued / startedのまま、responseから保存通知までのphaseだけが追加された。62 compact eventは明示flushまでmarker DOM writeを0件追加しない。合成Analyze room openはcurrent 67ms、evidence 315ms、referenceRead 94ms、curveBuild 212ms、curveRender最大11ms、Long Task 0、marker 1、console warning / error 0だった。
+  - `npm run check:next`、`npm run check`、Classic publication boundary、distribution / booking curve smoke fixture、`git diff --check`は通過した。synthetic publicationは372,425 bytes、SHA-256 `B4781A379EF80EC315DCBB5CDE1A7C1FEC8425ADE6FF72D6CDC8473547C8BB3F`、source mapは1,485,140 bytes、SHA-256 `23FE67063AB2503121A80378FC073110EF2A6C83C15432136E8A23FBDE2D63F3`だった。公開版とホテル関西の自然な差分windowは未確認である。
 - metadata:
   - `depends-on: RAU-PERF-25 live gate`
   - `spec-impact: yes`

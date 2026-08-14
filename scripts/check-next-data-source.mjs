@@ -149,6 +149,71 @@ assert.throws(
 );
 assert.equal(budgetCalls.length, 1);
 
+const responsePhaseEvents = [];
+const responsePhaseNowValues = [10, 16, 20, 23];
+let responseTextReadCount = 0;
+let responseJsonReadCount = 0;
+const browserTransport = transportModule.createBrowserNextReadTransport({
+    fetch: async () => ({
+        json: async () => {
+            responseJsonReadCount += 1;
+            return { unexpected: true };
+        },
+        ok: true,
+        status: 200,
+        text: async () => {
+            responseTextReadCount += 1;
+            return '{"yad_no":"fixture"}';
+        }
+    }),
+    location: { origin: "https://example.test" },
+    performance: {
+        now() {
+            return responsePhaseNowValues.shift() ?? 23;
+        }
+    }
+});
+assert.deepEqual(
+    await browserTransport.read(
+        { kind: "facility" },
+        new AbortController().signal,
+        {
+            recordPhase(phase, elapsedMs) {
+                responsePhaseEvents.push({ elapsedMs, phase });
+            }
+        }
+    ),
+    { yad_no: "fixture" }
+);
+assert.equal(responseTextReadCount, 1, "diagnostic reads must use one text body read");
+assert.equal(responseJsonReadCount, 0, "diagnostic reads must not consume the response body twice");
+assert.deepEqual(responsePhaseEvents, [
+    { elapsedMs: 6, phase: "responseRead" },
+    { elapsedMs: 3, phase: "responseParse" }
+]);
+
+let fallbackJsonReadCount = 0;
+const fallbackBrowserTransport = transportModule.createBrowserNextReadTransport({
+    fetch: async () => ({
+        json: async () => {
+            fallbackJsonReadCount += 1;
+            return { yad_no: "fallback" };
+        },
+        ok: true,
+        status: 200
+    }),
+    location: { origin: "https://example.test" }
+});
+assert.deepEqual(
+    await fallbackBrowserTransport.read(
+        { kind: "facility" },
+        new AbortController().signal
+    ),
+    { yad_no: "fallback" },
+    "callers without diagnostics must retain the existing response.json path"
+);
+assert.equal(fallbackJsonReadCount, 1);
+
 assert.equal(
     dataSourceModule.parseLiveSimilarityLensAsOfDate({ body: { innerText: "更新日なし" } }),
     null,

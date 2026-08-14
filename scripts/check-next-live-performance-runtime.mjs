@@ -39,7 +39,7 @@ try {
                     || summary.milestones?.rankSettled?.outcome === "empty");
         });
         const topSummary = await readPerformanceSummary(page);
-        assert.equal(topSummary.schemaVersion, "rau-next-performance-v1");
+        assert.equal(topSummary.schemaVersion, "rau-next-performance-v2");
         assert.equal(topSummary.requestProfile, "booking-curve-top-50ms-20-foreground-35ms-20");
         assert.equal(topSummary.route, "top");
         assert.equal(topSummary.counts.eligibleVisibleDates > 0, true);

@@ -102,7 +102,7 @@ async function verifyPerformanceMarkers(origin) {
     await withFixturePage(origin, "?rank=empty", async (page) => {
         await waitForRoot(page, "ready");
         const surfaceSummary = await readPerformanceSummary(page);
-        assert.equal(surfaceSummary.schemaVersion, "rau-next-performance-v1");
+        assert.equal(surfaceSummary.schemaVersion, "rau-next-performance-v2");
         assert.equal(surfaceSummary.requestProfile, "booking-curve-top-50ms-20-foreground-35ms-20");
         assert.equal(surfaceSummary.operation, "analyze-surface");
         assert.equal(surfaceSummary.route, "analyze");
@@ -141,6 +141,11 @@ async function verifyPerformanceMarkers(origin) {
         assert.equal(roomSummary.operation, "room-open");
         assert.equal(roomSummary.milestones.selectedRoomCurrentSettled.outcome, "ready");
         assert.equal(roomSummary.milestones.selectedRoomEvidenceSettled.outcome, "ready");
+        assert.equal(roomSummary.mainThread.observerStatus, "active");
+        assert.equal(roomSummary.mainThread.longTaskCount >= 0, true);
+        assert.equal(roomSummary.phases.referenceRead.count >= 1, true);
+        assert.equal(roomSummary.phases.curveBuild.count >= 1, true);
+        assert.equal(roomSummary.phases.curveRender.count >= 1, true);
         const serialized = JSON.stringify(roomSummary).toLowerCase();
         for (const forbidden of [
             "facilityid",

@@ -37,7 +37,15 @@ export type NextReadRequest =
     };
 
 export interface NextReadTransport {
-    read(request: NextReadRequest, signal: AbortSignal): Promise<unknown>;
+    read(
+        request: NextReadRequest,
+        signal: AbortSignal,
+        diagnostics?: NextReadResponseDiagnostics
+    ): Promise<unknown>;
+}
+
+export interface NextReadResponseDiagnostics {
+    recordPhase(phase: "responseParse" | "responseRead", elapsedMs: number): void;
 }
 
 export interface NextReadSession {
@@ -57,7 +65,7 @@ export class NextReadHttpError extends Error {
 
 export function createBrowserNextReadTransport(windowHost: Window = window): NextReadTransport {
     return {
-        async read(request, signal) {
+        async read(request, signal, diagnostics) {
             const url = buildNextReadUrl(request, windowHost.location.origin);
             const response = await windowHost.fetch(url.toString(), {
                 method: "GET",
@@ -70,9 +78,45 @@ export function createBrowserNextReadTransport(windowHost: Window = window): Nex
             if (!response.ok) {
                 throw new NextReadHttpError(request.kind, response.status);
             }
-            return response.json() as Promise<unknown>;
+            if (diagnostics === undefined) {
+                return response.json() as Promise<unknown>;
+            }
+            const readStartedAt = safePerformanceNow(windowHost);
+            const body = await response.text();
+            recordResponsePhase(
+                diagnostics,
+                "responseRead",
+                safePerformanceNow(windowHost) - readStartedAt
+            );
+            const parseStartedAt = safePerformanceNow(windowHost);
+            try {
+                return JSON.parse(body) as unknown;
+            } finally {
+                recordResponsePhase(
+                    diagnostics,
+                    "responseParse",
+                    safePerformanceNow(windowHost) - parseStartedAt
+                );
+            }
         }
     };
+}
+
+function safePerformanceNow(windowHost: Window): number {
+    const value = windowHost.performance.now();
+    return Number.isFinite(value) ? value : 0;
+}
+
+function recordResponsePhase(
+    diagnostics: NextReadResponseDiagnostics,
+    phase: Parameters<NextReadResponseDiagnostics["recordPhase"]>[0],
+    elapsedMs: number
+): void {
+    try {
+        diagnostics.recordPhase(phase, elapsedMs);
+    } catch {
+        // Diagnostics must never turn a successful read into an acquisition error.
+    }
 }
 
 export function createNextReadSession(
