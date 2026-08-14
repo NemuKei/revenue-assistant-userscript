@@ -835,7 +835,7 @@
 ### RAU-UX-173 booking curve横軸labelの重なりを解消する
 
 - 状態:
-  - source実装、focused / full check、desktop / 390px合成Browser QA、artifact gateまで完了した。main同期とNext publicationを続ける。
+  - source実装、focused / full check、desktop / 390px合成Browser QA、main同期、Next `0.2.0.39` publication、公開artifact / Classic baseline照合まで完了した。Tampermonkey更新後の実画面確認を残す。
 - 解決する問題:
   - 広幅chartで`180 / 150 / 120 / 90日前`が重なり、終端の`0日前 / ACT`も重なるため、横軸の節目を短時間で読めない。
 - 実装境界:
@@ -846,6 +846,10 @@
 - local検証:
   - 修正前は広幅で`180 / 150`、`150 / 120`、`120 / 90`、`0 / ACT`の4組が重なった。修正後は広幅2 chartと390pxの狭幅2 chartで重なり0、広幅label 13件、狭幅label 6件、全LT hitbox 90件、Tooltip表示、console warning / error 0を確認した。
   - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`が通過した。candidateは372,792 bytes、SHA-256 `AA896686F793F9934AA00B8170FAB27CAE7C4F36FD0C98F938590C4D3B3352B2`、synthetic publicationは372,996 bytes、SHA-256 `44595A43D0EF5FD2F3F03FC6F4B5E0DD05045F978FBD1D99A974BEB9E2723438`、source mapは1,487,498 bytes、SHA-256 `5B7EC506C0015A11E778A1DAE8BD5B53C770DA56AAEBC905A4386A24DD1068AD`だった。
+- publication:
+  - source `cec96269c058f24016aeb8f4d92cb88578993920`はValidate Main run `31793776997`を通過し、manual workflow run `31793780976`、run number 39、attempt 1でNext `0.2.0.39`へ配信した。公開Nextは372,997 bytes、SHA-256 `A12C8DAEFDA12592048989742336A61FBD09DA1FA20712248D7976C0B36350D5`、source mapは1,487,498 bytes、SHA-256 `5B7EC506C0015A11E778A1DAE8BD5B53C770DA56AAEBC905A4386A24DD1068AD`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。
+- live検証:
+  - Tampermonkeyを公開Next `0.2.0.39`へ更新後、booking curveの広幅 / 狭幅で横軸labelが重ならず、Tooltipから省略LTも確認できることを確認する。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: during-impl`
