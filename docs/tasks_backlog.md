@@ -781,7 +781,7 @@
   - `decision: D-20260813-003`
   - `supersedes: RAU-UX-168 reflector_name non-display only`
 
-### RAU-PERF-20〜24 Top / Analyzeを判断可能時間SLOで最適化する
+### RAU-PERF-20〜25 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
 
@@ -930,6 +930,28 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `decision: D-20260814-005`
   - `risk: local read and hydration order only; request profile, task set, endpoint, storage and write boundary unchanged`
+
+#### RAU-PERF-25 full reference保存通知をtrailingで1回反映する
+
+- 状態:
+  - source / local gate完了、Next publication / ホテル関西live gate待ち。公開Next `0.2.0.33`で初期 / selected evidenceは数秒以内へ入ったが、reference batchの保存中にfull scopeを反復hydrateして最大1秒超のfreeze要因が残ったため、通信緩和より先に描画cadenceを整えた。
+- 解決する問題:
+  - opened roomのselected reference 62件はerror / stop 0で完了したが、250msのleading-edge refreshが連続保存中に繰り返され、同じscopeのIndexedDB read、curve model、DOM更新を29回相当のLong Taskとして実行した。取得開始を速めてもこの反復処理を集中させるだけである。
+- 実装scope:
+  - dirty集合が、`readProfile=full`、current due 0、reference due 1件以上のscopeだけで構成される場合は、保存通知のたびに既存250ms timerをresetし、通知が静止してから1回refreshする。保存済みreferenceの初回paintは維持する。
+  - current-only scope、current due中、fallback通知、profile混在のdirty集合、batch静止後の最終refreshは従来のleading / scoped refreshを維持する。scope別DOM reuse、rank marker、stale表示、partial / error / abort契約を変えない。
+  - foreground 35ms / concurrency 20、Top 50ms / 20、planned task集合、endpoint、storage / retention / deletion、retry / stop、Revenue Assistant write 0を変更しない。liveでLong Taskと操作応答が改善するまでconcurrency再緩和を行わない。
+- 合格条件:
+  - runtime fixtureでfull reference pending中の150ms間隔3通知が最終1 refreshへまとまり、current-only / current due / fallback / mixed dirtyは先行更新を阻害しないことを固定する。静止後はfresh full dataを反映し、selected evidenceがreadyへ進む。
+  - scope別DOM reuse、unopened room current-only、opened room full、rank empty / ready / error、route / hidden / context abort、console warning / error 0を維持する。
+  - typecheck、lint、Next全check、実Browser fixture、Next fixture / candidate / Classic build、publication / Classic boundary、distribution / booking curve smoke、`git diff --check`を通す。公開後にホテル関西でoverall / all room summary、selected current / evidence、Long Task、軽量probe、planned / started / max concurrency、HTTP / stop / write 0を比較する。
+- metadata:
+  - `depends-on: RAU-PERF-24 live gate`
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260814-006`
+  - `risk: dirty refresh timing only; request profile, task set, endpoint, storage and write boundary unchanged`
 
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 

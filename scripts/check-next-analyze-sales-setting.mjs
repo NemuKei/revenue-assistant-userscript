@@ -150,6 +150,11 @@ assert.match(
 );
 assert.match(runtimeSource, /if \(scopeBatchLoading\) \{\s*dataRefreshPending = true;\s*return;/u);
 assert.match(runtimeSource, /subscribe\?\.\(\(scopeKey\) => \{\s*scheduleDataRefresh\(scopeKey \?\? null\);/u);
+assert.match(
+    runtimeSource,
+    /scheduledDataRefreshTimer !== null\s*&& shouldTrailPendingReferenceRefresh\(\)[\s\S]*clearTimeout\(scheduledDataRefreshTimer\)[\s\S]*function shouldTrailPendingReferenceRefresh[\s\S]*data\?\.readProfile === "full"[\s\S]*current\.dueTaskCount === 0[\s\S]*reference\.dueTaskCount \?\? 0\) > 0/u,
+    "settled-current full reference batches must reset the shared timer until store notifications become quiet"
+);
 assert.match(runtimeSource, /function startScopeRefresh\([\s\S]*void refreshScopes/u);
 assert.match(runtimeSource, /const requested = new Set\(scopeKeys\);\s*const scopes = activeScopes\.filter\(\(scope\) => requested\.has\(scope\.key\)\)/u);
 assert.doesNotMatch(

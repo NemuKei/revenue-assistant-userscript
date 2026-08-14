@@ -25,6 +25,7 @@ try {
     await verifyPerformanceMarkers(origin);
     await verifyRevalidatingCachePaint(origin);
     await verifyDeferredReferenceDoesNotPrematurelySettle(origin);
+    await verifyDeferredReferenceRefreshUsesTrailingDebounce(origin);
     await verifyStoredScopeRefreshIsBounded(origin);
     await verifyRankStatusSurvivesTransientRemount(origin);
     await verifyInitialBatchStopsWithoutNativeSurface(origin);
@@ -48,6 +49,51 @@ async function verifyDeferredReferenceDoesNotPrematurelySettle(origin) {
             roomSummary.milestones.selectedRoomEvidenceSettled,
             undefined,
             "deferred references must remain pending instead of first-writing a terminal partial milestone"
+        );
+    });
+}
+
+async function verifyDeferredReferenceRefreshUsesTrailingDebounce(origin) {
+    await withFixturePage(origin, "?rank=empty&reference=deferred", async (page) => {
+        await waitForRoot(page, "ready");
+        await page.locator(toggleSelector).first().click();
+        await page.waitForFunction(() => (
+            globalThis.document.documentElement.getAttribute(
+                "data-mock-sales-setting-read-room-single-profile"
+            ) === "full"
+        ));
+        await drainFixtureTasks(page);
+        const before = await readScopeLoadCounts(page);
+        await page.evaluate(() => {
+            globalThis.document.dispatchEvent(new Event("mock-refresh-room-single"));
+        });
+        await page.waitForTimeout(150);
+        await page.evaluate(() => {
+            globalThis.document.dispatchEvent(new Event("mock-refresh-room-single"));
+        });
+        await page.waitForTimeout(150);
+        await page.evaluate(() => {
+            globalThis.document.dispatchEvent(new Event("mock-refresh-room-single"));
+        });
+        assert.equal(
+            (await readScopeLoadCounts(page)).single,
+            before.single,
+            "a continuous full-reference batch must not refresh on the first 250ms leading edge"
+        );
+        await page.waitForFunction(
+            ({ attribute, expected }) => Number(
+                globalThis.document.documentElement.getAttribute(attribute) ?? "0"
+            ) === expected,
+            {
+                attribute: "data-mock-sales-setting-load-room-single-count",
+                expected: before.single + 1
+            }
+        );
+        await page.waitForTimeout(350);
+        assert.equal(
+            (await readScopeLoadCounts(page)).single,
+            before.single + 1,
+            "a quiet full-reference batch must settle with one final scoped refresh"
         );
     });
 }

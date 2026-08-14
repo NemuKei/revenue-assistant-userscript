@@ -864,7 +864,26 @@ export function startSalesSettingClassicRuntime(
         } else if (scopeKey !== "") {
             dirtyScopeKeys.add(scopeKey);
         }
+        if (
+            scheduledDataRefreshTimer !== null
+            && shouldTrailPendingReferenceRefresh()
+        ) {
+            windowHost.clearTimeout(scheduledDataRefreshTimer);
+            scheduledDataRefreshTimer = null;
+        }
         schedulePendingDataRefresh();
+    }
+
+    function shouldTrailPendingReferenceRefresh(): boolean {
+        if (dirtyScopeKeys.size === 0 || dirtyScopeKeys.has("*")) {
+            return false;
+        }
+        return Array.from(dirtyScopeKeys).every((scopeKey) => {
+            const data = activeData.get(scopeKey);
+            return data?.readProfile === "full"
+                && data.acquisitionDiagnostics?.current.dueTaskCount === 0
+                && (data.acquisitionDiagnostics.reference.dueTaskCount ?? 0) > 0;
+        });
     }
 
     function schedulePendingDataRefresh(): void {
