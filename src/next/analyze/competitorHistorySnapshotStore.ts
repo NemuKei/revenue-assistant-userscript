@@ -5,7 +5,7 @@ import {
     type CompetitorPriceSnapshotRecord
 } from "../../competitorPriceSnapshotContract";
 
-export const NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT = 120;
+export const NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT = 720;
 
 export type CompetitorHistorySnapshotStoreWriteResult =
     | { status: "stored"; deletedCount: number }
@@ -80,14 +80,19 @@ export function createBrowserCompetitorHistorySnapshotStore(
 export function buildNextCompetitorHistorySnapshotKey(
     facilityId: string,
     stayDate: string,
-    observationDate: string
+    observationDate: string,
+    roomType: string | null = null
 ): string {
-    return [
+    const parts = [
         "next-competitor-history",
         `facility:${facilityId}`,
         `stayDate:${stayDate}`,
         `observedOn:${observationDate}`
-    ].join("|");
+    ];
+    if (roomType !== null) {
+        parts.push(`roomType:${roomType}`);
+    }
+    return parts.join("|");
 }
 
 function openNextCompetitorHistoryDatabase(windowHost: Window): Promise<IDBDatabase> {

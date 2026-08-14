@@ -338,14 +338,14 @@ export function startCompetitorHistoryRuntime(
     function applyCaptureResult(result: CompetitorHistoryCaptureResult): void {
         if (result.status === "stored") {
             captureStatus = "stored";
-            appendCapturedRecord(result.record);
+            appendCapturedRecords(result.records);
             markCompetitorFresh("ready", "network");
             return;
         }
         if (result.status === "skipped") {
             captureStatus = result.reason === "already-stored" ? "already-stored" : "no-competitors";
-            if (result.record !== null) {
-                appendCapturedRecord(result.record);
+            if (result.records.length > 0) {
+                appendCapturedRecords(result.records);
             } else {
                 renderCurrentState();
             }
@@ -369,21 +369,24 @@ export function startCompetitorHistoryRuntime(
         markCompetitorFresh("error", "network");
     }
 
-    function appendCapturedRecord(record: unknown): void {
+    function appendCapturedRecords(records: readonly unknown[]): void {
         if (activeContext === null) {
             return;
         }
-        const snapshotKey = isRecord(record) && typeof record.snapshotKey === "string"
-            ? record.snapshotKey
-            : null;
-        activeContext.records = [
-            ...activeContext.records.filter((item) => (
-                snapshotKey === null
-                || !isRecord(item)
-                || item.snapshotKey !== snapshotKey
-            )),
-            record
-        ];
+        const incomingKeys = new Set(
+            records
+                .map((record) => isRecord(record) && typeof record.snapshotKey === "string"
+                    ? record.snapshotKey
+                    : null)
+                .filter((snapshotKey): snapshotKey is string => snapshotKey !== null)
+        );
+        activeContext.records = activeContext.records
+            .filter((item) => (
+                !isRecord(item)
+                || typeof item.snapshotKey !== "string"
+                || !incomingKeys.has(item.snapshotKey)
+            ))
+            .concat(records);
         rebuildStateFromActiveContext();
     }
 

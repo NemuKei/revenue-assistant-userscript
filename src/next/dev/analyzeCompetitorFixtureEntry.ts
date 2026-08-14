@@ -45,8 +45,8 @@ const writer: CompetitorHistoryWriter = {
         await new Promise<void>((resolve) => window.setTimeout(resolve, 40));
         const record = records.at(-1) ?? null;
         return record === null
-            ? { status: "skipped", reason: "no-competitors", record: null }
-            : { status: "skipped", reason: "already-stored", record };
+            ? { status: "skipped", reason: "no-competitors", records: [] }
+            : { status: "skipped", reason: "already-stored", records: [record] };
     },
     stop() {}
 };

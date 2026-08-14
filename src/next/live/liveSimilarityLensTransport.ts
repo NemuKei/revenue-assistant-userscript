@@ -31,6 +31,7 @@ export type NextReadRequest =
     | {
         kind: "competitor-prices";
         competitorYadNos: readonly string[];
+        jalanRoomTypes: readonly string[];
         maxNumGuests: number;
         minNumGuests: number;
         stayDate: string;
@@ -188,6 +189,9 @@ export function buildNextReadUrl(request: NextReadRequest, origin: string): URL 
     url.searchParams.set("max_num_guests", String(request.maxNumGuests));
     for (const yadNo of request.competitorYadNos) {
         url.searchParams.append("yad_nos[]", yadNo);
+    }
+    for (const roomType of request.jalanRoomTypes) {
+        url.searchParams.append("jalan_room_types[]", roomType);
     }
     return url;
 }

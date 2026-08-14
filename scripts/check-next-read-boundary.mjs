@@ -184,7 +184,7 @@ console.log(JSON.stringify({
     indexedDbMode: "readonly",
     snapshotStoreOwner: toProjectPath(snapshotStorePath),
     snapshotStoreModes: ["readonly", "readwrite"],
-    snapshotRetentionLimit: 120,
+    snapshotRetentionLimit: 720,
     priceTrendStoreOwner: toProjectPath(priceTrendStorePath),
     priceTrendStoreModes: ["readonly", "readwrite"],
     priceTrendRetentionLimit: 1_440,
@@ -362,8 +362,8 @@ function checkTransportBoundary(sources, source) {
     const searchParameterAppendCalls = collectNodes(source, isSearchParameterAppendCall);
     assert.equal(
         searchParameterAppendCalls.length,
-        2,
-        "competitor prices and price trends must each have one repeated query append site"
+        3,
+        "competitor prices must append competitor and room-type filters; price trends append competitors"
     );
     assert.deepEqual(
         searchParameterAppendCalls.map((call) => [
@@ -372,7 +372,8 @@ function checkTransportBoundary(sources, source) {
         ]),
         [
             ["yad_nos[]", "yadNo"],
-            ["yad_nos[]", "yadNo"]
+            ["yad_nos[]", "yadNo"],
+            ["jalan_room_types[]", "roomType"]
         ]
     );
 }
@@ -715,7 +716,7 @@ function checkIndexedDbBoundary(sources) {
         && node.name.text === "NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT"
     ));
     assert.equal(retentionDeclaration.length, 1, "snapshot retention limit must have one declaration");
-    assert.equal(getNumericLiteralValue(retentionDeclaration[0].initializer), 120);
+    assert.equal(getNumericLiteralValue(retentionDeclaration[0].initializer), 720);
     const priceTrendLimitDeclarations = collectNodes(
         getProgramSourceFile(priceTrendStorePath),
         (node) => (

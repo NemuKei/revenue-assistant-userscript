@@ -18,6 +18,10 @@ const writerModule = await importBundledTypeScript(
     "../src/next/analyze/competitorHistoryWriter.ts",
     import.meta.url
 );
+const snapshotStoreModule = await importBundledTypeScript(
+    "../src/next/analyze/competitorHistorySnapshotStore.ts",
+    import.meta.url
+);
 const view = await importBundledTypeScript(
     "../src/next/analyze/competitorHistoryView.ts",
     import.meta.url
@@ -201,20 +205,41 @@ assert.match(fixtureEntry, /resolveStayDate/u);
 assert.match(fixtureEntry, /state=|fixtureMode/u);
 assert.match(fixtureEntry, /performanceRecorder/u);
 assert.match(fixtureEntry, /writer/u);
-assert.match(storeSource, /NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT = 120/u);
+assert.match(storeSource, /NEXT_COMPETITOR_HISTORY_RETENTION_LIMIT = 720/u);
 assert.match(storeSource, /store\.add\(record\)/u);
 assert.match(storeSource, /store\.delete\(snapshotKey\)/u);
 assert.doesNotMatch(storeSource, /deleteDatabase|\.clear\(|\.put\(/u);
+assert.equal(
+    snapshotStoreModule.buildNextCompetitorHistorySnapshotKey(
+        "yad:fixture",
+        "20260812",
+        "2026-07-23"
+    ),
+    "next-competitor-history|facility:yad:fixture|stayDate:20260812|observedOn:2026-07-23"
+);
+assert.equal(
+    snapshotStoreModule.buildNextCompetitorHistorySnapshotKey(
+        "yad:fixture",
+        "20260812",
+        "2026-07-23",
+        "TWIN"
+    ),
+    "next-competitor-history|facility:yad:fixture|stayDate:20260812|observedOn:2026-07-23|roomType:TWIN"
+);
 
 const fixedNow = new Date("2026-07-23T01:02:03.000Z");
 const writerRequests = [];
 const storedByKey = new Map();
 const storedWrites = [];
+let activePriceRequests = 0;
+let maxActivePriceRequests = 0;
+let completedPriceRequests = 0;
 const writer = writerModule.createCompetitorHistoryWriter({
     lockRunner: async (_name, _signal, run) => run(),
     now: () => fixedNow,
     store: {
         async addAndPrune(record) {
+            assert.equal(completedPriceRequests, 6, "all price responses must validate before the first write");
             if (storedByKey.has(record.snapshotKey)) {
                 return { status: "already-stored", deletedCount: 0 };
             }
@@ -233,29 +258,12 @@ const writer = writerModule.createCompetitorHistoryWriter({
                 return [{ yad_no: "competitor-a", name: "競合A（mock）" }];
             }
             if (request.kind === "competitor-prices") {
-                return {
-                    own: {
-                        yad_no: "own",
-                        plans: [{
-                            jalan_facility_room_type: "TWIN",
-                            meal_type: "BREAKFAST",
-                            num_guests: 2,
-                            plan_name: "保存しないプラン名",
-                            price: 12_300,
-                            price_diff: 500,
-                            url: "https://example.invalid/private"
-                        }]
-                    },
-                    competitors: [{
-                        yad_no: "competitor-a",
-                        plans: [{
-                            jalan_facility_room_type: "TWIN",
-                            meal_type: "BREAKFAST",
-                            num_guests: 2,
-                            price: 12_800
-                        }]
-                    }]
-                };
+                activePriceRequests += 1;
+                maxActivePriceRequests = Math.max(maxActivePriceRequests, activePriceRequests);
+                await new Promise((resolve) => setTimeout(resolve, 2));
+                activePriceRequests -= 1;
+                completedPriceRequests += 1;
+                return createWriterPricePayload();
             }
             throw new Error(`unexpected writer request: ${request.kind}`);
         }
@@ -272,8 +280,28 @@ const capture = await writer.capture({
     stayDate: "20260812"
 });
 assert.equal(capture.status, "stored");
-assert.deepEqual(writerRequests.map((request) => request.kind), ["competitors", "competitor-prices"]);
-assert.equal(storedWrites.length, 1);
+assert.deepEqual(writerRequests.map((request) => request.kind), [
+    "competitors",
+    "competitor-prices",
+    "competitor-prices",
+    "competitor-prices",
+    "competitor-prices",
+    "competitor-prices",
+    "competitor-prices"
+]);
+const priceRequests = writerRequests.filter((request) => request.kind === "competitor-prices");
+assert.deepEqual(priceRequests.map((request) => request.jalanRoomTypes), [
+    [],
+    ["SINGLE"],
+    ["DOUBLE"],
+    ["TWIN"],
+    ["TRIPLE"],
+    ["FOUR_BEDS"]
+]);
+assert.equal(maxActivePriceRequests, 2);
+assert.equal(storedWrites.length, 6);
+assert.equal(capture.records.length, 6);
+assert.equal(new Set(storedWrites.map((record) => record.snapshotKey)).size, 6);
 assert.equal(storedWrites[0].source, "next-competitor-tab");
 assert.equal(storedWrites[0].fetchedAt, fixedNow.toISOString());
 assert.equal(storedWrites[0].searchConditionRaw.jalanRoomTypes, null);
@@ -282,6 +310,10 @@ assert.equal(storedWrites[0].payload.own.plans[0].url, null);
 assert.equal(storedWrites[0].payload.own.plans[0].priceDiff, null);
 assert.match(storedWrites[0].query, /date=20260812/u);
 assert.match(storedWrites[0].query, /yad_nos%5B%5D=competitor-a/u);
+assert.doesNotMatch(storedWrites[0].query, /jalan_room_types/u);
+for (const record of storedWrites.slice(1)) {
+    assert.match(record.query, /jalan_room_types%5B%5D=/u);
+}
 const repeatedCapture = await writer.capture({
     existingRecords: [],
     facilityId: "yad:fixture",
@@ -289,7 +321,7 @@ const repeatedCapture = await writer.capture({
 });
 assert.equal(repeatedCapture.status, "skipped");
 assert.equal(repeatedCapture.reason, "already-stored");
-assert.equal(writerRequests.length, 2, "same JST day must not issue another request");
+assert.equal(writerRequests.length, 7, "same JST day must not issue another request");
 writer.stop();
 
 const sameDayWriterRequests = [];
@@ -309,19 +341,82 @@ const sameDayWriter = writerModule.createCompetitorHistoryWriter({
     windowHost: { indexedDB: {}, location: { origin: "https://ra.jalan.net" }, navigator: {} }
 });
 const sameDayResult = await sameDayWriter.capture({
-    existingRecords: [createRecord({
-        fetchedAt: "2026-07-23T00:30:00.000Z",
-        key: "same-day",
-        maxNumGuests: 6,
-        priceOffset: 0
-    })],
+    existingRecords: createSameDayCoverageRecords(),
     facilityId: "yad:fixture",
     stayDate: "20260812"
 });
 assert.equal(sameDayResult.status, "skipped");
 assert.equal(sameDayResult.reason, "already-stored");
+assert.equal(sameDayResult.records.length, 6);
 assert.equal(sameDayWriterRequests.length, 0);
 sameDayWriter.stop();
+
+const partialRequests = [];
+const partialWrites = [];
+const partialWriter = writerModule.createCompetitorHistoryWriter({
+    lockRunner: async (_name, _signal, run) => run(),
+    now: () => fixedNow,
+    store: {
+        async addAndPrune(record) {
+            partialWrites.push(record);
+            return { status: "stored", deletedCount: 0 };
+        },
+        async readBySnapshotKey() { return null; }
+    },
+    transport: {
+        async read(request) {
+            partialRequests.push(request);
+            return request.kind === "competitors"
+                ? [{ yad_no: "competitor-a", name: "競合A（mock）" }]
+                : createWriterPricePayload();
+        }
+    },
+    windowHost: { indexedDB: {}, location: { origin: "https://ra.jalan.net" }, navigator: {} }
+});
+const partialResult = await partialWriter.capture({
+    existingRecords: createSameDayCoverageRecords().slice(0, 1),
+    facilityId: "yad:fixture",
+    stayDate: "20260812"
+});
+assert.equal(partialResult.status, "stored");
+assert.deepEqual(
+    partialRequests.filter((request) => request.kind === "competitor-prices")
+        .map((request) => request.jalanRoomTypes),
+    [["SINGLE"], ["DOUBLE"], ["TWIN"], ["TRIPLE"], ["FOUR_BEDS"]]
+);
+assert.equal(partialWrites.length, 5, "only missing room-type scopes must be stored");
+partialWriter.stop();
+
+const invalidWrites = [];
+const invalidWriter = writerModule.createCompetitorHistoryWriter({
+    lockRunner: async (_name, _signal, run) => run(),
+    now: () => fixedNow,
+    store: {
+        async addAndPrune(record) {
+            invalidWrites.push(record);
+            return { status: "stored", deletedCount: 0 };
+        },
+        async readBySnapshotKey() { return null; }
+    },
+    transport: {
+        async read(request) {
+            if (request.kind === "competitors") {
+                return [{ yad_no: "competitor-a", name: "競合A（mock）" }];
+            }
+            return request.jalanRoomTypes[0] === "TWIN" ? null : createWriterPricePayload();
+        }
+    },
+    windowHost: { indexedDB: {}, location: { origin: "https://ra.jalan.net" }, navigator: {} }
+});
+const invalidResult = await invalidWriter.capture({
+    existingRecords: [],
+    facilityId: "yad:fixture",
+    stayDate: "20260812"
+});
+assert.equal(invalidResult.status, "error");
+assert.equal(invalidResult.reason, "competitor-prices-response-invalid");
+assert.equal(invalidWrites.length, 0, "invalid batch must not persist a partial scope set");
+invalidWriter.stop();
 
 const corruptRecordWriterRequests = [];
 const corruptRecordWriter = writerModule.createCompetitorHistoryWriter({
@@ -350,6 +445,45 @@ assert.equal(corruptRecordWriterRequests.length, 0);
 corruptRecordWriter.stop();
 
 console.log("Next Analyze competitor history checks passed");
+
+function createSameDayCoverageRecords() {
+    return [null, "SINGLE", "DOUBLE", "TWIN", "TRIPLE", "FOUR_BEDS"].map((roomType, index) => (
+        createRecord({
+            conditionSignature: `same-day-${roomType ?? "unspecified"}`,
+            fetchedAt: "2026-07-23T00:30:00.000Z",
+            key: `same-day-${roomType ?? "unspecified"}`,
+            maxNumGuests: 6,
+            priceOffset: index * 100,
+            requestRoomTypes: roomType === null ? [] : [roomType]
+        })
+    ));
+}
+
+function createWriterPricePayload() {
+    return {
+        own: {
+            yad_no: "own",
+            plans: [{
+                jalan_facility_room_type: "TWIN",
+                meal_type: "BREAKFAST",
+                num_guests: 2,
+                plan_name: "保存しないプラン名",
+                price: 12_300,
+                price_diff: 500,
+                url: "https://example.invalid/private"
+            }]
+        },
+        competitors: [{
+            yad_no: "competitor-a",
+            plans: [{
+                jalan_facility_room_type: "TWIN",
+                meal_type: "BREAKFAST",
+                num_guests: 2,
+                price: 12_800
+            }]
+        }]
+    };
+}
 
 function createRecord({
     conditionSignature = "condition-main",

@@ -23,7 +23,21 @@ import {
 
 const DEFAULT_MIN_NUM_GUESTS = 1;
 const DEFAULT_MAX_NUM_GUESTS = 6;
+const COMPETITOR_HISTORY_PRICE_CONCURRENCY = 2;
 const JST_OFFSET_MILLISECONDS = 9 * 60 * 60 * 1000;
+export const COMPETITOR_HISTORY_ROOM_TYPES = [
+    "SINGLE",
+    "DOUBLE",
+    "TWIN",
+    "TRIPLE",
+    "FOUR_BEDS"
+] as const;
+type CompetitorHistoryRoomType = typeof COMPETITOR_HISTORY_ROOM_TYPES[number];
+type CompetitorHistoryRoomTypeScope = CompetitorHistoryRoomType | null;
+const COMPETITOR_HISTORY_SCOPES: readonly CompetitorHistoryRoomTypeScope[] = [
+    null,
+    ...COMPETITOR_HISTORY_ROOM_TYPES
+];
 
 export interface CompetitorHistoryCaptureOptions {
     existingRecords: readonly unknown[];
@@ -32,11 +46,11 @@ export interface CompetitorHistoryCaptureOptions {
 }
 
 export type CompetitorHistoryCaptureResult =
-    | { status: "stored"; record: CompetitorPriceSnapshotRecord; deletedCount: number }
+    | { status: "stored"; records: CompetitorPriceSnapshotRecord[]; deletedCount: number }
     | {
         status: "skipped";
         reason: "already-stored" | "no-competitors";
-        record: CompetitorPriceSnapshotRecord | null;
+        records: CompetitorPriceSnapshotRecord[];
     }
     | { status: "unavailable"; reason: "indexeddb-unavailable" }
     | {
@@ -102,44 +116,48 @@ export function createCompetitorHistoryWriter(
 
             const captureStartedAt = now();
             const observationDate = formatJstDate(captureStartedAt);
-            const snapshotKey = buildNextCompetitorHistorySnapshotKey(
+            const dayCaptureKey = buildNextCompetitorHistorySnapshotKey(
                 facilityId,
                 stayDate,
                 observationDate
             );
-            const existingRecord = selectSameDayUnspecifiedRecord(
-                captureOptions.existingRecords,
+            const candidateRecords = [
+                ...captureOptions.existingRecords,
+                ...completedRecords.values()
+            ];
+            const existingRecords = selectSameDayCoverageRecords(
+                candidateRecords,
                 facilityId,
                 stayDate,
                 observationDate
-            ) ?? completedRecords.get(snapshotKey) ?? null;
-            if (existingRecord !== null) {
+            );
+            if (existingRecords.length === COMPETITOR_HISTORY_SCOPES.length) {
                 return Promise.resolve({
                     status: "skipped",
                     reason: "already-stored",
-                    record: existingRecord
+                    records: existingRecords
                 });
             }
             if (!("indexedDB" in windowHost)) {
                 return Promise.resolve({ status: "unavailable", reason: "indexeddb-unavailable" });
             }
-            if (activeKey === snapshotKey && activeCapture !== null) {
+            if (activeKey === dayCaptureKey && activeCapture !== null) {
                 return activeCapture;
             }
 
             activeController?.abort();
             const controller = new AbortController();
             activeController = controller;
-            activeKey = snapshotKey;
+            activeKey = dayCaptureKey;
             const capture = lockRunner(
-                `revenue-assistant-next:${snapshotKey}`,
+                `revenue-assistant-next:${dayCaptureKey}`,
                 controller.signal,
                 () => captureCompetitorHistorySnapshot({
                     captureStartedAt,
+                    existingRecords,
                     facilityId,
                     observationDate,
                     signal: controller.signal,
-                    snapshotKey,
                     stayDate,
                     store,
                     transport,
@@ -147,10 +165,10 @@ export function createCompetitorHistoryWriter(
                 })
             )
                 .then((result) => {
-                    if (result.status === "stored") {
-                        completedRecords.set(snapshotKey, result.record);
-                    } else if (result.status === "skipped" && result.record !== null) {
-                        completedRecords.set(snapshotKey, result.record);
+                    if (result.status === "stored" || result.status === "skipped") {
+                        for (const record of result.records) {
+                            completedRecords.set(record.snapshotKey, record);
+                        }
                     }
                     return result;
                 })
@@ -183,14 +201,25 @@ export function selectSameDayUnspecifiedRecord(
     stayDate: string,
     observationDate: string
 ): CompetitorPriceSnapshotRecord | null {
-    let latest: CompetitorPriceSnapshotRecord | null = null;
+    return selectSameDayCoverageRecords(values, facilityId, stayDate, observationDate)
+        .find((record) => getRoomTypeScope(record) === null) ?? null;
+}
+
+export function selectSameDayCoverageRecords(
+    values: readonly unknown[],
+    facilityId: string,
+    stayDate: string,
+    observationDate: string
+): CompetitorPriceSnapshotRecord[] {
+    const latestByScope = new Map<string, CompetitorPriceSnapshotRecord>();
     for (const value of values) {
         if (!isValidSnapshotRecord(value)) {
             continue;
         }
-        const roomTypes = value.searchConditionRaw.jalanRoomTypes;
+        const scope = getRoomTypeScope(value);
         if (
-            value.facilityId !== facilityId
+            scope === undefined
+            || value.facilityId !== facilityId
             || normalizeStayDate(String(value.stayDate ?? "")) !== stayDate
             || normalizeStayDate(String(value.searchConditionRaw.stayDate ?? "")) !== stayDate
             || formatJstDate(new Date(value.fetchedAt)) !== observationDate
@@ -200,52 +229,75 @@ export function selectSameDayUnspecifiedRecord(
             || value.searchConditionRaw.mealTypes !== null
             || value.searchConditionRaw.planNameWords !== null
             || value.searchConditionRaw.planNameContains !== null
-            || (roomTypes !== null && roomTypes !== undefined && (!Array.isArray(roomTypes) || roomTypes.length > 0))
         ) {
             continue;
         }
-        if (latest === null || value.fetchedAt.localeCompare(latest.fetchedAt) > 0) {
-            latest = value;
+        const key = scope ?? "";
+        const latest = latestByScope.get(key);
+        if (latest === undefined || value.fetchedAt.localeCompare(latest.fetchedAt) > 0) {
+            latestByScope.set(key, value);
         }
     }
-    return latest;
+    return COMPETITOR_HISTORY_SCOPES
+        .map((scope) => latestByScope.get(scope ?? "") ?? null)
+        .filter((record): record is CompetitorPriceSnapshotRecord => record !== null);
 }
 
 async function captureCompetitorHistorySnapshot(options: {
     captureStartedAt: Date;
+    existingRecords: readonly CompetitorPriceSnapshotRecord[];
     facilityId: string;
     observationDate: string;
     signal: AbortSignal;
-    snapshotKey: string;
     stayDate: string;
     store: CompetitorHistorySnapshotStore;
     transport: NextReadTransport;
     windowHost: Window;
 }): Promise<CompetitorHistoryCaptureResult> {
-    let storedRecord: CompetitorPriceSnapshotRecord | null;
-    try {
-        storedRecord = await options.store.readBySnapshotKey(options.snapshotKey);
-    } catch {
-        return { status: "error", reason: "storage-failed" };
+    const coveredRecords = [...options.existingRecords];
+    const coveredScopes = new Set(coveredRecords.map((record) => getRoomTypeScope(record)));
+    const missingScopes = COMPETITOR_HISTORY_SCOPES.filter((scope) => !coveredScopes.has(scope));
+    for (const scope of missingScopes) {
+        const snapshotKey = buildNextCompetitorHistorySnapshotKey(
+            options.facilityId,
+            options.stayDate,
+            options.observationDate,
+            scope
+        );
+        let storedRecord: CompetitorPriceSnapshotRecord | null;
+        try {
+            storedRecord = await options.store.readBySnapshotKey(snapshotKey);
+        } catch {
+            return { status: "error", reason: "storage-failed" };
+        }
+        if (options.signal.aborted) {
+            return { status: "error", reason: "aborted" };
+        }
+        if (storedRecord === null) {
+            continue;
+        }
+        const matchingStoredRecords = selectSameDayCoverageRecords(
+            [storedRecord],
+            options.facilityId,
+            options.stayDate,
+            options.observationDate
+        );
+        const matchingStoredRecord = matchingStoredRecords[0];
+        if (matchingStoredRecords.length !== 1
+            || matchingStoredRecord === undefined
+            || getRoomTypeScope(matchingStoredRecord) !== scope) {
+            return { status: "error", reason: "storage-failed" };
+        }
+        coveredRecords.push(matchingStoredRecord);
+        coveredScopes.add(scope);
     }
-    if (options.signal.aborted) {
-        return { status: "error", reason: "aborted" };
-    }
-    const matchingStoredRecord = selectSameDayUnspecifiedRecord(
-        storedRecord === null ? [] : [storedRecord],
-        options.facilityId,
-        options.stayDate,
-        options.observationDate
-    );
-    if (matchingStoredRecord !== null) {
+    const remainingScopes = COMPETITOR_HISTORY_SCOPES.filter((scope) => !coveredScopes.has(scope));
+    if (remainingScopes.length === 0) {
         return {
             status: "skipped",
             reason: "already-stored",
-            record: matchingStoredRecord
+            records: orderCoverageRecords(coveredRecords)
         };
-    }
-    if (storedRecord !== null) {
-        return { status: "error", reason: "storage-failed" };
     }
 
     let competitorsPayload: unknown;
@@ -262,15 +314,81 @@ async function captureCompetitorHistorySnapshot(options: {
         return { status: "error", reason: "competitors-response-invalid" };
     }
     if (competitorSet.length === 0) {
-        return { status: "skipped", reason: "no-competitors", record: null };
+        return { status: "skipped", reason: "no-competitors", records: coveredRecords };
     }
 
+    let recordsToStore: CompetitorPriceSnapshotRecord[];
+    try {
+        recordsToStore = await mapWithConcurrency(
+            remainingScopes,
+            COMPETITOR_HISTORY_PRICE_CONCURRENCY,
+            async (scope) => buildCapturedRecord(options, competitorSet, scope)
+        );
+    } catch (error: unknown) {
+        return {
+            status: "error",
+            reason: options.signal.aborted || isAbortError(error)
+                ? "aborted"
+                : error instanceof InvalidCompetitorPricesResponseError
+                    ? "competitor-prices-response-invalid"
+                    : "request-failed"
+        };
+    }
+
+    if (options.signal.aborted) {
+        return { status: "error", reason: "aborted" };
+    }
+    const storedRecords: CompetitorPriceSnapshotRecord[] = [];
+    let deletedCount = 0;
+    let storedNewRecord = false;
+    try {
+        for (const record of recordsToStore) {
+            const result = await options.store.addAndPrune(record);
+            deletedCount += result.deletedCount;
+            if (result.status === "stored") {
+                storedNewRecord = true;
+                storedRecords.push(record);
+                continue;
+            }
+            const existing = await options.store.readBySnapshotKey(record.snapshotKey);
+            const matchingExisting = selectSameDayCoverageRecords(
+                existing === null ? [] : [existing],
+                options.facilityId,
+                options.stayDate,
+                options.observationDate
+            ).find((candidate) => getRoomTypeScope(candidate) === getRoomTypeScope(record));
+            if (matchingExisting === undefined) {
+                return { status: "error", reason: "storage-failed" };
+            }
+            storedRecords.push(matchingExisting);
+        }
+        const records = orderCoverageRecords([...coveredRecords, ...storedRecords]);
+        return storedNewRecord
+            ? { status: "stored", records, deletedCount }
+            : { status: "skipped", reason: "already-stored", records };
+    } catch {
+        return { status: "error", reason: "storage-failed" };
+    }
+}
+
+async function buildCapturedRecord(
+    options: {
+        captureStartedAt: Date;
+        facilityId: string;
+        signal: AbortSignal;
+        stayDate: string;
+        transport: NextReadTransport;
+        windowHost: Window;
+    },
+    competitorSet: readonly CompetitorPriceSnapshotCompetitor[],
+    scope: CompetitorHistoryRoomTypeScope
+): Promise<CompetitorPriceSnapshotRecord> {
     const searchCondition: CompetitorPriceSnapshotSearchCondition = {
         stayDate: options.stayDate,
         minNumGuests: DEFAULT_MIN_NUM_GUESTS,
         maxNumGuests: DEFAULT_MAX_NUM_GUESTS,
         competitorYadNos: competitorSet.map((competitor) => competitor.yadNo),
-        jalanRoomTypes: null,
+        jalanRoomTypes: scope === null ? null : [scope],
         mealTypes: null,
         planNameWords: null,
         planNameContains: null
@@ -278,27 +396,24 @@ async function captureCompetitorHistorySnapshot(options: {
     const priceRequest: NextReadRequest = {
         kind: "competitor-prices",
         competitorYadNos: searchCondition.competitorYadNos,
+        jalanRoomTypes: searchCondition.jalanRoomTypes ?? [],
         maxNumGuests: searchCondition.maxNumGuests,
         minNumGuests: searchCondition.minNumGuests,
         stayDate: searchCondition.stayDate
     };
-    let pricesPayload: unknown;
-    try {
-        pricesPayload = await options.transport.read(priceRequest, options.signal);
-    } catch (error: unknown) {
-        return {
-            status: "error",
-            reason: options.signal.aborted || isAbortError(error) ? "aborted" : "request-failed"
-        };
-    }
+    const pricesPayload = await options.transport.read(priceRequest, options.signal);
     const payload = compactCompetitorPricePayload(pricesPayload);
     if (payload === null) {
-        return { status: "error", reason: "competitor-prices-response-invalid" };
+        throw new InvalidCompetitorPricesResponseError();
     }
-
     const requestUrl = buildNextReadUrl(priceRequest, options.windowHost.location.origin);
-    const record: CompetitorPriceSnapshotRecord = {
-        snapshotKey: options.snapshotKey,
+    return {
+        snapshotKey: buildNextCompetitorHistorySnapshotKey(
+            options.facilityId,
+            options.stayDate,
+            formatJstDate(options.captureStartedAt),
+            scope
+        ),
         facilityId: options.facilityId,
         stayDate: options.stayDate,
         conditionSignature: buildCompetitorPriceConditionSignature(searchCondition),
@@ -308,40 +423,69 @@ async function captureCompetitorHistorySnapshot(options: {
         endpoint: COMPETITOR_PRICE_ENDPOINT,
         query: requestUrl.searchParams.toString(),
         schemaVersion: COMPETITOR_PRICE_SNAPSHOT_SCHEMA_VERSION,
-        competitorSet,
+        competitorSet: [...competitorSet],
         payload
     };
+}
 
-    if (options.signal.aborted) {
-        return { status: "error", reason: "aborted" };
-    }
-    try {
-        const result = await options.store.addAndPrune(record);
-        if (result.status === "already-stored") {
-            const existing = await options.store.readBySnapshotKey(options.snapshotKey);
-            const matchingExisting = selectSameDayUnspecifiedRecord(
-                existing === null ? [] : [existing],
-                options.facilityId,
-                options.stayDate,
-                options.observationDate
-            );
-            if (matchingExisting === null) {
-                return { status: "error", reason: "storage-failed" };
+class InvalidCompetitorPricesResponseError extends Error {}
+
+async function mapWithConcurrency<TInput, TOutput>(
+    values: readonly TInput[],
+    concurrency: number,
+    mapValue: (value: TInput) => Promise<TOutput>
+): Promise<TOutput[]> {
+    const output = new Array<TOutput>(values.length);
+    let nextIndex = 0;
+    const failures: unknown[] = [];
+    const workers = Array.from(
+        { length: Math.min(concurrency, values.length) },
+        async () => {
+            while (failures.length === 0 && nextIndex < values.length) {
+                const index = nextIndex;
+                nextIndex += 1;
+                const value = values[index];
+                if (value === undefined) {
+                    break;
+                }
+                try {
+                    output[index] = await mapValue(value);
+                } catch (error: unknown) {
+                    failures.push(error);
+                }
             }
-            return {
-                status: "skipped",
-                reason: "already-stored",
-                record: matchingExisting
-            };
         }
-        return {
-            status: "stored",
-            record,
-            deletedCount: result.deletedCount
-        };
-    } catch {
-        return { status: "error", reason: "storage-failed" };
+    );
+    await Promise.all(workers);
+    if (failures.length > 0) {
+        throw failures[0];
     }
+    return output;
+}
+
+function getRoomTypeScope(
+    record: CompetitorPriceSnapshotRecord
+): CompetitorHistoryRoomTypeScope | undefined {
+    const roomTypes = record.searchConditionRaw.jalanRoomTypes;
+    if (roomTypes === null || roomTypes === undefined || roomTypes.length === 0) {
+        return null;
+    }
+    if (
+        roomTypes.length === 1
+        && COMPETITOR_HISTORY_ROOM_TYPES.includes(roomTypes[0] as CompetitorHistoryRoomType)
+    ) {
+        return roomTypes[0] as CompetitorHistoryRoomType;
+    }
+    return undefined;
+}
+
+function orderCoverageRecords(
+    records: readonly CompetitorPriceSnapshotRecord[]
+): CompetitorPriceSnapshotRecord[] {
+    const byScope = new Map(records.map((record) => [getRoomTypeScope(record), record]));
+    return COMPETITOR_HISTORY_SCOPES
+        .map((scope) => byScope.get(scope) ?? null)
+        .filter((record): record is CompetitorPriceSnapshotRecord => record !== null);
 }
 
 function createBrowserCaptureLockRunner(windowHost: Window): CompetitorHistoryCaptureLockRunner {

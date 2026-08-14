@@ -856,6 +856,30 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `risk: rendered axis labels only; data / request / storage / write contracts unchanged`
 
+### RAU-UX-174 Next競合価格の部屋タイプ別snapshot取得を復元する
+
+- 状態:
+  - source実装とlocal gateまで完了した。main同期、Next manual publication、公開artifact / Classic baseline照合を残す。
+- 解決する問題:
+  - 競合価格の指定なしresponseは各部屋タイプを網羅する契約ではなく、`TWIN`など単独指定時だけ返るplanがある。現行Nextだけで利用を続けると、部屋タイプfilterが指定なしsnapshotへfallbackし、当日のspecific最安値が欠け得る。
+- 実装境界:
+  - 既存Classicと同じ6条件、部屋タイプ指定なしと`SINGLE / DOUBLE / TWIN / TRIPLE / FOUR_BEDS`単独指定だけを対象にする。競合一覧1 GETを共有し、Classic / Nextの同日有効recordをscope別に再利用して不足priceだけを最大2並列で取得する。
+  - 可視な標準競合価格tab、現在stay date、facility一致、document visibleの既存gate、context離脱abort、同一run retryなしを維持する。周辺日・background prefetch、新規endpoint、`SEMI_DOUBLE`単独指定、Revenue Assistant writeは追加しない。
+  - Next保持上限を120観測日相当の720 recordへ広げ、既存の指定なしsnapshot keyとrecord schemaは互換維持する。Classic database / recordは変更・削除しない。
+- 合格条件:
+  - focused testで、指定なしを含む6price GET、specific query、price最大同時2、全response検証前write 0、既存scopeのskip、不足scopeだけの補完、同日再実行0 GET、specific keyの一意性、保持720件を固定する。
+  - 部屋タイプfilterがspecific recordを優先する既存modelを維持し、capture完了時は6recordをmemoryへまとめて反映して再描画を1回にする。
+  - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution smoke、`git diff --check`を通す。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260814-007`
+  - `risk: visible-tab read-only request ceiling 2 GET -> 7 GET; same-day missing-only, concurrency 2, no retry`
+- local検証:
+  - focused testで競合一覧1 + price 6、指定なし / 5 specific query、price最大同時2、全response完了前write 0、同日6 scope時0 GET、指定なし既存時specific 5件だけ、invalid response時write 0、key互換 / 一意性、保持720件を確認した。
+  - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker、distribution / booking curve smoke、`git diff --check`が通過した。candidateは374,196 bytes、SHA-256 `6271ED530EBED5D7A3EB76853ED58BC9040F52ECA16DBDFE4136B2B83DB9CFB8`、synthetic publicationは374,400 bytes、SHA-256 `E04DB49DC277E77456009A2C9CBD664C4C3D207F1E185F882FFB6C2093579FF7`、source mapは1,495,944 bytes、SHA-256 `332EBC484E6823DF9A512564FA58A9038181F679DA1D8C7A3C9670E5C080824A`だった。
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
