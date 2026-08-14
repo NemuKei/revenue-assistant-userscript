@@ -807,6 +807,29 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `risk: rendered tooltip and focus treatment only; request / storage / write contracts unchanged`
 
+### RAU-UX-172 booking curve / 90日価格推移のbrowser native Tooltip重複を除く
+
+- 状態:
+  - source gate完了。競合価格で解消したSVG `title`とNext Tooltipの併存が、standalone / 販売設定内booking curveと90日価格推移にも残っていることを合成Browserとsourceで確認し、同じaccessibility契約へ揃えた。main同期とNext publicationはこのsource gate後に行う。
+- 解決する問題:
+  - booking curveまたは90日価格推移を操作した際に、LT / 施設別のNext TooltipへSVG全体のbrowser native Tooltipが重なる可能性がある。
+- 実装境界:
+  - SVG `title`を外し、同じ読み上げ名を`aria-label`、説明を固有`desc` + `aria-describedby`へ移す。LT / rank marker hitbox、keyboard focus、Next Tooltip本文と位置、accessible table、chart dataは変更しない。
+  - API request、取得順、capture、IndexedDB、retention、Revenue Assistant write、Classic公開物は変更しない。
+- 合格条件:
+  - standalone / 販売設定内booking curveと90日価格推移でSVG直下`title`が0、SVG全数の`aria-label` / `desc` / `aria-describedby`が揃い、操作中のNext Tooltipだけが1件visibleとなる。
+  - focused / Next全check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`を通す。
+- local検証:
+  - 合成Browserでbooking curveはSVG 2、`title` 0、`aria-label` / `desc` / `aria-describedby`各2、Next Tooltip 2のうちvisible 1を確認した。90日価格推移はSVG 4、`title` 0、`aria-label` / `desc` / `aria-describedby`各4、Next Tooltip 4のうちvisible 1で、console warning / errorは0だった。
+  - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`が通過した。candidateは372,670 bytes、SHA-256 `D95CD525EC445E0B2955DAA1489F1852022D52C94055CC19AC9A54A166C054A3`、synthetic publicationは372,874 bytes、SHA-256 `4F3E7528857EF2F926C61C6E6550F46EB6BABB1A4F047D8C749BC05005DC6219`、source mapは1,486,956 bytes、SHA-256 `D6B4E469A960711377C2213CF4EA3437BB0B30FE993361418C084B12797DECD6`だった。
+- publication:
+  - source gate後にmain同期とmanual Next publicationを行い、公開artifact / Classic baselineを照合する。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `risk: rendered tooltip accessibility only; request / storage / write contracts unchanged`
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る

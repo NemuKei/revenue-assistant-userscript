@@ -491,6 +491,18 @@ const embeddedRoomCurve = view.createEmbeddedBookingCurveReference(
     singleRankHistory,
     { narrow: false, titleId: "room-booking-curve-title" }
 );
+const embeddedRoomSvgs = findVirtualElementsByAttribute(
+    embeddedRoomCurve,
+    "data-ra-next-booking-curve-reference-svg"
+);
+assert.equal(embeddedRoomSvgs.length, 2);
+assert.equal(findVirtualElementsByTagName(embeddedRoomCurve, "title").length, 0);
+for (const svg of embeddedRoomSvgs) {
+    assert.match(svg.getAttribute("aria-label"), /ブッキングカーブ基準比較/u);
+    const description = svg.children.find((child) => child.tagName === "desc");
+    assert.notEqual(description, undefined);
+    assert.equal(svg.getAttribute("aria-describedby"), description.getAttribute("id"));
+}
 assert.equal(
     findVirtualElementsByAttribute(embeddedRoomCurve, "data-ra-next-booking-curve-adjustment-response").length,
     0,
@@ -1247,6 +1259,9 @@ assert.match(viewSource, /hitbox\.setAttribute\("r", "8"\)/u);
 assert.doesNotMatch(viewSource, /data-ra-next-booking-curve-rank-guide|createElementNS\("http:\/\/www\.w3\.org\/2000\/svg", "polygon"\)/u);
 assert.doesNotMatch(viewSource, /◆ ランク変更|data-ra-next-booking-curve-rank-legend/u);
 assert.match(viewSource, /positionBookingCurveTooltip\(tooltip, x, chartViewBoxWidth, cursorClientX\)/u);
+assert.doesNotMatch(viewSource, /createElementNS\("http:\/\/www\.w3\.org\/2000\/svg", "title"\)/u);
+assert.match(viewSource, /svg\.setAttribute\("aria-label", `\$\{viewModel\.scope\.label\} \$\{panel\.title\}のブッキングカーブ基準比較`\)/u);
+assert.match(viewSource, /svg\.setAttribute\("aria-describedby", descriptionId\)/u);
 assert.match(viewSource, /positionViewportTooltip\(tooltip, \{/u);
 assert.match(viewSource, /anchorClientX: cursorClientX \?\? chartViewportLeft \+ x \* scale/u);
 assert.match(viewSource, /preferredClientTop: \(chartRect\?\.top \?\? panelRect\?\.top \?\? 0\) \+ 10/u);
@@ -1448,6 +1463,13 @@ function findVirtualElementsByAttribute(root, attribute) {
     return [
         ...(root.getAttribute(attribute) === null ? [] : [root]),
         ...root.children.flatMap((child) => findVirtualElementsByAttribute(child, attribute))
+    ];
+}
+
+function findVirtualElementsByTagName(root, tagName) {
+    return [
+        ...(root.tagName === tagName ? [root] : []),
+        ...root.children.flatMap((child) => findVirtualElementsByTagName(child, tagName))
     ];
 }
 

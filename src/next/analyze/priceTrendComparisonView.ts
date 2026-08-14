@@ -600,11 +600,12 @@ function createChart(
     svg.setAttribute(PRICE_TREND_COMPARISON_SVG_ATTRIBUTE, String(comparison.guestCount));
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.setAttribute("role", "img");
-    const title = documentHost.createElementNS("http://www.w3.org/2000/svg", "title");
-    title.textContent = `${comparison.guestCount}名の施設別90日価格推移`;
+    svg.setAttribute("aria-label", `${comparison.guestCount}名の施設別90日価格推移`);
     const description = documentHost.createElementNS("http://www.w3.org/2000/svg", "desc");
+    description.id = `ra-next-price-trend-chart-description-${comparison.guestCount}`;
     description.textContent = "左が宿泊日の約90日前、右が宿泊日側です。全値は下の表でも確認できます。";
-    svg.append(title, description);
+    svg.setAttribute("aria-describedby", description.id);
+    svg.append(description);
 
     const domain = resolvePriceDomain(comparison.points);
     for (const tick of buildPriceTicks(domain.min, domain.max, 5)) {

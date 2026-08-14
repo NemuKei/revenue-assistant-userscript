@@ -618,6 +618,10 @@ assert.match(viewSource, /\["施設", "部屋タイプ", "価格", "前回差分
 assert.match(viewSource, /guide\.setAttribute\(PRICE_TREND_COMPARISON_GUIDE_ATTRIBUTE/u);
 assert.match(viewSource, /setActiveHitbox\(hitboxes, hitbox\)/u);
 assert.match(viewSource, /positionTooltip\(tooltip, x, width, event\.clientX\)/u);
+assert.doesNotMatch(viewSource, /createElementNS\("http:\/\/www\.w3\.org\/2000\/svg", "title"\)/u);
+assert.match(viewSource, /svg\.setAttribute\("aria-label", `\$\{comparison\.guestCount\}名の施設別90日価格推移`\)/u);
+assert.match(viewSource, /description\.id = `ra-next-price-trend-chart-description-\$\{comparison\.guestCount\}`/u);
+assert.match(viewSource, /svg\.setAttribute\("aria-describedby", description\.id\)/u);
 assert.match(viewSource, /showGuide\(guide, x\)/u);
 assert.match(viewSource, /positionViewportTooltip\(tooltip, \{/u);
 assert.match(viewSource, /anchorClientX: cursorClientX \?\? chartViewportLeft \+ x \* scale/u);

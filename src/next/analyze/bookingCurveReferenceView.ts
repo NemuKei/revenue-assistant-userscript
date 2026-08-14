@@ -24,6 +24,7 @@ export const BOOKING_CURVE_REFERENCE_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-next-book
 export const BOOKING_CURVE_REFERENCE_ACTIVE_POINT_ATTRIBUTE = "data-ra-next-booking-curve-reference-active-point";
 export const BOOKING_CURVE_RANK_MARKER_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker";
 export const BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker-hitbox";
+let bookingCurveChartDescriptionSequence = 0;
 
 export type BookingCurveReferenceRenderState =
     | { status: "loading"; stayDate: string }
@@ -412,11 +413,13 @@ function createChart(
     svg.setAttribute(BOOKING_CURVE_REFERENCE_SVG_ATTRIBUTE, panel.segment);
     svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
     svg.setAttribute("role", "img");
-    const svgTitle = documentHost.createElementNS("http://www.w3.org/2000/svg", "title");
-    svgTitle.textContent = `${viewModel.scope.label} ${panel.title}のブッキングカーブ基準比較`;
+    svg.setAttribute("aria-label", `${viewModel.scope.label} ${panel.title}のブッキングカーブ基準比較`);
     const description = documentHost.createElementNS("http://www.w3.org/2000/svg", "desc");
+    const descriptionId = `ra-next-booking-curve-reference-chart-description-${++bookingCurveChartDescriptionSequence}`;
+    description.setAttribute("id", descriptionId);
     description.textContent = "360日前から0日前とACTまでの現在、直近型、季節型。全値はグラフ下の表でも確認できます。";
-    svg.append(svgTitle, description);
+    svg.setAttribute("aria-describedby", descriptionId);
+    svg.append(description);
 
     for (const tick of buildYTicks(domain.max, 4)) {
         const y = scaleY(tick, domain, padding.top, plotHeight);
