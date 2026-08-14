@@ -125,6 +125,7 @@ export function startSalesSettingClassicRuntime(
     const performanceSourceByScope = new Map<string, NextPerformanceSource>();
     let selectedScopeReadyAtOpen = false;
     const openScopes = new Set<string>();
+    const hydratingScopeTokens = new Map<string, symbol>();
     const secondarySegments = new Map<string, BookingCurveReferenceSecondarySegment>();
     const visibilities = new Map<string, BookingCurveReferenceVisibility>();
     const abortController = new AbortController();
@@ -251,6 +252,7 @@ export function startSalesSettingClassicRuntime(
         contextBlocked = false;
         state = "idle";
         openScopes.clear();
+        hydratingScopeTokens.clear();
         secondarySegments.clear();
         visibilities.clear();
         discardPendingDataRefresh();
@@ -311,6 +313,7 @@ export function startSalesSettingClassicRuntime(
         await Promise.all(roomScopes.map(async (scope) => {
             const result = await dataSource.load(stayDate, asOfDate, scope.key, {
                 currentPriority: "visible-current",
+                readProfile: openScopes.has(scope.key) ? "full" : "current-only",
                 referencePriority: openScopes.has(scope.key) ? "selected-reference" : null,
                 waitForCurrent: false
             });
@@ -738,7 +741,7 @@ export function startSalesSettingClassicRuntime(
                     openScopes.add(scopeKey);
                     beginAnalyzePerformance("room-open", scopeKey);
                     if (activeStayDate !== null && activeAsOfDate !== null) {
-                        dataSource.prioritize?.(activeStayDate, activeAsOfDate, scopeKey);
+                        hydrateOpenedScope(activeStayDate, activeAsOfDate, scopeKey);
                     }
                 }
                 renderCurrentState(new Set([scopeKey]));
@@ -796,6 +799,44 @@ export function startSalesSettingClassicRuntime(
                 }
             }
         }
+    }
+
+    function hydrateOpenedScope(stayDate: string, asOfDate: string, scopeKey: string): void {
+        if (hydratingScopeTokens.has(scopeKey)) {
+            return;
+        }
+        const hydrationToken = Symbol(scopeKey);
+        hydratingScopeTokens.set(scopeKey, hydrationToken);
+        void dataSource.load(stayDate, asOfDate, scopeKey, {
+            currentPriority: "visible-current",
+            readProfile: "full",
+            referencePriority: "selected-reference",
+            waitForCurrent: false
+        }).then((result) => {
+            if (
+                stopped
+                || activeStayDate !== stayDate
+                || activeAsOfDate !== asOfDate
+            ) {
+                return;
+            }
+            if (result.status === "ready") {
+                activeData.set(scopeKey, result);
+                ensurePreference(scopeKey);
+                updateAnalyzePerformanceCohort(result);
+                const changedScopeKeys = new Set([scopeKey]);
+                rebuildCurves(changedScopeKeys);
+                renderCurrentState(changedScopeKeys);
+                return;
+            }
+            if (result.reason === "facility-context-mismatch") {
+                blockMismatchedContext();
+            }
+        }).finally(() => {
+            if (hydratingScopeTokens.get(scopeKey) === hydrationToken) {
+                hydratingScopeTokens.delete(scopeKey);
+            }
+        });
     }
 
     function handleResize(): void {
@@ -905,6 +946,11 @@ export function startSalesSettingClassicRuntime(
             scope.key,
             {
                 currentPriority: scope.kind === "hotel" ? "critical-current" : "visible-current",
+                readProfile: scope.kind === "hotel"
+                    || openScopes.has(scope.key)
+                    || activeData.get(scope.key)?.readProfile === "full"
+                    ? "full"
+                    : "current-only",
                 referencePriority: scope.kind === "hotel"
                     ? "visible-reference"
                     : openScopes.has(scope.key)
@@ -983,6 +1029,7 @@ export function startSalesSettingClassicRuntime(
         contextBlocked = false;
         state = "idle";
         openScopes.clear();
+        hydratingScopeTokens.clear();
         secondarySegments.clear();
         visibilities.clear();
         discardPendingDataRefresh();
@@ -1023,6 +1070,7 @@ export function startSalesSettingClassicRuntime(
             rankLoading = false;
             scopeBatchLoading = false;
             initialScopeBatchLoading = false;
+            hydratingScopeTokens.clear();
         }
         removeMountedArtifacts();
         setRuntimeMarker(finalState);

@@ -109,13 +109,13 @@ assert.match(
 );
 assert.match(
     runtimeSource,
-    /dataSource\.load\(stayDate, asOfDate, scope\.key, \{\s*currentPriority: "visible-current",\s*referencePriority: openScopes\.has\(scope\.key\) \? "selected-reference" : null/u,
-    "remaining room current must not enqueue unopened room reference work, while an open room refresh may settle it"
+    /dataSource\.load\(stayDate, asOfDate, scope\.key, \{\s*currentPriority: "visible-current",\s*readProfile: openScopes\.has\(scope\.key\) \? "full" : "current-only",\s*referencePriority: openScopes\.has\(scope\.key\) \? "selected-reference" : null/u,
+    "remaining room current must read only its target source and must not enqueue unopened room reference work"
 );
 assert.match(
     runtimeSource,
-    /beginAnalyzePerformance\("room-open", scopeKey\);[\s\S]*dataSource\.prioritize\?\.\(activeStayDate, activeAsOfDate, scopeKey\)/u,
-    "opening a room must upgrade only its queued current and reference work"
+    /beginAnalyzePerformance\("room-open", scopeKey\);[\s\S]*hydrateOpenedScope\(activeStayDate, activeAsOfDate, scopeKey\)/u,
+    "opening a room must hydrate its full local reference set and selected queue only"
 );
 assert.match(runtimeSource, /dataSource\.cancel\(\);\s*dirtyScopeKeys\.clear\(\);\s*dataRefreshPending = false;\s*scopeBatchLoading = true;/u);
 assert.match(runtimeSource, /addEventListener\("load", scheduleReconcile/u);
@@ -142,7 +142,12 @@ assert.match(
 );
 assert.match(runtimeSource, /hotelResult\.status === "error"\) \{\s*scopeBatchLoading = false;/u);
 assert.match(runtimeSource, /referencePriority: null,\s*waitForCurrent: false/u);
-assert.match(runtimeSource, /referencePriority: openScopes\.has\(scope\.key\) \? "selected-reference" : null,\s*waitForCurrent: false/u);
+assert.match(runtimeSource, /readProfile: openScopes\.has\(scope\.key\) \? "full" : "current-only",\s*referencePriority: openScopes\.has\(scope\.key\) \? "selected-reference" : null,\s*waitForCurrent: false/u);
+assert.match(
+    runtimeSource,
+    /function hydrateOpenedScope[\s\S]*readProfile: "full",\s*referencePriority: "selected-reference",\s*waitForCurrent: false[\s\S]*rebuildCurves\(changedScopeKeys\);\s*renderCurrentState\(changedScopeKeys\)/u,
+    "an opened room must upgrade from current-only to full without a global rebuild"
+);
 assert.match(runtimeSource, /if \(scopeBatchLoading\) \{\s*dataRefreshPending = true;\s*return;/u);
 assert.match(runtimeSource, /subscribe\?\.\(\(scopeKey\) => \{\s*scheduleDataRefresh\(scopeKey \?\? null\);/u);
 assert.match(runtimeSource, /function startScopeRefresh\([\s\S]*void refreshScopes/u);

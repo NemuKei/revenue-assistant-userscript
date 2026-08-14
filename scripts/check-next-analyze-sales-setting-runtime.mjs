@@ -69,10 +69,28 @@ async function verifyPerformanceMarkers(origin) {
         });
         assert.equal(await page.locator("[data-ra-fetch-performance-summary]").count(), 1);
 
-        const priorityCount = await readCount(page, "priority");
+        const singleLoadCount = (await readScopeLoadCounts(page)).single;
+        assert.equal(
+            await page.locator("html").getAttribute("data-mock-sales-setting-read-room-single-profile"),
+            "current-only",
+            "an unopened room must hydrate only its current source"
+        );
         await page.locator(toggleSelector).first().click();
-        await waitForCount(page, "priority", priorityCount + 1);
+        await page.waitForFunction(
+            ({ attribute, minimum }) => Number(
+                globalThis.document.documentElement.getAttribute(attribute) ?? "0"
+            ) >= minimum,
+            {
+                attribute: "data-mock-sales-setting-load-room-single-count",
+                minimum: singleLoadCount + 1
+            }
+        );
         await drainFixtureTasks(page);
+        assert.equal(
+            await page.locator("html").getAttribute("data-mock-sales-setting-read-room-single-profile"),
+            "full",
+            "opening a room must hydrate its saved reference sources"
+        );
         const roomSummary = await readPerformanceSummary(page);
         assert.equal(roomSummary.operation, "room-open");
         assert.equal(roomSummary.milestones.selectedRoomCurrentSettled.outcome, "ready");
@@ -132,6 +150,11 @@ async function verifyStoredScopeRefreshIsBounded(origin) {
         assert.equal(after.hotel, before.hotel, "a room write must not reread hotel evidence");
         assert.equal(after.single, before.single + 1, "duplicate room writes must coalesce into one scope read");
         assert.equal(after.twin, before.twin, "a room write must not reread other room evidence");
+        assert.equal(
+            await page.locator("html").getAttribute("data-mock-sales-setting-read-room-single-profile"),
+            "current-only",
+            "a stored-source refresh must not hydrate references for an unopened room"
+        );
         const nodeReuse = await page.evaluate(() => {
             const previous = globalThis.__mockSalesSettingRefreshNodes;
             const findSupplement = (scopeKey) => globalThis.document.querySelector(

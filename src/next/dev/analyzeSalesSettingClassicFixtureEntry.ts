@@ -64,6 +64,11 @@ const dataSource: BookingCurveReferenceDataSource = {
             `data-mock-sales-setting-load-${scopeKey.replace(/[^a-z0-9]+/giu, "-")}-count`,
             String(scopeLoadCount)
         );
+        const readProfile = options?.readProfile ?? "full";
+        document.documentElement.setAttribute(
+            `data-mock-sales-setting-read-${scopeKey.replace(/[^a-z0-9]+/giu, "-")}-profile`,
+            readProfile
+        );
         const scope = SCOPES.find((item) => item.key === scopeKey);
         if (scope === undefined) {
             return { status: "error", contextKey: `${stayDate}|${asOfDate}`, reason: "scope-invalid" };
@@ -75,18 +80,21 @@ const dataSource: BookingCurveReferenceDataSource = {
             await waitForFixtureSignal("data");
         }
         if (fixtureMode === "missing" && scope.kind === "roomGroup") {
-            return buildReadyResult(scope, { status: "missing", reason: "database-missing" }, []);
+            return buildReadyResult(scope, { status: "missing", reason: "database-missing" }, [], readProfile);
         }
         const referenceDeferred = options?.referencePriority === null;
-        const records = referenceMode === "deferred" && referenceDeferred
+        const records = readProfile === "current-only"
+            || referenceMode === "deferred"
             ? [createRawRecord(scope, STAY_DATE)]
             : buildFixtureRecords(scope);
         return buildReadyResult(
             scope,
             { status: "ready", records },
             records,
+            readProfile,
             referenceMode === "deferred" ? referenceDeferred : undefined,
-            fixtureMode === "revalidate" && !revalidationResolved ? 1 : 0
+            fixtureMode === "revalidate" && !revalidationResolved ? 1 : 0,
+            referenceMode === "deferred" && !referenceDeferred ? 1 : 0
         );
     },
     prioritize() {
@@ -205,12 +213,14 @@ function buildReadyResult(
     scope: BookingCurveReferenceScope,
     readStatus: Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }>["readStatus"],
     records: readonly BookingCurveRawSourceRecord[],
+    readProfile: Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }>["readProfile"],
     referenceDeferred?: boolean,
-    currentDueTaskCount = 0
+    currentDueTaskCount = 0,
+    referenceDueTaskCount = 0
 ): Extract<BookingCurveReferenceDataLoadResult, { status: "ready" }> {
     return {
         status: "ready",
-        ...(referenceDeferred === undefined && currentDueTaskCount === 0
+        ...(referenceDeferred === undefined && currentDueTaskCount === 0 && referenceDueTaskCount === 0
             ? {}
             : {
                 acquisitionDiagnostics: {
@@ -219,7 +229,11 @@ function buildReadyResult(
                         dueTaskCount: currentDueTaskCount,
                         outcome: "ready" as const
                     },
-                    reference: { candidateTaskCount: 0, dueTaskCount: 0, outcome: "ready" as const },
+                    reference: {
+                        candidateTaskCount: referenceDueTaskCount,
+                        dueTaskCount: referenceDueTaskCount,
+                        outcome: "ready" as const
+                    },
                     referenceDeferred: referenceDeferred ?? true
                 }
             }),
@@ -227,6 +241,7 @@ function buildReadyResult(
         contextKey: `${STAY_DATE}|${AS_OF_DATE}`,
         facilityId: FACILITY_ID,
         facilityLabel: FACILITY_LABEL,
+        readProfile,
         readStatus,
         records: records.slice(),
         scope,

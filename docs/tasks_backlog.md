@@ -781,7 +781,7 @@
   - `decision: D-20260813-003`
   - `supersedes: RAU-UX-168 reflector_name non-display only`
 
-### RAU-PERF-20〜23 Top / Analyzeを判断可能時間SLOで最適化する
+### RAU-PERF-20〜24 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
 
@@ -908,6 +908,28 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `decision: D-20260814-002, D-20260814-003, D-20260814-004`
   - `risk: approved bounded request-density change; planned task set, Top caps, endpoint, storage and write boundary unchanged`
+
+#### RAU-PERF-24 未展開roomのreference hydrationをopen時まで遅延する
+
+- 状態:
+  - source / local gate完了、Next publication / ホテル関西live gate待ち。公開Next `0.2.0.32`のホテル関西liveで初期6 room summaryがcache sourceだけでも7,258msだったため、通信paceを変える前にlocal cache read / curve modelの対象を狭めた。
+- 解決する問題:
+  - 未選択roomはreference GETを初期queueへ入れていない一方、local readでは直近型 / 季節型の全source keyを読み、closed card用にもfull curve modelを構築している。全room summaryに必要なのはtarget stay dateのcurrent sourceだけであり、初期表示へ不要なIndexedDB readと計算を含めている。
+- 実装scope:
+  - booking curve data sourceへ`current-only / full`のlocal read profileを追加し、load dedupe keyをprofile別にする。current-onlyはtarget stay dateのcurrent keyだけをClassic / Nextから読み、API planner、due判定、保存済みrecordを変更しない。
+  - Analyze販売設定の未展開roomはcurrent-onlyを並列読込し、batch完了後にsummaryを1回描画する。room open時は同scopeをfullで再読込し、保存済みreferenceを反映しながら不足referenceをselected priorityで開始する。hotel全体、open room、一度full化済みのroomはfullを維持し、未展開roomのdirty refreshはcurrent-onlyを維持する。
+  - foreground 35ms / concurrency 20、Top 50ms / 20、Top 800 / 200、planned task集合、endpoint、storage / retention / deletion、retry / stop、Revenue Assistant write 0を変更しない。選択room根拠が5秒超、Long Task / 軽量DOM応答悪化0、request concurrency律速をliveで確認できた場合だけ、別profileでconcurrency再緩和を検討する。
+- 合格条件:
+  - focused testでcurrent-onlyがtarget current keyだけを読み、fullが従来reference keyを維持し、同一scopeの2 profileを誤dedupeしないことを固定する。room open後は保存済みreferenceを再読込し、reference due task、current / rank marker、scope別差分描画を維持する。
+  - pure acquisition fixtureで1 / 6 / 12 / 20 roomのcurrent priorityと有限queueを維持する。2 room runtime fixtureで初期room loadがcurrent-only、hotel / open room / 一度full化済みroomのdirty refreshがfull、未展開roomのdirty refreshがcurrent-only、初期full render 1回、open room incremental render、route / facility / hidden abort、標準UI非干渉、console error 0を確認する。
+  - typecheck、lint、Next全check、fixture / candidate / Classic build、publication / Classic boundary、distribution / booking curve smoke、`git diff --check`を通す。公開後はホテル関西でoverall / all room summary、selected current / evidence、Long Task、軽量DOM応答、planned / started / max concurrency、HTTP / stop、Revenue Assistant write 0を比較する。20 sample未満のSLOはprovisionalとする。
+- metadata:
+  - `depends-on: RAU-PERF-23 live gate`
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260814-005`
+  - `risk: local read and hydration order only; request profile, task set, endpoint, storage and write boundary unchanged`
 
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 

@@ -249,6 +249,15 @@ assert.equal(roomKeys.every((key) => key.includes("scope:roomGroup")), true);
 assert.equal(roomKeys.every((key) => key.includes("roomGroup:single")), true);
 assert.equal(roomKeys.some((key) => key.includes("stayDate:20260812")), true);
 assert.equal(new Set(roomKeys).size, roomKeys.length);
+const currentOnlyRoomKeys = dataSourceModule.buildBookingCurveReferencePrimaryKeys({
+    asOfDate: "20260723",
+    facilityId: "yad:fixture",
+    readProfile: "current-only",
+    scope: roomScope,
+    stayDate: "20260812"
+});
+assert.equal(currentOnlyRoomKeys.length, 1, "a closed room summary must read only its target current source");
+assert.equal(currentOnlyRoomKeys[0].includes("stayDate:20260812"), true);
 
 const records = [
     createRecord({ scope: hotelScope, stayDate: "20260812", points: [["2026-07-23", 8, 7, 1]] }),
@@ -831,22 +840,34 @@ const dataSource = dataSourceModule.createBookingCurveReferenceDataSource({
     windowHost: {}
 });
 const hotelLoad = await dataSource.load("20260812", "20260723", "hotel");
-const [roomLoad, twinLoad] = await Promise.all([
-    dataSource.load("20260812", "20260723", "room:single"),
+const [roomLoad, fullRoomLoad, twinLoad] = await Promise.all([
+    dataSource.load("20260812", "20260723", "room:single", { readProfile: "current-only" }),
+    dataSource.load("20260812", "20260723", "room:single", { readProfile: "full" }),
     dataSource.load("20260812", "20260723", "room:twin")
 ]);
 assert.equal(hotelLoad.status, "ready");
 assert.equal(roomLoad.status, "ready");
+assert.equal(roomLoad.readProfile, "current-only");
+assert.equal(fullRoomLoad.status, "ready");
+assert.equal(fullRoomLoad.readProfile, "full", "current-only and full reads must not dedupe each other");
 assert.equal(twinLoad.status, "ready", "same-context room loads must not abort each other");
 assert.deepEqual(transportRequests, [
     { kind: "facility" },
     { kind: "current-settings", from: "20260812", to: "20260812" }
 ]);
-assert.equal(primaryReads.length, 3);
+assert.equal(primaryReads.length, 4);
 assert.equal(primaryReads[0].databaseName, "revenue-assistant-booking-curve-sources");
 assert.equal(primaryReads[0].keys.every((key) => key.includes("scope:hotel")), true);
-assert.equal(primaryReads[1].keys.every((key) => key.includes("scope:roomGroup")), true);
-assert.equal(primaryReads[2].keys.every((key) => key.includes("scope:roomGroup")), true);
+const singleRoomReads = primaryReads.filter((read) => (
+    read.keys.every((key) => key.includes("roomGroup:single"))
+));
+assert.equal(singleRoomReads.length, 2);
+assert.deepEqual(
+    singleRoomReads.map((read) => read.keys.length).sort((left, right) => left - right),
+    [1, roomKeys.length],
+    "current-only must keep the full reference key set available for an opened room"
+);
+assert.equal(primaryReads.some((read) => read.keys.every((key) => key.includes("roomGroup:twin"))), true);
 dataSource.stop();
 assert.equal((await dataSource.load("20260812", "20260723", "hotel")).reason, "aborted");
 
@@ -921,6 +942,7 @@ const hotelPriorityLoad = await priorityDataSource.load("20260812", "20260723", 
 });
 const roomPriorityLoad = await priorityDataSource.load("20260812", "20260723", "room:single", {
     currentPriority: "visible-current",
+    readProfile: "current-only",
     referencePriority: null
 });
 assert.equal(hotelPriorityLoad.status, "ready");

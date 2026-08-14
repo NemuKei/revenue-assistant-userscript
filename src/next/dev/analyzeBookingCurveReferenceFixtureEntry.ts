@@ -162,6 +162,7 @@ function buildReadyResult(
         contextKey: `${STAY_DATE}|${AS_OF_DATE}`,
         facilityId: FACILITY_ID,
         facilityLabel: FACILITY_LABEL,
+        readProfile: "full",
         readStatus,
         records: records.slice(),
         scope,

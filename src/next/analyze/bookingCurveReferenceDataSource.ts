@@ -62,6 +62,7 @@ export type BookingCurveReferenceDataLoadResult =
         contextKey: string;
         facilityId: string;
         facilityLabel: string;
+        readProfile: BookingCurveReferenceReadProfile;
         readStatus: ExistingIndexedDbReadResult<BookingCurveRawSourceRecord>;
         records: unknown[];
         scope: BookingCurveReferenceScope;
@@ -103,9 +104,12 @@ export interface BookingCurveReferenceDataSource {
 
 export interface BookingCurveReferenceLoadPriorities {
     currentPriority?: NextBookingCurveCurrentPriority;
+    readProfile?: BookingCurveReferenceReadProfile;
     referencePriority?: NextBookingCurveReferencePriority | null;
     waitForCurrent?: boolean;
 }
+
+export type BookingCurveReferenceReadProfile = "current-only" | "full";
 
 export type ExistingIndexedDbPrimaryKeyReader = <T>(
     options: ExistingIndexedDbPrimaryKeyReadOptions
@@ -170,7 +174,8 @@ export function createBookingCurveReferenceDataSource(
             if (compactAsOfDate === null) {
                 return Promise.resolve({ status: "error", contextKey, reason: "as-of-invalid" });
             }
-            const loadKey = `${contextKey}|${scopeKey}`;
+            const readProfile = priorities.readProfile ?? "full";
+            const loadKey = `${contextKey}|${scopeKey}|${readProfile}`;
             const existingLoad = activeLoads.get(loadKey);
             if (existingLoad !== undefined) {
                 return existingLoad.load;
@@ -195,6 +200,7 @@ export function createBookingCurveReferenceDataSource(
                         ? []
                         : readLiveFacilityContextHints(options.documentHost),
                 primaryKeyReader,
+                readProfile,
                 referencePriority: priorities.referencePriority === undefined
                     ? "selected-reference"
                     : priorities.referencePriority,
@@ -316,6 +322,7 @@ async function loadBookingCurveReferenceData(options: {
     currentPriority: NextBookingCurveCurrentPriority;
     facilityContextHints: readonly string[] | null;
     primaryKeyReader: ExistingIndexedDbPrimaryKeyReader;
+    readProfile: BookingCurveReferenceReadProfile;
     referencePriority: NextBookingCurveReferencePriority | null;
     scopeKey: string;
     signal: AbortSignal;
@@ -354,6 +361,7 @@ async function loadBookingCurveReferenceData(options: {
         const keys = buildBookingCurveReferencePrimaryKeys({
             asOfDate: options.asOfDate,
             facilityId: resolvedContext.facilityId,
+            readProfile: options.readProfile,
             scope,
             stayDate: options.stayDate
         });
@@ -395,6 +403,7 @@ async function loadBookingCurveReferenceData(options: {
         }
         const nextSourceKeys = buildBookingCurveReferenceSourceKeys({
             context: acquisitionContext,
+            readProfile: options.readProfile,
             scopeKey: scope.key,
             stayDate: options.stayDate
         });
@@ -423,6 +432,7 @@ async function loadBookingCurveReferenceData(options: {
             contextKey,
             facilityId: resolvedContext.facilityId,
             facilityLabel: resolvedContext.facilityLabel,
+            readProfile: options.readProfile,
             readStatus,
             records,
             scope,
@@ -470,6 +480,7 @@ function buildAcquisitionContext(
 
 export function buildBookingCurveReferenceSourceKeys(options: {
     context: NextBookingCurveAcquisitionContext;
+    readProfile?: BookingCurveReferenceReadProfile;
     scopeKey: string;
     stayDate: string;
 }): string[] {
@@ -479,11 +490,13 @@ export function buildBookingCurveReferenceSourceKeys(options: {
             scopeKeys: [options.scopeKey],
             stayDate: options.stayDate
         }),
-        ...buildNextBookingCurveReferenceTasks({
-            context: options.context,
-            scopeKey: options.scopeKey,
-            targetStayDate: options.stayDate
-        })
+        ...(options.readProfile === "current-only"
+            ? []
+            : buildNextBookingCurveReferenceTasks({
+                context: options.context,
+                scopeKey: options.scopeKey,
+                targetStayDate: options.stayDate
+            }))
     ];
     return Array.from(new Set(tasks.map((task) => task.sourceKey))).sort();
 }
@@ -577,6 +590,7 @@ export function parseBookingCurveReferenceScopes(
 export function buildBookingCurveReferencePrimaryKeys(options: {
     asOfDate: string;
     facilityId: string;
+    readProfile?: BookingCurveReferenceReadProfile;
     scope: BookingCurveReferenceScope;
     stayDate: string;
 }): string[] {
@@ -587,18 +601,20 @@ export function buildBookingCurveReferencePrimaryKeys(options: {
         return [];
     }
     const stayDates = new Set<string>([normalizedStayDate]);
-    for (const candidate of getRecentWeighted90CandidateStayDates({
-        targetStayDate: normalizedStayDate,
-        asOfDate: normalizedAsOfDate,
-        ticks: LEAD_TIME_BUCKET_TICKS
-    })) {
-        stayDates.add(candidate);
-    }
-    for (const candidate of getSeasonalComponentCandidateStayDates({
-        targetMonth: normalizedStayDate.slice(0, 7),
-        weekday
-    })) {
-        stayDates.add(candidate);
+    if (options.readProfile !== "current-only") {
+        for (const candidate of getRecentWeighted90CandidateStayDates({
+            targetStayDate: normalizedStayDate,
+            asOfDate: normalizedAsOfDate,
+            ticks: LEAD_TIME_BUCKET_TICKS
+        })) {
+            stayDates.add(candidate);
+        }
+        for (const candidate of getSeasonalComponentCandidateStayDates({
+            targetMonth: normalizedStayDate.slice(0, 7),
+            weekday
+        })) {
+            stayDates.add(candidate);
+        }
     }
     const roomGroupId = options.scope.kind === "roomGroup" ? options.scope.roomGroupId : null;
     return Array.from(stayDates)
