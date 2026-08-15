@@ -938,7 +938,7 @@
 ### RAU-UX-177 Analyzeランク変更履歴を部屋タイプ順へ戻す
 
 - 状態:
-  - source実装とlocal gateを完了した。利用者が、Analyze販売設定の`ランク変更履歴`を最終変更の新しい順ではなく部屋タイプ順へ変更するよう明示した。main同期とNext publicationを残す。
+  - source / local gate / main同期 / Next `0.2.0.43` manual publication / 公開artifact・Classic baseline照合まで完了した。利用者が、Analyze販売設定の`ランク変更履歴`を最終変更の新しい順ではなく部屋タイプ順へ変更するよう明示した。Tampermonkey更新後の実画面確認を残す。
 - 解決する問題:
   - rank overviewだけが`最終変更`の日数で行を再ソートし、標準の室タイプカードと行位置が一致しないため、同じ部屋タイプを上下で追いにくい。
 - 実装境界:
@@ -956,6 +956,8 @@
 - local validation:
   - modelがroom scope順からoverview対象を選び、viewが日数やlabelで再ソートしない責務へ戻した。focused testは、シングルよりツインの変更日が新しい入力でもoverviewを`シングル / ツイン`のscope順に保ち、同一シングル内では最新eventの`12→11`を選ぶことを確認した。
   - desktop / 390px合成Browserでoverviewとnative cardがともに`シングル / ツイン`、page / table overflow 0、console warning / error 0を確認した。typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker / scheduler、distribution / booking curve smoke、`git diff --check`が通過した。local candidateは373,739 bytes、SHA-256 `22B84BE92339DADD58AB69297B1DC95C0FCD00BBFC30E194E3A5ED89F28739B0`、source mapは1,502,415 bytes、SHA-256 `A7959824B324FED11A29326D9FB9AF1A6185D4F8BE3F24244B4C98DFD3D43327`である。
+- publication / live verification:
+  - source `1ac3f8244a3632857ae9b45b77b75689ba7501b1`はValidate Main run `31874082803`を通過し、manual workflow run `31874152258`、run number 43、attempt 1でNext `0.2.0.43`へ配信した。公開Nextは373,944 bytes、SHA-256 `66C244F8AF6AADD46B6D924A16A2E95F57AD5537E3AC77DC738805BCA9944243`、source mapは1,502,591 bytes、SHA-256 `2A6534FF92DD03080347AE29EDA17D953428E14083BE9EDD33DAB5C4601F963F`でmanifestと一致した。Classic userscript / source mapは固定baselineと同一だった。Tampermonkey更新後の実画面確認は未実施である。
 
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
