@@ -884,6 +884,30 @@
 - live検証:
   - 2026-08-15、Tampermonkey更新後の実画面で利用者が部屋タイプ別競合価格の取得・表示を確認し、修正の受け入れを完了した。実価格、施設名、room type名、response body、raw trace、screenshotはrepoへ保存していない。
 
+### RAU-UX-175 90日価格推移を部屋タイプ別に取得・絞り込みする
+
+- 状態:
+  - source実装とlocal gateは完了した。利用者が、価格推移タブにも競合価格タブと同じ部屋タイプ別取得・絞り込みを追加し、部屋タイプ / 食事条件の表現とfilter設計を2タブ共通へ抽象化するよう明示した。main同期、Next manual publication、公開artifact / Classic baseline照合をcloseoutで続ける。
+- 解決する問題:
+  - Nextの90日価格推移writerは部屋指定なし16scopeだけを保存するため、model / UIにroom filter契約があっても実画面の選択肢が`指定なし`だけになる。食事labelも競合価格の`素泊まり / 朝食 / 夕食 / 朝夕食`と異なり、同じ比較操作をタブごとに読み替える必要がある。
+- 実装境界:
+  - 初期の部屋指定なし16 GETは維持し、room選択時だけそのroomの不足する4食事 x 4人数を最大16 GET、concurrency 2で取得する。同日scope skip、全response検証前write 0、context離脱abort、同一context retryなし、周辺日 / backgroundなし、Revenue Assistant write 0を維持する。
+  - 共通moduleが部屋タイプ / 食事条件の正規化、label、順序、未選択語、filter button DOM / active / focus / mobileを所有する。競合価格と価格推移のAPI request value、model集約、storeはそれぞれのadapter責務に残す。
+  - 既存`price_trend:v1`、DB version / indexを維持してroom-aware keyへ保存し、Next保持上限だけを最大11,520件へ広げる。Classic DB / recordは変更・削除しない。
+- 合格条件:
+  - focused testで、初期room指定なし、specific `room_type_options[]`、room別same-day skip、最大16 price GET / concurrency 2、partial batch write 0、room-aware key、保持11,520件、filter共通label / order / button semanticsを固定する。
+  - fixtureのdesktop / 390pxで2タブのfilter語、active state、44px tap target、部屋 / 食事切替、empty / loading、4 panel、横overflow 0、console warning / error 0を確認する。
+  - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution smoke、`git diff --check`を通す。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260815-001`
+  - `risk: explicit room filter action adds at most 1 competitor GET + 16 price trend GET; concurrency 2, no background or retry`
+- local検証:
+  - focused testで、価格推移の固定5部屋タイプ、競合価格と共通の食事label、未取得roomのready / empty表示、specific `room_type_options[]`、room別same-day skip、最大16 price GET、room-aware key、保持11,520件、partial batch write 0を確認した。
+  - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker、distribution / booking curve smoke、`git diff --check`が通過した。合成Browserではdesktopと390pxで両タブの共通filter style、価格推移の5部屋 / 4食事label、390pxの44px tap target、未取得roomのempty表示を確認した。candidateはversion `0.1.0.168`、373,942 bytes、SHA-256 `171DDF1901EDE1CF1C760269B6895C3987FA407787073AE4A8A1B86AB5CE74D8`、source map 1,501,968 bytes、SHA-256 `7B60D9853A85A1CF166A833B5A4633193762292236B2BFAB20876F7B2ED9EBDA`で、synthetic publication payloadと一致した。
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る

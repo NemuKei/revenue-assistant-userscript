@@ -1,7 +1,7 @@
 export const NEXT_PRICE_TREND_DB_NAME = "revenue-assistant-next-price-trends";
 export const NEXT_PRICE_TREND_DB_VERSION = 1;
 export const NEXT_PRICE_TREND_STORE_NAME = "price-trend-records";
-export const NEXT_PRICE_TREND_RETENTION_LIMIT = 1_440;
+export const NEXT_PRICE_TREND_RETENTION_LIMIT = 11_520;
 export const NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT = 16;
 
 const NEXT_PRICE_TREND_FACILITY_INDEX = "facility";
@@ -40,14 +40,14 @@ export interface NextPriceTrendRecord {
     };
     query: null;
     recordKey: string;
-    roomType: null;
-    roomTypeLabel: null;
+    roomType: string | null;
+    roomTypeLabel: string | null;
     schemaVersion: "price_trend:v1";
     scope: {
         mealType: string;
         numGuests: 1 | 2 | 3 | 4;
-        roomType: null;
-        roomTypeLabel: null;
+        roomType: string | null;
+        roomTypeLabel: string | null;
         source: "next-price-trends-tab";
         stayDate: string;
         yadNos: string[];
@@ -158,6 +158,7 @@ export function buildNextPriceTrendRecordKey(options: {
     mealType: string;
     numGuests: number;
     observationDate: string;
+    roomType: string | null;
     stayDate: string;
 }): string {
     return [
@@ -166,7 +167,7 @@ export function buildNextPriceTrendRecordKey(options: {
         `stayDate:${options.stayDate}`,
         `guest:${options.numGuests}`,
         `meal:${options.mealType}`,
-        "room:unspecified",
+        `room:${options.roomType ?? "unspecified"}`,
         `observedOn:${options.observationDate}`
     ].join("|");
 }

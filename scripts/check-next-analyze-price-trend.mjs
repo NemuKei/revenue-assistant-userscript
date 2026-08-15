@@ -99,7 +99,14 @@ assert.equal(defaultResult.viewModel.comparisons[1].latestLeadTimeDays, 1);
 assert.equal(defaultResult.viewModel.comparisons[1].ownPrice, 15_400);
 assert.equal(defaultResult.viewModel.comparisons[1].competitorMinPrice, 14_900);
 assert.equal(defaultResult.viewModel.comparisons[1].gapFromCompetitor, 500);
-assert.equal(defaultResult.viewModel.availableFilters.roomTypes[0].label, "ツイン");
+assert.deepEqual(
+    defaultResult.viewModel.availableFilters.roomTypes.slice(0, 5).map((option) => option.label),
+    ["シングル", "ダブル", "ツイン", "トリプル", "フォース"]
+);
+assert.deepEqual(
+    defaultResult.viewModel.availableFilters.mealTypes.map((option) => option.label),
+    ["素泊まり", "朝食", "夕食", "朝夕食"]
+);
 
 const twinResult = model.buildPriceTrendComparisonViewModel({
     facilityId: "yad:fixture",
@@ -115,6 +122,30 @@ assert.equal(
     twinResult.viewModel.comparisons[1].points.every((point) => point.roomTypeLabel === "ツイン"),
     true
 );
+const doubleResult = model.buildPriceTrendComparisonViewModel({
+    facilityId: "yad:fixture",
+    filters: { roomType: "DOUBLE" },
+    records,
+    stayDate: "2026-08-12"
+});
+assert.equal(doubleResult.status, "ready");
+assert.equal(doubleResult.viewModel.filters.roomType, "DOUBLE");
+assert.equal(doubleResult.viewModel.selectedRecordCount, 0);
+assert.equal(doubleResult.viewModel.hasAnyPoints, false);
+const emptySeriesRecord = createRecord({
+    guestCount: 1,
+    key: "valid-empty-series",
+    mealType: "NONE"
+});
+emptySeriesRecord.payload.yads = [];
+const emptySeriesResult = model.buildPriceTrendComparisonViewModel({
+    facilityId: "yad:fixture",
+    records: [emptySeriesRecord],
+    stayDate: "20260812"
+});
+assert.equal(emptySeriesResult.status, "ready");
+assert.equal(emptySeriesResult.viewModel.hasAnyPoints, false);
+assert.equal(emptySeriesResult.viewModel.availableFilters.roomTypes.length >= 5, true);
 assert.deepEqual(
     model.buildPriceTrendComparisonViewModel({
         facilityId: "yad:fixture",
@@ -282,10 +313,82 @@ assert.equal(secondCapture.reason, "already-stored");
 assert.equal(captureRequests.length, 2);
 captureWriter.stop();
 
+const roomCaptureRequests = [];
+const roomCaptureWrites = [];
+let activeRoomPriceRequests = 0;
+let maxConcurrentRoomPriceRequests = 0;
+const roomCaptureWriter = writerModule.createPriceTrendCaptureWriter({
+    lockRunner: async (_lockName, _signal, run) => run(),
+    now: () => captureNow,
+    store: {
+        async addAndPrune(recordsToStore) {
+            roomCaptureWrites.push(recordsToStore);
+            return {
+                addedCount: recordsToStore.length,
+                deletedCount: 0,
+                records: recordsToStore
+            };
+        },
+        async readByFacilityStayDate() {
+            return [];
+        }
+    },
+    transport: {
+        async read(request) {
+            roomCaptureRequests.push(request);
+            if (request.kind === "competitors") {
+                return [{ yad_no: "competitor-a", name: "競合A（mock）" }];
+            }
+            activeRoomPriceRequests += 1;
+            maxConcurrentRoomPriceRequests = Math.max(
+                maxConcurrentRoomPriceRequests,
+                activeRoomPriceRequests
+            );
+            await new Promise((resolve) => setTimeout(resolve, 1));
+            activeRoomPriceRequests -= 1;
+            return createPriceTrendApiResponse(request);
+        }
+    },
+    windowHost: { indexedDB: {} }
+});
+const roomCaptureResult = await roomCaptureWriter.capture({
+    existingRecords: completeSameDayRecords,
+    facilityId: "yad:fixture",
+    facilityLabel: "施設A（mock）",
+    roomType: "TWIN",
+    stayDate: "20260812"
+});
+assert.equal(roomCaptureResult.status, "stored");
+assert.equal(roomCaptureResult.requestedCount, 16);
+assert.equal(roomCaptureWrites.length, 1);
+assert.equal(roomCaptureWrites[0].length, 16);
+assert.equal(maxConcurrentRoomPriceRequests, 2);
+assert.equal(roomCaptureWrites[0].every((record) => record.roomType === "TWIN"), true);
+assert.equal(roomCaptureWrites[0].every((record) => record.roomTypeLabel === "ツイン"), true);
+assert.equal(
+    roomCaptureRequests.filter((request) => request.kind === "price-trends").every(
+        (request) => request.roomType === "TWIN"
+    ),
+    true
+);
+assert.match(roomCaptureWrites[0][0].recordKey, /\|room:TWIN\|/u);
+const repeatedRoomCapture = await roomCaptureWriter.capture({
+    existingRecords: completeSameDayRecords,
+    facilityId: "yad:fixture",
+    facilityLabel: "施設A（mock）",
+    roomType: "TWIN",
+    stayDate: "20260812"
+});
+assert.equal(repeatedRoomCapture.status, "skipped");
+assert.equal(repeatedRoomCapture.reason, "already-stored");
+assert.equal(roomCaptureRequests.length, 17);
+roomCaptureWriter.stop();
+
 const priceTrendUrl = transportModule.buildNextReadUrl({
     kind: "price-trends",
     mealType: "BREAKFAST_DINNER",
     numGuests: 4,
+    roomType: null,
     stayDate: "20260812",
     yadNos: ["fixture", "competitor-a"]
 }, "https://ra.jalan.net");
@@ -295,6 +398,15 @@ assert.equal(priceTrendUrl.searchParams.get("num_guests"), "4");
 assert.equal(priceTrendUrl.searchParams.get("meal_type"), "BREAKFAST_DINNER");
 assert.deepEqual(priceTrendUrl.searchParams.getAll("yad_nos[]"), ["fixture", "competitor-a"]);
 assert.equal(priceTrendUrl.searchParams.has("room_type_options[]"), false);
+const roomPriceTrendUrl = transportModule.buildNextReadUrl({
+    kind: "price-trends",
+    mealType: "NONE",
+    numGuests: 2,
+    roomType: "TWIN",
+    stayDate: "20260812",
+    yadNos: ["fixture", "competitor-a"]
+}, "https://ra.jalan.net");
+assert.deepEqual(roomPriceTrendUrl.searchParams.getAll("room_type_options[]"), ["TWIN"]);
 
 const outOfRangeWriter = writerModule.createPriceTrendCaptureWriter({
     now: () => captureNow,
@@ -596,7 +708,7 @@ assert.deepEqual(
 assert.equal(storeModule.NEXT_PRICE_TREND_DB_NAME, "revenue-assistant-next-price-trends");
 assert.equal(storeModule.NEXT_PRICE_TREND_DB_VERSION, 1);
 assert.equal(storeModule.NEXT_PRICE_TREND_STORE_NAME, "price-trend-records");
-assert.equal(storeModule.NEXT_PRICE_TREND_RETENTION_LIMIT, 1_440);
+assert.equal(storeModule.NEXT_PRICE_TREND_RETENTION_LIMIT, 11_520);
 assert.equal(storeModule.NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT, 16);
 
 const styles = view.getPriceTrendComparisonStyles();
@@ -611,6 +723,10 @@ assert.match(styles, /data-ra-next-price-trend-guide/u);
 assert.match(styles, /data-ra-next-price-trend-hitbox-active/u);
 assert.match(styles, /cursor: crosshair/u);
 assert.match(viewSource, /PRICE_TREND_COMPARISON_GUEST_COUNTS/u);
+assert.match(viewSource, /createPriceConditionFilters/u);
+assert.match(viewSource, /getPriceConditionFilterStyles/u);
+assert.match(modelSource, /formatPriceConditionRoomType/u);
+assert.match(modelSource, /formatPriceConditionMealType/u);
 assert.match(viewSource, /data-ra-next-price-trend-panel/u);
 assert.match(viewSource, /\$\{guestCount\}名 最安値/u);
 assert.match(viewSource, /保存状態 \$\{formatCaptureStatus\(captureStatus\)\}/u);
@@ -639,6 +755,9 @@ assert.match(runtimeSource, /price-trends-content/u);
 assert.match(runtimeSource, /hasLiveFacilityContextLabel/u);
 assert.match(runtimeSource, /createPriceTrendCaptureWriter/u);
 assert.match(runtimeSource, /writer\?\.cancel/u);
+assert.match(runtimeSource, /if \(kind === "roomType"\)/u);
+assert.match(runtimeSource, /startCapture\(filters\.roomType\)/u);
+assert.match(runtimeSource, /roomType,/u);
 assert.match(fixture, /data-testid="price-trends-content"/u);
 assert.match(fixture, /data-mock-native-chart/u);
 assert.match(fixture, /data-mock-route-away/u);
@@ -652,8 +771,9 @@ assert.match(storeSource, /store\.add\(record\)/u);
 assert.match(storeSource, /store\.delete\(recordKey\)/u);
 assert.match(writerSource, /PRICE_TREND_CAPTURE_CONCURRENCY = 2/u);
 assert.match(writerSource, /NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT/u);
+assert.match(writerSource, /PRICE_TREND_CAPTURE_ROOM_TYPES/u);
+assert.match(writerSource, /roomType: options\.roomType/u);
 assert.match(writerSource, /locks\.request\(lockName, \{ mode: "exclusive", signal \}, run\)/u);
-assert.doesNotMatch(writerSource, /room_type_options/u);
 
 for (const source of [dataSourceSource, modelSource, runtimeSource, storeSource, writerSource]) {
     assert.doesNotMatch(source, /priceTrendStore|src\/main|from\s+["'][^"']*main/u);

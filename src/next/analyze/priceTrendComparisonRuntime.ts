@@ -15,6 +15,7 @@ import {
     type PriceTrendComparisonViewModel
 } from "./priceTrendComparisonModel";
 import {
+    PRICE_TREND_CAPTURE_ROOM_TYPES,
     createPriceTrendCaptureWriter,
     type PriceTrendCaptureResult,
     type PriceTrendCaptureWriter
@@ -93,7 +94,9 @@ export function startPriceTrendComparisonRuntime(
     let root: HTMLElement | null = null;
     let mountTarget: HTMLElement | null = null;
     let blockedFacilityLabel: string | null = null;
-    let captureAttempted = false;
+    const captureAttemptedRoomTypes = new Set<string>();
+    let activeCaptureRoomType: string | null | undefined;
+    let pendingCaptureRoomType: string | null | undefined;
     let captureStatus: PriceTrendCaptureStatus = writer === null ? "disabled" : "checking";
     let loadGeneration = 0;
     let scheduledReconcileTimer: number | null = null;
@@ -182,8 +185,8 @@ export function startPriceTrendComparisonRuntime(
         } else if (mounted) {
             renderCurrentState();
         }
-        if (activeContext !== null && !captureAttempted) {
-            startCapture();
+        if (activeContext !== null) {
+            startCapture(null);
         }
     }
 
@@ -194,7 +197,9 @@ export function startPriceTrendComparisonRuntime(
         activeStayDate = stayDate;
         activeContext = null;
         blockedFacilityLabel = null;
-        captureAttempted = false;
+        captureAttemptedRoomTypes.clear();
+        activeCaptureRoomType = undefined;
+        pendingCaptureRoomType = undefined;
         captureStatus = writer === null ? "disabled" : "checking";
         filters = { mealType: null, roomType: null };
         state = { status: "idle" };
@@ -247,18 +252,36 @@ export function startPriceTrendComparisonRuntime(
         if (result.status === "missing" || result.status === "unavailable") {
             state = { status: "empty", reason: result.reason, stayDate };
             renderCurrentState();
-            startCapture();
+            startCapture(null);
             return;
         }
         rebuildState();
-        startCapture();
+        startCapture(null);
     }
 
-    function startCapture(): void {
-        if (writer === null || activeContext === null || captureAttempted) {
+    function startCapture(roomType: string | null): void {
+        if (
+            writer === null
+            || activeContext === null
+            || (
+                roomType !== null
+                && !PRICE_TREND_CAPTURE_ROOM_TYPES.includes(
+                    roomType as typeof PRICE_TREND_CAPTURE_ROOM_TYPES[number]
+                )
+            )
+        ) {
             return;
         }
-        captureAttempted = true;
+        const captureKey = roomType ?? "unspecified";
+        if (captureAttemptedRoomTypes.has(captureKey)) {
+            return;
+        }
+        if (activeCaptureRoomType !== undefined) {
+            pendingCaptureRoomType = roomType;
+            return;
+        }
+        captureAttemptedRoomTypes.add(captureKey);
+        activeCaptureRoomType = roomType;
         captureStatus = "capturing";
         renderCurrentState();
         const generation = loadGeneration;
@@ -267,6 +290,7 @@ export function startPriceTrendComparisonRuntime(
             existingRecords: context.records,
             facilityId: context.facilityId,
             facilityLabel: context.facilityLabel,
+            roomType,
             stayDate: context.stayDate
         }).then((result) => {
             if (
@@ -276,7 +300,13 @@ export function startPriceTrendComparisonRuntime(
             ) {
                 return;
             }
+            activeCaptureRoomType = undefined;
             applyCaptureResult(result);
+            const nextRoomType = pendingCaptureRoomType;
+            pendingCaptureRoomType = undefined;
+            if (nextRoomType !== undefined) {
+                startCapture(nextRoomType);
+            }
         });
     }
 
@@ -388,6 +418,13 @@ export function startPriceTrendComparisonRuntime(
             if (kind === "roomType" || kind === "mealType") {
                 filters = { ...filters, [kind]: value === "" ? null : value };
                 rebuildState();
+                if (kind === "roomType") {
+                    if (filters.roomType === null) {
+                        pendingCaptureRoomType = undefined;
+                    } else {
+                        startCapture(filters.roomType);
+                    }
+                }
                 root.querySelector<HTMLElement>(
                     `[${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}="${kind}"]`
                     + `[${PRICE_TREND_COMPARISON_FILTER_VALUE_ATTRIBUTE}="${escapeAttributeValue(value)}"]`
@@ -418,7 +455,8 @@ export function startPriceTrendComparisonRuntime(
 
     function suspendForInactiveSurface(finalState: string): void {
         writer?.cancel();
-        captureAttempted = false;
+        activeCaptureRoomType = undefined;
+        pendingCaptureRoomType = undefined;
         captureStatus = writer === null ? "disabled" : "checking";
         if (state.status === "loading") {
             loadGeneration += 1;
@@ -436,7 +474,9 @@ export function startPriceTrendComparisonRuntime(
         activeContext = null;
         activeStayDate = null;
         blockedFacilityLabel = null;
-        captureAttempted = false;
+        captureAttemptedRoomTypes.clear();
+        activeCaptureRoomType = undefined;
+        pendingCaptureRoomType = undefined;
         captureStatus = writer === null ? "disabled" : "checking";
         filters = { mealType: null, roomType: null };
         state = { status: "idle" };

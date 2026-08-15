@@ -161,6 +161,8 @@ assert.match(styles, /data-ra-next-competitor-history-guide-line/u);
 assert.match(styles, /data-ra-next-competitor-history-accessible-table/u);
 assert.match(styles, /focus:not\(:focus-visible\)[^{]*\{\s*outline: none;/u);
 assert.match(viewSource, /title\.textContent = "競合価格 最安値推移"/u);
+assert.match(viewSource, /createPriceConditionFilters/u);
+assert.match(viewSource, /getPriceConditionFilterStyles/u);
 assert.match(
     viewSource,
     /root\.replaceChildren\(header, meta, filters, legend, grid\)/u

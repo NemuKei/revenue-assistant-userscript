@@ -1,16 +1,26 @@
+import {
+    PRICE_CONDITION_MEAL_TYPES,
+    PRICE_CONDITION_PRIMARY_ROOM_TYPES,
+    PRICE_CONDITION_ROOM_TYPES,
+    comparePriceConditionFilterOptions,
+    formatPriceConditionMealType,
+    formatPriceConditionRoomType,
+    type PriceConditionFilterOption,
+    type PriceConditionFilters
+} from "./priceConditionFilter";
+
 export const PRICE_TREND_COMPARISON_GUEST_COUNTS = [1, 2, 3, 4] as const;
 
 export type PriceTrendComparisonGuestCount = typeof PRICE_TREND_COMPARISON_GUEST_COUNTS[number];
 
-export interface PriceTrendComparisonFilters {
-    mealType: string | null;
-    roomType: string | null;
-}
+export type PriceTrendComparisonFilters = PriceConditionFilters;
 
-export interface PriceTrendComparisonFilterOption {
-    label: string;
-    value: string;
-}
+export type PriceTrendComparisonFilterOption = PriceConditionFilterOption;
+
+export {
+    formatPriceConditionMealType as formatPriceTrendComparisonMealType,
+    formatPriceConditionRoomType as formatPriceTrendComparisonRoomType
+};
 
 export interface PriceTrendComparisonFacility {
     color: string;
@@ -48,6 +58,7 @@ export interface PriceTrendComparisonViewModel {
     comparisons: PriceTrendGuestComparison[];
     facilities: PriceTrendComparisonFacility[];
     filters: PriceTrendComparisonFilters;
+    hasAnyPoints: boolean;
     latestFetchedAt: string;
     latestSourceUpdatedAt: string | null;
     selectedRecordCount: number;
@@ -92,16 +103,8 @@ interface NormalizedPriceTrendRecord {
 }
 
 const PRICE_TREND_SCHEMA_VERSION = "price_trend:v1";
-const EXPECTED_MEAL_TYPES = ["NONE", "BREAKFAST", "DINNER", "BREAKFAST_DINNER"] as const;
-const EXPECTED_ROOM_TYPES = [
-    "SINGLE",
-    "DOUBLE",
-    "TWIN",
-    "TRIPLE",
-    "FOUR_BEDS",
-    "WASHITSU",
-    "WAYOUSHITSU"
-] as const;
+const EXPECTED_MEAL_TYPES = PRICE_CONDITION_MEAL_TYPES;
+const EXPECTED_ROOM_TYPES = PRICE_CONDITION_ROOM_TYPES;
 const OWN_SERIES_COLOR = "#1268a6";
 const COMPETITOR_SERIES_COLORS = [
     "#b54a26",
@@ -145,11 +148,12 @@ export function buildPriceTrendComparisonViewModel(options: {
     const comparisons = PRICE_TREND_COMPARISON_GUEST_COUNTS.map((guestCount) => (
         buildGuestComparison(guestCount, pointsByGuest.get(guestCount) ?? [], facilities)
     ));
-    if (!comparisons.some((comparison) => comparison.points.length > 0)) {
-        return { status: "empty", reason: "no-price-points" };
-    }
+    const hasAnyPoints = comparisons.some((comparison) => comparison.points.length > 0);
 
     const latestRecord = selectedRecords.reduce<NormalizedPriceTrendRecord | null>(
+        (latest, record) => latest === null || latest.fetchedAt < record.fetchedAt ? record : latest,
+        null
+    ) ?? records.reduce<NormalizedPriceTrendRecord | null>(
         (latest, record) => latest === null || latest.fetchedAt < record.fetchedAt ? record : latest,
         null
     );
@@ -168,6 +172,7 @@ export function buildPriceTrendComparisonViewModel(options: {
             comparisons,
             facilities,
             filters,
+            hasAnyPoints,
             latestFetchedAt: latestRecord?.fetchedAt ?? "",
             latestSourceUpdatedAt,
             selectedRecordCount: selectedRecords.length,
@@ -175,31 +180,6 @@ export function buildPriceTrendComparisonViewModel(options: {
             usesSpecificRoomTypeAggregation: roomSelection.usesSpecificRecords
         }
     };
-}
-
-export function formatPriceTrendComparisonMealType(value: string): string {
-    const labels: Record<string, string> = {
-        BREAKFAST: "朝食あり",
-        BREAKFAST_DINNER: "朝・夕食あり",
-        DINNER: "夕食あり",
-        NONE: "食事なし"
-    };
-    const normalized = value.trim();
-    return labels[normalized] ?? normalized;
-}
-
-export function formatPriceTrendComparisonRoomType(value: string): string {
-    const labels: Record<string, string> = {
-        DOUBLE: "ダブル",
-        FOUR_BEDS: "4ベッド",
-        SINGLE: "シングル",
-        TRIPLE: "トリプル",
-        TWIN: "ツイン",
-        WASHITSU: "和室",
-        WAYOUSHITSU: "和洋室"
-    };
-    const normalized = value.trim();
-    return labels[normalized] ?? normalized;
 }
 
 function normalizePriceTrendRecord(value: unknown): NormalizedPriceTrendRecord | null {
@@ -227,7 +207,7 @@ function normalizePriceTrendRecord(value: unknown): NormalizedPriceTrendRecord |
     const series = value.payload.yads
         .map(normalizeSeries)
         .filter((item): item is NormalizedPriceTrendSeries => item !== null);
-    if (facilities.length === 0 || series.length === 0) {
+    if (facilities.length === 0 || series.length !== value.payload.yads.length) {
         return null;
     }
     return {
@@ -319,8 +299,8 @@ function buildFilterOptions(records: readonly NormalizedPriceTrendRecord[]): {
     mealTypes: PriceTrendComparisonFilterOption[];
     roomTypes: PriceTrendComparisonFilterOption[];
 } {
-    const mealTypes = new Set<string>();
-    const roomTypes = new Set<string>();
+    const mealTypes = new Set<string>(PRICE_CONDITION_MEAL_TYPES);
+    const roomTypes = new Set<string>(PRICE_CONDITION_PRIMARY_ROOM_TYPES);
     for (const record of records) {
         mealTypes.add(record.mealType);
         if (record.roomType !== null) {
@@ -329,11 +309,11 @@ function buildFilterOptions(records: readonly NormalizedPriceTrendRecord[]): {
     }
     return {
         mealTypes: Array.from(mealTypes)
-            .map((value) => ({ label: formatPriceTrendComparisonMealType(value), value }))
-            .sort(compareFilterOptions),
+            .map((value) => ({ label: formatPriceConditionMealType(value), value }))
+            .sort(comparePriceConditionFilterOptions),
         roomTypes: Array.from(roomTypes)
-            .map((value) => ({ label: formatPriceTrendComparisonRoomType(value), value }))
-            .sort(compareFilterOptions)
+            .map((value) => ({ label: formatPriceConditionRoomType(value), value }))
+            .sort(comparePriceConditionFilterOptions)
     };
 }
 
@@ -430,7 +410,7 @@ function buildPointsByGuest(
     );
     for (const record of records) {
         const roomTypeLabel = record.roomTypeLabel
-            ?? (record.roomType === null ? "指定なし" : formatPriceTrendComparisonRoomType(record.roomType));
+            ?? (record.roomType === null ? "指定なし" : formatPriceConditionRoomType(record.roomType));
         const guestMinima = minima.get(record.guestCount);
         if (guestMinima === undefined) {
             continue;
@@ -496,13 +476,6 @@ function buildGuestComparison(
         ownPrice: ownPoint?.price ?? null,
         points: [...points]
     };
-}
-
-function compareFilterOptions(
-    left: PriceTrendComparisonFilterOption,
-    right: PriceTrendComparisonFilterOption
-): number {
-    return left.label.localeCompare(right.label, "ja") || left.value.localeCompare(right.value);
 }
 
 function normalizeCompactDate(value: string): string {

@@ -187,7 +187,7 @@ console.log(JSON.stringify({
     snapshotRetentionLimit: 720,
     priceTrendStoreOwner: toProjectPath(priceTrendStorePath),
     priceTrendStoreModes: ["readonly", "readwrite"],
-    priceTrendRetentionLimit: 1_440,
+    priceTrendRetentionLimit: 11_520,
     bookingCurveStoreOwner: toProjectPath(bookingCurveStorePath),
     bookingCurveStoreModes: ["readonly", "readwrite"],
     bookingCurveRetentionLimit: 4_096,
@@ -362,8 +362,8 @@ function checkTransportBoundary(sources, source) {
     const searchParameterAppendCalls = collectNodes(source, isSearchParameterAppendCall);
     assert.equal(
         searchParameterAppendCalls.length,
-        3,
-        "competitor prices must append competitor and room-type filters; price trends append competitors"
+        4,
+        "competitor prices and price trends must append only reviewed competitor and room-type filters"
     );
     assert.deepEqual(
         searchParameterAppendCalls.map((call) => [
@@ -371,6 +371,7 @@ function checkTransportBoundary(sources, source) {
             call.arguments[1]?.getText(source)
         ]),
         [
+            ["room_type_options[]", "request.roomType"],
             ["yad_nos[]", "yadNo"],
             ["yad_nos[]", "yadNo"],
             ["jalan_room_types[]", "roomType"]
@@ -734,7 +735,7 @@ function checkIndexedDbBoundary(sources) {
         getNumericLiteralValue(declaration.initializer)
     ]));
     assert.deepEqual(priceTrendLimits, new Map([
-        ["NEXT_PRICE_TREND_RETENTION_LIMIT", 1_440],
+        ["NEXT_PRICE_TREND_RETENTION_LIMIT", 11_520],
         ["NEXT_PRICE_TREND_CAPTURE_SCOPE_COUNT", 16],
         ["NEXT_PRICE_TREND_SERIES_READ_LIMIT", 512]
     ]), "price trend store limits must remain fixed and bounded");

@@ -2,11 +2,14 @@ import {
     PRICE_TREND_COMPARISON_GUEST_COUNTS,
     formatPriceTrendComparisonMealType,
     type PriceTrendComparisonFacility,
-    type PriceTrendComparisonFilters,
     type PriceTrendComparisonPoint,
     type PriceTrendComparisonViewModel,
     type PriceTrendGuestComparison
 } from "./priceTrendComparisonModel";
+import {
+    createPriceConditionFilters,
+    getPriceConditionFilterStyles
+} from "./priceConditionFilterView";
 import { positionViewportTooltip } from "./viewportTooltipPosition";
 
 export const PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE = "data-ra-next-price-trend-comparison-root";
@@ -98,9 +101,19 @@ export function renderPriceTrendComparison(
             options.narrow
         ));
     }
+    const emptyMessage = viewModel.hasAnyPoints
+        ? null
+        : createMessage(
+            documentHost,
+            options.captureStatus === "capturing"
+                ? "選択した部屋タイプの90日価格推移を取得しています。"
+                : "この絞り込み条件に一致する90日価格推移はありません。",
+            "empty"
+        );
     root.replaceChildren(
         header,
         filters,
+        ...(emptyMessage === null ? [] : [emptyMessage]),
         createLegend(documentHost, viewModel.facilities, allPoints),
         panels
     );
@@ -148,54 +161,6 @@ export function getPriceTrendComparisonStyles(): string {
     line-height: 1.6;
 }
 [data-ra-next-price-trend-message="error"] { background: #fff1ef; color: #8d3428; }
-[data-ra-next-price-trend-filters] {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 18px;
-    margin-bottom: 8px;
-    color: #50627a;
-    font-size: 12px;
-    font-weight: 700;
-}
-[data-ra-next-price-trend-filter-group] {
-    display: inline-flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px;
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-}
-[data-ra-next-price-trend-filter-group] legend {
-    float: none;
-    width: auto;
-    margin-right: 2px;
-    padding: 0;
-    color: #50627a;
-    font-size: 12px;
-    font-weight: 800;
-}
-[${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}] {
-    min-height: 30px;
-    padding: 2px 8px;
-    border: 1px solid #c9d3df;
-    border-radius: 4px;
-    background: #fff;
-    color: #50627a;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 800;
-    line-height: 1.35;
-    cursor: pointer;
-}
-[${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}][aria-pressed="true"] {
-    border-color: var(--ra-next-price-blue);
-    background: var(--ra-next-price-blue);
-    color: #fff;
-}
-[${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}]:focus-visible,
 [${PRICE_TREND_COMPARISON_HITBOX_ATTRIBUTE}]:focus-visible {
     outline: 3px solid #d98200;
     outline-offset: 2px;
@@ -356,12 +321,9 @@ export function getPriceTrendComparisonStyles(): string {
         padding: 0;
     }
     [data-ra-next-price-trend-panel] { padding: 10px; }
-    [data-ra-next-price-trend-filters] { display: grid; }
-    [data-ra-next-price-trend-filter-group] { width: 100%; }
-    [data-ra-next-price-trend-filter-group] legend { flex: 0 0 100%; }
-    [${PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE}] { min-height: 44px; }
     [${PRICE_TREND_COMPARISON_SVG_ATTRIBUTE}] { min-width: 0; }
 }
+${getPriceConditionFilterStyles(`[${PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE}]`)}
 `;
 }
 
@@ -400,7 +362,9 @@ function formatMeta(viewModel: PriceTrendComparisonViewModel): string {
         `対象宿泊日 ${formatStayDate(viewModel.stayDate)}`,
         roomScope,
         mealScope,
-        `保存 ${formatDateTime(viewModel.latestFetchedAt)}`,
+        viewModel.selectedRecordCount === 0
+            ? "選択条件 未取得"
+            : `保存 ${formatDateTime(viewModel.latestFetchedAt)}`,
         viewModel.latestSourceUpdatedAt === null
             ? "公式更新 不明"
             : `公式更新 ${formatDateTime(viewModel.latestSourceUpdatedAt)}`,
@@ -478,52 +442,17 @@ function createFilters(
     documentHost: Document,
     viewModel: PriceTrendComparisonViewModel
 ): HTMLElement {
-    const filters = documentHost.createElement("div");
-    filters.setAttribute("data-ra-next-price-trend-filters", "");
-    filters.append(
-        createFilterGroup(
-            documentHost,
-            "部屋タイプ",
-            "roomType",
-            viewModel.availableFilters.roomTypes,
-            viewModel.filters,
-            "すべて"
-        ),
-        createFilterGroup(
-            documentHost,
-            "食事",
-            "mealType",
-            viewModel.availableFilters.mealTypes,
-            viewModel.filters,
-            "指定なし"
-        )
-    );
-    return filters;
-}
-
-function createFilterGroup(
-    documentHost: Document,
-    label: string,
-    kind: keyof PriceTrendComparisonFilters,
-    options: readonly { label: string; value: string }[],
-    filters: PriceTrendComparisonFilters,
-    emptyLabel: string
-): HTMLElement {
-    const group = documentHost.createElement("fieldset");
-    group.setAttribute("data-ra-next-price-trend-filter-group", kind);
-    const legend = documentHost.createElement("legend");
-    legend.textContent = label;
-    group.append(legend);
-    for (const option of [{ label: emptyLabel, value: "" }, ...options]) {
-        const button = documentHost.createElement("button");
-        button.type = "button";
-        button.setAttribute(PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE, kind);
-        button.setAttribute(PRICE_TREND_COMPARISON_FILTER_VALUE_ATTRIBUTE, option.value);
-        button.setAttribute("aria-pressed", String((filters[kind] ?? "") === option.value));
-        button.textContent = option.label;
-        group.append(button);
-    }
-    return group;
+    return createPriceConditionFilters({
+        availableFilters: viewModel.availableFilters,
+        documentHost,
+        filters: viewModel.filters,
+        legacyAttributes: {
+            container: "data-ra-next-price-trend-filters",
+            group: "data-ra-next-price-trend-filter-group",
+            kind: PRICE_TREND_COMPARISON_FILTER_KIND_ATTRIBUTE,
+            value: PRICE_TREND_COMPARISON_FILTER_VALUE_ATTRIBUTE
+        }
+    });
 }
 
 function createGuestPanel(

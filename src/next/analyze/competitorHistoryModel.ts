@@ -3,20 +3,21 @@ import {
     type CompetitorPriceSnapshotPlan,
     type CompetitorPriceSnapshotRecord
 } from "../../competitorPriceSnapshotContract";
+import {
+    comparePriceConditionFilterOptions,
+    formatPriceConditionMealType,
+    formatPriceConditionRoomType,
+    type PriceConditionFilterOption,
+    type PriceConditionFilters
+} from "./priceConditionFilter";
 
 export const COMPETITOR_HISTORY_GUEST_COUNTS = [1, 2, 3, 4] as const;
 
 export type CompetitorHistoryGuestCount = typeof COMPETITOR_HISTORY_GUEST_COUNTS[number];
 
-export interface CompetitorHistoryFilterOption {
-    label: string;
-    value: string;
-}
+export type CompetitorHistoryFilterOption = PriceConditionFilterOption;
 
-export interface CompetitorHistoryFilters {
-    mealType: string | null;
-    roomType: string | null;
-}
+export type CompetitorHistoryFilters = PriceConditionFilters;
 
 export interface CompetitorHistoryFacility {
     color: string;
@@ -135,48 +136,9 @@ export function buildCompetitorHistoryViewModel(options: {
     };
 }
 
-export function formatCompetitorHistoryRoomType(value: string): string {
-    const normalized = value.trim().toLowerCase();
-    if (/four_beds|4_beds|quad|フォース/u.test(normalized)) {
-        return "フォース";
-    }
-    if (/single|シングル/u.test(normalized)) {
-        return "シングル";
-    }
-    if (/semi_double|semidouble|セミダブル/u.test(normalized)) {
-        return "セミダブル";
-    }
-    if (/double|ダブル/u.test(normalized)) {
-        return "ダブル";
-    }
-    if (/twin|ツイン/u.test(normalized)) {
-        return "ツイン";
-    }
-    if (/triple|トリプル/u.test(normalized)) {
-        return "トリプル";
-    }
-    if (/suite|スイート/u.test(normalized)) {
-        return "スイート";
-    }
-    if (/和室|washitsu|japanese/u.test(normalized)) {
-        return "和室";
-    }
-    if (/wayoushitsu|wayo|和洋/u.test(normalized)) {
-        return "和洋室";
-    }
-    return value.trim();
-}
+export const formatCompetitorHistoryRoomType = formatPriceConditionRoomType;
 
-export function formatCompetitorHistoryMealType(value: string): string {
-    const labels: Record<string, string> = {
-        BREAKFAST: "朝食",
-        BREAKFAST_DINNER: "朝夕食",
-        DINNER: "夕食",
-        NONE: "素泊まり"
-    };
-    const normalized = value.trim();
-    return labels[normalized] ?? normalized;
-}
+export const formatCompetitorHistoryMealType = formatPriceConditionMealType;
 
 function normalizeSnapshotRecord(value: unknown): CompetitorPriceSnapshotRecord | null {
     if (!isRecord(value)) {
@@ -259,12 +221,12 @@ function buildFilterOptions(records: readonly CompetitorPriceSnapshotRecord[]): 
     return {
         mealTypes: Array.from(mealTypes)
             .map((value) => ({ label: formatCompetitorHistoryMealType(value), value }))
-            .sort(compareFilterOptions),
+            .sort(comparePriceConditionFilterOptions),
         roomTypes: Array.from(roomTypes)
             .map((value) => formatCompetitorHistoryRoomType(value))
             .filter((value, index, values) => values.indexOf(value) === index)
             .map((value) => ({ label: value, value }))
-            .sort(compareFilterOptions)
+            .sort(comparePriceConditionFilterOptions)
     };
 }
 
@@ -478,17 +440,6 @@ function compareFetchedAt(
     right: CompetitorPriceSnapshotRecord | undefined
 ): number {
     return (left?.fetchedAt ?? "").localeCompare(right?.fetchedAt ?? "");
-}
-
-function compareFilterOptions(left: CompetitorHistoryFilterOption, right: CompetitorHistoryFilterOption): number {
-    const order = ["シングル", "セミダブル", "ダブル", "ツイン", "トリプル", "フォース", "和室", "和洋室"];
-    const leftIndex = order.indexOf(left.label);
-    const rightIndex = order.indexOf(right.label);
-    if (leftIndex !== -1 || rightIndex !== -1) {
-        return (leftIndex === -1 ? order.length : leftIndex)
-            - (rightIndex === -1 ? order.length : rightIndex);
-    }
-    return left.label.localeCompare(right.label, "ja") || left.value.localeCompare(right.value);
 }
 
 function isGuestCount(value: number | null): value is CompetitorHistoryGuestCount {

@@ -25,6 +25,7 @@ export type NextReadRequest =
         kind: "price-trends";
         mealType: string;
         numGuests: 1 | 2 | 3 | 4;
+        roomType: string | null;
         stayDate: string;
         yadNos: readonly string[];
     }
@@ -178,6 +179,9 @@ export function buildNextReadUrl(request: NextReadRequest, origin: string): URL 
         url.searchParams.set("stay_date", request.stayDate);
         url.searchParams.set("num_guests", String(request.numGuests));
         url.searchParams.set("meal_type", request.mealType);
+        if (request.roomType !== null) {
+            url.searchParams.append("room_type_options[]", request.roomType);
+        }
         for (const yadNo of request.yadNos) {
             url.searchParams.append("yad_nos[]", yadNo);
         }

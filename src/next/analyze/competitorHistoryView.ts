@@ -1,11 +1,14 @@
 import {
     type CompetitorHistoryFacility,
-    type CompetitorHistoryFilters,
     type CompetitorHistoryGuestCount,
     type CompetitorHistoryPanel,
     type CompetitorHistoryPoint,
     type CompetitorHistoryViewModel
 } from "./competitorHistoryModel";
+import {
+    createPriceConditionFilters,
+    getPriceConditionFilterStyles
+} from "./priceConditionFilterView";
 import { positionViewportTooltip } from "./viewportTooltipPosition";
 
 export const COMPETITOR_HISTORY_ROOT_ATTRIBUTE = "data-ra-next-competitor-history-root";
@@ -174,49 +177,6 @@ export function getCompetitorHistoryStyles(): string {
     font-weight: 700;
     line-height: 1.45;
 }
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filters] {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 8px 18px;
-    margin: 8px 0 0;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    margin: 0;
-    padding: 0;
-    border: 0;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] legend {
-    float: none;
-    min-width: 0;
-    padding: 0 2px 0 0;
-    color: #50627a;
-    font-size: 12px;
-    font-weight: 700;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] button {
-    min-height: 30px;
-    padding: 4px 8px;
-    border: 1px solid #c9d3df;
-    border-radius: 4px;
-    background: #ffffff;
-    color: #385064;
-    font: inherit;
-    font-size: 12px;
-    font-weight: 700;
-    cursor: pointer;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] button[aria-pressed="true"] {
-    border-color: #4b7fc7;
-    background: #4b7fc7;
-    color: #ffffff;
-}
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] button:focus-visible,
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [${COMPETITOR_HISTORY_HITBOX_ATTRIBUTE}]:focus-visible {
     outline: 3px solid #d98200;
     outline-offset: 2px;
@@ -443,15 +403,6 @@ export function getCompetitorHistoryStyles(): string {
         margin-top: 16px;
         padding: 0;
     }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filters] { display: grid; gap: 8px; }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] { width: 100%; }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-filter-group] legend {
-        float: none;
-        flex: 0 0 100%;
-        min-width: 0;
-        padding-bottom: 2px;
-    }
-    [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] button { min-height: 44px; }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-grid] { grid-template-columns: 1fr; }
     [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-latest] li {
         grid-template-columns: minmax(0, 1fr) auto;
@@ -461,6 +412,7 @@ export function getCompetitorHistoryStyles(): string {
         color: #687d8e;
     }
 }
+${getPriceConditionFilterStyles(`[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}]`)}
 `;
 }
 
@@ -509,37 +461,17 @@ function createMessage(documentHost: Document, text: string, tone: string): HTML
 }
 
 function createFilters(documentHost: Document, viewModel: CompetitorHistoryViewModel): HTMLElement {
-    const container = documentHost.createElement("div");
-    container.setAttribute("data-ra-next-competitor-history-filters", "");
-    container.append(
-        createFilterGroup(documentHost, "部屋タイプ", "roomType", viewModel.availableFilters.roomTypes, viewModel.filters),
-        createFilterGroup(documentHost, "食事", "mealType", viewModel.availableFilters.mealTypes, viewModel.filters)
-    );
-    return container;
-}
-
-function createFilterGroup(
-    documentHost: Document,
-    label: string,
-    kind: keyof CompetitorHistoryFilters,
-    options: readonly { label: string; value: string }[],
-    filters: CompetitorHistoryFilters
-): HTMLElement {
-    const group = documentHost.createElement("fieldset");
-    group.setAttribute("data-ra-next-competitor-history-filter-group", kind);
-    const legend = documentHost.createElement("legend");
-    legend.textContent = label;
-    group.append(legend);
-    for (const option of [{ label: "指定なし", value: "" }, ...options]) {
-        const button = documentHost.createElement("button");
-        button.type = "button";
-        button.setAttribute(COMPETITOR_HISTORY_FILTER_KIND_ATTRIBUTE, kind);
-        button.setAttribute(COMPETITOR_HISTORY_FILTER_VALUE_ATTRIBUTE, option.value);
-        button.setAttribute("aria-pressed", String((filters[kind] ?? "") === option.value));
-        button.textContent = option.label;
-        group.append(button);
-    }
-    return group;
+    return createPriceConditionFilters({
+        availableFilters: viewModel.availableFilters,
+        documentHost,
+        filters: viewModel.filters,
+        legacyAttributes: {
+            container: "data-ra-next-competitor-history-filters",
+            group: "data-ra-next-competitor-history-filter-group",
+            kind: COMPETITOR_HISTORY_FILTER_KIND_ATTRIBUTE,
+            value: COMPETITOR_HISTORY_FILTER_VALUE_ATTRIBUTE
+        }
+    });
 }
 
 function createLegend(

@@ -13,6 +13,11 @@ import {
     type NextPriceTrendYadSeries,
     type PriceTrendCaptureStore
 } from "./priceTrendCaptureStore";
+import {
+    PRICE_CONDITION_MEAL_TYPES,
+    PRICE_CONDITION_ROOM_TYPES,
+    formatPriceConditionRoomType
+} from "./priceConditionFilter";
 
 const PRICE_TRENDS_ENDPOINT = "/api/v1/price_trends";
 const PRICE_TREND_SCHEMA_VERSION = "price_trend:v1";
@@ -23,15 +28,12 @@ const JST_OFFSET_MILLISECONDS = 9 * 60 * 60 * 1000;
 const DAY_MILLISECONDS = 24 * 60 * 60 * 1000;
 
 export const PRICE_TREND_CAPTURE_GUEST_COUNTS = [1, 2, 3, 4] as const;
-export const PRICE_TREND_CAPTURE_MEAL_TYPES = [
-    "NONE",
-    "BREAKFAST",
-    "DINNER",
-    "BREAKFAST_DINNER"
-] as const;
+export const PRICE_TREND_CAPTURE_MEAL_TYPES = PRICE_CONDITION_MEAL_TYPES;
+export const PRICE_TREND_CAPTURE_ROOM_TYPES = PRICE_CONDITION_ROOM_TYPES;
 
 export type PriceTrendCaptureGuestCount = typeof PRICE_TREND_CAPTURE_GUEST_COUNTS[number];
 export type PriceTrendCaptureMealType = typeof PRICE_TREND_CAPTURE_MEAL_TYPES[number];
+export type PriceTrendCaptureRoomType = typeof PRICE_TREND_CAPTURE_ROOM_TYPES[number];
 
 interface PriceTrendCaptureScope {
     mealType: PriceTrendCaptureMealType;
@@ -42,6 +44,7 @@ export interface PriceTrendCaptureOptions {
     existingRecords: readonly unknown[];
     facilityId: string;
     facilityLabel: string;
+    roomType?: string | null;
     stayDate: string;
 }
 
@@ -120,6 +123,7 @@ export function createPriceTrendCaptureWriter(
             const facilityId = captureOptions.facilityId.trim();
             const facilityLabel = captureOptions.facilityLabel.trim();
             const ownYadNo = parseFacilityYadNo(facilityId);
+            const roomType = normalizeCaptureRoomType(captureOptions.roomType ?? null);
             const stayDate = normalizeCompactDate(captureOptions.stayDate);
             const captureStartedAt = now();
             const observationDate = formatJstDate(captureStartedAt);
@@ -127,6 +131,7 @@ export function createPriceTrendCaptureWriter(
                 stopped
                 || ownYadNo === null
                 || facilityLabel === ""
+                || roomType === undefined
                 || stayDate === null
                 || observationDate === null
             ) {
@@ -150,7 +155,7 @@ export function createPriceTrendCaptureWriter(
                 });
             }
 
-            const captureKey = buildCaptureKey(facilityId, stayDate, observationDate);
+            const captureKey = buildCaptureKey(facilityId, stayDate, observationDate, roomType);
             const knownRecords = [
                 ...captureOptions.existingRecords,
                 ...(completedRecords.get(captureKey) ?? [])
@@ -159,9 +164,16 @@ export function createPriceTrendCaptureWriter(
                 knownRecords,
                 facilityId,
                 stayDate,
-                observationDate
+                observationDate,
+                roomType
             );
-            if (selectMissingScopes(knownRecords, facilityId, stayDate, observationDate).length === 0) {
+            if (selectMissingScopes(
+                knownRecords,
+                facilityId,
+                stayDate,
+                observationDate,
+                roomType
+            ).length === 0) {
                 return Promise.resolve({
                     status: "skipped",
                     reason: "already-stored",
@@ -195,6 +207,7 @@ export function createPriceTrendCaptureWriter(
                     observationDate,
                     ownYadNo,
                     retentionWindow,
+                    roomType,
                     signal: controller.signal,
                     stayDate,
                     store,
@@ -240,6 +253,7 @@ async function capturePriceTrendBatch(options: {
     observationDate: string;
     ownYadNo: string;
     retentionWindow: { maxStayDate: string; minStayDate: string };
+    roomType: PriceTrendCaptureRoomType | null;
     signal: AbortSignal;
     stayDate: string;
     store: PriceTrendCaptureStore;
@@ -263,7 +277,8 @@ async function capturePriceTrendBatch(options: {
         knownRecords,
         options.facilityId,
         options.stayDate,
-        options.observationDate
+        options.observationDate,
+        options.roomType
     );
     if (missingScopes.length === 0) {
         return {
@@ -273,13 +288,15 @@ async function capturePriceTrendBatch(options: {
                 knownRecords,
                 options.facilityId,
                 options.stayDate,
-                options.observationDate
+                options.observationDate,
+                options.roomType
             ).some(hasComparablePriceData),
             records: selectSameDayRecords(
                 knownRecords,
                 options.facilityId,
                 options.stayDate,
-                options.observationDate
+                options.observationDate,
+                options.roomType
             ),
             requestedCount: 0
         };
@@ -316,6 +333,7 @@ async function capturePriceTrendBatch(options: {
         facilities,
         missingScopes,
         observationDate: options.observationDate,
+        roomType: options.roomType,
         signal: options.signal,
         stayDate: options.stayDate,
         transport: options.transport,
@@ -359,6 +377,7 @@ async function fetchMissingScopeRecords(options: {
     facilities: readonly NextPriceTrendFacility[];
     missingScopes: readonly PriceTrendCaptureScope[];
     observationDate: string;
+    roomType: PriceTrendCaptureRoomType | null;
     signal: AbortSignal;
     stayDate: string;
     transport: NextReadTransport;
@@ -384,6 +403,7 @@ async function fetchMissingScopeRecords(options: {
                 kind: "price-trends",
                 mealType: scope.mealType,
                 numGuests: scope.numGuests,
+                roomType: options.roomType,
                 stayDate: options.stayDate,
                 yadNos: options.yadNos
             };
@@ -405,6 +425,7 @@ async function fetchMissingScopeRecords(options: {
                 facilities: options.facilities,
                 observationDate: options.observationDate,
                 payload,
+                roomType: options.roomType,
                 scope,
                 stayDate: options.stayDate,
                 yadNos: options.yadNos
@@ -438,6 +459,7 @@ function buildCaptureRecord(options: {
     facilities: readonly NextPriceTrendFacility[];
     observationDate: string;
     payload: unknown;
+    roomType: PriceTrendCaptureRoomType | null;
     scope: PriceTrendCaptureScope;
     stayDate: string;
     yadNos: readonly string[];
@@ -482,16 +504,21 @@ function buildCaptureRecord(options: {
             mealType: options.scope.mealType,
             numGuests: options.scope.numGuests,
             observationDate: options.observationDate,
+            roomType: options.roomType,
             stayDate: options.stayDate
         }),
-        roomType: null,
-        roomTypeLabel: null,
+        roomType: options.roomType,
+        roomTypeLabel: options.roomType === null
+            ? null
+            : formatPriceConditionRoomType(options.roomType),
         schemaVersion: PRICE_TREND_SCHEMA_VERSION,
         scope: {
             mealType: options.scope.mealType,
             numGuests: options.scope.numGuests,
-            roomType: null,
-            roomTypeLabel: null,
+            roomType: options.roomType,
+            roomTypeLabel: options.roomType === null
+                ? null
+                : formatPriceConditionRoomType(options.roomType),
             source: "next-price-trends-tab",
             stayDate: options.stayDate,
             yadNos: options.yadNos.slice()
@@ -600,10 +627,11 @@ function selectMissingScopes(
     values: readonly unknown[],
     facilityId: string,
     stayDate: string,
-    observationDate: string
+    observationDate: string,
+    roomType: PriceTrendCaptureRoomType | null
 ): PriceTrendCaptureScope[] {
     const presentScopeKeys = new Set(
-        selectSameDayRecords(values, facilityId, stayDate, observationDate)
+        selectSameDayRecords(values, facilityId, stayDate, observationDate, roomType)
             .map(buildScopeKey)
     );
     return buildDefaultScopes().filter((scope) => !presentScopeKeys.has(buildScopeKey(scope)));
@@ -613,7 +641,8 @@ function selectSameDayRecords(
     values: readonly unknown[],
     facilityId: string,
     stayDate: string,
-    observationDate: string
+    observationDate: string,
+    roomType: PriceTrendCaptureRoomType | null
 ): NextPriceTrendRecord[] {
     const latestByScope = new Map<string, NextPriceTrendRecord>();
     for (const value of values) {
@@ -624,6 +653,7 @@ function selectSameDayRecords(
             value.facilityId !== facilityId
             || normalizeCompactDate(value.stayDate) !== stayDate
             || formatJstDate(new Date(value.fetchedAt)) !== observationDate
+            || value.roomType !== roomType
         ) {
             continue;
         }
@@ -649,8 +679,14 @@ function isComparableCaptureRecord(value: unknown): value is NextPriceTrendRecor
         && normalizeCompactDate(value.payload.stayDate) === stayDate
         && isGuestCount(value.numGuests)
         && isMealType(value.mealType)
-        && value.roomType === null
-        && value.roomTypeLabel === null
+        && (
+            value.roomType === null
+            || normalizeCaptureRoomType(value.roomType) !== undefined
+        )
+        && (
+            value.roomTypeLabel === null
+            || typeof value.roomTypeLabel === "string"
+        )
         && isValidDateTime(value.fetchedAt)
         && Array.isArray(value.facilities)
         && value.facilities.length > 0
@@ -706,20 +742,21 @@ function buildDefaultScopes(): PriceTrendCaptureScope[] {
 }
 
 function buildScopeKey(scope: { mealType: string; numGuests: number }): string {
-    return `${scope.numGuests}\u001f${scope.mealType}\u001funspecified`;
+    return `${scope.numGuests}\u001f${scope.mealType}`;
 }
 
 function buildCaptureKey(
     facilityId: string,
     stayDate: string,
-    observationDate: string
+    observationDate: string,
+    roomType: PriceTrendCaptureRoomType | null
 ): string {
     return [
         "price-trend-capture",
         `facility:${facilityId}`,
         `stayDate:${stayDate}`,
         `observedOn:${observationDate}`,
-        "room:unspecified"
+        `room:${roomType ?? "unspecified"}`
     ].join("|");
 }
 
@@ -766,6 +803,21 @@ function parseFacilityYadNo(facilityId: string): string | null {
     }
     const yadNo = facilityId.slice("yad:".length).trim();
     return yadNo === "" ? null : yadNo;
+}
+
+function normalizeCaptureRoomType(
+    value: unknown
+): PriceTrendCaptureRoomType | null | undefined {
+    if (value === null) {
+        return null;
+    }
+    if (typeof value !== "string") {
+        return undefined;
+    }
+    const normalized = value.trim().toUpperCase();
+    return PRICE_TREND_CAPTURE_ROOM_TYPES.includes(normalized as PriceTrendCaptureRoomType)
+        ? normalized as PriceTrendCaptureRoomType
+        : undefined;
 }
 
 function normalizeCompactDate(value: unknown): string | null {
