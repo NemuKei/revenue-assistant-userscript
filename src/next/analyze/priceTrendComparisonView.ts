@@ -10,6 +10,11 @@ import {
     createPriceConditionFilters,
     getPriceConditionFilterStyles
 } from "./priceConditionFilterView";
+import {
+    formatPriceComparisonSignedPrice,
+    getPriceComparisonDeltaStyles,
+    getPriceComparisonDeltaTone
+} from "./priceComparisonDelta";
 import { positionViewportTooltip } from "./viewportTooltipPosition";
 
 export const PRICE_TREND_COMPARISON_ROOT_ATTRIBUTE = "data-ra-next-price-trend-comparison-root";
@@ -282,7 +287,10 @@ export function getPriceTrendComparisonStyles(): string {
 }
 [data-ra-next-price-trend-tooltip] th { color: #50627a; font-weight: 800; }
 [data-ra-next-price-trend-tooltip] tr:last-child td { border-bottom: 0; }
-[data-ra-next-price-trend-tooltip] [data-ra-next-price-trend-delta="negative"] { color: #c93a3a; }
+${getPriceComparisonDeltaStyles(
+        "[data-ra-next-price-trend-tooltip]",
+        "data-ra-next-price-trend-delta"
+    )}
 [data-ra-next-price-trend-tooltip-facility] {
     display: inline-flex;
     max-width: 100%;
@@ -748,11 +756,19 @@ function showLeadTimeTooltip(
         const priceCell = documentHost.createElement("td");
         priceCell.textContent = formatPrice(point.price);
         const previousCell = documentHost.createElement("td");
-        previousCell.textContent = previousDelta === null ? "前回なし" : formatSignedPrice(previousDelta);
-        previousCell.setAttribute("data-ra-next-price-trend-delta", getDeltaTone(previousDelta));
+        previousCell.textContent = previousDelta === null
+            ? "前回なし"
+            : formatPriceComparisonSignedPrice(previousDelta);
+        previousCell.setAttribute(
+            "data-ra-next-price-trend-delta",
+            getPriceComparisonDeltaTone(previousDelta)
+        );
         const ownCell = documentHost.createElement("td");
-        ownCell.textContent = ownDelta === null ? "-" : formatSignedPrice(ownDelta);
-        ownCell.setAttribute("data-ra-next-price-trend-delta", getDeltaTone(ownDelta));
+        ownCell.textContent = ownDelta === null ? "-" : formatPriceComparisonSignedPrice(ownDelta);
+        ownCell.setAttribute(
+            "data-ra-next-price-trend-delta",
+            getPriceComparisonDeltaTone(ownDelta)
+        );
         row.append(facilityCell, roomCell, priceCell, previousCell, ownCell);
         body.append(row);
     }
@@ -862,17 +878,6 @@ function selectLeadTimeTicks(maximum: number, minimum: number): number[] {
 
 function formatPrice(value: number): string {
     return `${new Intl.NumberFormat("ja-JP").format(Math.round(value))}円`;
-}
-
-function formatSignedPrice(value: number): string {
-    return `${value > 0 ? "+" : ""}${new Intl.NumberFormat("ja-JP").format(Math.round(value))}円`;
-}
-
-function getDeltaTone(value: number | null): "negative" | "neutral" | "positive" {
-    if (value === null || value === 0) {
-        return "neutral";
-    }
-    return value < 0 ? "negative" : "positive";
 }
 
 function formatAxisPrice(value: number): string {

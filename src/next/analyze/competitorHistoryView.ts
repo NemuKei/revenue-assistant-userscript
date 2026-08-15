@@ -9,6 +9,11 @@ import {
     createPriceConditionFilters,
     getPriceConditionFilterStyles
 } from "./priceConditionFilterView";
+import {
+    formatPriceComparisonSignedPrice,
+    getPriceComparisonDeltaStyles,
+    getPriceComparisonDeltaTone
+} from "./priceComparisonDelta";
 import { positionViewportTooltip } from "./viewportTooltipPosition";
 
 export const COMPETITOR_HISTORY_ROOT_ATTRIBUTE = "data-ra-next-competitor-history-root";
@@ -344,8 +349,10 @@ export function getCompetitorHistoryStyles(): string {
     background: #f0f4f7;
     font-size: 12px;
 }
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-delta="up"] { color: #9b3d1c; }
-[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] [data-ra-next-competitor-history-delta="down"] { color: #176b63; }
+${getPriceComparisonDeltaStyles(
+        `[${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}]`,
+        "data-ra-next-competitor-history-delta"
+    )}
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] details { margin-top: 9px; }
 [${COMPETITOR_HISTORY_ROOT_ATTRIBUTE}] summary {
     color: #315b79;
@@ -760,11 +767,19 @@ function showDateTooltip(
         const priceCell = documentHost.createElement("td");
         priceCell.textContent = formatPrice(point.price);
         const previousCell = documentHost.createElement("td");
-        previousCell.textContent = previousDelta === null ? "前回なし" : formatSignedPrice(previousDelta);
-        previousCell.setAttribute("data-ra-next-competitor-history-delta", getDeltaTone(previousDelta));
+        previousCell.textContent = previousDelta === null
+            ? "前回なし"
+            : formatPriceComparisonSignedPrice(previousDelta);
+        previousCell.setAttribute(
+            "data-ra-next-competitor-history-delta",
+            getPriceComparisonDeltaTone(previousDelta)
+        );
         const ownCell = documentHost.createElement("td");
-        ownCell.textContent = ownDelta === null ? "-" : formatSignedPrice(ownDelta);
-        ownCell.setAttribute("data-ra-next-competitor-history-delta", getDeltaTone(ownDelta));
+        ownCell.textContent = ownDelta === null ? "-" : formatPriceComparisonSignedPrice(ownDelta);
+        ownCell.setAttribute(
+            "data-ra-next-competitor-history-delta",
+            getPriceComparisonDeltaTone(ownDelta)
+        );
         row.append(facilityCell, roomCell, priceCell, previousCell, ownCell);
         body.append(row);
     }
@@ -901,10 +916,6 @@ function formatPrice(value: number): string {
     return `${new Intl.NumberFormat("ja-JP").format(Math.round(value))}円`;
 }
 
-function formatSignedPrice(value: number): string {
-    return `${value > 0 ? "+" : ""}${new Intl.NumberFormat("ja-JP").format(Math.round(value))}円`;
-}
-
 function formatAxisPrice(value: number): string {
     return new Intl.NumberFormat("ja-JP", { maximumFractionDigits: 0 }).format(value);
 }
@@ -935,11 +946,4 @@ function formatDateTime(value: string): string {
 
 function shortenConditionSignature(value: string): string {
     return value.length <= 24 ? value : `${value.slice(0, 24)}...`;
-}
-
-function getDeltaTone(value: number | null): "down" | "neutral" | "up" {
-    if (value === null || value === 0) {
-        return "neutral";
-    }
-    return value > 0 ? "up" : "down";
 }

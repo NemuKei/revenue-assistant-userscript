@@ -43,6 +43,7 @@ const expectedSources = [
     "src/next/analyze/competitorHistoryWriter.ts",
     "src/next/analyze/priceConditionFilter.ts",
     "src/next/analyze/priceConditionFilterView.ts",
+    "src/next/analyze/priceComparisonDelta.ts",
     "src/next/analyze/priceTrendComparisonDataSource.ts",
     "src/next/analyze/priceTrendComparisonModel.ts",
     "src/next/analyze/priceTrendComparisonRuntime.ts",

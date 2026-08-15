@@ -26,6 +26,10 @@ const view = await importBundledTypeScript(
     "../src/next/analyze/competitorHistoryView.ts",
     import.meta.url
 );
+const priceComparisonDelta = await importBundledTypeScript(
+    "../src/next/analyze/priceComparisonDelta.ts",
+    import.meta.url
+);
 const [entrySource, fixture, fixtureEntry, storeSource, viewSource] = await Promise.all([
     readFile(new URL("../src/next/entry.ts", import.meta.url), "utf8"),
     readFile(new URL("../dev/fixtures/next-analyze-competitor/index.html", import.meta.url), "utf8"),
@@ -147,6 +151,23 @@ assert.equal((await invalidFacilityDataSource.load("20260812")).reason, "facilit
 invalidFacilityDataSource.stop();
 
 const styles = view.getCompetitorHistoryStyles();
+assert.equal(priceComparisonDelta.getPriceComparisonDeltaTone(500), "positive");
+assert.equal(priceComparisonDelta.getPriceComparisonDeltaTone(-500), "negative");
+assert.equal(priceComparisonDelta.getPriceComparisonDeltaTone(0), "neutral");
+assert.equal(priceComparisonDelta.getPriceComparisonDeltaTone(null), "neutral");
+assert.equal(priceComparisonDelta.formatPriceComparisonSignedPrice(500), "+500円");
+assert.equal(priceComparisonDelta.formatPriceComparisonSignedPrice(-500), "-500円");
+assert.equal(priceComparisonDelta.formatPriceComparisonSignedPrice(0), "0円");
+assert.deepEqual(priceComparisonDelta.PRICE_COMPARISON_DELTA_COLORS, {
+    negative: "#9b3d1c",
+    positive: "#176b63"
+});
+assert.ok(
+    contrastRatioAgainstWhite(priceComparisonDelta.PRICE_COMPARISON_DELTA_COLORS.positive) >= 4.5
+);
+assert.ok(
+    contrastRatioAgainstWhite(priceComparisonDelta.PRICE_COMPARISON_DELTA_COLORS.negative) >= 4.5
+);
 assert.match(styles, /grid-template-columns: minmax\(320px, 1fr\)/u);
 assert.match(styles, /max-width: 980px/u);
 assert.match(styles, /@media \(max-width: 680px\)/u);
@@ -159,10 +180,23 @@ assert.match(styles, /border-radius: 2px/u);
 assert.match(styles, /rgba\(47, 111, 187, 0\.08\)/u);
 assert.match(styles, /data-ra-next-competitor-history-guide-line/u);
 assert.match(styles, /data-ra-next-competitor-history-accessible-table/u);
+assert.match(
+    styles,
+    /data-ra-next-competitor-history-delta="positive"\] \{ color: #176b63; \}/u
+);
+assert.match(
+    styles,
+    /data-ra-next-competitor-history-delta="negative"\] \{ color: #9b3d1c; \}/u
+);
+assert.doesNotMatch(styles, /data-ra-next-competitor-history-delta="up"/u);
+assert.doesNotMatch(styles, /data-ra-next-competitor-history-delta="down"/u);
 assert.match(styles, /focus:not\(:focus-visible\)[^{]*\{\s*outline: none;/u);
 assert.match(viewSource, /title\.textContent = "競合価格 最安値推移"/u);
 assert.match(viewSource, /createPriceConditionFilters/u);
 assert.match(viewSource, /getPriceConditionFilterStyles/u);
+assert.match(viewSource, /getPriceComparisonDeltaStyles/u);
+assert.match(viewSource, /getPriceComparisonDeltaTone/u);
+assert.match(viewSource, /formatPriceComparisonSignedPrice/u);
 assert.match(
     viewSource,
     /root\.replaceChildren\(header, meta, filters, legend, grid\)/u
@@ -219,6 +253,7 @@ assert.equal(
     ),
     "next-competitor-history|facility:yad:fixture|stayDate:20260812|observedOn:2026-07-23"
 );
+
 assert.equal(
     snapshotStoreModule.buildNextCompetitorHistorySnapshotKey(
         "yad:fixture",
@@ -551,4 +586,14 @@ function buildPlans(yadNo, priceOffset, requestRoomTypes) {
             priceDiff: null
         }
     ])));
+}
+
+function contrastRatioAgainstWhite(hexColor) {
+    const channels = hexColor
+        .slice(1)
+        .match(/.{2}/gu)
+        .map((value) => Number.parseInt(value, 16) / 255)
+        .map((value) => value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4);
+    const luminance = (0.2126 * channels[0]) + (0.7152 * channels[1]) + (0.0722 * channels[2]);
+    return 1.05 / (luminance + 0.05);
 }

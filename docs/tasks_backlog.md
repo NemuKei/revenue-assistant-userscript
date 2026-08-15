@@ -911,6 +911,29 @@
   - source `73d45d94e706bdbd0107e2aaf72481bab584f42b`はValidate Main run `31856901844`を通過し、manual workflow run `31856977602`、run number 41、attempt 1でNext `0.2.0.41`へ配信した。公開Nextは374,147 bytes、SHA-256 `479FD93F44D6DECAEA2CE4EB30EA7C002FF159145770893B614158F39E3D96B4`、source mapは1,502,141 bytes、SHA-256 `86640B9A799707C94D97992CDE93A3F490EB727AF53656D0173638B96FEDDE1D`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。
   - 通常ChromeのRevenue Assistant tabでruntime `ready-read-only`、installed version `0.2.0.40`を値非公開で確認した。Tampermonkey管理画面はbrowser安全制約で自動操作せず、`0.2.0.41`更新後の価格推移tab実画面確認を残す。施設名、room名、価格、response body、raw trace、screenshotはrepoへ保存していない。
 
+### RAU-UX-176 競合価格 / 価格推移Tooltipの正負色を共通化する
+
+- 状態:
+  - source / local gate完了、main同期 / Next公開待ち。利用者が、競合価格Tooltipの正負表現と色味が直感と逆であることを指摘した。変更前は競合価格だけプラスが赤、マイナスが緑で、価格推移はマイナスが赤・プラスが通常色だった。
+- 解決する問題:
+  - 同じ`前回差分` / `自社との差`を2タブで異なる色として読む必要があり、プラスの好機とマイナスの注意を瞬時に判断しにくい。
+- 実装境界:
+  - 共通moduleが符号のtoneと色roleを所有し、両タブをプラス=緑、マイナス=赤、0・欠損=中立へ揃える。`+ / -`、金額、列、Tooltip位置、series色、filter、API、保存、Revenue Assistant write 0は変更しない。
+  - 緑 / 赤は白背景の通常文字で4.5:1以上を維持し、符号を残して色覚だけに依存しない。
+- 合格条件:
+  - pure / focused testで正数・負数・0・nullの共通tone、共通色、両viewの共通module利用、旧競合価格の逆配色不在を固定する。
+  - desktop / 390pxの合成Tooltipで、プラスが緑、マイナスが赤、符号が残り、table / Tooltip位置 / overflow / console warning・errorが回帰しない。
+  - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution smoke、`git diff --check`を通す。
+- local validation:
+  - `priceComparisonDelta.ts`を共通ownerとし、正数=`positive`、負数=`negative`、0 / `null`=`neutral`、signed円表記と両viewのdelta CSSを共通化した。緑`#176b63`は白背景6.33:1、赤`#9b3d1c`は6.82:1で、focused testが4.5:1以上を固定する。
+  - desktop / 390px合成Browserで、競合価格と価格推移の両Tooltipに正負が同時にある点を選び、プラス`rgb(23, 107, 99)`、マイナス`rgb(155, 61, 28)`、`+ / -`文字、viewport内配置を確認した。価格推移は両幅ともdocument overflow 0、console warning / error 0だった。競合価格のdesktopはoverflow 0、390pxではTooltip自体を左右8px内へ収めた。競合価格のconsole error 1件はfixtureのfavicon 404だけで、runtime warning / errorはなかった。
+  - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker / scheduler、distribution / booking curve smoke、`git diff --check`が通過した。local candidateは373,845 bytes、SHA-256 `97B4434098EC63A59BEA24B0271F5948E56CAF3BEBBF931E8418AB67B9B2CC24`、source mapは1,502,803 bytes、SHA-256 `B8A89A8B7669739B72132A04803DF063BD95F1C615571B7C1337D1BC09738144`である。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `risk: display semantics only; no request, storage, write, or chart geometry change`
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
