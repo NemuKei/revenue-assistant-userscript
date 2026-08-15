@@ -103,7 +103,7 @@ export function renderSalesSettingClassic(
         )
         : null;
     const children: HTMLElement[] = [];
-    const rankOverview = createRankOverview(root.ownerDocument, viewModel.cards);
+    const rankOverview = createRankOverview(root.ownerDocument, viewModel.rankOverviewCards);
     if (rankOverview !== null) {
         children.push(rankOverview);
     }
@@ -217,16 +217,8 @@ function createOverallSummary(
 
 function createRankOverview(
     documentHost: Document,
-    cards: readonly SalesSettingClassicCardViewModel[]
+    rankedCards: readonly SalesSettingClassicCardViewModel[]
 ): HTMLElement | null {
-    const rankedCards = cards
-        .filter((card) => card.rankSummary !== null)
-        .slice()
-        .sort((left, right) => {
-            const leftDays = left.rankSummary?.daysAgo ?? Number.POSITIVE_INFINITY;
-            const rightDays = right.rankSummary?.daysAgo ?? Number.POSITIVE_INFINITY;
-            return leftDays - rightDays || left.scope.label.localeCompare(right.scope.label, "ja");
-        });
     if (rankedCards.length === 0) {
         return null;
     }

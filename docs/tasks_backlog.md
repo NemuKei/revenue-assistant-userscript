@@ -935,6 +935,28 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `risk: display semantics only; no request, storage, write, or chart geometry change`
 
+### RAU-UX-177 Analyzeランク変更履歴を部屋タイプ順へ戻す
+
+- 状態:
+  - source実装とlocal gateを完了した。利用者が、Analyze販売設定の`ランク変更履歴`を最終変更の新しい順ではなく部屋タイプ順へ変更するよう明示した。main同期とNext publicationを残す。
+- 解決する問題:
+  - rank overviewだけが`最終変更`の日数で行を再ソートし、標準の室タイプカードと行位置が一致しないため、同じ部屋タイプを上下で追いにくい。
+- 実装境界:
+  - overviewの行は、標準画面から解決したroom scope / 室タイプカードの順序をそのまま使う。各部屋タイプ内で最新rank eventを選ぶ既存処理、`最終変更 / ランク / 増減`の値は変更しない。
+  - API request、rank status response、booking curve、storage、Revenue Assistant write 0、標準UI非干渉は変更しない。未知room用の別順序やlabel順を追加せず、既存scope順を単一の順序責務とする。
+- 合格条件:
+  - focused testで、最終変更日が逆順でもoverview対象がroom scope順を維持し、各roomの最新eventと既存の値計算が変わらないことを固定する。
+  - desktop / 390pxの合成販売設定で、overview行とnative room cardが同順、table overflowとconsole warning / errorが回帰しないことを確認する。
+  - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution smoke、`git diff --check`を通す。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl; existing contract already requires room card order`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `risk: display order only; no request, storage, write, or value semantics change`
+- local validation:
+  - modelがroom scope順からoverview対象を選び、viewが日数やlabelで再ソートしない責務へ戻した。focused testは、シングルよりツインの変更日が新しい入力でもoverviewを`シングル / ツイン`のscope順に保ち、同一シングル内では最新eventの`12→11`を選ぶことを確認した。
+  - desktop / 390px合成Browserでoverviewとnative cardがともに`シングル / ツイン`、page / table overflow 0、console warning / error 0を確認した。typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker / scheduler、distribution / booking curve smoke、`git diff --check`が通過した。local candidateは373,739 bytes、SHA-256 `22B84BE92339DADD58AB69297B1DC95C0FCD00BBFC30E194E3A5ED89F28739B0`、source mapは1,502,415 bytes、SHA-256 `A7959824B324FED11A29326D9FB9AF1A6185D4F8BE3F24244B4C98DFD3D43327`である。
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る

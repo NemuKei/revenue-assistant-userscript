@@ -36,6 +36,7 @@ export interface SalesSettingClassicOverallViewModel {
 export interface SalesSettingClassicViewModel {
     cards: readonly SalesSettingClassicCardViewModel[];
     overall: SalesSettingClassicOverallViewModel;
+    rankOverviewCards: readonly SalesSettingClassicCardViewModel[];
     scopes: readonly BookingCurveReferenceScope[];
     stayDate: string;
 }
@@ -96,6 +97,7 @@ export function buildSalesSettingClassicViewModel(options: {
                 transient: hotelCurve?.currentSummary.transient ?? createEmptyMetricSummary()
             }
         },
+        rankOverviewCards: cards.filter((card) => card.rankSummary !== null),
         scopes: options.scopes,
         stayDate: options.stayDate
     };

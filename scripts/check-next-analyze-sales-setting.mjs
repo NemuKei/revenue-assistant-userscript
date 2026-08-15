@@ -41,6 +41,7 @@ const rankSnapshot = {
     stayDate: "20260812",
     invalidEventCount: 0,
     events: [
+        rankEvent("single", "2026-07-10", "13", "12", "single-old-event"),
         rankEvent("single", "2026-07-20", "12", "11", "single-event"),
         rankEvent("twin", "2026-07-29", "10", "9", "twin-event")
     ]
@@ -67,7 +68,14 @@ assert.deepEqual(built.overall.summary.all, {
 assert.deepEqual(built.overall.summary.transient, hotelSummary.transient);
 assert.deepEqual(built.overall.summary.group, hotelSummary.group);
 assert.deepEqual(built.cards.map((card) => card.scope.key), ["room:single", "room:twin"]);
+assert.deepEqual(
+    built.rankOverviewCards.map((card) => card.scope.key),
+    ["room:single", "room:twin"],
+    "rank overview must preserve native room scope order instead of sorting by latest change"
+);
 assert.equal(built.cards[0].rankSummary.daysAgo, 19);
+assert.equal(built.cards[0].rankSummary.beforeRankName, "12");
+assert.equal(built.cards[0].rankSummary.afterRankName, "11");
 assert.equal(built.cards[0].rankSummary.roomDelta, 4);
 assert.equal(built.cards[1].rankSummary.roomDelta, 4);
 
@@ -204,6 +212,13 @@ assert.match(runtimeSource, /rankFacilityId !== facilityId/u);
 assert.doesNotMatch(runtimeSource, /rankOrder|rank-order|rank_sequences/u);
 assert.doesNotMatch(runtimeSource, /\bfetch\s*\(|XMLHttpRequest|POST|PUT|PATCH|DELETE/u);
 assert.match(viewSource, /"ランク変更履歴"/u);
+const rankOverviewSource = viewSource.match(/function createRankOverview[\s\S]*?\n\}\n\nfunction renderNativeCard/u)?.[0] ?? "";
+assert.notEqual(rankOverviewSource, "", "rank overview renderer must remain independently checkable");
+assert.doesNotMatch(
+    rankOverviewSource,
+    /\.sort\(/u,
+    "rank overview renderer must not override the canonical room scope order"
+);
 for (const segmentLabel of ["全体", "個人", "団体"]) {
     assert.match(viewSource, new RegExp(`"${segmentLabel}"`, "u"));
 }
