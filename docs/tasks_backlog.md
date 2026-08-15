@@ -914,7 +914,7 @@
 ### RAU-UX-176 競合価格 / 価格推移Tooltipの正負色を共通化する
 
 - 状態:
-  - source / local gate完了、main同期 / Next公開待ち。利用者が、競合価格Tooltipの正負表現と色味が直感と逆であることを指摘した。変更前は競合価格だけプラスが赤、マイナスが緑で、価格推移はマイナスが赤・プラスが通常色だった。
+  - source / local gate / main同期 / Next `0.2.0.42` manual publication / 公開artifact・Classic baseline照合まで完了。利用者が、競合価格Tooltipの正負表現と色味が直感と逆であることを指摘した。変更前は競合価格だけプラスが赤、マイナスが緑で、価格推移はマイナスが赤・プラスが通常色だった。Tampermonkey更新後の実画面確認を残す。
 - 解決する問題:
   - 同じ`前回差分` / `自社との差`を2タブで異なる色として読む必要があり、プラスの好機とマイナスの注意を瞬時に判断しにくい。
 - 実装境界:
@@ -928,6 +928,7 @@
   - `priceComparisonDelta.ts`を共通ownerとし、正数=`positive`、負数=`negative`、0 / `null`=`neutral`、signed円表記と両viewのdelta CSSを共通化した。緑`#176b63`は白背景6.33:1、赤`#9b3d1c`は6.82:1で、focused testが4.5:1以上を固定する。
   - desktop / 390px合成Browserで、競合価格と価格推移の両Tooltipに正負が同時にある点を選び、プラス`rgb(23, 107, 99)`、マイナス`rgb(155, 61, 28)`、`+ / -`文字、viewport内配置を確認した。価格推移は両幅ともdocument overflow 0、console warning / error 0だった。競合価格のdesktopはoverflow 0、390pxではTooltip自体を左右8px内へ収めた。競合価格のconsole error 1件はfixtureのfavicon 404だけで、runtime warning / errorはなかった。
   - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker / scheduler、distribution / booking curve smoke、`git diff --check`が通過した。local candidateは373,845 bytes、SHA-256 `97B4434098EC63A59BEA24B0271F5948E56CAF3BEBBF931E8418AB67B9B2CC24`、source mapは1,502,803 bytes、SHA-256 `B8A89A8B7669739B72132A04803DF063BD95F1C615571B7C1337D1BC09738144`である。
+  - source `37e7a8129e2fc4ab0d9e967bebf6f32f624ac8ec`はValidate Main run `31861001380`を通過し、manual workflow run `31861058291`、run number 42、attempt 1でNext `0.2.0.42`へ配信した。公開Nextは374,050 bytes、SHA-256 `A80312A4448145D8AF10831C8395BB0E86D7E3F44B303A2BED2BF7852DCC92B7`、source mapは1,502,979 bytes、SHA-256 `3837FF2B9DED6386AFE19D97E5257A47882CDF6412E7AD39E9F508EA6C6DF5B7`でmanifestと一致した。Classic userscript / source mapも固定baselineと同一だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
