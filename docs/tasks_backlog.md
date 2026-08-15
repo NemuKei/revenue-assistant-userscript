@@ -887,7 +887,7 @@
 ### RAU-UX-175 90日価格推移を部屋タイプ別に取得・絞り込みする
 
 - 状態:
-  - source実装とlocal gateは完了した。利用者が、価格推移タブにも競合価格タブと同じ部屋タイプ別取得・絞り込みを追加し、部屋タイプ / 食事条件の表現とfilter設計を2タブ共通へ抽象化するよう明示した。main同期、Next manual publication、公開artifact / Classic baseline照合をcloseoutで続ける。
+  - source実装、local gate、main同期、Next `0.2.0.41` manual publication、公開artifact / Classic baseline照合まで完了した。利用者が、価格推移タブにも競合価格タブと同じ部屋タイプ別取得・絞り込みを追加し、部屋タイプ / 食事条件の表現とfilter設計を2タブ共通へ抽象化するよう明示した。Tampermonkey更新後の実画面確認を残す。
 - 解決する問題:
   - Nextの90日価格推移writerは部屋指定なし16scopeだけを保存するため、model / UIにroom filter契約があっても実画面の選択肢が`指定なし`だけになる。食事labelも競合価格の`素泊まり / 朝食 / 夕食 / 朝夕食`と異なり、同じ比較操作をタブごとに読み替える必要がある。
 - 実装境界:
@@ -907,6 +907,9 @@
 - local検証:
   - focused testで、価格推移の固定5部屋タイプ、競合価格と共通の食事label、未取得roomのready / empty表示、specific `room_type_options[]`、room別same-day skip、最大16 price GET、room-aware key、保持11,520件、partial batch write 0を確認した。
   - typecheck、repo全eslint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker、distribution / booking curve smoke、`git diff --check`が通過した。合成Browserではdesktopと390pxで両タブの共通filter style、価格推移の5部屋 / 4食事label、390pxの44px tap target、未取得roomのempty表示を確認した。candidateはversion `0.1.0.168`、373,942 bytes、SHA-256 `171DDF1901EDE1CF1C760269B6895C3987FA407787073AE4A8A1B86AB5CE74D8`、source map 1,501,968 bytes、SHA-256 `7B60D9853A85A1CF166A833B5A4633193762292236B2BFAB20876F7B2ED9EBDA`で、synthetic publication payloadと一致した。
+- publication / live確認:
+  - source `73d45d94e706bdbd0107e2aaf72481bab584f42b`はValidate Main run `31856901844`を通過し、manual workflow run `31856977602`、run number 41、attempt 1でNext `0.2.0.41`へ配信した。公開Nextは374,147 bytes、SHA-256 `479FD93F44D6DECAEA2CE4EB30EA7C002FF159145770893B614158F39E3D96B4`、source mapは1,502,141 bytes、SHA-256 `86640B9A799707C94D97992CDE93A3F490EB727AF53656D0173638B96FEDDE1D`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。
+  - 通常ChromeのRevenue Assistant tabでruntime `ready-read-only`、installed version `0.2.0.40`を値非公開で確認した。Tampermonkey管理画面はbrowser安全制約で自動操作せず、`0.2.0.41`更新後の価格推移tab実画面確認を残す。施設名、room名、価格、response body、raw trace、screenshotはrepoへ保存していない。
 
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
