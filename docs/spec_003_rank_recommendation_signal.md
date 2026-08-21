@@ -19,7 +19,7 @@ first phase では、推奨レート金額を出さない。Revenue Assistant �
 
 この仕様には Classic の凍結済み契約、Nextの現行契約、過去の未公開設計証拠が併存する。記述が競合する場合は次の順で適用する。
 
-- `Next`: 現行の実装・配布対象。標準カレンダー上の`基準日から似た日を探す`を入口とし、表形式の料金調整候補は表示しない。詳細根拠はAnalyzeのbooking curve、競合価格履歴、90日価格推移で確認する。
+- `Next`: 現行の実装・配布対象。標準カレンダーの後ろに置く`基準日から似た日を探す`を補助入口とし、表形式の料金調整候補は表示しない。詳細根拠はAnalyzeのbooking curve、競合価格履歴、90日価格推移で確認する。
 - `Classic`: 凍結した旧公開契約。カレンダー下9列list / row previewはNextへ戻さない。Classicの慣れたTop / Analyze UI、booking curve、競合価格、価格推移、OH / 個人 / 団体の見方は、問題が確認された箇所以外の表示baselineとして扱う。
 - `calendar decision workspace`、`今日の判断 rail`、旧料金調整候補listに関する節は設計履歴であり、Nextのactive contractではない。現在の基準日レンズと矛盾する場合は適用しない。
 - 類似日候補の重み、閾値、最大表示件数は合成データ上の仮説であり、実データ評価前のproduction scoring契約とはしない。
@@ -106,7 +106,7 @@ Next first phase の候補では次を行う。Classic への公開済み変更�
 - 既存カレンダー上で 1 日を基準日に選び、そのときだけ類似日を最大6日浮かせる。カレンダー全体の常時 cluster 色分けは行わない。
 - 実画面接続の最初の shell は、通常の日付 click / Analyze 遷移を維持し、`基準日を選ぶ` を明示した選択モード中の次の1日だけを基準日として捕捉する。calendar DOM を安全に特定できない場合、Classic marker、重複 root を検出した場合は fail closed する。
 - 狭幅時の Next shell は、Revenue Assistant 側の親要素が viewport より広い固定幅でもその幅を引き継がず、shell 自身を viewport 内へ制限する。Next 自身がdocumentの横overflowを増やさず、OH / 個人 / 団体 / 競合の4指標を読めることを受け入れ条件とする。Revenue Assistant本体のcalendarや親要素の幅、responsive挙動は変更しない。
-- `D-20260807-003` / `RAU-UX-155` 以降はcalendar-firstを維持するため、user-facing見出しを内部設計名の`類似日レンズ`ではなく`基準日から似た日を探す`とする。候補一覧と比較詳細はviewport幅にかかわらず初期折りたたみにし、先にcalendar上の`基準` / `類似` / `比較` markerを見せる。候補一覧を開いたdesktopでは3列で圧縮し、900px以下の既存2列 / 1列layoutを維持する。利用者が候補一覧または比較詳細を開いた場合は、room typeや比較選択、root再mountによる再描画後も開状態を維持する。680px以下ではbutton / selectを44px以上、Next root自身の横overflowを0とする。
+- `D-20260807-003` / `RAU-UX-155` 以降はcalendar-firstを維持するため、user-facing見出しを内部設計名の`類似日レンズ`ではなく`基準日から似た日を探す`とする。`RAU-UX-178`以降は標準カレンダーを先に表示し、この補助入口のrootを標準カレンダー全体の直後へ置く。候補一覧と比較詳細はviewport幅にかかわらず初期折りたたみにし、先にcalendar上の`基準` / `類似` / `比較` markerを見せる。候補一覧を開いたdesktopでは3列で圧縮し、900px以下の既存2列 / 1列layoutを維持する。利用者が候補一覧または比較詳細を開いた場合は、room typeや比較選択、root再mountによる再描画後も開状態を維持する。680px以下ではbutton / selectを44px以上、Next root自身の横overflowを0とする。
 - 類似度は OH、個人 pace、団体 pace、競合価格を別 dimension として扱い、score とともにどの dimension が近いかを説明する。OH / 個人 / 団体 / 競合を統合ラベルへ潰さない。
 - 欠損 dimension は明示し、個人とほか2 dimension以上が揃わない日を強い類似候補にしない。0 は欠損と同一視せず `0` と表示し、別の値から差し引いて個人または団体を推測しない。
 - live adapterは、基準日未選択ではrequestを行わず、選択後だけ`/api/v2/yad/info`と`/api/v1/suggest/output/current_settings`を各1回GETする。同じ選択中のin-flightだけを重複排除し、完了結果やerrorは保持しない。calendarの同一context再描画ではruntimeが再loadしないため追加GET 0とするが、利用者が基準日を明示的に選び直した場合は施設を再検証して2 endpointを再読込する。施設APIの名称が現在のvisible headerに存在しない、calendar本体が差し替わる、またはcalendarが一時消失した場合は、旧施設・旧期間の基準日、比較、根拠とin-flight結果を破棄する。booking curveと競合価格は既存IndexedDBをreadonlyで読み、database作成、upgrade、全件scan、Classic recordの保存・更新・削除を行わない。通常の表示読込は完全一致keyを使い、booking curve差分取得のcoverage判定だけは`docs/spec_001_analyze_expansion.md`の上限付き`facility-asof`逆順cursorを使える。

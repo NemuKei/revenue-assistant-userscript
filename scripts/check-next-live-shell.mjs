@@ -14,6 +14,10 @@ const viewSource = await readFile(
     new URL("../src/next/live/liveSimilarityLensView.ts", import.meta.url),
     "utf8"
 );
+const runtimeSource = await readFile(
+    new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url),
+    "utf8"
+);
 
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-08-12"), "2026-08-12");
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-02-29"), null);
@@ -99,7 +103,7 @@ assert.equal(
     "re-arming during a load must prevent focus from moving to the room selector"
 );
 assert.match(
-    await readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
+    runtimeSource,
     /characterData:\s*true/u,
     "facility label text-node changes must schedule runtime reconciliation"
 );
@@ -152,6 +156,21 @@ assert.match(
 assert.doesNotMatch(styles, /(?<!max-)width: calc\(100vw - 32px\)/);
 assert.match(styles, /data-ra-next-lens-match-list[^}]*grid-template-columns: repeat\(3, minmax\(0, 1fr\)\)/);
 assert.match(viewSource, /textElement\(root, "h2", "基準日から似た日を探す"\)/u);
+assert.match(
+    runtimeSource,
+    /root\.previousElementSibling !== snapshot\.mountBoundary/u,
+    "the similarity lens must reconcile against the standard calendar's following sibling position"
+);
+assert.match(
+    runtimeSource,
+    /snapshot\.mountBoundary\.insertAdjacentElement\("afterend", root\)/u,
+    "the similarity lens must mount after the standard calendar"
+);
+assert.doesNotMatch(
+    runtimeSource,
+    /insertAdjacentElement\("beforebegin", root\)/u,
+    "the similarity lens must not regain priority ahead of the standard calendar"
+);
 assert.match(viewSource, /section\.open = expanded \?\? false;/u);
 assert.doesNotMatch(viewSource, /matchMedia\("\(min-width: 901px\)"\)/u);
 assert.match(fixture, /\[data-mock-header\] \{[^}]*flex-wrap: wrap;/);
@@ -206,12 +225,12 @@ assert.match(
 assert.match(viewSource, /accessibleLabel = `前回調整 \$\{label\}`/u);
 assert.doesNotMatch(viewSource, /調整なし/u, "missing rank status must stay absent instead of being inferred");
 assert.match(
-    await readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
+    runtimeSource,
     /nativeCell\.anchor\.click\(\)/u,
     "SPA Analyze fallback must delegate to the existing native calendar action"
 );
 assert.match(
-    await readFile(new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url), "utf8"),
+    runtimeSource,
     /windowHost\.addEventListener\("popstate", scheduleReconcile/u,
     "SPA back and forward navigation must reconcile the route boundary"
 );

@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-08-15
+最終更新: 2026-08-21
 
 ## Current Task Bundle
 
@@ -24,6 +24,7 @@
 - `RAU-UX-175`はsource、local gate、main同期、Next `0.2.0.41` manual publication、公開artifact / Classic baseline照合まで完了した。90日価格推移へ、競合価格と同じ部屋タイプ / 食事条件の語彙と共通filter componentを接続し、初期の部屋指定なし16 GETは維持したまま、利用者が選んだ1部屋タイプの不足scopeだけを最大16 GET / concurrency 2で取得する。room-aware key、同日skip、全response検証前write 0、11,520 record保持、周辺日 / background / retryなし、Revenue Assistant write 0を固定した。通常Chromeのinstalled runtimeは公開前の`0.2.0.40`であり、Tampermonkey更新後の実画面確認を残す。
 - `RAU-UX-176`はsource、local gate、main同期、Next `0.2.0.42` manual publication、公開artifact / Classic baseline照合まで完了した。競合価格と価格推移のTooltipで差分tone、signed円表記、CSSを共通moduleへ集約し、プラスを緑、マイナスを赤、0・欠損を中立へ揃えた。列、Tooltip位置、series色、filter、API / storage、Revenue Assistant write 0は変更していない。Tampermonkey更新後の実画面確認を残す。
 - `RAU-UX-177`はsource、local gate、main同期、Next `0.2.0.43` manual publication、公開artifact / Classic baseline照合まで完了した。Analyze販売設定の`ランク変更履歴`で、各roomの最新event選択は維持したまま、最終変更日による再ソートを外し、標準の室タイプカードと同じroom scope順へ戻した。API / storage / write / value semanticsは変更していない。Tampermonkey更新後の実画面確認を残す。
+- `RAU-UX-178`はsource / spec / focused・full checks / desktop・390px合成Browser QAまで完了した。Topの`基準日から似た日を探す`を廃止せず、標準カレンダー全体の直前から直後へ移し、calendar / root再mount後も同じ兄弟順を復元する。見出し、選択mode、候補・比較の初期折りたたみ、calendar marker、API / storage / scoring / Revenue Assistant write 0は変更していない。main同期とNext manual publicationは未実施である。
 - `RAU-PERF-25`の公開Next `0.2.0.34` live gateでは、ホテル関西の翌日宿泊日でoverall / 6 room summary各20ms、room current 22ms、selected evidence 1,535msへ入ったが、軽量marker readは最大833ms、500ms超8回だった。Long Task件数とnetwork / write streamのfresh外部証拠は今回取得できず、freeze解消を断定できないためconcurrency 20を維持する。残るmain-thread stallのphase分離を`RAU-PERF-26`へ切り分ける。
 - `RAU-WC-34`を半年取得の設計候補として追加した。rank statusは可視1 GETを維持した小chunkのcoverage差分、booking curveは半年全roomの日次取得を避けた距離別cadenceまたはevent-driven補完へ分離する。runtimeは未変更で、count-only live range gateとYellow zone decision前には実装しない。
 - `D-20260813-004`でTop / Analyzeの判断可能時間を第一目的とする`Next Operational SLO v0.1`を固定した。現行Analyze foregroundはbackgroundより優先されるが、Topと同じrequest count / session上限を共有し、独立枠ではない。`RAU-PERF-20`のprivacy-safe marker / collectorは公開Next `0.2.0.25`へ反映し、通常Chromeの初回live baselineを取得した。各cohort 1 sampleのためSLO達成状況はprovisionalだが、warm Analyze全体8,327ms / 全room 14,837msを根拠に`RAU-PERF-21`のcurrent優先とreference head-of-line解消へ進んだ。当初は追加再現後だけ`RAU-PERF-22`を検討する段階gateだったが、既存上限内のforeground再配分は後続`D-20260813-006`でNowへ更新した。`RAU-WC-34`はその後に置く。

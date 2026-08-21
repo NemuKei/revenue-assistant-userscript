@@ -959,6 +959,29 @@
 - publication / live verification:
   - source `1ac3f8244a3632857ae9b45b77b75689ba7501b1`はValidate Main run `31874082803`を通過し、manual workflow run `31874152258`、run number 43、attempt 1でNext `0.2.0.43`へ配信した。公開Nextは373,944 bytes、SHA-256 `66C244F8AF6AADD46B6D924A16A2E95F57AD5537E3AC77DC738805BCA9944243`、source mapは1,502,591 bytes、SHA-256 `2A6534FF92DD03080347AE29EDA17D953428E14083BE9EDD33DAB5C4601F963F`でmanifestと一致した。Classic userscript / source mapは固定baselineと同一だった。Tampermonkey更新後の実画面確認は未実施である。
 
+### RAU-UX-178 Topの「基準日から似た日を探す」を標準カレンダーの後ろへ下げる
+
+- 状態:
+  - source / spec / focused・full checks / desktop・390px合成Browser QAまで完了した。利用者が、利用頻度が高くない`基準日から似た日を探す`の表示優先度を一旦下げるよう明示した。機能は廃止せず、標準カレンダーを先に見られる配置へ変更した。main同期とNext manual publicationは未実施である。
+- 解決する問題:
+  - 補助的な類似日検索が標準カレンダー全体より前に常時表示され、日常的に見るカレンダーより強い入口になっている。
+- 実装境界:
+  - 類似日検索rootを標準カレンダー全体の直前から直後へ移し、再mount後も同じ兄弟順を復元する。見出し、選択mode、候補と比較の初期折りたたみ、calendar marker、開閉状態は変更しない。
+  - API request、IndexedDB read、scoring、候補上限、storage、Revenue Assistant write 0、標準カレンダーのgeometryと操作は変更しない。
+- 合格条件:
+  - focused testで、rootが標準カレンダー境界の直後へmountされ、旧い直前mountへ戻らないことを固定する。
+  - desktop / 390pxの合成Topで、標準カレンダーが類似日検索より先に表示され、calendar / root再mount後もrootが1件かつ同じ順序になり、標準日付操作、横overflow、console warning / errorが回帰しない。
+  - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution smoke、`git diff --check`を通す。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_003_rank_recommendation_signal.md`
+  - `risk: display order only; no request, storage, write, scoring, or interaction change`
+- local validation:
+  - mount責務を標準カレンダーの`beforebegin` / `nextElementSibling`から`afterend` / `previousElementSibling`へ変更し、focused checkで旧配置の不在を固定した。typecheck、repo全eslint、Next全focused check、runtime remount、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker / scheduler、distribution / booking curve smoke、`git diff --check`が通過した。最初のruntime fixtureは初回navigationが30秒で1回timeoutしたが、単独再実行はpassし、その後の残り全checkもpassした。
+  - 合成Browserはdesktop 1280pxと390pxで、標準カレンダーが類似日検索より先、rootが標準カレンダーの直後、root 1件、calendar link 92件を確認した。calendarとrootの各再mount後も同じ順序と件数を維持し、desktop / 390pxのdocument overflowは0、390pxの操作buttonは44pxだった。通常日付linkは従来のAnalyze URLへ遷移した。console errorはfixture favicon 404と意図した遷移先未実装によるfixture 404だけで、runtime warning / errorはなかった。
+  - local candidateはversion `0.1.0.168`、373,740 bytes、SHA-256 `1C9D64E0362E538C402DB3DB752BF164389DF3873EBFB53FC2E626DC20833CCC`、source mapは1,502,416 bytes、SHA-256 `E10FC499B6EBC14CA700133B34A0696EA9C3E9BABF544D0752F9B1390562F306`である。
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る

@@ -276,8 +276,8 @@ export function startLiveSimilarityLensRuntime(
         }
         ensureLiveSimilarityLensStyles(documentHost);
         root = rootCandidates[0] ?? createLiveSimilarityLensRoot(documentHost);
-        if (root.parentElement !== snapshot.mountParent || root.nextElementSibling !== snapshot.mountBoundary) {
-            snapshot.mountBoundary.insertAdjacentElement("beforebegin", root);
+        if (root.parentElement !== snapshot.mountParent || root.previousElementSibling !== snapshot.mountBoundary) {
+            snapshot.mountBoundary.insertAdjacentElement("afterend", root);
         }
         const focusedAction = getFocusedLensAction(documentHost, root);
         if (
