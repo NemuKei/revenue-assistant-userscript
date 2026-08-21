@@ -962,7 +962,7 @@
 ### RAU-UX-178 Topの「基準日から似た日を探す」を標準カレンダーの後ろへ下げる
 
 - 状態:
-  - source / spec / focused・full checks / desktop・390px合成Browser QAまで完了した。利用者が、利用頻度が高くない`基準日から似た日を探す`の表示優先度を一旦下げるよう明示した。機能は廃止せず、標準カレンダーを先に見られる配置へ変更した。main同期とNext manual publicationは未実施である。
+  - source / spec / focused・full checks / desktop・390px合成Browser QA / main同期 / Next `0.2.0.44` manual publication / 公開artifact・Classic baseline照合まで完了した。利用者が、利用頻度が高くない`基準日から似た日を探す`の表示優先度を一旦下げるよう明示した。機能は廃止せず、標準カレンダーを先に見られる配置へ変更した。Tampermonkey更新後の実画面確認を残す。
 - 解決する問題:
   - 補助的な類似日検索が標準カレンダー全体より前に常時表示され、日常的に見るカレンダーより強い入口になっている。
 - 実装境界:
@@ -981,6 +981,8 @@
   - mount責務を標準カレンダーの`beforebegin` / `nextElementSibling`から`afterend` / `previousElementSibling`へ変更し、focused checkで旧配置の不在を固定した。typecheck、repo全eslint、Next全focused check、runtime remount、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker / scheduler、distribution / booking curve smoke、`git diff --check`が通過した。最初のruntime fixtureは初回navigationが30秒で1回timeoutしたが、単独再実行はpassし、その後の残り全checkもpassした。
   - 合成Browserはdesktop 1280pxと390pxで、標準カレンダーが類似日検索より先、rootが標準カレンダーの直後、root 1件、calendar link 92件を確認した。calendarとrootの各再mount後も同じ順序と件数を維持し、desktop / 390pxのdocument overflowは0、390pxの操作buttonは44pxだった。通常日付linkは従来のAnalyze URLへ遷移した。console errorはfixture favicon 404と意図した遷移先未実装によるfixture 404だけで、runtime warning / errorはなかった。
   - local candidateはversion `0.1.0.168`、373,740 bytes、SHA-256 `1C9D64E0362E538C402DB3DB752BF164389DF3873EBFB53FC2E626DC20833CCC`、source mapは1,502,416 bytes、SHA-256 `E10FC499B6EBC14CA700133B34A0696EA9C3E9BABF544D0752F9B1390562F306`である。
+- publication / live verification:
+  - source `fd0371f9810169453715437e7e4f37a624b8c4e4`はValidate Main run `32440534472`を通過し、manual workflow run `32440618893`、run number 44、attempt 1でNext `0.2.0.44`へ配信した。公開Nextは373,945 bytes、SHA-256 `DDD9CEC110CB8223E65A89B2FA2D07D4B9FB6D07B60F227BCADB5ED2B30D2111`、source mapは1,502,592 bytes、SHA-256 `D5EED4B539CB4DD2A2D90DD1F4C375D5901CA90F8C0549226EFEABDBBD2083E1`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。Tampermonkey更新後の実画面確認は未実施である。
 
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
