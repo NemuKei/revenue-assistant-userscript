@@ -1211,7 +1211,7 @@
 ### RAU-WC-35 月送り後の可視Top cue取得を継続する
 
 - 状態:
-  - source / spec / local gate完了、main同期とNext manual publication待ち。利用者の明示依頼と`D-20260824-001`により、初回表示範囲のbackground上限到達後も、標準月送りで新しく見えた3か月の団体cueと前回調整cueを取得・表示する。
+  - 完了。source / spec / local gate / main同期 / Next `0.2.0.45` manual publication / 公開artifact・Classic baseline照合まで実施した。利用者の明示依頼と`D-20260824-001`により、初回表示範囲のbackground上限到達後も、標準月送りで新しく見えた3か月の団体cueと前回調整cueを取得・表示する。Tampermonkey更新後のRevenue Assistant実画面QAは別gateとして残す。
 - 解決する問題:
   - 初回の可視3か月では青い団体数と前回調整が埋まるが、同じsessionで先の月へ送ると、calendar nodeの日付属性変更を検知できない場合と、Top bootstrap 800 / daily 200の残枠が0になる場合があり、新しい可視範囲の取得・表示が止まる。
 - 実装scope:
@@ -1224,6 +1224,7 @@
 - 進捗:
   - pure / coordinator checkで、初回contextは従来backgroundだけ、同一facility / as-ofの可視range変更だけがfinite foreground、hotel current以外0、background上限到達後も可視2日を開始、同じrangeの追加GET 0を確認した。既存のauth / rate-limit / 連続error / abort / due / pending dedupe / write 0契約は維持した。
   - Next全check、typecheck、repo全eslint、Classic / Next build、Classic publication boundary、distribution / booking curve smoke fixture、`git diff --check`は通過した。実Browser fixtureでは、`data-testid`だけを変える1回の月送りで可視92日を1回admitし、連続2回の月送りでは旧rangeのsignalがabort、最新rangeだけbackgroundへ進み、標準room値不変、cleanup後root 0を確認した。公開後のTampermonkey更新とRevenue Assistant実画面での月送りQAは別gateとして残す。
+  - source `daa95f3dc4ddce0bb9e048b437bbeb3b43b160de`はValidate Main run `32698825424`を通過し、manual workflow run `32698931932`、run number 45、attempt 1でNext `0.2.0.45`へ配信した。公開Nextは374,881 bytes、SHA-256 `8695F808A9002DD759E202DA92D05E27B8389B16F3C6E0263B5841785D6E994A`、source mapは1,507,233 bytes、SHA-256 `F7C69C3D96FFDA8B23609E0B21C4EB4E24F2867337D67589D75931B603450564`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`の固定baselineと同一だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
@@ -1322,7 +1323,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triageは、Nowを`RAU-PERF-27`のNext publicationとTampermonkey更新後のホテル関西live比較とする。初期 / room openの`curveBuild`、Long Task、overall / 6 room / selected evidence、planned / started、HTTP / stop、標準UI、console error、Revenue Assistant write 0を比較し、20 sample未満のSLOはprovisionalとする。cache削除や強制全取得でsampleを作らない。`RAU-WC-34`はforeground保護とPERF-27 live gate後のNext候補とし、実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、Nowを公開Next `0.2.0.45`へのTampermonkey更新と`RAU-WC-35`のTop月送りlive gateとする。同一facility / as-ofで先の月へ1回・連続2回送り、団体 / 前回調整cueの保存済み先行・段階表示、可視hotel currentとrank status最大1 / range、旧range abort、HTTP / stop、標準UI、console error、Revenue Assistant write 0をfresh確認する。`RAU-PERF-27`のホテル関西live比較も同じinstalled source revision確認後のNextに維持し、初期 / room openの`curveBuild`、Long Task、overall / 6 room / selected evidence、planned / startedを比較する。20 sample未満のSLOはprovisionalとし、cache削除や強制全取得でsampleを作らない。`RAU-WC-34`はこれらのforeground / performance gate後の候補とし、実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 
