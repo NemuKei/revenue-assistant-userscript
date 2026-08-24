@@ -113,6 +113,18 @@ export function buildNextBookingCurveBackgroundTasks(
     return Array.from(tasks.values()).sort(compareTaskOrder);
 }
 
+export function buildNextBookingCurveVisibleHotelCurrentTasks(
+    context: NextBookingCurveAcquisitionContext
+): NextBookingCurveAcquisitionTask[] {
+    const hotelScope = context.roomScopes.find((scope) => scope.kind === "hotel");
+    if (hotelScope === undefined) {
+        return [];
+    }
+    return normalizeCompactDates(context.visibleStayDates)
+        .map((stayDate) => buildTask(context.facilityId, stayDate, hotelScope, "current"))
+        .sort(compareTaskOrder);
+}
+
 export function buildNextBookingCurveCurrentTasks(options: {
     context: NextBookingCurveAcquisitionContext;
     scopeKeys?: readonly string[];

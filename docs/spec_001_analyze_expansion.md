@@ -275,6 +275,7 @@ BCL-tuned first wave の定義:
 - 取得を開始できるのは、可視なcalendarまたは`/analyze/YYYY-MM-DD`、document visible、現在の`as_of_date`、`/api/v2/yad/info`とvisible headerのfacility label一致、`current_settings`で確認できたroom groupが揃う場合だけとする。
 - 初回bootstrapは、表示中stay dateのホテル全体と全room groupのcurrent source、およびホテル全体の直近型reference coreが各lead-time目盛りに必要とするsourceを対象にする。現在の360〜0日前目盛りでは`as_of_date - 90日`から最大`as_of_date + 360日`のうちcoreが返すtarget weekdayだけであり、任意の連続日prefetchではない。同じsourceは1 taskへdedupeする。
 - Top backgroundのcurrentは、日付ごとにhotel / roomを揃える順ではなく、可視stay dateのhotel currentを全日分先に開始し、その後にroom group currentへ進む。青い団体cueはhotel sourceだけで描画できるため、room currentを待たせない。referenceは従来どおり全currentの後ろとする。
+- 標準calendarの月送りで可視stay date fingerprintが変わった場合は、最新の可視範囲のhotel currentだけを`visible-current`のfinite foregroundへ入れる。1 contextの候補は有効な可視stay dateごとに最大1件で、Top bootstrap 800 / daily 200 counterを消費しない。room group current、recent / seasonal reference、画面外stay dateは追加せず、保存済みsourceを先に読み、due / Classic seed / Next store / pending dedupe後の不足分だけを取得する。
 - 選択中Analyze stay date、または基準日レンズの選択stay dateのcurrent sourceを`critical-current`として最優先にする。表示中stay dateの残りの確認済みroom group currentは`visible-current`とし、当日`as_of_date`と一致するrecordを優先する。
 - 基準日レンズでstay dateを選んだ場合は、選択日のcurrent taskを完了し、保存済み根拠を画面へ投影してから、表示期間全体のbackground計画を開始する。全期間のcoverage確認やreference補充を、青い`団n`と選択日の根拠表示のbarrierにしない。この順序変更でrequest対象、due判定、開始間隔、concurrency、session上限は変えない。
 - Analyzeのホテル全体referenceは`visible-reference`として全currentの後ろ、backgroundの前へ置く。room group referenceはそのcardを開いたときだけ`selected-reference`として不足分を追加し、未選択room分を初期queueへ入れない。直近型はcoreが必要とする同曜日source、季節型は前年同月と2年前同月のtarget weekdayだけを対象とし、全部屋タイプ分を初回bootstrapで一括取得しない。
@@ -308,8 +309,8 @@ BCL-tuned first wave の定義:
 ### 負荷、停止、再開
 
 - `/api/v4/booking_curve`のTop自動backgroundはrequest開始間隔50ms以上、同時実行数20以下とする。AnalyzeとTopの明示操作に必要なfinite foreground taskは35ms以上、同時実行数20以下とする。Revenue Assistant本体の標準requestはこのcountへ含めない。総request数はClassic seed、Next store、due判定、Top session上限で先に抑える。
-- foreground profileは開始密度だけを分け、取得対象、due判定、Top bootstrap / daily上限、保存schema / retention、停止条件を広げない。foreground queueが空になった時点でbackgroundの50ms / 20へ戻す。429またはabort response前に開始済みとなる件数は最大20まで増え得るため、planned / started / aborted、最大同時数、HTTP / stop分類をprofile別に測る。rollbackはforegroundも50ms / 20へ戻し、storage migrationや削除を行わない。
-- coverage 80%未満のTop bounded bootstrapは最大800 request / session、coverage 80%以上のTop daily deltaは最大200 request / sessionとする。Analyze foregroundはこのcounterを消費せず、pure plannerが生成するfinite due taskだけを開始する。選択中currentはqueued taskだけをqueue先頭へ上げるが、active request、各profileの同時実行数、開始間隔を迂回しない。
+- foreground profileは、Analyzeの有限due taskと標準月送り後の可視hotel currentに限定する。foreground queueが空になった時点でbackgroundの50ms / 20へ戻す。429またはabort response前に開始済みとなる件数は最大20まで増え得るため、planned / started / aborted、最大同時数、HTTP / stop分類をprofile別に測る。rollbackは月送りの可視hotel foreground admissionを外してbackground-onlyへ戻せ、storage migrationや削除を行わない。
+- coverage 80%未満のTop bounded bootstrapは最大800 request / session、coverage 80%以上のTop daily deltaは最大200 request / sessionとする。Analyze foregroundと月送り後の可視hotel currentはこのcounterを消費せず、pure plannerが生成するfinite due taskだけを開始する。月送りforegroundはroom group / reference / 画面外日を含めず、次のvisible-range context変更で古いqueued / in-flightをabortする。選択中currentはqueued taskだけをqueue先頭へ上げるが、active request、各profileの同時実行数、開始間隔を迂回しない。
 - HTTP 401はログイン確認、403は権限 / 施設確認、429はrate limitとしてqueueを即停止する。同一run内の自動retryは行わない。その他のrequest / validation / storage errorは記録して次taskへ進められるが、連続3 errorで停止する。
 - document hidden、calendar / Analyze以外へのroute変更、facility label不一致、facility / as-of変更、runtime停止では未完了requestをabortし、次の安全な可視contextで保存済みsourceから再計画する。
 - fixtureではwriterとnetwork acquisitionを完全に無効化する。

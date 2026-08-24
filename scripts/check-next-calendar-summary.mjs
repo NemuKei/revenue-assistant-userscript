@@ -35,8 +35,8 @@ assert.match(
 );
 assert.match(
     acquisitionRuntimeSource,
-    /surface\.kind === "calendar"[\s\S]*?calendarSummary\?\.setContext\(context\)[\s\S]*?startBackground\(context\)/u,
-    "the verified visible calendar context must be published before background planning"
+    /surface\.kind === "calendar"[\s\S]*?calendarSummary\?\.setContext\(context\)[\s\S]*?ensureVisibleHotelCurrent\([\s\S]*?startBackground\(context\)/u,
+    "the verified visible calendar context must paint before visible hotel admission and background planning"
 );
 
 const latestChanges = summaryModule.parseLiveCalendarLatestChanges({

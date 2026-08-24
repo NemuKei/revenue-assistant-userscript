@@ -51,8 +51,13 @@ assert.match(
 );
 assert.match(
     runtimeSource,
-    /if \(surface\.kind === "calendar"\) \{[\s\S]*await options\.coordinator\.startBackground\(context\);[\s\S]*return;[\s\S]*setRuntimeState\("foreground-only"\);/u,
+    /if \(surface\.kind === "calendar"\) \{[\s\S]*calendarSummary\?\.setContext\(context\)[\s\S]*ensureVisibleHotelCurrent\([\s\S]*await options\.coordinator\.startBackground\(context\);[\s\S]*return;[\s\S]*setRuntimeState\("foreground-only"\);/u,
     "Analyze route context discovery must not start the Top background planner"
+);
+assert.equal(
+    runtimeModule.NEXT_BOOKING_CURVE_ACQUISITION_OBSERVED_ATTRIBUTES.includes("data-testid"),
+    true,
+    "calendar date attribute replacement must trigger visible-range reconciliation"
 );
 assert.equal(storeModule.NEXT_BOOKING_CURVE_SOURCE_RETENTION_LIMIT, 4_096);
 assert.equal(
@@ -96,6 +101,36 @@ const context = {
     roomScopes,
     visibleStayDates: ["20260723", "20260724", "20260725"]
 };
+assert.equal(
+    runtimeModule.shouldPrioritizeNextVisibleHotelCurrent(null, context),
+    false,
+    "the initial calendar context must stay inside the existing Top background budget"
+);
+assert.equal(
+    runtimeModule.shouldPrioritizeNextVisibleHotelCurrent(context, {
+        ...context,
+        visibleStayDates: [...context.visibleStayDates].reverse()
+    }),
+    false,
+    "DOM order alone must not be treated as month navigation"
+);
+assert.equal(
+    runtimeModule.shouldPrioritizeNextVisibleHotelCurrent(context, {
+        ...context,
+        visibleStayDates: ["20261001", "20261002"]
+    }),
+    true,
+    "a visible-range change in the same facility and as-of context must use finite foreground"
+);
+assert.equal(
+    runtimeModule.shouldPrioritizeNextVisibleHotelCurrent(context, {
+        ...context,
+        facilityId: "yad:other",
+        visibleStayDates: ["20261001", "20261002"]
+    }),
+    false,
+    "facility changes must start a fresh bounded background context"
+);
 const backgroundTasks = model.buildNextBookingCurveBackgroundTasks(context);
 assert.equal(
     backgroundTasks.filter((task) => task.role === "current").length,
@@ -116,6 +151,22 @@ assert.equal(
     "bootstrap must include bounded hotel recent-reference sources"
 );
 assert.equal(new Set(backgroundTasks.map((task) => task.sourceKey)).size, backgroundTasks.length);
+const visibleHotelTasks = model.buildNextBookingCurveVisibleHotelCurrentTasks({
+    ...context,
+    visibleStayDates: ["20260725", "invalid", "20260723", "20260725"]
+});
+assert.deepEqual(
+    visibleHotelTasks.map((task) => ({
+        role: task.role,
+        roomGroupId: task.roomGroupId,
+        stayDate: task.stayDate
+    })),
+    [
+        { role: "current", roomGroupId: null, stayDate: "20260723" },
+        { role: "current", roomGroupId: null, stayDate: "20260725" }
+    ],
+    "month navigation foreground must contain only normalized visible hotel current tasks"
+);
 
 const recentCandidates = model.getNextRecentReferenceCandidateStayDates("20260812", "20260723");
 assert.equal(recentCandidates.length >= 63 && recentCandidates.length <= 65, true);
@@ -1020,6 +1071,36 @@ assert.equal(
     separateBudgetRequests.length,
     2,
     "foreground bypass must not replenish or expand the Top background budget"
+);
+const navigatedVisibleContext = {
+    ...oneScopeContext,
+    visibleStayDates: ["20260725", "20260726"]
+};
+const navigatedVisibleDiagnostics = await separateBudgetCoordinator.ensureVisibleHotelCurrent({
+    context: navigatedVisibleContext,
+    signal: new AbortController().signal
+});
+assert.deepEqual(navigatedVisibleDiagnostics, {
+    candidateTaskCount: 2,
+    dueTaskCount: 2,
+    outcome: "ready"
+});
+await new Promise((resolve) => setTimeout(resolve, 100));
+assert.deepEqual(
+    separateBudgetRequests.slice(-2).map((request) => request.stayDate),
+    ["20260725", "20260726"],
+    "newly visible hotel current must continue after the Top background budget is exhausted"
+);
+const requestCountAfterVisibleRange = separateBudgetRequests.length;
+await separateBudgetCoordinator.ensureVisibleHotelCurrent({
+    context: navigatedVisibleContext,
+    signal: new AbortController().signal
+});
+await new Promise((resolve) => setTimeout(resolve, 20));
+assert.equal(
+    separateBudgetRequests.length,
+    requestCountAfterVisibleRange,
+    "the same visible range must reuse stored sources without another GET"
 );
 separateBudgetCoordinator.stop();
 

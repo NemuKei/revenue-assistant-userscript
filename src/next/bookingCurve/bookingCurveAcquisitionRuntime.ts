@@ -33,6 +33,14 @@ const NEXT_BOOKING_CURVE_ACQUISITION_STYLE_ATTRIBUTE =
     "data-ra-next-booking-curve-acquisition-style";
 const NEXT_BOOKING_CURVE_ACQUISITION_STATE_ATTRIBUTE =
     "data-ra-next-booking-curve-acquisition-state";
+export const NEXT_BOOKING_CURVE_ACQUISITION_OBSERVED_ATTRIBUTES = [
+    "aria-hidden",
+    "class",
+    "data-testid",
+    "hidden",
+    "inert",
+    "style"
+] as const;
 
 export interface BookingCurveAcquisitionRuntimeHandle {
     reconcile(): void;
@@ -59,6 +67,7 @@ export function startBookingCurveAcquisitionRuntime(
     });
     let activeLoadController: AbortController | null = null;
     let activeFingerprint: string | null = null;
+    let lastCalendarContext: NextBookingCurveAcquisitionContext | null = null;
     let generation = 0;
     let root: HTMLElement | null = null;
     let scheduledTimer: number | null = null;
@@ -86,7 +95,7 @@ export function startBookingCurveAcquisitionRuntime(
         signal: abortController.signal
     });
     observer.observe(documentHost.body, {
-        attributeFilter: ["aria-hidden", "class", "hidden", "inert", "style"],
+        attributeFilter: [...NEXT_BOOKING_CURVE_ACQUISITION_OBSERVED_ATTRIBUTES],
         attributes: true,
         childList: true,
         subtree: true
@@ -169,6 +178,25 @@ export function startBookingCurveAcquisitionRuntime(
             }
             if (surface.kind === "calendar") {
                 options.calendarSummary?.setContext(context);
+                const prioritizeVisibleHotelCurrent = shouldPrioritizeNextVisibleHotelCurrent(
+                    lastCalendarContext,
+                    context
+                );
+                lastCalendarContext = context;
+                if (prioritizeVisibleHotelCurrent) {
+                    await options.coordinator.ensureVisibleHotelCurrent({
+                        context,
+                        signal: controller.signal
+                    });
+                    if (
+                        stopped
+                        || controller.signal.aborted
+                        || currentGeneration !== generation
+                        || activeFingerprint !== fingerprint
+                    ) {
+                        return;
+                    }
+                }
                 await options.coordinator.startBackground(context);
                 return;
             }
@@ -309,6 +337,21 @@ export function startBookingCurveAcquisitionRuntime(
         documentHost.querySelector(`[${NEXT_BOOKING_CURVE_ACQUISITION_STYLE_ATTRIBUTE}]`)?.remove();
         setRuntimeState("suspended-stopped");
     }
+}
+
+export function shouldPrioritizeNextVisibleHotelCurrent(
+    previous: NextBookingCurveAcquisitionContext | null,
+    current: NextBookingCurveAcquisitionContext
+): boolean {
+    return previous !== null
+        && previous.facilityId === current.facilityId
+        && previous.asOfDate === current.asOfDate
+        && normalizeVisibleStayDateFingerprint(previous.visibleStayDates)
+            !== normalizeVisibleStayDateFingerprint(current.visibleStayDates);
+}
+
+function normalizeVisibleStayDateFingerprint(stayDates: readonly string[]): string {
+    return Array.from(new Set(stayDates)).sort().join(",");
 }
 
 interface AcquisitionSurface {

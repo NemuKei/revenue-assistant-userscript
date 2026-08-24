@@ -13,6 +13,7 @@ import {
     buildNextBookingCurveBackgroundTasks,
     buildNextBookingCurveCurrentTasks,
     buildNextBookingCurveReferenceTasks,
+    buildNextBookingCurveVisibleHotelCurrentTasks,
     compactNextBookingCurveResponse,
     createNextBookingCurveSourceRecord,
     selectNextBookingCurveDueTasks,
@@ -87,6 +88,10 @@ export interface NextBookingCurveAcquisitionCoordinator {
         signal: AbortSignal;
         stayDate: string;
         waitForCompletion?: boolean;
+    }): Promise<NextBookingCurveAcquisitionDiagnostics>;
+    ensureVisibleHotelCurrent(options: {
+        context: NextBookingCurveAcquisitionContext;
+        signal: AbortSignal;
     }): Promise<NextBookingCurveAcquisitionDiagnostics>;
     readLatest(sourceKeys: readonly string[]): Promise<NextBookingCurveSourceRecord[]>;
     startBackground(context: NextBookingCurveAcquisitionContext): Promise<void>;
@@ -173,36 +178,27 @@ export function createNextBookingCurveAcquisitionCoordinator(
             stayDate,
             waitForCompletion = true
         }) {
-            if (stopped || signal.aborted) {
-                return createAcquisitionDiagnostics(0, 0, "aborted");
-            }
-            await ensureContext(context);
             const tasks = buildNextBookingCurveCurrentTasks({
                 context,
                 ...(scopeKeys === undefined ? {} : { scopeKeys }),
                 stayDate
             });
-            const existing = await readExistingForTasks({ context, tasks });
-            const dueTasks = selectNextBookingCurveDueTasks({
-                asOfDate: context.asOfDate,
-                existingRecords: existing,
-                limit: tasks.length,
-                tasks
+            return planInteractiveTasks({
+                context,
+                priority,
+                signal,
+                tasks,
+                waitForCompletion
             });
-            const pending = dueTasks
-                .map((task) => enqueueTask(task, priority, "interactive"));
-            const completion = Promise.all(pending.map((promise) => raceWithAbort(promise, signal)
-                .catch(() => undefined)));
-            if (waitForCompletion) {
-                await completion;
-            } else {
-                void completion;
-            }
-            return createAcquisitionDiagnostics(
-                tasks.length,
-                dueTasks.length,
-                signal.aborted ? "aborted" : "ready"
-            );
+        },
+        async ensureVisibleHotelCurrent({ context, signal }) {
+            return planInteractiveTasks({
+                context,
+                priority: "visible-current",
+                signal,
+                tasks: buildNextBookingCurveVisibleHotelCurrentTasks(context),
+                waitForCompletion: false
+            });
         },
         async readLatest(sourceKeys) {
             const nextRecords = await safeReadLatest(sourceKeys);
@@ -354,6 +350,48 @@ export function createNextBookingCurveAcquisitionCoordinator(
             storedSourceListeners.clear();
         }
     };
+
+    async function planInteractiveTasks(options: {
+        context: NextBookingCurveAcquisitionContext;
+        priority: NextBookingCurveCurrentPriority;
+        signal: AbortSignal;
+        tasks: readonly NextBookingCurveAcquisitionTask[];
+        waitForCompletion: boolean;
+    }): Promise<NextBookingCurveAcquisitionDiagnostics> {
+        if (stopped || options.signal.aborted) {
+            return createAcquisitionDiagnostics(0, 0, "aborted");
+        }
+        await ensureContext(options.context);
+        const existing = await readExistingForTasks({
+            context: options.context,
+            tasks: options.tasks
+        });
+        if (stopped || options.signal.aborted || !matchesContext(options.context)) {
+            return createAcquisitionDiagnostics(options.tasks.length, 0, "aborted");
+        }
+        const dueTasks = selectNextBookingCurveDueTasks({
+            asOfDate: options.context.asOfDate,
+            existingRecords: existing,
+            limit: options.tasks.length,
+            tasks: options.tasks
+        });
+        const pending = dueTasks.map((task) => (
+            enqueueTask(task, options.priority, "interactive")
+        ));
+        const completion = Promise.all(pending.map((promise) => (
+            raceWithAbort(promise, options.signal).catch(() => undefined)
+        )));
+        if (options.waitForCompletion) {
+            await completion;
+        } else {
+            void completion;
+        }
+        return createAcquisitionDiagnostics(
+            options.tasks.length,
+            dueTasks.length,
+            options.signal.aborted ? "aborted" : "ready"
+        );
+    }
 
     async function ensureContext(context: NextBookingCurveAcquisitionContext): Promise<void> {
         const contextKey = buildContextKey(context);

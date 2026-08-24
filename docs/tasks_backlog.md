@@ -1208,6 +1208,29 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `risk: in-memory curve calculation only; request / storage / write contracts unchanged`
 
+### RAU-WC-35 月送り後の可視Top cue取得を継続する
+
+- 状態:
+  - source / spec / local gate完了、main同期とNext manual publication待ち。利用者の明示依頼と`D-20260824-001`により、初回表示範囲のbackground上限到達後も、標準月送りで新しく見えた3か月の団体cueと前回調整cueを取得・表示する。
+- 解決する問題:
+  - 初回の可視3か月では青い団体数と前回調整が埋まるが、同じsessionで先の月へ送ると、calendar nodeの日付属性変更を検知できない場合と、Top bootstrap 800 / daily 200の残枠が0になる場合があり、新しい可視範囲の取得・表示が止まる。
+- 実装scope:
+  - `data-testid`属性だけのcalendar日付更新も可視range変更として検知し、最新contextへ再同期する。同じfingerprintは再計画しない。
+  - 保存済みhotel sourceと可視rangeのrank status最大1 GETを先に表示へ接続する。団体cueに不足する可視hotel currentだけをfinite foregroundへ入れ、Top background counterの外で35ms以上 / concurrency 20以下にする。
+  - room group current、reference、画面外日、半年prefetch、追加endpoint、storage schema / retention、Revenue Assistant writeは変更しない。context変更 / hidden / route / facility / as-ofで旧queueをabortし、401 / 403 / 429即停止、連続3 error停止、同一run retryなしを維持する。
+- 合格条件:
+  - background上限到達後に可視rangeを変えても、新しい可視hotel currentだけがdue / dedupe後に開始され、source保存ごとに団体cueが段階表示される。前回調整は新rangeへ1 GET、同一context再取得0、古いrangeの表示とrequestは残らない。
+  - 属性差替えだけの月送り、次rangeへの連続切替、保存済み先行、partial completion、401 / 403 / 429、route / hidden cleanup、標準calendar非干渉、Revenue Assistant write 0をfocused checkと合成Browserで確認する。
+- 進捗:
+  - pure / coordinator checkで、初回contextは従来backgroundだけ、同一facility / as-ofの可視range変更だけがfinite foreground、hotel current以外0、background上限到達後も可視2日を開始、同じrangeの追加GET 0を確認した。既存のauth / rate-limit / 連続error / abort / due / pending dedupe / write 0契約は維持した。
+  - Next全check、typecheck、repo全eslint、Classic / Next build、Classic publication boundary、distribution / booking curve smoke fixture、`git diff --check`は通過した。実Browser fixtureでは、`data-testid`だけを変える1回の月送りで可視92日を1回admitし、連続2回の月送りでは旧rangeのsignalがabort、最新rangeだけbackgroundへ進み、標準room値不変、cleanup後root 0を確認した。公開後のTampermonkey更新とRevenue Assistant実画面での月送りQAは別gateとして残す。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260824-001`
+  - `risk: yellow-zone user-driven visible-range reads; bounded to hotel current plus one rank-status range GET`
+
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 
 - 状態:
