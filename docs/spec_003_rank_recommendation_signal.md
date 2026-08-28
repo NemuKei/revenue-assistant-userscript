@@ -637,7 +637,7 @@ rank response dataset の first contract:
 Analyze試験表示の廃止 (`RAU-RR-64`, `RAU-UX-169`):
 
 - `RAU-RR-64`で追加したevent別`調整後のペース`は、履歴件数に比例して肥大化し、booking curve、rank marker、Tooltip、折りたたみrank履歴と重複するため、standalone / embeddedの双方で表示しない。
-- event別pace評価と方向解釈をruntime view modelから外し、その目的だけで開始していた`GET /api/v1/rank_sequences`もAnalyze表示時に実行しない。既存rank status最大1 GET、rank marker / Tooltip / details、`reflector_name`非取得 / 非表示は維持する。
+- event別pace評価と方向解釈をruntime view modelから外し、その目的だけで開始していた`GET /api/v1/rank_sequences`もAnalyze表示時に実行しない。既存rank status最大1 GET、rank marker / Tooltip / detailsを維持する。`RAU-UX-170`以降、optional `reflector_name`はpage-memoryのTooltip / aria labelだけで表示できるが、details表、storage、console、diagnostics、rank-learning DBへは渡さない。
 - `RAU-RR-64`の表示廃止は`RAU-RR-66`のsanitized rank-learning DB、coverage、episode modelを削除または移行する理由にしない。次回判断に使う傾向はevent全件の再掲ではなく、guard済みの集約として`RAU-RR-67`で扱う。
 
 次回調整の期待値へ進む学習coverage slice (`RAU-RR-66`):
@@ -661,6 +661,17 @@ Analyze試験表示の廃止 (`RAU-RR-64`, `RAU-UX-169`):
 - first live distribution gateでは、同一room group・transitionについて3日 / 7日の双方でobservedな独立decision clusterが3件以上あることを、UI実装可を意味しない最低停止線とする。いずれかのhorizonが3 cluster未満なら必ず`判定材料不足`とし、候補方向・期待レンジを出さない。このpre-filterを通過しても、matching距離、same-roomからfacility fallbackする条件と上限、1 cluster依存上限、censor / exclusion上限、確度を実分布で固定し、future leakageを拒否するbacktestとfixed scenario testを通すまではUI実装へ進めない。RR-66 reportの`minimumSamplePolicy: "not-fixed"`はcapture / coverage層が表示policyを所有しない境界として維持し、停止線と後続policyはRR-67の別layerで評価する。
 - 後続policyでは、各cluster内の同一horizonにある複数stay dateのpickupをcluster中央値へ畳む。cluster中央値または全cluster中央値が0、leave-one-cluster-outで残りcluster中央値の符号が全体と不一致、片方のhorizonだけobserved、censor / exclusion率が未固定または上限超過の場合は`判定材料不足`とする。偶数clusterの中央値、同率、cluster内の符号割れ、3日 / 7日の対象cluster集合、matching / fallback、censor / exclusion上限の最終定義はfixed scenario testと同じ変更集合で確定し、未確定の間はno-goを維持する。
 
+宿泊日単位の調整効果レビュー (`RAU-RR-68`):
+
+- 目的は、次回調整の期待値を推定することではなく、取得範囲内の実績について「どの宿泊日の、どの調整後に、個人予約の増え方がどう変わったか」をTopで俯瞰することである。単一事例でもexactな前後値があれば表示でき、`RAU-RR-67`の件数guardや期待値policyには依存しない。一方で、因果効果、成功率、価格弾力性、推奨rank、推奨金額とは呼ばない。
+- 変更日をJST日付`t`、比較日数を`h = 3 / 7`とし、個人予約の変更前ペースを`transientRooms(t) - transientRooms(t-h)`、変更後ペースを`transientRooms(t+h) - transientRooms(t)`、ペース変化量を`変更後ペース - 変更前ペース`で計算する。各点は同じfacility / stayDate / roomGroup / exact as-ofの`booking_curve_raw_source:v2`だけを使い、欠損補間、別room / hotel scope代用、0への丸めを行わない。キャンセルを含む負のpickupも符号を保持する。
+- event timestampは既存rank response契約と同じ`accepted_at ?? completed_at ?? suggest_calc_datetime`を使う。`t-h / t / t+h`のいずれかが欠ける場合は`missing`、`t+h`がanalysis as-ofより未来なら`pending`、評価窓内に次のrank変更がある場合は`censored`、同一room / 同一日に複数変更があり日次curveで分離できない場合は`excluded`とし、比較可能な`ready`へ混ぜない。
+- 閉じた宿泊日行の集計は、filter適用後の各`stayDate x roomGroup`で最新の有効event 1件だけを対象にする。これにより、同じ部屋タイプの再調整を同一宿泊日の合計へ二重計上しない。後続eventがfilter外でもcensor判定には使う。展開後は、現在の取得範囲で有効な全eventを標準room scope順、同一room内は新しい変更順で確認できるようにする。`全履歴`やendpoint上の完全性は主張しない。
+- 宿泊日行は、集計対象room数、比較可能room数、担当者、rank方向の`上げ n / 下げ n / 方向未確認 n`、3日 / 7日の変更前ペース合計、変更後ペース合計、ペース変化量合計を持つ。rank方向は既存rank order contractから解決し、順序未確認をrank名の見た目だけで推測しない。合計値には`ready`なroomだけを含め、`比較可能 n / 対象 m`を併記してcoverage不足を隠さない。
+- 担当者は現在のrank status responseにあるoptional `reflector_name`をtrimしてpage memoryだけで使い、欠損時は`担当者不明`とする。`RAU-RR-66`のsanitized store、booking curve source、console、performance markerへ氏名を保存しない。sessionをまたぐ担当者分析や氏名の永続保存が必要になった場合は、利用目的、保存範囲、保持期間、削除方法を別decisionで承認する。
+- first sliceの対象は現在Topで可視な標準calendar rangeとし、既存の可視range rank status最大1 GETの結果と保存済みbooking curve sourceだけを再利用する。過去rangeの自動探索、画面外半年prefetch、追加rank status / rank sequence / booking curve GET、新規storage、raw response保存、Revenue Assistant writeは追加しない。保存済み根拠が増えた場合は同じ可視contextの該当行だけを再計算し、calendar cueやAnalyze foregroundを待たせない。
+- pure modelはtransport、DOM、storageを所有せず、rank eventの正規化、filter、最新event選択、前後ペース計算、state分類、宿泊日集計、sort keyを共有する。viewはそのmodelを使い、同じ計算や方向判定を親行と展開行へ個別実装しない。
+
 推奨 rank 算出の first contract:
 
 - current rank は `/api/v1/suggest/output/current_settings` の `latest_current.price_rank_code` / `price_rank_name` を第一候補にする。
@@ -683,6 +694,16 @@ Analyze試験表示の廃止 (`RAU-RR-64`, `RAU-UX-169`):
 ## UI Contract
 
 ### Top
+
+#### 調整前後レビュー (`RAU-RR-68`)
+
+- 標準calendarの直後、`基準日から似た日を探す`より前へ、初期表示で宿泊日summaryを確認できる`調整前後レビュー`を置く。標準calendar、標準toolbar、標準日付操作、月送り、黒い値、青い`団n`、前回調整cueのgeometryと操作を変更しない。
+- 親行は宿泊日単位で、宿泊日・曜日、担当者、対象room数、rank方向count、3日 / 7日の変更前ペース・変更後ペース・変化量、観測状態を表示する。変更前はgray、変更後はblueの同一尺度barと数値を併用し、正負の符号を残す。green / redで成功・失敗を意味付けず、hoverだけに情報を置かない。
+- 宿泊日を展開すると、room type、担当者、調整日時、正確なrank transition、方向、3日 / 7日の変更前ペース・変更後ペース・変化量、観測状態を表示する。room typeは標準room scope順、同一room内は新しい変更順とし、親行集計の対象eventを識別できるようにする。
+- filterは担当者、宿泊月、曜日、room type、rank方向、観測状態、調整日を持つ。担当者・宿泊月・曜日・room type・方向・調整日はevent集合へ先に適用し、その後に各roomの最新1件を親行へ集計する。観測状態filterは計算後の行へ適用する。filter結果件数と比較可能coverageを表示し、該当なしとデータ不足を同じempty stateへまとめない。
+- sortは`比較可能優先 + 7日変化量の絶対値が大きい順`を既定とし、7日が未readyなら3日をfallbackにする。同値は宿泊日昇順で安定化する。利用者は宿泊日、最終調整日、担当者、3日 / 7日変化量、対象room数へ切り替えられる。sort変更は表示順だけを変え、親行の最新event選択と計算値を変えない。
+- desktopは階層table、390pxは親行summaryと展開detailを縦に読めるlayoutにする。button、filter、sort、展開状態はkeyboard操作とfocus表示を持ち、accessible tableまたは同等のtext alternativeで色やbarなしでも値と状態を読めるようにする。Next root由来の横overflow、duplicate root、標準calendar押し下げによる操作不能を発生させない。
+- shellと保存済みsummaryまたは不足理由は既存Topの3,000ms explanation / decision-ready境界内で返す。可視range全eventを1つの同期処理で再計算せず、bounded batchでmain threadへ制御を返し、同じDOM mutationやsource通知で全行を繰り返し再構築しない。Long Task、calendar cue、Analyze foreground、request / stop、Revenue Assistant write 0を実装時のfixtureとlive gateで確認する。
 
 #### Next Decision Workspace Design Evidence (Unpublished, 2026-07-20)
 

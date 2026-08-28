@@ -1,6 +1,6 @@
 # STATUS
 
-最終更新: 2026-08-24
+最終更新: 2026-08-28
 
 ## Current Task Bundle
 
@@ -26,6 +26,7 @@
 - `RAU-UX-177`はsource、local gate、main同期、Next `0.2.0.43` manual publication、公開artifact / Classic baseline照合まで完了した。Analyze販売設定の`ランク変更履歴`で、各roomの最新event選択は維持したまま、最終変更日による再ソートを外し、標準の室タイプカードと同じroom scope順へ戻した。API / storage / write / value semanticsは変更していない。Tampermonkey更新後の実画面確認を残す。
 - `RAU-UX-178`はsource / spec / focused・full checks / desktop・390px合成Browser QA / main同期 / Next `0.2.0.44` manual publication / 公開artifact・Classic baseline照合まで完了した。Topの`基準日から似た日を探す`を廃止せず、標準カレンダー全体の直前から直後へ移し、calendar / root再mount後も同じ兄弟順を復元する。見出し、選択mode、候補・比較の初期折りたたみ、calendar marker、API / storage / scoring / Revenue Assistant write 0は変更していない。Tampermonkey更新後の実画面確認を残す。
 - `RAU-WC-35`はsource / spec / focused・full checks / 連続月送り合成Browser QA / main同期 / Next `0.2.0.45` manual publication / 公開artifact・Classic baseline照合まで完了した。Top初回3か月は従来background内に維持し、同一facility / as-ofで標準月送り後に見えたhotel currentだけをTop 800 / 200枠外のfinite foregroundへ入れる。`data-testid`だけの日付差替えを検知し、保存済み団体cueを先に表示、次の月送りでは古いrangeをabortして最新92日だけへ追従する。room group / reference / 画面外日 / 半年prefetch、endpoint、storage / retention、停止guard、Revenue Assistant write 0は変更していない。source `daa95f3dc4ddce0bb9e048b437bbeb3b43b160de`はValidate Main run `32698825424`を通過し、manual workflow run `32698931932`、run number 45、attempt 1で公開した。公開Nextは374,881 bytes、SHA-256 `8695F808A9002DD759E202DA92D05E27B8389B16F3C6E0263B5841785D6E994A`、source map 1,507,233 bytes、SHA-256 `F7C69C3D96FFDA8B23609E0B21C4EB4E24F2867337D67589D75931B603450564`でmanifestと一致し、Classic固定baselineも維持した。Tampermonkey更新後のRevenue Assistant実画面で、月送りごとの団体 / 前回調整cue、request / stop / write 0をfresh確認するgateを残す。
+- `RAU-RR-68`はdocs-first仕様化まで完了し、runtimeは未実装である。標準calendar直後、`基準日から似た日を探す`より前へ`調整前後レビュー`を置き、宿泊日親行はfilter適用後の各room typeの最新調整1件だけを集計する。展開後は取得範囲内の全eventを標準room順・同一room内の新しい順で確認できる。担当者、宿泊月、曜日、room type、rank方向、観測状態、調整日filterとsort、3日 / 7日の個人予約の変更前後ペースと変化量、before gray / after blueを契約化した。first sliceは可視calendar range、既存rank status最大1 GET、保存済みbooking curve sourceだけを再利用し、担当者名、新規response、raw dataを保存せず、追加GET、半年prefetch、Revenue Assistant writeを増やさない。
 - `RAU-PERF-25`の公開Next `0.2.0.34` live gateでは、ホテル関西の翌日宿泊日でoverall / 6 room summary各20ms、room current 22ms、selected evidence 1,535msへ入ったが、軽量marker readは最大833ms、500ms超8回だった。Long Task件数とnetwork / write streamのfresh外部証拠は今回取得できず、freeze解消を断定できないためconcurrency 20を維持する。残るmain-thread stallのphase分離を`RAU-PERF-26`へ切り分ける。
 - `RAU-WC-34`を半年取得の設計候補として追加した。rank statusは可視1 GETを維持した小chunkのcoverage差分、booking curveは半年全roomの日次取得を避けた距離別cadenceまたはevent-driven補完へ分離する。runtimeは未変更で、count-only live range gateとYellow zone decision前には実装しない。
 - `D-20260813-004`でTop / Analyzeの判断可能時間を第一目的とする`Next Operational SLO v0.1`を固定した。現行Analyze foregroundはbackgroundより優先されるが、Topと同じrequest count / session上限を共有し、独立枠ではない。`RAU-PERF-20`のprivacy-safe marker / collectorは公開Next `0.2.0.25`へ反映し、通常Chromeの初回live baselineを取得した。各cohort 1 sampleのためSLO達成状況はprovisionalだが、warm Analyze全体8,327ms / 全room 14,837msを根拠に`RAU-PERF-21`のcurrent優先とreference head-of-line解消へ進んだ。当初は追加再現後だけ`RAU-PERF-22`を検討する段階gateだったが、既存上限内のforeground再配分は後続`D-20260813-006`でNowへ更新した。`RAU-WC-34`はその後に置く。
@@ -93,9 +94,10 @@
 1. 公開中のNextは`0.2.0.45`で、sourceは`daa95f3dc4ddce0bb9e048b437bbeb3b43b160de`、manual workflow runは`32698931932`である。通常Chromeでfresh確認したinstalled runtimeは`0.2.0.40`のため、Tampermonkey更新後にTopを標準月送りし、新しい可視3か月で保存済み団体cueが先に出ること、不足分と前回調整cueの取得・段階表示が継続すること、連続月送りで古いrangeが残らないことを確認する。併せて、標準カレンダーが`基準日から似た日を探す`より先であること、価格推移の部屋タイプ別取得・絞り込み、競合価格 / 価格推移Tooltipの正負色、Analyze販売設定のランク変更履歴が標準の室タイプカード順であることを実画面確認する。requestは可視hotel currentとrank status最大1 / rangeに限定され、401 / 403 / 429、連続error、標準UI、console、Revenue Assistant write 0をfresh照合する。Classic公開baselineは不変である。
 2. Analyzeの判断可能時間と操作中のfreeze回避を、Top backgroundの完了や半年分の網羅より優先する。Top backgroundは50ms / concurrency 20と800 / 200の枠内、Analyze foregroundは35ms / concurrency 20の有限due taskをTop枠外で処理し、保存済み表示を先行する。取得対象、endpoint、storage / retention、retry / stop、Revenue Assistant write 0を変えずに最適化してきた。
 3. 次の性能入口は`RAU-PERF-27`の公開後live比較である。ホテル関西の同条件warm runで初期 / room openの`curveBuild`、Long Task、overall / 6 room summary / selected evidence、planned / started、HTTP / stop、標準UI、console error、Revenue Assistant write 0をfresh確認する。公開後に後続版へ更新されているため、installed versionとperformance markerのsource revisionを先に照合する。main-thread stallが改善した証拠なしにconcurrencyを20から緩和しない。
-4. 半年取得は`RAU-WC-34`として分離する。rank statusの小chunk coverage差分とbooking curveの距離別cadenceを同一拡張にせず、foreground保護、count-only live range gate、Yellow zone decisionを先に通す。半年全roomの日次取得は採用しない。
-5. `RAU-RR-67`は現時点no-goである。通常利用でdataが増えた後にfresh再集計し、matching / fallback / censor・exclusion / 確度のpolicy、fixed scenario test、future leakageなしのbacktestを通すまでは`判定材料不足`とする。命令形、複数段の推測、全event再掲は行わない。
-6. current / reference chart、rank marker、通常Tooltip、初期折りたたみ`データ条件とランク履歴`、rank status read、`RAU-RR-66`のsanitized learning DBを維持する。保存済みdataの削除・再解釈、Classic変更、未調査endpoint、Revenue Assistant write、自動反映・一括反映は別gateのままとする。
+4. `RAU-PERF-27`で現在のmain-thread baselineを確保した後の最優先実装候補は`RAU-RR-68`である。親行は各room typeの最新調整1件だけを集計し、展開後に取得範囲内の全eventを残す。3日 / 7日の変更前後ペースはexact pointだけで計算し、pending / missing / censored / excludedを分ける。新規request / storageなし、担当者名非保存、bounded batch、該当行だけの更新を維持し、因果・成功・期待値を表示しない。
+5. 半年取得は`RAU-WC-34`として分離する。rank statusの小chunk coverage差分とbooking curveの距離別cadenceを同一拡張にせず、foreground保護、count-only live range gate、Yellow zone decisionを先に通す。半年全roomの日次取得は採用しない。
+6. `RAU-RR-67`は現時点no-goである。通常利用でdataが増えた後にfresh再集計し、matching / fallback / censor・exclusion / 確度のpolicy、fixed scenario test、future leakageなしのbacktestを通すまでは`判定材料不足`とする。命令形、複数段の推測、全event再掲は行わない。`RAU-RR-68`の実績reviewは期待値を推定しないため、このno-goとは独立する。
+7. current / reference chart、rank marker、通常Tooltip、初期折りたたみ`データ条件とランク履歴`、rank status read、`RAU-RR-66`のsanitized learning DBを維持する。保存済みdataの削除・再解釈、Classic変更、未調査endpoint、Revenue Assistant write、自動反映・一括反映は別gateのままとする。
 
 ## Verify / Confirmation State
 
