@@ -228,6 +228,16 @@ const sevenDay = review.buildAdjustmentReviewViewModel({
     rooms,
     sort: "default"
 });
+assert.deepEqual(
+    review.buildAdjustmentReviewViewModelFromEvaluatedEvents({
+        evaluatedEvents: evaluated,
+        filters: baseFilters,
+        horizon: 7,
+        sort: "default"
+    }),
+    sevenDay,
+    "UI-only changes must reuse evaluated observations without rebuilding curve indexes"
+);
 assert.equal(sevenDay.parentRows.length, 1);
 const parent = sevenDay.parentRows[0];
 assert.equal(parent.roomCount, 6, "one latest filtered event per room must feed the parent");
@@ -296,6 +306,55 @@ assert.notDeepEqual(
     [threeDay.parentRows[0].beforePaceTotal, threeDay.parentRows[0].afterPaceTotal],
     [parent.beforePaceTotal, parent.afterPaceTotal],
     "switching horizon must recompute the selected horizon instead of retaining 7-day values"
+);
+
+const updatedRecords = records.map((item) => item.roomGroupId === "room-a"
+    ? record("room-a", {
+        "20260803": 10,
+        "20260807": 11,
+        "20260810": 13,
+        "20260813": 17,
+        "20260817": 22
+    })
+    : item);
+const updatedEvaluation = review.evaluateAdjustmentReviewEvents({
+    asOfDate: "20260825",
+    events,
+    records: updatedRecords,
+    rooms
+});
+const updatedRoomAEvaluation = review.evaluateAdjustmentReviewEvents({
+    asOfDate: "20260825",
+    events: events.filter((item) => item.roomGroupId === "room-a"),
+    records: updatedRecords.filter((item) => item.roomGroupId === "room-a"),
+    rooms: rooms.filter((item) => item.roomGroupId === "room-a")
+});
+const incrementallyUpdated = review.sortEvaluatedAdjustmentReviewEvents([
+    ...evaluated.filter((item) => item.roomGroupId !== "room-a"),
+    ...updatedRoomAEvaluation
+]);
+assert.deepEqual(
+    incrementallyUpdated,
+    updatedEvaluation,
+    "a changed stay-date x room scope must be independently replaceable without changing results"
+);
+assert.deepEqual(
+    review.buildAdjustmentReviewViewModelFromEvaluatedEvents({
+        evaluatedEvents: incrementallyUpdated,
+        filters: baseFilters,
+        horizon: 7,
+        sort: "default"
+    }),
+    review.buildAdjustmentReviewViewModel({
+        asOfDate: "20260825",
+        events,
+        filters: baseFilters,
+        horizon: 7,
+        records: updatedRecords,
+        rooms,
+        sort: "default"
+    }),
+    "incremental evaluation must preserve the full view-model contract"
 );
 
 const calendarListeners = new Set();

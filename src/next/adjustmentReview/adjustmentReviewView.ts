@@ -56,7 +56,10 @@ export function renderAdjustmentReview(
     state: AdjustmentReviewRenderState,
     calendar: LiveCalendarDomSnapshot | null
 ): void {
-    root.setAttribute("data-ra-next-adjustment-review-state", state.data.status);
+    const renderStatus = state.data.status === "ready" && state.model === null
+        ? "loading"
+        : state.data.status;
+    root.setAttribute("data-ra-next-adjustment-review-state", renderStatus);
     const documentHost = root.ownerDocument;
     const header = createHeader(documentHost, state.horizon);
     const content = documentHost.createElement("div");
@@ -72,7 +75,13 @@ export function renderAdjustmentReview(
                 : "保存済み観測を読み込めませんでした。標準画面はそのまま使えます。",
             "error"
         ));
-    } else if (state.model !== null) {
+    } else if (state.model === null) {
+        content.append(createMessage(
+            documentHost,
+            "保存済み観測を小分けに計算しています。",
+            "status"
+        ));
+    } else {
         content.append(createFilters(documentHost, state));
         if (state.model.parentRows.length === 0) {
             content.append(createMessage(

@@ -271,6 +271,21 @@ export function buildAdjustmentReviewViewModel(options: {
         records: options.records,
         rooms: options.rooms
     });
+    return buildAdjustmentReviewViewModelFromEvaluatedEvents({
+        evaluatedEvents,
+        filters: options.filters,
+        horizon: options.horizon,
+        sort: options.sort
+    });
+}
+
+export function buildAdjustmentReviewViewModelFromEvaluatedEvents(options: {
+    evaluatedEvents: readonly EvaluatedAdjustmentReviewEvent[];
+    filters: AdjustmentReviewFilters;
+    horizon: AdjustmentReviewHorizon;
+    sort: AdjustmentReviewSort;
+}): AdjustmentReviewViewModel {
+    const evaluatedEvents = options.evaluatedEvents;
     const stayMonths = Array.from(new Set(evaluatedEvents.map((event) => event.stayDate.slice(0, 6))))
         .sort();
     const actorOptions = buildActorOptions(evaluatedEvents, options.filters, options.horizon);
@@ -280,9 +295,9 @@ export function buildAdjustmentReviewViewModel(options: {
     ));
     const latestEvents = selectLatestEvents(prefilteredEvents)
         .filter((event) => passesObservationFilter(event, options.filters, options.horizon));
-    const selectedKeys = new Set(latestEvents.map((event) => buildStayRoomKey(event)));
+    const selectedKeys = new Set(latestEvents.map((event) => buildAdjustmentReviewScopeKey(event)));
     const detailEvents = prefilteredEvents.filter((event) => (
-        selectedKeys.has(buildStayRoomKey(event))
+        selectedKeys.has(buildAdjustmentReviewScopeKey(event))
         && passesObservationFilter(event, options.filters, options.horizon)
     ));
     const parentRows = buildParentRows(latestEvents, detailEvents, options.horizon)
@@ -302,6 +317,18 @@ export function buildAdjustmentReviewViewModel(options: {
     };
 }
 
+export function sortEvaluatedAdjustmentReviewEvents(
+    events: readonly EvaluatedAdjustmentReviewEvent[]
+): EvaluatedAdjustmentReviewEvent[] {
+    return [...events].sort(compareEvaluatedEventDetailOrder);
+}
+
+export function buildAdjustmentReviewScopeKey(
+    event: Pick<AdjustmentReviewEvent, "roomGroupId" | "stayDate">
+): string {
+    return `${event.stayDate}|${event.roomGroupId}`;
+}
+
 export function evaluateAdjustmentReviewEvents(options: {
     asOfDate: string;
     events: readonly AdjustmentReviewEvent[];
@@ -314,19 +341,19 @@ export function evaluateAdjustmentReviewEvents(options: {
     const sameDayCounts = new Map<string, number>();
     const eventsByStayRoom = new Map<string, AdjustmentReviewEvent[]>();
     for (const event of options.events) {
-        const sameDayKey = `${buildStayRoomKey(event)}|${event.reflectedDate}`;
+        const sameDayKey = `${buildAdjustmentReviewScopeKey(event)}|${event.reflectedDate}`;
         sameDayCounts.set(sameDayKey, (sameDayCounts.get(sameDayKey) ?? 0) + 1);
-        const stayRoomKey = buildStayRoomKey(event);
+        const stayRoomKey = buildAdjustmentReviewScopeKey(event);
         const scoped = eventsByStayRoom.get(stayRoomKey) ?? [];
         scoped.push(event);
         eventsByStayRoom.set(stayRoomKey, scoped);
     }
     return options.events.map((event) => {
         const room = roomById.get(event.roomGroupId);
-        const scopedEvents = eventsByStayRoom.get(buildStayRoomKey(event)) ?? [];
-        const curve = curveByStayRoom.get(buildStayRoomKey(event)) ?? new Map<string, number>();
+        const scopedEvents = eventsByStayRoom.get(buildAdjustmentReviewScopeKey(event)) ?? [];
+        const curve = curveByStayRoom.get(buildAdjustmentReviewScopeKey(event)) ?? new Map<string, number>();
         const sameDayCount = sameDayCounts.get(
-            `${buildStayRoomKey(event)}|${event.reflectedDate}`
+            `${buildAdjustmentReviewScopeKey(event)}|${event.reflectedDate}`
         ) ?? 0;
         return {
             ...event,
@@ -414,7 +441,7 @@ function selectLatestEvents(
 ): EvaluatedAdjustmentReviewEvent[] {
     const latest = new Map<string, EvaluatedAdjustmentReviewEvent>();
     for (const event of events) {
-        const key = buildStayRoomKey(event);
+        const key = buildAdjustmentReviewScopeKey(event);
         const previous = latest.get(key);
         if (previous === undefined || compareEventNewestFirst(event, previous) < 0) {
             latest.set(key, event);
@@ -641,10 +668,6 @@ function countValues<T extends string>(
         key,
         values.filter((value) => value === key).length
     ])) as Record<T, number>;
-}
-
-function buildStayRoomKey(event: Pick<AdjustmentReviewEvent, "roomGroupId" | "stayDate">): string {
-    return `${event.stayDate}|${event.roomGroupId}`;
 }
 
 function resolveStatusTimestamp(value: Record<string, unknown>): string | null {

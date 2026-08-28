@@ -179,6 +179,31 @@ assert.match(
     /calendarSnapshot\.mountBoundary\.insertAdjacentElement\("afterend", root\)/u,
     "the adjustment review must mount immediately after the standard calendar"
 );
+assert.match(
+    reviewRuntimeSource,
+    /const ADJUSTMENT_REVIEW_EVALUATION_SCOPE_BATCH_SIZE = 8;/u,
+    "curve evaluation must stay bounded to small stay-date x room batches"
+);
+assert.match(
+    reviewRuntimeSource,
+    /buildAdjustmentReviewViewModelFromEvaluatedEvents\(\{/u,
+    "review interactions must build presentation state from cached observations"
+);
+assert.doesNotMatch(
+    reviewRuntimeSource,
+    /buildAdjustmentReviewViewModel\(\{/u,
+    "review interactions must not synchronously rebuild the full curve index"
+);
+assert.match(
+    reviewRuntimeSource,
+    /await yieldToAdjustmentReviewEvaluation\(windowHost\)/u,
+    "initial and changed-scope evaluation must yield between bounded batches"
+);
+assert.match(
+    reviewViewSource,
+    /state\.data\.status === "ready" && state\.model === null[\s\S]*?\? "loading"/u,
+    "the review must remain explicitly loading while chunked evaluation is pending"
+);
 assert.doesNotMatch(
     runtimeSource,
     /insertAdjacentElement\("beforebegin", root\)/u,
