@@ -1308,7 +1308,7 @@
 ### RAU-RR-68 Topで宿泊日単位のレート調整効果を俯瞰する
 
 - 状態:
-  - runtime / UI、pure model、保存済みdata source、Top配置、Analyze event focusまで実装し、local gate、count-only Pilot、main同期、Next `0.2.0.46` manual publication、公開artifact / Classic baseline照合まで完了した。通常Chrome installed runtimeは`0.2.0.45`のため、Tampermonkey更新後の実画面QAを残す。閉じた宿泊日行は各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。
+  - 完了。runtime / UI、pure model、保存済みdata source、Top配置、Analyze event focus、local gate、count-only Pilot、main同期、Next `0.2.0.48` manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後の実画面QAまで実施した。閉じた宿泊日行は各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。
 - 解決する問題:
   - Analyzeのbooking curveでは1宿泊日・1room typeずつ調整時点とその後を確認できるが、複数の宿泊日を横断して、調整前後のペース変化、担当者、宿泊月、曜日、rank方向を比較する入口がない。
   - 同じstayDate x roomGroupを複数回調整したeventをそのまま合計すると、宿泊日summaryが再調整回数により二重計上され、現在の振り返り対象を誤読しやすい。
@@ -1332,7 +1332,10 @@
   - count-only Pilotは可視range 340 event、最新候補266 scopeで、3日はready 152 / missing 91 / pending 14 / excluded 9、7日はready 150 / missing 93 / pending 14 / excluded 9だった。差が小さいため初期7日のspec / decisionを変更しなかった。担当者名、施設名、room名、価格・在庫・予約、raw responseは出力・保存していない。
   - Next全check、typecheck、repo全lint、desktop / 390px合成Browser QA、candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`は通過した。desktop / 390pxではcalendar → review → similarity lens、初期10親行、3日 / 7日、filter / sort、展開detail、keyboard / focus、44px control、横overflow 0、root 1、Analyze exact / stale focusを確認した。read boundaryは追加endpoint 0、review用storage 0、Revenue Assistant write追加0を維持した。
   - source `d6df4d76a6926d8eacb836f037de56d9c1ae0abe`はValidate Main run `33152829078`を通過し、manual workflow run `33152953658`、run number 46、attempt 1でNext `0.2.0.46`へ公開した。公開Nextは414,340 bytes、SHA-256 `C08B2901F8EFEDDA3461EB3901C4C89240DB32AFD49D46EE69595CA1891B4C49`、source map 1,646,586 bytes、SHA-256 `943FD2686AF71EE34E9D34854532DC1EAD002FBB99FCC6FD2EB5C1AC2AC2535E`でmanifestと一致し、Classic固定baselineも維持した。
-  - アプリ再起動後は既存Revenue Assistant tabへのread-only接続とinstalled runtime `0.2.0.45`をfresh確認した。公開userscriptの通常クリックはTampermonkeyの`script_installation.php`中継ページまで到達するがextension確認画面へ進まない。Chrome / Codex設定、Chrome process、別browser surfaceを変えずに止め、利用者によるTampermonkey dashboard更新後に実画面QAを再開する。
+  - 公開Next `0.2.0.46`の実画面で、horizon / filter / sort / 展開ごとに可視range全体を同期再評価し、各操作が約0.97〜1.08秒、warm観測区間がLong Task 12件 / 合計11.6秒になる回帰を確認した。`cdf54c85991c6e78cf70f802925894382ffb0602`で評価をbounded incremental cacheへ変更し、Validate Main run `33156851302`を通過、manual workflow run `33156970039`でNext `0.2.0.47`へ公開した。
+  - Next `0.2.0.47`の実画面ではhorizon / filter / sort / 展開・折りたたみが31.4〜85.9msとなり、idle 3秒のLong Taskは0だった。scripted 8操作の観測区間はLong Task 7件 / 合計513msで、追加booking curve GET、rank status GET、current settings GET、Revenue Assistant write、HTTP / runtime / console errorは0だった。
+  - 同じlive gateで、rank eventのcompact宿泊日と標準calendarの日付表現が一致せず、展開行のAnalyze buttonが遷移しない回帰を確認した。`a0a63c35715b849560a316ac3f22e9be569861aa`で日付比較を共通正規化し、unit / fixtureでcompact日付からnative Analyze hrefへ到達することを固定した。Validate Main run `33158288580`を通過し、manual workflow run `33158398489`、run number 48、attempt 1でNext `0.2.0.48`へ公開した。公開Nextは417,824 bytes、SHA-256 `3CC9818E2B391280F6F899B8E3AF2C6EA2E85D6596979A57275922E56346C641`、source map 1,665,404 bytes、SHA-256 `EB8205E98CD585C1597EFBB1D82EC82A7884B5C77F1FA03353D2A29D9138584B`でmanifestと一致し、Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`の固定baselineを維持した。
+  - Tampermonkey更新後の実画面ではinstalled runtime `0.2.0.48`、runtime `ready-read-only`、acquisition `complete`、review root 1、calendar → review → similarity lens、初期7日 / 10親行を確認した。3日 / 7日切替は88.4ms / 93.6msで7日へ復帰し、観測区間のLong Taskは2件 / 合計196ms / 最大105msだった。展開行のAnalyzeは対象eventを正確にfocusし、pending focusを単発消費して削除した。対象GET、Revenue Assistant write、HTTP / loading / runtime / console errorは0だった。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl; docs-first contract complete`
@@ -1361,7 +1364,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triageは、Nowを`RAU-RR-68`のTampermonkey `0.2.0.46`更新と更新後の実画面QAとする。実画面では標準calendar → review → similarity lens、root 1、初期7日 / 10親行、filter / sort / detail、Analyze exact / stale focus、request / storage / Revenue Assistant write追加0、Long Task、標準UI、console errorをfresh確認する。次の候補`RAU-WC-34`は実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、完了した`RAU-RR-68`を外し、Nowを`RAU-WC-34`のcount-only live range gateとYellow zone decisionに進める。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 
@@ -12357,11 +12360,9 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-RR-68` Tampermonkeyを公開Next `0.2.0.46`へ更新し、調整前後レビューをlive確認する
+- `RAU-WC-34` Topの半年取得をcount-only gate後に再判断する
 
 Next:
-
-- `RAU-WC-34` Topの半年取得をcount-only gate後に再判断する
 
 After Next:
 
@@ -12373,6 +12374,7 @@ Later:
 
 統合判断:
 
+- 2026-08-28 に、`RAU-RR-68`を公開Next `0.2.0.48`とTampermonkey installed runtimeで完了した。初回`0.2.0.46`のlive gateで見つけた同期再計算による約1秒操作をbounded incremental cacheへ狭め、`0.2.0.47`で31.4〜85.9msへ短縮した。続くAnalyze遷移の日付表現差を共通正規化し、`0.2.0.48`ではTopから対象eventへ正確にfocusしてpending stateを単発消費した。最終観測の3日 / 7日切替は88.4ms / 93.6ms、対象GET、Revenue Assistant write、HTTP / loading / runtime / console errorは0だった。公開artifact / source mapはrelease manifestと一致し、Classic固定baselineを維持した。因果、成功率、推奨rank / 金額、追加GET、新規storage、半年prefetch、Revenue Assistant writeは追加していない。
 - 2026-08-28 に、Issue #27の実装前planを更新し、`RAU-RR-68`へ`D-20260828-002`の補強を追加した。親行の調整日範囲は採用eventのJST日付min / max、timing数は異なるevent timestamp数、担当者filter候補件数はraw event重複を除いた一意なstayDate x roomGroup数とする。3日 / 7日は初期7日の明示切替、選択中horizonだけの表示 / sort、別horizon fallbackなしへ変更した。Analyzeは氏名を含まないevent keyをsessionStorageで単発focusし、stale / missing時はroom cardへfallbackする。実装前gateとして`RAU-WC-35` live確認と`RAU-PERF-27` baselineを置いた。fresh再開ではChrome control bootstrap、Chrome family選択、既存Revenue Assistant tab discovery、Chrome / extension / native host診断までは成功したが、同tabのcontrol claimが2回とも`js execution timed out; kernel reset, rerun your request`で停止した。DOM、Tampermonkey installed version、performance markerには未到達のため、Chromeを強制終了・設定変更・別surfaceへ切り替えずruntime変更を開始していない。
 - 2026-08-28 に、利用者が求めたTopのレート調整効果レビューを`RAU-RR-68`としてdocs-firstで正本化した。親行は宿泊日単位で各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。担当者、宿泊月、曜日等のfilter / sort、3日 / 7日の変更前後ペースと変化量、before gray / after blue、取得範囲内・保存済み根拠限定、担当者名非保存、追加GET / storage / writeなしを`D-20260828-001`と`docs/spec_003_rank_recommendation_signal.md`へ固定した。実装は`RAU-WC-35` live gateと`RAU-PERF-27` baselineの後のNext候補とし、`RAU-RR-67`の期待値UIとは独立させる。
 - 2026-06-11 に、`RAU-UX-134`、`RAU-UX-135`、`RAU-UX-136`、`RAU-RR-62`、`RAU-RR-63` を同じ料金調整候補 UX / recent rank change lifecycle Goal Bundle として完了した。`RAU-UX-134` は Product Design audit / plan first の no-op 判断で、competitor preview / graph / table の追加 rendering 変更を正当化する証拠はないため実装 task を追加しない。`RAU-UX-135` では料金調整候補、rank 変更 preview、競合価格 preview の宿泊日を `YYYY-MM-DD（曜）` 表示へ揃えた。`RAU-UX-136` では料金調整候補から開く競合価格 preview の初期 roomType filter を未指定にし、候補 roomType は note として残した。`RAU-RR-62` / `RAU-RR-63` では前回 rank 変更後 0〜3 日の同方向候補を soft cooldown として初期表示から抑え、view mode `直近変更`、前回変更補助表示、状態 badge、title diagnostics、list meta で確認できるようにした。request 件数、Revenue Assistant write API、rank change payload、保存 schema、candidate scoring、priority、confidence、reasonFingerprint は変更していない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
