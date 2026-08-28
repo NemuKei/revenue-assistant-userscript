@@ -109,6 +109,7 @@ export interface NextBookingCurveAcquisitionCoordinator {
 
 export interface NextBookingCurveStoredSourceEvent {
     scopeKey: string;
+    stayDate: string;
 }
 
 export interface NextBookingCurveAcquisitionDiagnostics {
@@ -693,7 +694,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         }
         for (const listener of storedSourceListeners) {
             try {
-                listener({ scopeKey });
+                listener({ scopeKey, stayDate: task.stayDate });
             } catch {
                 // A UI refresh observer must never turn a successful read into an acquisition error.
             }

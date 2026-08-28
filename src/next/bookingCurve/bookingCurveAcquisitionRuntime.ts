@@ -18,6 +18,7 @@ import {
 } from "../live/liveSimilarityLensTransport";
 import type { LiveCalendarSummaryDataSource } from "../live/liveCalendarSummaryDataSource";
 import {
+    createNextBookingCurveReviewRooms,
     createNextBookingCurveScopes,
     type NextBookingCurveAcquisitionContext
 } from "./bookingCurveAcquisitionModel";
@@ -237,6 +238,7 @@ export function startBookingCurveAcquisitionRuntime(
         return {
             asOfDate: loadOptions.asOfDate,
             facilityId: facility.facilityId,
+            reviewRooms: createNextBookingCurveReviewRooms(currentSettings),
             roomScopes: createNextBookingCurveScopes(currentSettings),
             visibleStayDates: loadOptions.stayDates
         };

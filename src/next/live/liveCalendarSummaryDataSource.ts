@@ -18,6 +18,11 @@ import {
     type NextReadTransport
 } from "./liveSimilarityLensTransport";
 import type { RankLearningCaptureWriter } from "../rankLearning/rankLearningCaptureWriter";
+import type { NextBookingCurveReviewRoom } from "../bookingCurve/bookingCurveAcquisitionModel";
+import {
+    parseAdjustmentReviewEvents,
+    type AdjustmentReviewEvent
+} from "../adjustmentReview/adjustmentReviewModel";
 
 const LIVE_CALENDAR_GROUP_REFRESH_DELAY_MS = 1_000;
 const JST_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
@@ -35,15 +40,25 @@ export interface LiveCalendarLatestChange {
 export interface LiveCalendarSummaryContext {
     asOfDate: string;
     facilityId: string;
+    reviewRooms?: readonly NextBookingCurveReviewRoom[];
+    visibleStayDates: readonly string[];
+}
+
+export interface LiveCalendarReviewContext {
+    asOfDate: string;
+    facilityId: string;
+    rooms: readonly NextBookingCurveReviewRoom[];
     visibleStayDates: readonly string[];
 }
 
 export interface LiveCalendarSummarySnapshot {
+    adjustmentEvents: readonly AdjustmentReviewEvent[];
     calendarGroups: readonly LiveSimilarityLensCalendarGroupEvidence[];
     contextKey: string | null;
     latestChanges: readonly LiveCalendarLatestChange[];
     rankStatus: "error" | "idle" | "loading" | "ready";
     rankStatusError: LiveCalendarSummaryRankStatusError | null;
+    reviewContext: LiveCalendarReviewContext | null;
 }
 
 export type LiveCalendarSummaryRankStatusError =
@@ -64,11 +79,13 @@ export interface LiveCalendarSummaryDataSource {
 
 export function createIdleLiveCalendarSummarySnapshot(): LiveCalendarSummarySnapshot {
     return {
+        adjustmentEvents: [],
         calendarGroups: [],
         contextKey: null,
         latestChanges: [],
         rankStatus: "idle",
-        rankStatusError: null
+        rankStatusError: null,
+        reviewContext: null
     };
 }
 
@@ -138,11 +155,18 @@ export function createLiveCalendarSummaryDataSource(options: {
         activeController = controller;
         lastGroupRefreshStoredCount = coordinatorState?.storedCount ?? 0;
         snapshot = {
+            adjustmentEvents: [],
             calendarGroups: [],
             contextKey: normalized.contextKey,
             latestChanges: [],
             rankStatus: "loading",
-            rankStatusError: null
+            rankStatusError: null,
+            reviewContext: {
+                asOfDate: normalized.asOfDate,
+                facilityId: normalized.facilityId,
+                rooms: normalized.reviewRooms,
+                visibleStayDates: normalized.visibleStayDates
+            }
         };
         emit();
         void refreshGroups(currentGeneration, normalized);
@@ -263,7 +287,11 @@ export function createLiveCalendarSummaryDataSource(options: {
                 context.visibleStayDates,
                 observedAt
             );
-            if (latestChanges === null) {
+            const adjustmentEvents = parseAdjustmentReviewEvents(payload, {
+                asOfDate: context.asOfDate,
+                visibleStayDates: context.visibleStayDates
+            });
+            if (latestChanges === null || adjustmentEvents === null) {
                 publishRankError(expectedGeneration, context.contextKey, "response-invalid");
                 return;
             }
@@ -272,6 +300,7 @@ export function createLiveCalendarSummaryDataSource(options: {
             }
             snapshot = {
                 ...snapshot,
+                adjustmentEvents,
                 latestChanges,
                 rankStatus: "ready",
                 rankStatusError: null
@@ -318,6 +347,7 @@ export function createLiveCalendarSummaryDataSource(options: {
         }
         snapshot = {
             ...snapshot,
+            adjustmentEvents: [],
             latestChanges: [],
             rankStatus: "error",
             rankStatusError: reason
@@ -340,6 +370,7 @@ export function createLiveCalendarSummaryDataSource(options: {
 
 interface NormalizedLiveCalendarSummaryContext extends LiveCalendarSummaryContext {
     contextKey: string;
+    reviewRooms: readonly NextBookingCurveReviewRoom[];
     visibleStayDates: readonly string[];
 }
 
@@ -412,8 +443,30 @@ function normalizeContext(
         asOfDate,
         contextKey: [facilityId, asOfDate, visibleStayDates.join(",")].join("|"),
         facilityId,
+        reviewRooms: normalizeReviewRooms(context.reviewRooms ?? []),
         visibleStayDates
     };
+}
+
+function normalizeReviewRooms(
+    rooms: readonly NextBookingCurveReviewRoom[]
+): NextBookingCurveReviewRoom[] {
+    const result: NextBookingCurveReviewRoom[] = [];
+    const seen = new Set<string>();
+    for (const room of rooms) {
+        const roomGroupId = room.roomGroupId.trim();
+        if (roomGroupId === "" || seen.has(roomGroupId)) {
+            continue;
+        }
+        seen.add(roomGroupId);
+        const roomGroupName = room.roomGroupName?.trim() ?? "";
+        result.push({
+            order: result.length,
+            roomGroupId,
+            roomGroupName: roomGroupName === "" ? null : roomGroupName
+        });
+    }
+    return result;
 }
 
 function resolveStatusTimestamp(value: Record<string, unknown>): number | null {
@@ -478,7 +531,15 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function copySnapshot(snapshot: LiveCalendarSummarySnapshot): LiveCalendarSummarySnapshot {
     return {
         ...snapshot,
+        adjustmentEvents: [...snapshot.adjustmentEvents],
         calendarGroups: [...snapshot.calendarGroups],
-        latestChanges: [...snapshot.latestChanges]
+        latestChanges: [...snapshot.latestChanges],
+        reviewContext: snapshot.reviewContext === null
+            ? null
+            : {
+                ...snapshot.reviewContext,
+                rooms: [...snapshot.reviewContext.rooms],
+                visibleStayDates: [...snapshot.reviewContext.visibleStayDates]
+            }
     };
 }

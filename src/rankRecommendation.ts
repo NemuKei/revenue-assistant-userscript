@@ -1,3 +1,19 @@
+import { parseRankNameNumber } from "./rankOrder";
+import type {
+    RankRecommendationRankOrderEntry,
+    RankRecommendationRankOrderResolution,
+    RankRecommendationRankOrderSource
+} from "./rankOrder";
+
+export { resolveRankRecommendationRankChangeDirection } from "./rankOrder";
+export type {
+    RankRecommendationRankChangeDirection,
+    RankRecommendationRankChangeDirectionResolution,
+    RankRecommendationRankOrderEntry,
+    RankRecommendationRankOrderResolution,
+    RankRecommendationRankOrderSource
+} from "./rankOrder";
+
 export type RankRecommendationAction = "raise_watch" | "lower_watch" | "watch" | "not_eligible";
 export type RankRecommendationPriority = "high" | "medium" | "low";
 export type RankRecommendationStatus = "active" | "not_eligible";
@@ -8,7 +24,6 @@ export type RankRecommendationWeekdayContextSignal = "weekday_reference_supports
 export type RankRecommendationOwnPricePositionSignal = "own_price_low_against_competitors" | "own_price_near_competitors" | "own_price_high_against_competitors";
 export type RankRecommendationOwnPricePositionSource = "competitor_price_snapshot";
 export type RankRecommendationOwnPricePositionScope = "facility_unmapped_room_type";
-export type RankRecommendationRankOrderSource = "numeric_rank_name" | "settings_screen" | "manual_override" | "unresolved";
 export type RankRecommendationRankChangeProvider = "lincoln_custom_suggest" | "unsupported";
 export type RankRecommendationRankChangeDisabledReason =
     | "candidate_not_active"
@@ -109,17 +124,6 @@ export interface RankRecommendationRankLadderEntry {
 
 export interface RankRecommendationRankOrderOverride {
     rankCodesHighToLow: readonly string[];
-}
-
-export interface RankRecommendationRankOrderEntry {
-    code: string;
-    name: string;
-}
-
-export interface RankRecommendationRankOrderResolution {
-    source: RankRecommendationRankOrderSource;
-    ranksHighToLow: RankRecommendationRankOrderEntry[];
-    diagnostics: string[];
 }
 
 interface ManualRankOrderResolution {
@@ -726,16 +730,6 @@ function resolveManualRankOrder(
     return usedCodes.size === rankByCode.size
         ? { ranks: resolved, diagnostics: [] }
         : { ranks: null, diagnostics: ["manual_override_ignored_missing_rank"] };
-}
-
-function parseRankNameNumber(value: string): number | null {
-    const normalized = value.trim();
-    if (!/^\d+$/.test(normalized)) {
-        return null;
-    }
-
-    const parsed = Number.parseInt(normalized, 10);
-    return Number.isFinite(parsed) ? parsed : null;
 }
 
 function compareRankRecommendationCandidates(left: RankRecommendationCandidate, right: RankRecommendationCandidate): number {

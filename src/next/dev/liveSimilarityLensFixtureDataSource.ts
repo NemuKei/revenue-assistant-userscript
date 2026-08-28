@@ -21,6 +21,12 @@ import type {
     LiveSimilarityLensDataLoadResult,
     LiveSimilarityLensDataSource
 } from "../live/liveSimilarityLensDataSource";
+import type { AdjustmentReviewDataSource } from "../adjustmentReview/adjustmentReviewDataSource";
+import {
+    buildAdjustmentReviewEventKey,
+    type AdjustmentReviewEvent
+} from "../adjustmentReview/adjustmentReviewModel";
+import type { NextBookingCurveSourceRecord } from "../bookingCurve/bookingCurveSourceStore";
 
 type FixtureScenario =
     | "ready"
@@ -74,11 +80,13 @@ export function createLiveCalendarSummaryFixtureDataSource(
         getSnapshot(): LiveCalendarSummarySnapshot {
             if (stopped) {
                 return {
+                    adjustmentEvents: [],
                     calendarGroups: [],
                     contextKey: null,
                     latestChanges: [],
                     rankStatus: "idle",
-                    rankStatusError: null
+                    rankStatusError: null,
+                    reviewContext: null
                 };
             }
             const stayDates = Array.from(windowHost.document.querySelectorAll<HTMLElement>(
@@ -90,7 +98,9 @@ export function createLiveCalendarSummaryFixtureDataSource(
             const records = scenario === "missing" || scenario === "error"
                 ? []
                 : buildFixtureBookingRecords(stayDates, scenario);
+            const adjustmentEvents = buildFixtureAdjustmentEvents(stayDates);
             return {
+                adjustmentEvents,
                 calendarGroups: buildLiveCalendarGroupEvidence({
                     asOfDate: FIXTURE_AS_OF_DATE,
                     bookingRawRecords: records,
@@ -103,7 +113,17 @@ export function createLiveCalendarSummaryFixtureDataSource(
                     .filter((_, index) => index % 4 === 0)
                     .map((stayDate, index) => ({ daysAgo: index, stayDate })),
                 rankStatus: "ready",
-                rankStatusError: null
+                rankStatusError: null,
+                reviewContext: {
+                    asOfDate: FIXTURE_AS_OF_DATE,
+                    facilityId: FIXTURE_FACILITY_ID,
+                    rooms: ROOM_GROUPS.map((room, order) => ({
+                        order,
+                        roomGroupId: room.id,
+                        roomGroupName: room.name
+                    })),
+                    visibleStayDates: stayDates
+                }
             };
         },
         setContext() {
@@ -117,6 +137,128 @@ export function createLiveCalendarSummaryFixtureDataSource(
             return () => undefined;
         }
     };
+}
+
+export function createAdjustmentReviewFixtureDataSource(
+    calendarSummary: LiveCalendarSummaryDataSource
+): AdjustmentReviewDataSource {
+    let stopped = false;
+    return {
+        getSnapshot() {
+            const calendar = calendarSummary.getSnapshot();
+            if (stopped || calendar.contextKey === null || calendar.reviewContext === null) {
+                return { status: "idle" } as const;
+            }
+            return {
+                asOfDate: calendar.reviewContext.asOfDate,
+                contextKey: calendar.contextKey,
+                events: calendar.adjustmentEvents,
+                records: buildFixtureAdjustmentRecords(calendar.adjustmentEvents),
+                rooms: calendar.reviewContext.rooms,
+                status: "ready"
+            } as const;
+        },
+        stop() {
+            stopped = true;
+        },
+        subscribe(listener) {
+            listener();
+            return () => undefined;
+        }
+    };
+}
+
+function buildFixtureAdjustmentEvents(
+    stayDates: readonly string[]
+): AdjustmentReviewEvent[] {
+    return stayDates
+        .filter((stayDate) => stayDate > FIXTURE_AS_OF_DATE)
+        .filter((_, index) => index % 5 === 0)
+        .slice(0, 12)
+        .flatMap((stayDate) => ROOM_GROUPS.map((room, roomIndex) => {
+            const reflectedDate = roomIndex === 0 ? "20260715" : "20260720";
+            const reflectedAt = roomIndex === 0
+                ? "2026-07-15T03:00:00.000Z"
+                : "2026-07-20T03:00:00.000Z";
+            const beforeRankName = roomIndex === 0 ? "8" : "6";
+            const afterRankName = roomIndex === 0 ? "7" : "7";
+            const daysBeforeStay = Math.round((
+                Date.UTC(
+                    Number(stayDate.slice(0, 4)),
+                    Number(stayDate.slice(4, 6)) - 1,
+                    Number(stayDate.slice(6, 8))
+                ) - Date.UTC(
+                    Number(reflectedDate.slice(0, 4)),
+                    Number(reflectedDate.slice(4, 6)) - 1,
+                    Number(reflectedDate.slice(6, 8))
+                )
+            ) / 86_400_000);
+            return {
+                actorName: roomIndex === 0 ? "担当A（mock）" : "担当B（mock）",
+                afterRankName,
+                beforeRankName,
+                daysBeforeStay,
+                direction: roomIndex === 0 ? "raise" as const : "lower" as const,
+                directionSource: roomIndex === 0
+                    ? "settings_screen" as const
+                    : "numeric_rank_name" as const,
+                eventKey: buildAdjustmentReviewEventKey({
+                    afterRankName,
+                    beforeRankName,
+                    reflectedAt,
+                    roomGroupId: room.id,
+                    stayDate
+                }),
+                reflectedAt,
+                reflectedDate,
+                roomGroupId: room.id,
+                stayDate
+            };
+        }));
+}
+
+function buildFixtureAdjustmentRecords(
+    events: readonly AdjustmentReviewEvent[]
+): NextBookingCurveSourceRecord[] {
+    const records = new Map<string, NextBookingCurveSourceRecord>();
+    for (const event of events) {
+        const sourceKey = `fixture-adjustment:${event.stayDate}:${event.roomGroupId}`;
+        if (records.has(sourceKey)) {
+            continue;
+        }
+        const ready = event.roomGroupId === ROOM_GROUPS[0].id;
+        const response = {
+            stay_date: event.stayDate,
+            booking_curve: ready
+                ? [
+                    { date: "20260708", transient: { this_year_room_sum: 4 } },
+                    { date: "20260712", transient: { this_year_room_sum: 5 } },
+                    { date: "20260715", transient: { this_year_room_sum: 7 } },
+                    { date: "20260718", transient: { this_year_room_sum: 8 } },
+                    { date: "20260722", transient: { this_year_room_sum: 11 } }
+                ]
+                : []
+        };
+        records.set(sourceKey, {
+            asOfDate: FIXTURE_AS_OF_DATE,
+            cacheKey: sourceKey,
+            endpoint: BOOKING_CURVE_ENDPOINT,
+            facilityId: FIXTURE_FACILITY_ID,
+            fetchedAt: "2026-07-22T05:00:00.000Z",
+            firstObservedAsOfDate: "20260708",
+            landing: null,
+            query: `date=${event.stayDate}&rm_room_group_id=${event.roomGroupId}`,
+            recordKey: `${sourceKey}:20260722`,
+            response,
+            roomGroupId: event.roomGroupId,
+            schemaVersion: BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION,
+            scope: "roomGroup",
+            source: "next-bounded-booking-curve",
+            sourceKey,
+            stayDate: event.stayDate
+        });
+    }
+    return Array.from(records.values());
 }
 
 function buildFixtureResult(

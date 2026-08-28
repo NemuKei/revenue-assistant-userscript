@@ -18,6 +18,14 @@ const runtimeSource = await readFile(
     new URL("../src/next/live/liveSimilarityLensRuntime.ts", import.meta.url),
     "utf8"
 );
+const reviewViewSource = await readFile(
+    new URL("../src/next/adjustmentReview/adjustmentReviewView.ts", import.meta.url),
+    "utf8"
+);
+const reviewRuntimeSource = await readFile(
+    new URL("../src/next/adjustmentReview/adjustmentReviewRuntime.ts", import.meta.url),
+    "utf8"
+);
 
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-08-12"), "2026-08-12");
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-02-29"), null);
@@ -158,13 +166,18 @@ assert.match(styles, /data-ra-next-lens-match-list[^}]*grid-template-columns: re
 assert.match(viewSource, /textElement\(root, "h2", "基準日から似た日を探す"\)/u);
 assert.match(
     runtimeSource,
-    /root\.previousElementSibling !== snapshot\.mountBoundary/u,
-    "the similarity lens must reconcile against the standard calendar's following sibling position"
+    /const mountPredecessor = reviewRoot \?\? snapshot\.mountBoundary;[\s\S]*?root\.previousElementSibling !== mountPredecessor/u,
+    "the similarity lens must follow the review when present and otherwise follow the standard calendar"
 );
 assert.match(
     runtimeSource,
-    /snapshot\.mountBoundary\.insertAdjacentElement\("afterend", root\)/u,
-    "the similarity lens must mount after the standard calendar"
+    /mountPredecessor\.insertAdjacentElement\("afterend", root\)/u,
+    "the similarity lens must preserve calendar, review, lens order"
+);
+assert.match(
+    reviewRuntimeSource,
+    /calendarSnapshot\.mountBoundary\.insertAdjacentElement\("afterend", root\)/u,
+    "the adjustment review must mount immediately after the standard calendar"
 );
 assert.doesNotMatch(
     runtimeSource,
@@ -188,6 +201,10 @@ assert.match(fixture, /data-mock-route-calendar/);
 assert.match(fixture, /moveToRoute\("\/analyze\/2026-08-12"\)/);
 assert.match(fixture, /data-mock-analyze-content hidden/);
 assert.match(fixture, /data-ra-next-similarity-lens-root/);
+assert.match(reviewViewSource, /調整前後レビュー/u);
+assert.match(reviewViewSource, /因果効果、成功・失敗、推奨ランクの判定ではありません/u);
+assert.match(reviewViewSource, /data-ra-next-adjustment-review-pace-bar/u);
+assert.match(reviewViewSource, /max-width: 720px/u);
 assert.match(
     fixture,
     /URLSearchParams\(window\.location\.search\)\.get\("fixed-host"\) === "1"/

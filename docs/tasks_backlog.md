@@ -1188,7 +1188,7 @@
 #### RAU-PERF-27 Analyze curveBuildの重複計算と不要segment走査を減らす
 
 - 状態:
-  - source / local gate、Next `0.2.0.37` publication完了、Tampermonkey更新後のホテル関西live比較待ち。`RAU-PERF-26`のwarm liveで通信0件でも初期`curveBuild` 4回 / 3,700ms、room open 1回 / 756msを観測したため、request profileを変えず計算経路だけを狭めた。
+  - 完了。source / local gate、Next `0.2.0.37` publicationに加え、後続公開版`0.2.0.45`上でTampermonkey installed versionとmarker sourceを照合し、warm Analyzeのfresh live比較まで実施した。`RAU-PERF-26`の初期`curveBuild` 4回から2回へ減り、request profileを変えず計算経路を狭めた結果を確認した。
 - 解決する問題:
   - 初期hotel curveを構築した直後、room batch完了とrank loading / settledでhotelと閉じたroomを含むcurveを繰り返し再構築していた。reference modelは画面に出す`全体 + 選択中の個人または団体`の2区分に対して3区分すべてのobservationを作り、直近型はLT tickごとに同じ全observationを再走査していた。
 - 実装scope:
@@ -1201,6 +1201,7 @@
 - 進捗:
   - focused / Next全check、typecheck、lint、Classic build、Next fixture build、booking curve smoke、`git diff --check`は通過した。合成Sales Setting Browser QAはNext root 1、hotel curve、room card 2、open room 1、閉じたroom 1、全体 / 個人panel各2、ランク変更履歴、console warning / error 0を確認した。synthetic publicationは372,744 bytes、SHA-256 `D0913E1D707311637B941EB74A500862874C008CD3AFE0FB5336723D2C91DA30`、source mapは1,486,622 bytes、SHA-256 `D326ED67DFC8CCBA9BA35D3F968E3390FDEB622244DAB8D6741D4B5C70A75441`で、runtime payloadはcandidateと一致した。
   - source `df841a9c21a390760c6e966270af775e6cd92606`はValidate Main run `31791443484`を通過し、manual workflow run `31791534674`、run number 37、attempt 1で公開Next `0.2.0.37`へ配信した。公開Nextは372,745 bytes、SHA-256 `82AF5100156AAB7CC8562F74984C64B492DB5D356AEBC921BAF60A0F46D481ED`、source mapは1,486,622 bytes、SHA-256 `D326ED67DFC8CCBA9BA35D3F968E3390FDEB622244DAB8D6741D4B5C70A75441`でmanifestと一致した。Classic userscript / source mapは固定baselineと同一だった。
+  - 2026-08-28の公開Next `0.2.0.45` warm liveでは、初期`curveBuild` 2回 / 合計1,786ms / 最大1,245ms、overall 1,934ms、6 room summary 3,352ms、Long Task 6件 / 合計2,321ms / 最大1,266msだった。room openは`curveBuild` 1回 / 820ms、current 16ms、selected evidence 1,475ms、Long Task 2件 / 合計1,227ms / 最大869msだった。保持windowでnetwork / write / runtime errorは0だった。Long Taskは残るため、通信律速の証拠なしにconcurrency 20を緩和しない。
 - metadata:
   - `depends-on: RAU-PERF-26 live gate`
   - `spec-impact: yes`
@@ -1211,7 +1212,7 @@
 ### RAU-WC-35 月送り後の可視Top cue取得を継続する
 
 - 状態:
-  - 完了。source / spec / local gate / main同期 / Next `0.2.0.45` manual publication / 公開artifact・Classic baseline照合まで実施した。利用者の明示依頼と`D-20260824-001`により、初回表示範囲のbackground上限到達後も、標準月送りで新しく見えた3か月の団体cueと前回調整cueを取得・表示する。Tampermonkey更新後のRevenue Assistant実画面QAは別gateとして残す。
+  - 完了。source / spec / local gate / main同期 / Next `0.2.0.45` manual publication / 公開artifact・Classic baseline照合に加え、2026-08-28のTampermonkey更新後Revenue Assistant実画面QAまで実施した。利用者の明示依頼と`D-20260824-001`により、初回表示範囲のbackground上限到達後も、標準月送りで新しく見えた3か月の団体cueと前回調整cueを取得・表示する。
 - 解決する問題:
   - 初回の可視3か月では青い団体数と前回調整が埋まるが、同じsessionで先の月へ送ると、calendar nodeの日付属性変更を検知できない場合と、Top bootstrap 800 / daily 200の残枠が0になる場合があり、新しい可視範囲の取得・表示が止まる。
 - 実装scope:
@@ -1223,8 +1224,9 @@
   - 属性差替えだけの月送り、次rangeへの連続切替、保存済み先行、partial completion、401 / 403 / 429、route / hidden cleanup、標準calendar非干渉、Revenue Assistant write 0をfocused checkと合成Browserで確認する。
 - 進捗:
   - pure / coordinator checkで、初回contextは従来backgroundだけ、同一facility / as-ofの可視range変更だけがfinite foreground、hotel current以外0、background上限到達後も可視2日を開始、同じrangeの追加GET 0を確認した。既存のauth / rate-limit / 連続error / abort / due / pending dedupe / write 0契約は維持した。
-  - Next全check、typecheck、repo全eslint、Classic / Next build、Classic publication boundary、distribution / booking curve smoke fixture、`git diff --check`は通過した。実Browser fixtureでは、`data-testid`だけを変える1回の月送りで可視92日を1回admitし、連続2回の月送りでは旧rangeのsignalがabort、最新rangeだけbackgroundへ進み、標準room値不変、cleanup後root 0を確認した。公開後のTampermonkey更新とRevenue Assistant実画面での月送りQAは別gateとして残す。
+  - Next全check、typecheck、repo全eslint、Classic / Next build、Classic publication boundary、distribution / booking curve smoke fixture、`git diff --check`は通過した。実Browser fixtureでは、`data-testid`だけを変える1回の月送りで可視92日を1回admitし、連続2回の月送りでは旧rangeのsignalがabort、最新rangeだけbackgroundへ進み、標準room値不変、cleanup後root 0を確認した。
   - source `daa95f3dc4ddce0bb9e048b437bbeb3b43b160de`はValidate Main run `32698825424`を通過し、manual workflow run `32698931932`、run number 45、attempt 1でNext `0.2.0.45`へ配信した。公開Nextは374,881 bytes、SHA-256 `8695F808A9002DD759E202DA92D05E27B8389B16F3C6E0263B5841785D6E994A`、source mapは1,507,233 bytes、SHA-256 `F7C69C3D96FFDA8B23609E0B21C4EB4E24F2867337D67589D75931B603450564`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`の固定baselineと同一だった。
+  - 実画面では標準月送り後も3 calendarとNext rootの配置を維持し、保存済みcue先行、partialからcompleteへの段階表示、連続月送り時の旧range abort、可視rangeごとのrank status最大1 GET、Revenue Assistant write 0をfresh確認した。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl`
@@ -1306,7 +1308,7 @@
 ### RAU-RR-68 Topで宿泊日単位のレート調整効果を俯瞰する
 
 - 状態:
-  - docs-first仕様化とIssue #27の実装前plan補強を完了した。runtime / UIは未実装。利用者が、Top calendarの下で、誰がどの宿泊日を調整し、その後の個人予約ペースが調整前からどう変わったかを宿泊日単位で俯瞰し、担当者、宿泊月、曜日等でfilter / sortし、展開後にroom type別の調整を確認できる画面を求めた。閉じた宿泊日行は各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。runtime実装前に`RAU-WC-35` live gateと`RAU-PERF-27` main-thread baselineをfresh取得する。
+  - runtime / UI、pure model、保存済みdata source、Top配置、Analyze event focusまで実装し、local gateとcount-only Pilotを完了した。main同期、Next manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後の実画面QAを残す。閉じた宿泊日行は各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。
 - 解決する問題:
   - Analyzeのbooking curveでは1宿泊日・1room typeずつ調整時点とその後を確認できるが、複数の宿泊日を横断して、調整前後のペース変化、担当者、宿泊月、曜日、rank方向を比較する入口がない。
   - 同じstayDate x roomGroupを複数回調整したeventをそのまま合計すると、宿泊日summaryが再調整回数により二重計上され、現在の振り返り対象を誤読しやすい。
@@ -1325,6 +1327,10 @@
   - Analyze focusは正しいstay date / room / eventへ到達し、stale / missing eventではroom cardへfallbackする。氏名をpending focusへ入れず、対象で消費後に削除する。
   - 可視range全eventを1回の同期Long Taskで再計算せず、bounded batchと該当行だけの更新にする。Top calendar cue、Analyze foreground、標準UIを止めず、rank status / rank sequence / booking curve追加GET 0、新規storage 0、氏名永続化0、Revenue Assistant write 0をfocused / full checksと通常Chromeで確認する。
   - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution smoke、`git diff --check`を通し、対象差分だけをcommit / pushする。実行内容を変えるため、`D-20260810-003`の通常closeoutに従いNext manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後の実画面QAまで同じBundleで行う。
+- 進捗:
+  - `RAU-WC-35` live gateと`RAU-PERF-27` fresh baselineを先に通し、runtime実装条件を満たした。pure checkはfilter後latest、exact 3日 / 7日、負のpickup、censored / pending / missing / excluded、担当者・room候補件数、逆順の確認済みrank order、event単位numeric fallbackの仮表示を固定した。
+  - count-only Pilotは可視range 340 event、最新候補266 scopeで、3日はready 152 / missing 91 / pending 14 / excluded 9、7日はready 150 / missing 93 / pending 14 / excluded 9だった。差が小さいため初期7日のspec / decisionを変更しなかった。担当者名、施設名、room名、価格・在庫・予約、raw responseは出力・保存していない。
+  - Next全check、typecheck、repo全lint、desktop / 390px合成Browser QA、candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`は通過した。desktop / 390pxではcalendar → review → similarity lens、初期10親行、3日 / 7日、filter / sort、展開detail、keyboard / focus、44px control、横overflow 0、root 1、Analyze exact / stale focusを確認した。read boundaryは追加endpoint 0、review用storage 0、Revenue Assistant write追加0を維持した。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl; docs-first contract complete`
@@ -1353,7 +1359,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triageは、Nowを公開Next `0.2.0.45`へのTampermonkey更新と`RAU-WC-35`のTop月送りlive gateとする。同一facility / as-ofで先の月へ1回・連続2回送り、団体 / 前回調整cueの保存済み先行・段階表示、可視hotel currentとrank status最大1 / range、旧range abort、HTTP / stop、標準UI、console error、Revenue Assistant write 0をfresh確認する。次に`RAU-PERF-27`のホテル関西live比較で初期 / room openの`curveBuild`、Long Task、overall / 6 room / selected evidence、planned / startedを比較し、現在のmain-thread baselineを確保する。その後の最優先実装候補を、追加GET / storageなしで可視rangeの調整前後を集約する`RAU-RR-68`とする。`RAU-WC-34`はforeground / performance gate後の候補とし、実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点は7日observed独立3 cluster以上が0 groupのためUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、Nowを`RAU-RR-68`のmain同期、Next manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後の実画面QAとする。実画面では標準calendar → review → similarity lens、root 1、初期7日 / 10親行、filter / sort / detail、Analyze exact / stale focus、request / storage / Revenue Assistant write追加0、Long Task、標準UI、console errorをfresh確認する。次の候補`RAU-WC-34`は実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 

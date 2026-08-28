@@ -25,8 +25,8 @@ const acquisitionRuntimeSource = await readFile(
 );
 assert.equal(
     entrySource.match(/calendarSummary: liveCalendarSummary/gu)?.length,
-    2,
-    "the lens and acquisition runtimes must share one in-memory calendar summary"
+    3,
+    "the review, lens, and acquisition runtimes must share one in-memory calendar summary"
 );
 assert.match(
     entrySource,
@@ -115,7 +115,11 @@ const source = summaryModule.createLiveCalendarSummaryDataSource({
             return {
                 suggest_statuses: [{
                     date: "2026-08-12",
-                    accepted_at: "2026-08-07T10:00:00+09:00"
+                    accepted_at: "2026-08-07T10:00:00+09:00",
+                    after_price_rank_name: "2",
+                    before_price_rank_name: "3",
+                    reflector_name: "fixture actor",
+                    rm_room_group_id: "room-a"
                 }]
             };
         }
@@ -125,6 +129,7 @@ const source = summaryModule.createLiveCalendarSummaryDataSource({
 source.setContext({
     asOfDate: "20260808",
     facilityId: "yad:fixture",
+    reviewRooms: [{ order: 0, roomGroupId: "room-a", roomGroupName: "fixture room" }],
     visibleStayDates: ["20260813", "20260812"]
 });
 await waitFor(() => source.getSnapshot().rankStatus === "ready");
@@ -155,6 +160,22 @@ assert.equal(captureCalls[0].signal.aborted, false);
 assert.equal(Array.isArray(captureCalls[0].payload.suggest_statuses), true);
 assert.equal(firstSnapshot.contextKey, "yad:fixture|20260808|20260812,20260813");
 assert.deepEqual(firstSnapshot.latestChanges, [{ daysAgo: 1, stayDate: "20260812" }]);
+assert.deepEqual(firstSnapshot.reviewContext?.rooms, [{
+    order: 0,
+    roomGroupId: "room-a",
+    roomGroupName: "fixture room"
+}]);
+assert.deepEqual(firstSnapshot.adjustmentEvents.map((event) => ({
+    actorName: event.actorName,
+    direction: event.direction,
+    roomGroupId: event.roomGroupId,
+    stayDate: event.stayDate
+})), [{
+    actorName: "fixture actor",
+    direction: "raise",
+    roomGroupId: "room-a",
+    stayDate: "20260812"
+}], "the same rank-status response must provide page-memory-only review events");
 assert.equal(
     viewModelModule.getCurveCurrentRooms(firstSnapshot.calendarGroups[0].groupCurve),
     3,

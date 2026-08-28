@@ -7,6 +7,11 @@ import type {
 } from "./bookingCurveReferenceModel";
 import type { BookingCurveRankHistoryViewState } from "./bookingCurveRankMarkerModel";
 import { positionViewportTooltip } from "./viewportTooltipPosition";
+import {
+    ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE,
+    ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE
+} from "../adjustmentReview/adjustmentReviewFocus";
+import { buildAdjustmentReviewEventKey } from "../adjustmentReview/adjustmentReviewModel";
 
 export const BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE = "data-ra-next-booking-curve-reference-root";
 export const BOOKING_CURVE_REFERENCE_STYLE_ATTRIBUTE = "data-ra-next-booking-curve-reference-style";
@@ -697,6 +702,14 @@ function createRankHistorySummary(
     const tbody = documentHost.createElement("tbody");
     for (const event of state.events) {
         const row = documentHost.createElement("tr");
+        row.tabIndex = -1;
+        row.setAttribute(ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE, buildAdjustmentReviewEventKey({
+            afterRankName: event.afterRankName,
+            beforeRankName: event.beforeRankName,
+            reflectedAt: event.reflectedAt,
+            roomGroupId: event.roomGroupId,
+            stayDate: event.stayDate
+        }));
         for (const value of [
             formatDate(event.reflectedDate),
             `${event.daysBeforeStay}日前`,
@@ -1315,6 +1328,11 @@ export function getBookingCurveReferenceStyles(): string {
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-history="error"] {
     border-color: #e6c7be; background: #fff7f4; color: #82452f;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE}][${ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE}] {
+    outline: 3px solid rgba(25, 103, 168, .42);
+    outline-offset: -2px;
+    background: #eef6fc;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-grid] {
     display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;

@@ -28,6 +28,7 @@ try {
     await verifyDeferredReferenceRefreshUsesTrailingDebounce(origin);
     await verifyStoredScopeRefreshIsBounded(origin);
     await verifyRankStatusSurvivesTransientRemount(origin);
+    await verifyAdjustmentReviewFocus(origin);
     await verifyInitialBatchStopsWithoutNativeSurface(origin);
     await verifyHiddenAndRouteTransitions(origin);
     await verifyAbsentSurfaceStayDateReset(origin);
@@ -35,6 +36,72 @@ try {
 } finally {
     await browser?.close();
     await server.close();
+}
+
+async function verifyAdjustmentReviewFocus(origin) {
+    const storageKey = "revenue-assistant-next:adjustment-review-focus:v1";
+    const exactEventKey = JSON.stringify([
+        "20260812",
+        "single",
+        "2026-07-20T03:30:00.000Z",
+        "12",
+        "11"
+    ]);
+    for (const [name, eventKey, expectedSelector] of [
+        ["exact", exactEventKey, "[data-ra-next-adjustment-review-event-key]"],
+        ["stale", "stale-event-key", toggleSelector]
+    ]) {
+        const page = await browser.newPage();
+        const pageErrors = [];
+        page.on("pageerror", (error) => pageErrors.push(error.message));
+        try {
+            await page.addInitScript(({ key, pendingEventKey }) => {
+                globalThis.sessionStorage.setItem(key, JSON.stringify({
+                    createdAt: new Date().toISOString(),
+                    eventKey: pendingEventKey,
+                    roomGroupId: "single",
+                    schemaVersion: 1,
+                    stayDate: "20260812"
+                }));
+            }, { key: storageKey, pendingEventKey: eventKey });
+            await page.goto(new URL(`${fixturePath}?rank=ready`, origin).href, {
+                waitUntil: "networkidle"
+            });
+            await waitForRoot(page, "ready");
+            await page.waitForFunction(
+                ({ selector }) => {
+                    const focused = globalThis.document.activeElement;
+                    return focused?.matches(selector) === true
+                        && focused.hasAttribute("data-ra-next-adjustment-review-focus");
+                },
+                { selector: expectedSelector }
+            );
+            assert.equal(
+                await page.locator("html").getAttribute(
+                    "data-mock-sales-setting-read-room-single-profile"
+                ),
+                "full",
+                `${name} focus must open and fully hydrate only the target room during the initial batch`
+            );
+            assert.equal(
+                await page.evaluate((key) => globalThis.sessionStorage.getItem(key), storageKey),
+                null,
+                `${name} focus must be consumed exactly once after an exact or card fallback attempt`
+            );
+            if (name === "exact") {
+                assert.equal(
+                    await page.locator(
+                        "[data-ra-next-booking-curve-rank-history-details]"
+                    ).first().evaluate((details) => details.open),
+                    true,
+                    "an exact event focus must open its rank history disclosure"
+                );
+            }
+            assert.deepEqual(pageErrors, [], `${name} review focus must not emit runtime errors`);
+        } finally {
+            await page.close();
+        }
+    }
 }
 
 async function verifyDeferredReferenceDoesNotPrematurelySettle(origin) {

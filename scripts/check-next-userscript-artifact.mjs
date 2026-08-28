@@ -28,6 +28,11 @@ const expectedSources = [
     "src/curveCore.ts",
     "src/indexedDbReadOnly.ts",
     "src/leadTimeBuckets.ts",
+    "src/next/adjustmentReview/adjustmentReviewDataSource.ts",
+    "src/next/adjustmentReview/adjustmentReviewFocus.ts",
+    "src/next/adjustmentReview/adjustmentReviewModel.ts",
+    "src/next/adjustmentReview/adjustmentReviewRuntime.ts",
+    "src/next/adjustmentReview/adjustmentReviewView.ts",
     "src/next/analyze/bookingCurveRankReadCoordinator.ts",
     "src/next/analyze/bookingCurveReferenceDataSource.ts",
     "src/next/analyze/bookingCurveReferenceModel.ts",
@@ -84,7 +89,8 @@ const expectedSources = [
     "src/next/runtimeDomMutation.ts",
     "src/next/runtimeLease.ts",
     "src/next/runtimeMarker.ts",
-    "src/next/similarityLensModel.ts"
+    "src/next/similarityLensModel.ts",
+    "src/rankOrder.ts"
 ].sort();
 assert.equal(Array.isArray(sourceMap.sources), true, "Next source map must include sources");
 assert.equal(Array.isArray(sourceMap.sourcesContent), true, "Next source map must include sourcesContent");
@@ -200,6 +206,15 @@ assert.equal(
     "monthly preferences and the read-only performance debug flag must be the only localStorage access"
 );
 assert.equal(countMatches(artifactText, /revenue-assistant:debug:fetch-performance/gu), 1);
+assert.equal(
+    countMatches(artifactText, /\bsessionStorage\b/gu),
+    3,
+    "sessionStorage access must remain limited to one-shot adjustment-review focus read/write/clear"
+);
+assert.equal(
+    countMatches(artifactText, /revenue-assistant-next:adjustment-review-focus:v1/gu),
+    1
+);
 assert.match(artifactText, /GET/u);
 
 for (const forbiddenPattern of [
@@ -209,7 +224,6 @@ for (const forbiddenPattern of [
     /\bEventSource\b/u,
     /\bSharedWorker\b/u,
     /\bWorker\b/u,
-    /\bsessionStorage\b/u,
     /\bdocument\.cookie\b/u,
     /\bdeleteObjectStore\b/u,
     /\bdeleteDatabase\b/u,

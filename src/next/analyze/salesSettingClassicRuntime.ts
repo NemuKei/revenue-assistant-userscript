@@ -52,6 +52,13 @@ import {
     type NextPerformanceRecorder,
     type NextPerformanceSource
 } from "../performance/nextPerformanceRecorder";
+import {
+    ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE,
+    ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE,
+    clearPendingAdjustmentReviewFocus,
+    readPendingAdjustmentReviewFocus,
+    type PendingAdjustmentReviewFocus
+} from "../adjustmentReview/adjustmentReviewFocus";
 
 const NEXT_SALES_SETTING_STATE_ATTRIBUTE = "data-ra-next-sales-setting-classic-state";
 const SALES_SETTING_HEADING_SELECTOR = '[data-testid="suggestions-heading"]';
@@ -125,6 +132,8 @@ export function startSalesSettingClassicRuntime(
     const performanceSourceByScope = new Map<string, NextPerformanceSource>();
     let selectedScopeReadyAtOpen = false;
     const openScopes = new Set<string>();
+    let pendingReviewFocus: PendingAdjustmentReviewFocus | null = null;
+    let reviewFocusHighlightTimer: number | null = null;
     const hydratingScopeTokens = new Map<string, symbol>();
     const secondarySegments = new Map<string, BookingCurveReferenceSecondarySegment>();
     const visibilities = new Map<string, BookingCurveReferenceVisibility>();
@@ -252,6 +261,11 @@ export function startSalesSettingClassicRuntime(
         contextBlocked = false;
         state = "idle";
         openScopes.clear();
+        pendingReviewFocus = readPendingAdjustmentReviewFocus(windowHost, stayDate);
+        if (pendingReviewFocus !== null) {
+            openScopes.add(`room:${pendingReviewFocus.roomGroupId}`);
+        }
+        clearReviewFocusHighlightTimer();
         hydratingScopeTokens.clear();
         secondarySegments.clear();
         visibilities.clear();
@@ -528,7 +542,85 @@ export function startSalesSettingClassicRuntime(
                 .filter(([, data]) => isCurrentRevalidating(data))
                 .map(([scopeKey]) => scopeKey))
         });
+        applyPendingReviewFocus(nativeCards);
         recordAnalyzeMilestones(model);
+    }
+
+    function applyPendingReviewFocus(
+        nativeCards: readonly SalesSettingClassicNativeCard[]
+    ): void {
+        const pending = pendingReviewFocus;
+        if (
+            pending === null
+            || activeStayDate !== pending.stayDate
+            || scopeBatchLoading
+            || initialScopeBatchLoading
+            || rankLoading
+            || (activeRankSnapshot === null && rankLoadError === null)
+        ) {
+            return;
+        }
+        const scopeKey = `room:${pending.roomGroupId}`;
+        const targetScopeExists = activeScopes.some((scope) => scope.key === scopeKey);
+        const nativeCard = nativeCards.find((card) => card.scopeKey === scopeKey);
+        if (!targetScopeExists || nativeCard === undefined) {
+            finishPendingReviewFocus();
+            return;
+        }
+        const exactRow = Array.from(nativeCard.cardElement.querySelectorAll<HTMLElement>(
+            `[${ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE}]`
+        )).find((candidate) => (
+            candidate.getAttribute(ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE) === pending.eventKey
+        )) ?? null;
+        if (exactRow !== null) {
+            openAncestorDetails(exactRow);
+            highlightAndFocus(exactRow);
+        } else {
+            const toggle = Array.from(nativeCard.cardElement.querySelectorAll<HTMLElement>(
+                `[${SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE}]`
+            )).find((candidate) => (
+                candidate.getAttribute(SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE) === scopeKey
+            )) ?? null;
+            highlightAndFocus(toggle ?? nativeCard.cardElement);
+        }
+        finishPendingReviewFocus();
+    }
+
+    function finishPendingReviewFocus(): void {
+        pendingReviewFocus = null;
+        clearPendingAdjustmentReviewFocus(windowHost);
+    }
+
+    function openAncestorDetails(element: HTMLElement): void {
+        let details = element.closest<HTMLDetailsElement>("details");
+        while (details !== null) {
+            details.open = true;
+            details = details.parentElement?.closest<HTMLDetailsElement>("details") ?? null;
+        }
+    }
+
+    function highlightAndFocus(element: HTMLElement): void {
+        clearReviewFocusHighlightTimer();
+        element.setAttribute(ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE, "");
+        if (!element.matches("button, a, input, select, textarea, [tabindex]")) {
+            element.tabIndex = -1;
+        }
+        element.scrollIntoView({ block: "center" });
+        element.focus({ preventScroll: true });
+        reviewFocusHighlightTimer = windowHost.setTimeout(() => {
+            element.removeAttribute(ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE);
+            reviewFocusHighlightTimer = null;
+        }, 6_000);
+    }
+
+    function clearReviewFocusHighlightTimer(): void {
+        if (reviewFocusHighlightTimer !== null) {
+            windowHost.clearTimeout(reviewFocusHighlightTimer);
+            reviewFocusHighlightTimer = null;
+        }
+        documentHost.querySelectorAll<HTMLElement>(
+            `[${ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE}]`
+        ).forEach((element) => element.removeAttribute(ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE));
     }
 
     function beginAnalyzePerformance(
@@ -1103,6 +1195,8 @@ export function startSalesSettingClassicRuntime(
         contextBlocked = false;
         state = "idle";
         openScopes.clear();
+        pendingReviewFocus = null;
+        clearReviewFocusHighlightTimer();
         hydratingScopeTokens.clear();
         secondarySegments.clear();
         visibilities.clear();
@@ -1202,6 +1296,7 @@ export function startSalesSettingClassicRuntime(
             return;
         }
         stopped = true;
+        clearReviewFocusHighlightTimer();
         clearPerformanceContext();
         loadGeneration += 1;
         rankGeneration += 1;

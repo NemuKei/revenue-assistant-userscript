@@ -14,6 +14,7 @@ import type {
     SalesSettingClassicCardViewModel,
     SalesSettingClassicViewModel
 } from "./salesSettingClassicModel";
+import { ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE } from "../adjustmentReview/adjustmentReviewFocus";
 
 export const SALES_SETTING_CLASSIC_ROOT_ATTRIBUTE = "data-ra-next-sales-setting-classic-root";
 export const SALES_SETTING_CLASSIC_STYLE_ATTRIBUTE = "data-ra-next-sales-setting-classic-style";
@@ -565,6 +566,9 @@ function getSalesSettingClassicStyles(): string {
     border-color: #8fb2ea; background: #eef4ff; color: #1f5fbf;
 }
 [${SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE}]:focus-visible { outline: 3px solid #d98200; outline-offset: 2px; }
+[${SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE}][${ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE}] {
+    outline: 3px solid rgba(25, 103, 168, .42); outline-offset: 3px; background: #eef6fc;
+}
 [${SALES_SETTING_CLASSIC_RANK_DETAIL_ATTRIBUTE}] {
     margin-top: 2px; color: #50627a; font-size: 13px; font-weight: 700; line-height: 1.4; white-space: nowrap;
 }

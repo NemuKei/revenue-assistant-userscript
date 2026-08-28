@@ -1,6 +1,7 @@
 const NEXT_RUNTIME_OWNED_SELECTOR = [
     "[data-ra-fetch-performance-summary]",
     "[data-ra-next-similarity-lens-root]",
+    "[data-ra-next-adjustment-review-root]",
     "[data-ra-next-sales-setting-classic-root]",
     "[data-ra-next-sales-setting-classic-supplement]",
     "[data-ra-next-booking-curve-reference-root]",

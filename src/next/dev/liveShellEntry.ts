@@ -1,4 +1,5 @@
 import {
+    createAdjustmentReviewFixtureDataSource,
     createLiveCalendarSummaryFixtureDataSource,
     createLiveSimilarityLensFixtureDataSource
 } from "./liveSimilarityLensFixtureDataSource";
@@ -6,6 +7,7 @@ import { startLiveSimilarityLensRuntime } from "../live/liveSimilarityLensRuntim
 import { detectLegacyClassicRuntime, startRevenueAssistantRuntime } from "../runtimeLease";
 import { resolveNextRuntimeMarker } from "../runtimeMarker";
 import { createNextPerformanceRecorder } from "../performance/nextPerformanceRecorder";
+import { startAdjustmentReviewRuntime } from "../adjustmentReview/adjustmentReviewRuntime";
 
 const NEXT_RUNTIME_STATE_ATTRIBUTE = "data-ra-next-runtime-state";
 
@@ -19,8 +21,14 @@ const runtimeResult = startRevenueAssistantRuntime({
             sourceRevision: "fixture",
             windowHost: window
         });
+        const calendarSummary = createLiveCalendarSummaryFixtureDataSource(window);
+        startAdjustmentReviewRuntime(document, window, {
+            dataSource: createAdjustmentReviewFixtureDataSource(calendarSummary),
+            isCalendarRoute: (location) => location.pathname === "/"
+                || location.pathname === "/dev/fixtures/next-live-shell/"
+        });
         startLiveSimilarityLensRuntime(document, window, {
-            calendarSummary: createLiveCalendarSummaryFixtureDataSource(window),
+            calendarSummary,
             dataSource: createLiveSimilarityLensFixtureDataSource(window),
             isCalendarRoute: (location) => location.pathname === "/"
                 || location.pathname === "/dev/fixtures/next-live-shell/",

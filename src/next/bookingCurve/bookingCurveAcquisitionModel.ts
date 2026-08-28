@@ -40,8 +40,15 @@ export interface NextBookingCurveScope {
 export interface NextBookingCurveAcquisitionContext {
     asOfDate: string;
     facilityId: string;
+    reviewRooms?: readonly NextBookingCurveReviewRoom[];
     roomScopes: readonly NextBookingCurveScope[];
     visibleStayDates: readonly string[];
+}
+
+export interface NextBookingCurveReviewRoom {
+    order: number;
+    roomGroupId: string;
+    roomGroupName: string | null;
 }
 
 export interface NextBookingCurveAcquisitionTask {
@@ -77,6 +84,29 @@ export function createNextBookingCurveScopes(
         }
     }
     return scopes;
+}
+
+export function createNextBookingCurveReviewRooms(
+    currentSettings: RankRecommendationCurrentSettingsResponse
+): NextBookingCurveReviewRoom[] {
+    const rooms: NextBookingCurveReviewRoom[] = [];
+    const seen = new Set<string>();
+    for (const setting of currentSettings.suggest_output_current_settings ?? []) {
+        for (const roomGroup of setting.rm_room_groups ?? []) {
+            const roomGroupId = roomGroup.rm_room_group_id?.trim() ?? "";
+            if (roomGroupId === "" || seen.has(roomGroupId)) {
+                continue;
+            }
+            seen.add(roomGroupId);
+            const roomGroupName = roomGroup.rm_room_group_name?.trim() ?? "";
+            rooms.push({
+                order: rooms.length,
+                roomGroupId,
+                roomGroupName: roomGroupName === "" ? null : roomGroupName
+            });
+        }
+    }
+    return rooms;
 }
 
 export function buildNextBookingCurveBackgroundTasks(

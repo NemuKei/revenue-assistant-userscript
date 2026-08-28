@@ -123,6 +123,7 @@ const allowedSharedRuntimeSources = new Set([
     "src/curveCore.ts",
     "src/indexedDbReadOnly.ts",
     "src/leadTimeBuckets.ts",
+    "src/rankOrder.ts",
     "src/rankRecommendation.ts"
 ]);
 const forbiddenRuntimeSources = new Set([

@@ -17,6 +17,8 @@ import { startNextMonthlyProgressRuntime } from "./monthlyProgress/monthlyProgre
 import { createBookingCurveRankReadCoordinator } from "./analyze/bookingCurveRankReadCoordinator";
 import { createRankLearningCaptureWriter } from "./rankLearning/rankLearningCaptureWriter";
 import { createNextPerformanceRecorder } from "./performance/nextPerformanceRecorder";
+import { createAdjustmentReviewDataSource } from "./adjustmentReview/adjustmentReviewDataSource";
+import { startAdjustmentReviewRuntime } from "./adjustmentReview/adjustmentReviewRuntime";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -65,6 +67,13 @@ function startNextCandidateRuntime(): void {
     const rankReads = createBookingCurveRankReadCoordinator({ windowHost: window });
     const bookingCurveReferenceRankReads = rankReads.createConsumer("booking-curve-reference");
     const salesSettingRankReads = rankReads.createConsumer("sales-setting");
+    startAdjustmentReviewRuntime(document, window, {
+        dataSource: createAdjustmentReviewDataSource({
+            acquisition: bookingCurveAcquisition,
+            calendarSummary: liveCalendarSummary,
+            windowHost: window
+        })
+    });
     startLiveSimilarityLensRuntime(document, window, {
         calendarSummary: liveCalendarSummary,
         dataSource: createLiveSimilarityLensDataSource({

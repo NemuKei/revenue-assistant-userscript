@@ -823,7 +823,7 @@ assert.deepEqual(requests, [{
 assert.equal(inMemoryRecords.length, 1, "exact current record must be reused without another GET");
 assert.deepEqual(
     storedSourceEvents,
-    [{ scopeKey: "hotel" }],
+    [{ scopeKey: "hotel", stayDate: "20260723" }],
     "a stored source must identify only the scope that needs an Analyze refresh"
 );
 const nextDayContext = { ...oneScopeContext, asOfDate: "20260724" };
@@ -838,7 +838,10 @@ await coordinator.ensureCurrent({
     stayDate: "20260723"
 });
 assert.equal(requests.length, 2, "the next observation day adds one bounded tail request");
-assert.deepEqual(storedSourceEvents, [{ scopeKey: "hotel" }, { scopeKey: "hotel" }]);
+assert.deepEqual(storedSourceEvents, [
+    { scopeKey: "hotel", stayDate: "20260723" },
+    { scopeKey: "hotel", stayDate: "20260723" }
+]);
 unsubscribeStoredSources();
 assert.equal(
     inMemoryRecords

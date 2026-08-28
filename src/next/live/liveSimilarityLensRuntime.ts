@@ -46,6 +46,7 @@ import {
     syncLiveCalendarDecorations,
     type LiveSimilarityLensDisclosureState
 } from "./liveSimilarityLensView";
+import { ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE } from "../adjustmentReview/adjustmentReviewView";
 
 const NEXT_LIVE_STATE_ATTRIBUTE = "data-ra-next-live-state";
 
@@ -276,8 +277,12 @@ export function startLiveSimilarityLensRuntime(
         }
         ensureLiveSimilarityLensStyles(documentHost);
         root = rootCandidates[0] ?? createLiveSimilarityLensRoot(documentHost);
-        if (root.parentElement !== snapshot.mountParent || root.previousElementSibling !== snapshot.mountBoundary) {
-            snapshot.mountBoundary.insertAdjacentElement("afterend", root);
+        const reviewRoot = Array.from(snapshot.mountParent.querySelectorAll<HTMLElement>(
+            `[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}]`
+        )).find((candidate) => candidate.previousElementSibling === snapshot?.mountBoundary) ?? null;
+        const mountPredecessor = reviewRoot ?? snapshot.mountBoundary;
+        if (root.parentElement !== snapshot.mountParent || root.previousElementSibling !== mountPredecessor) {
+            mountPredecessor.insertAdjacentElement("afterend", root);
         }
         const focusedAction = getFocusedLensAction(documentHost, root);
         if (
