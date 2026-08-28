@@ -1308,7 +1308,7 @@
 ### RAU-RR-68 Topで宿泊日単位のレート調整効果を俯瞰する
 
 - 状態:
-  - runtime / UI、pure model、保存済みdata source、Top配置、Analyze event focusまで実装し、local gateとcount-only Pilotを完了した。main同期、Next manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後の実画面QAを残す。閉じた宿泊日行は各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。
+  - runtime / UI、pure model、保存済みdata source、Top配置、Analyze event focusまで実装し、local gate、count-only Pilot、main同期、Next `0.2.0.46` manual publication、公開artifact / Classic baseline照合まで完了した。通常Chrome installed runtimeは`0.2.0.45`のため、Tampermonkey更新後の実画面QAを残す。閉じた宿泊日行は各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。
 - 解決する問題:
   - Analyzeのbooking curveでは1宿泊日・1room typeずつ調整時点とその後を確認できるが、複数の宿泊日を横断して、調整前後のペース変化、担当者、宿泊月、曜日、rank方向を比較する入口がない。
   - 同じstayDate x roomGroupを複数回調整したeventをそのまま合計すると、宿泊日summaryが再調整回数により二重計上され、現在の振り返り対象を誤読しやすい。
@@ -1331,6 +1331,8 @@
   - `RAU-WC-35` live gateと`RAU-PERF-27` fresh baselineを先に通し、runtime実装条件を満たした。pure checkはfilter後latest、exact 3日 / 7日、負のpickup、censored / pending / missing / excluded、担当者・room候補件数、逆順の確認済みrank order、event単位numeric fallbackの仮表示を固定した。
   - count-only Pilotは可視range 340 event、最新候補266 scopeで、3日はready 152 / missing 91 / pending 14 / excluded 9、7日はready 150 / missing 93 / pending 14 / excluded 9だった。差が小さいため初期7日のspec / decisionを変更しなかった。担当者名、施設名、room名、価格・在庫・予約、raw responseは出力・保存していない。
   - Next全check、typecheck、repo全lint、desktop / 390px合成Browser QA、candidate / synthetic publication、Classic build / publication boundary、distribution / booking curve smoke、`git diff --check`は通過した。desktop / 390pxではcalendar → review → similarity lens、初期10親行、3日 / 7日、filter / sort、展開detail、keyboard / focus、44px control、横overflow 0、root 1、Analyze exact / stale focusを確認した。read boundaryは追加endpoint 0、review用storage 0、Revenue Assistant write追加0を維持した。
+  - source `d6df4d76a6926d8eacb836f037de56d9c1ae0abe`はValidate Main run `33152829078`を通過し、manual workflow run `33152953658`、run number 46、attempt 1でNext `0.2.0.46`へ公開した。公開Nextは414,340 bytes、SHA-256 `C08B2901F8EFEDDA3461EB3901C4C89240DB32AFD49D46EE69595CA1891B4C49`、source map 1,646,586 bytes、SHA-256 `943FD2686AF71EE34E9D34854532DC1EAD002FBB99FCC6FD2EB5C1AC2AC2535E`でmanifestと一致し、Classic固定baselineも維持した。
+  - アプリ再起動後は既存Revenue Assistant tabへのread-only接続とinstalled runtime `0.2.0.45`をfresh確認した。公開userscriptの通常クリックはTampermonkeyの`script_installation.php`中継ページまで到達するがextension確認画面へ進まない。Chrome / Codex設定、Chrome process、別browser surfaceを変えずに止め、利用者によるTampermonkey dashboard更新後に実画面QAを再開する。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl; docs-first contract complete`
@@ -1359,7 +1361,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triageは、Nowを`RAU-RR-68`のmain同期、Next manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後の実画面QAとする。実画面では標準calendar → review → similarity lens、root 1、初期7日 / 10親行、filter / sort / detail、Analyze exact / stale focus、request / storage / Revenue Assistant write追加0、Long Task、標準UI、console errorをfresh確認する。次の候補`RAU-WC-34`は実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、Nowを`RAU-RR-68`のTampermonkey `0.2.0.46`更新と更新後の実画面QAとする。実画面では標準calendar → review → similarity lens、root 1、初期7日 / 10親行、filter / sort / detail、Analyze exact / stale focus、request / storage / Revenue Assistant write追加0、Long Task、標準UI、console errorをfresh確認する。次の候補`RAU-WC-34`は実装前にcount-only live range gateとYellow zone decisionを通す。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 
@@ -12355,16 +12357,14 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-WC-35` 公開Next `0.2.0.45`へ更新し、月送り後の可視Top cue取得をlive確認する
+- `RAU-RR-68` Tampermonkeyを公開Next `0.2.0.46`へ更新し、調整前後レビューをlive確認する
 
 Next:
 
-- `RAU-PERF-27` Analyze curveBuild削減の公開後live比較を行う
-- `RAU-RR-68` Topで宿泊日単位のレート調整効果を俯瞰する
+- `RAU-WC-34` Topの半年取得をcount-only gate後に再判断する
 
 After Next:
 
-- `RAU-WC-34` Topの半年取得をcount-only gate後に再判断する
 - `RAU-RR-67` 通常利用でdata蓄積後に隣接rankの期待反応を再評価する
 
 Later:
