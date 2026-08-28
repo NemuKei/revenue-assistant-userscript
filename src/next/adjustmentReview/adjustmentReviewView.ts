@@ -10,7 +10,8 @@ import {
     type AdjustmentReviewParentRow,
     type AdjustmentReviewSort,
     type AdjustmentReviewViewModel,
-    type EvaluatedAdjustmentReviewEvent
+    type EvaluatedAdjustmentReviewEvent,
+    isSameAdjustmentReviewStayDate
 } from "./adjustmentReviewModel";
 
 export const ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE = "data-ra-next-adjustment-review-root";
@@ -504,7 +505,9 @@ function createAnalyzeAction(
     event: EvaluatedAdjustmentReviewEvent,
     calendar: LiveCalendarDomSnapshot | null
 ): HTMLElement {
-    const cell = calendar?.cells.find((candidate) => candidate.stayDate === event.stayDate);
+    const cell = calendar?.cells.find((candidate) => (
+        isSameAdjustmentReviewStayDate(candidate.stayDate, event.stayDate)
+    ));
     const action = cell?.analyzeHref === null || cell?.analyzeHref === undefined
         ? documentHost.createElement("button")
         : documentHost.createElement("a");

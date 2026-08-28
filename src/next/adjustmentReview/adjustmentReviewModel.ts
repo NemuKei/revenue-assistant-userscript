@@ -329,6 +329,11 @@ export function buildAdjustmentReviewScopeKey(
     return `${event.stayDate}|${event.roomGroupId}`;
 }
 
+export function isSameAdjustmentReviewStayDate(left: string, right: string): boolean {
+    const leftKey = toCompactDateKey(left);
+    return leftKey !== null && leftKey === toCompactDateKey(right);
+}
+
 export function evaluateAdjustmentReviewEvents(options: {
     asOfDate: string;
     events: readonly AdjustmentReviewEvent[];

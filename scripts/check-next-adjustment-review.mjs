@@ -219,6 +219,9 @@ assert.equal(findEvent(evaluated, "room-f", "20260818").observations[7].state, "
 assert.equal(byKey.size, evaluated.length);
 
 const baseFilters = review.createInitialAdjustmentReviewFilters();
+assert.equal(review.isSameAdjustmentReviewStayDate("2026-08-30", "20260830"), true);
+assert.equal(review.isSameAdjustmentReviewStayDate("2026-08-30", "20260831"), false);
+assert.equal(review.isSameAdjustmentReviewStayDate("invalid", "20260830"), false);
 const sevenDay = review.buildAdjustmentReviewViewModel({
     asOfDate: "20260825",
     events,

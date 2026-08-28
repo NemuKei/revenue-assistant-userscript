@@ -18,6 +18,7 @@ import {
     buildAdjustmentReviewViewModelFromEvaluatedEvents,
     createInitialAdjustmentReviewFilters,
     evaluateAdjustmentReviewEvents,
+    isSameAdjustmentReviewStayDate,
     sortEvaluatedAdjustmentReviewEvents,
     type AdjustmentReviewDirection,
     type AdjustmentReviewFilters,
@@ -377,7 +378,9 @@ export function startAdjustmentReviewRuntime(
         if (element.tagName === "A") {
             return;
         }
-        const anchor = calendarSnapshot?.cells.find((cell) => cell.stayDate === stayDate)?.anchor;
+        const anchor = calendarSnapshot?.cells.find((cell) => (
+            isSameAdjustmentReviewStayDate(cell.stayDate, stayDate)
+        ))?.anchor;
         if (anchor !== undefined) {
             event.preventDefault();
             anchor.click();

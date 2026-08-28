@@ -211,6 +211,11 @@ async function verifyAdjustmentReviewUi(activeBrowser, origin) {
         assert.equal(await desktop.locator(parentSelector).count(), 12);
 
         const analyze = desktop.locator("[data-ra-next-adjustment-review-analyze]").first();
+        assert.equal(
+            await analyze.evaluate((element) => element.tagName),
+            "A",
+            "compact adjustment dates must resolve the dashed native calendar Analyze href"
+        );
         await analyze.evaluate((element) => {
             element.addEventListener("click", (event) => event.preventDefault(), { once: true });
         });
