@@ -667,10 +667,14 @@ Analyze試験表示の廃止 (`RAU-RR-64`, `RAU-UX-169`):
 - 変更日をJST日付`t`、比較日数を`h = 3 / 7`とし、個人予約の変更前ペースを`transientRooms(t) - transientRooms(t-h)`、変更後ペースを`transientRooms(t+h) - transientRooms(t)`、ペース変化量を`変更後ペース - 変更前ペース`で計算する。各点は同じfacility / stayDate / roomGroup / exact as-ofの`booking_curve_raw_source:v2`だけを使い、欠損補間、別room / hotel scope代用、0への丸めを行わない。キャンセルを含む負のpickupも符号を保持する。
 - event timestampは既存rank response契約と同じ`accepted_at ?? completed_at ?? suggest_calc_datetime`を使う。`t-h / t / t+h`のいずれかが欠ける場合は`missing`、`t+h`がanalysis as-ofより未来なら`pending`、評価窓内に次のrank変更がある場合は`censored`、同一room / 同一日に複数変更があり日次curveで分離できない場合は`excluded`とし、比較可能な`ready`へ混ぜない。
 - 閉じた宿泊日行の集計は、filter適用後の各`stayDate x roomGroup`で最新の有効event 1件だけを対象にする。これにより、同じ部屋タイプの再調整を同一宿泊日の合計へ二重計上しない。後続eventがfilter外でもcensor判定には使う。展開後は、現在の取得範囲で有効な全eventを標準room scope順、同一room内は新しい変更順で確認できるようにする。`全履歴`やendpoint上の完全性は主張しない。
-- 宿泊日行は、集計対象room数、比較可能room数、担当者、rank方向の`上げ n / 下げ n / 方向未確認 n`、3日 / 7日の変更前ペース合計、変更後ペース合計、ペース変化量合計を持つ。rank方向は既存rank order contractから解決し、順序未確認をrank名の見た目だけで推測しない。合計値には`ready`なroomだけを含め、`比較可能 n / 対象 m`を併記してcoverage不足を隠さない。
-- 担当者は現在のrank status responseにあるoptional `reflector_name`をtrimしてpage memoryだけで使い、欠損時は`担当者不明`とする。`RAU-RR-66`のsanitized store、booking curve source、console、performance markerへ氏名を保存しない。sessionをまたぐ担当者分析や氏名の永続保存が必要になった場合は、利用目的、保存範囲、保持期間、削除方法を別decisionで承認する。
+- 宿泊日行は、集計対象room数、比較可能room数、担当者、rank方向の`上げ n / 下げ n / 方向未確認 n`、選択中の3日または7日の変更前ペース合計、変更後ペース合計、ペース変化量合計を持つ。rank方向は既存rank order contractから解決し、順序未確認をrank名の見た目だけで推測しない。合計値には選択中horizonで`ready`なroomだけを含め、`比較可能 n / 対象 m`を併記してcoverage不足を隠さない。選択中horizonが未readyの場合に別horizonの値を代用しない。
+- 親行へ採用したeventのJST日付の最小〜最大を調整日範囲、異なるevent timestamp数を調整タイミング数として表示する。同一timestampで複数roomを調整した場合は1 timingと数え、部屋別の異なるevent基準を合算する指標名は`部屋別ペース変化の合計`とする。採用eventのLT範囲も表示するが、LT補正や成功判定には使わない。
+- 担当者は現在のrank status responseにあるoptional `reflector_name`をtrimしてpage memoryだけで使い、欠損時は`担当者不明`とする。親行の`担当者判明 n / 対象 m`はcurrent filter後に親行へ採用された1 room 1 eventを分母とし、過去eventの重複を数えない。担当者filter候補の件数は、ほかのfilter適用後にその候補を選ぶと残る一意な`stayDate x roomGroup`数とし、raw event数にしない。展開履歴のcoverageを示す場合は`履歴event`と明記して親行coverageと混ぜない。
+- `RAU-RR-66`のsanitized store、booking curve source、console、performance marker、diagnostics、pending focus payloadへ氏名を保存しない。sessionをまたぐ担当者分析や氏名の永続保存が必要になった場合は、利用目的、保存範囲、保持期間、削除方法を別decisionで承認する。
 - first sliceの対象は現在Topで可視な標準calendar rangeとし、既存の可視range rank status最大1 GETの結果と保存済みbooking curve sourceだけを再利用する。過去rangeの自動探索、画面外半年prefetch、追加rank status / rank sequence / booking curve GET、新規storage、raw response保存、Revenue Assistant writeは追加しない。保存済み根拠が増えた場合は同じ可視contextの該当行だけを再計算し、calendar cueやAnalyze foregroundを待たせない。
 - pure modelはtransport、DOM、storageを所有せず、rank eventの正規化、filter、最新event選択、前後ペース計算、state分類、宿泊日集計、sort keyを共有する。viewはそのmodelを使い、同じ計算や方向判定を親行と展開行へ個別実装しない。
+- `Analyzeで確認`の展開行focusは、氏名を含まない`stayDate + roomGroupId + reflectedAt + beforeRank + afterRank`からdeterministic event keyを作り、既存pending focusへ追加する。pending focusは`sessionStorage`だけで単発利用し、対象Analyzeで消費後に削除する。別日付、別room、stale eventには適用せず、eventが見つからない場合は通常Analyzeを壊さず対象room cardのopen / scroll / highlightへfallbackする。親行で対象roomが複数なら日付と対象room一覧までをfocusし、単にAnalyze routeを開くだけで完了扱いにしない。
+- runtime実装は、公開Next `0.2.0.45`の`RAU-WC-35` live gateと、`RAU-PERF-27`のinstalled version / marker source revision / `curveBuild` / Long Task baselineをfresh取得した後に開始する。接続不能または証拠不足の場合は、原因と未確認範囲を残してruntime実装を開始しない。
 
 推奨 rank 算出の first contract:
 
@@ -698,12 +702,14 @@ Analyze試験表示の廃止 (`RAU-RR-64`, `RAU-UX-169`):
 #### 調整前後レビュー (`RAU-RR-68`)
 
 - 標準calendarの直後、`基準日から似た日を探す`より前へ、初期表示で宿泊日summaryを確認できる`調整前後レビュー`を置く。標準calendar、標準toolbar、標準日付操作、月送り、黒い値、青い`団n`、前回調整cueのgeometryと操作を変更しない。
-- 親行は宿泊日単位で、宿泊日・曜日、担当者、対象room数、rank方向count、3日 / 7日の変更前ペース・変更後ペース・変化量、観測状態を表示する。変更前はgray、変更後はblueの同一尺度barと数値を併用し、正負の符号を残す。green / redで成功・失敗を意味付けず、hoverだけに情報を置かない。
-- 宿泊日を展開すると、room type、担当者、調整日時、正確なrank transition、方向、3日 / 7日の変更前ペース・変更後ペース・変化量、観測状態を表示する。room typeは標準room scope順、同一room内は新しい変更順とし、親行集計の対象eventを識別できるようにする。
-- filterは担当者、宿泊月、曜日、room type、rank方向、観測状態、調整日を持つ。担当者・宿泊月・曜日・room type・方向・調整日はevent集合へ先に適用し、その後に各roomの最新1件を親行へ集計する。観測状態filterは計算後の行へ適用する。filter結果件数と比較可能coverageを表示し、該当なしとデータ不足を同じempty stateへまとめない。
-- sortは`比較可能優先 + 7日変化量の絶対値が大きい順`を既定とし、7日が未readyなら3日をfallbackにする。同値は宿泊日昇順で安定化する。利用者は宿泊日、最終調整日、担当者、3日 / 7日変化量、対象room数へ切り替えられる。sort変更は表示順だけを変え、親行の最新event選択と計算値を変えない。
+- 親行は宿泊日単位で、宿泊日・曜日、調整日範囲、調整タイミング数、LT範囲、担当者coverage、対象room数、rank方向count、選択中horizonの変更前ペース・変更後ペース・部屋別ペース変化の合計、観測状態を表示する。変更前はgray、変更後はblueの同一尺度barと数値を併用し、正負の符号を残す。green / redで成功・失敗を意味付けず、hoverだけに情報を置かない。
+- 宿泊日を展開すると、room type、担当者、調整日時、LT、正確なrank transition、方向、選択中horizonの変更前ペース・変更後ペース・変化量、観測状態、親行集計への採否を表示する。room typeは標準room scope順、同一room内は新しい変更順とし、親行集計の対象eventを識別できるようにする。
+- filterは担当者、宿泊月、曜日、room type、rank方向、観測状態、調整日を持つ。担当者・宿泊月・曜日・room type・方向・調整日はevent集合へ先に適用し、その後に各roomの最新1件を親行へ集計する。観測状態filterは計算後の行へ適用する。担当者filter候補には一意な`stayDate x roomGroup`件数を併記する。filter結果件数と親行・履歴eventそれぞれの比較可能coverageを表示し、該当なしとデータ不足を同じempty stateへまとめない。
+- `比較期間: 3日 / 7日`の明示選択を設け、first sliceの初期値は7日とする。親行、展開行、bar、数値、変化量sortは選択中horizonだけを使い、未ready時に別horizonを代用しない。Pilotのcoverageを根拠に初期値を変える場合は、codeだけで変えずspec / decisionと同じ変更集合で更新する。
+- sortは`比較可能優先 + 選択中horizonの変化量の絶対値が大きい順`を既定とし、未ready行はready行の後へ置く。同値は宿泊日昇順で安定化する。利用者は宿泊日、最終調整日、担当者、選択中horizonの変化量、対象room数へ切り替えられる。表示語は`効果が高い順`ではなく`ペース変化が大きい順`とする。sort変更は表示順だけを変え、親行の最新event選択と計算値を変えない。
 - desktopは階層table、390pxは親行summaryと展開detailを縦に読めるlayoutにする。button、filter、sort、展開状態はkeyboard操作とfocus表示を持ち、accessible tableまたは同等のtext alternativeで色やbarなしでも値と状態を読めるようにする。Next root由来の横overflow、duplicate root、標準calendar押し下げによる操作不能を発生させない。
 - shellと保存済みsummaryまたは不足理由は既存Topの3,000ms explanation / decision-ready境界内で返す。可視range全eventを1つの同期処理で再計算せず、bounded batchでmain threadへ制御を返し、同じDOM mutationやsource通知で全行を繰り返し再構築しない。Long Task、calendar cue、Analyze foreground、request / stop、Revenue Assistant write 0を実装時のfixtureとlive gateで確認する。
+- rendererは既存TypeScript / DOM / CSSをownerとし、新しいchart dependencyを追加しない。Topにroot 1件、初期最大10親行とし、追加行と履歴は明示展開する。filter / sort / horizon / 展開状態はpage memoryだけに置き、URL、IndexedDB、localStorageへ保存しない。390pxでは親行summaryとdetailを縦積みにし、barがなくても符号付き数値と状態textで同じ内容を読めるようにする。
 
 #### Next Decision Workspace Design Evidence (Unpublished, 2026-07-20)
 

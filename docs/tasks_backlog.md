@@ -1306,26 +1306,30 @@
 ### RAU-RR-68 Topで宿泊日単位のレート調整効果を俯瞰する
 
 - 状態:
-  - docs-first仕様化完了。runtime / UIは未実装。利用者が、Top calendarの下で、誰がどの宿泊日を調整し、その後の個人予約ペースが調整前からどう変わったかを宿泊日単位で俯瞰し、担当者、宿泊月、曜日等でfilter / sortし、展開後にroom type別の調整を確認できる画面を求めた。閉じた宿泊日行は各room typeの最新調整1件だけを集計し、過去eventは展開後に残す方針を利用者が確認した。
+  - docs-first仕様化とIssue #27の実装前plan補強を完了した。runtime / UIは未実装。利用者が、Top calendarの下で、誰がどの宿泊日を調整し、その後の個人予約ペースが調整前からどう変わったかを宿泊日単位で俯瞰し、担当者、宿泊月、曜日等でfilter / sortし、展開後にroom type別の調整を確認できる画面を求めた。閉じた宿泊日行は各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。runtime実装前に`RAU-WC-35` live gateと`RAU-PERF-27` main-thread baselineをfresh取得する。
 - 解決する問題:
   - Analyzeのbooking curveでは1宿泊日・1room typeずつ調整時点とその後を確認できるが、複数の宿泊日を横断して、調整前後のペース変化、担当者、宿泊月、曜日、rank方向を比較する入口がない。
   - 同じstayDate x roomGroupを複数回調整したeventをそのまま合計すると、宿泊日summaryが再調整回数により二重計上され、現在の振り返り対象を誤読しやすい。
 - 最初のscope:
-  - 標準calendar直後、`基準日から似た日を探す`より前に`調整前後レビュー`を置く。親行はstayDate単位で、担当者、対象 / 比較可能room数、`上げ / 下げ / 方向未確認`count、3日 / 7日の変更前ペース、変更後ペース、変化量、観測状態を表示する。
+  - 標準calendar直後、`基準日から似た日を探す`より前に`調整前後レビュー`を置く。親行はstayDate単位で、調整日範囲、異なるevent timestamp数、LT範囲、担当者coverage、対象 / 比較可能room数、`上げ / 下げ / 方向未確認`count、選択中horizonの変更前ペース、変更後ペース、部屋別ペース変化の合計、観測状態を表示する。
   - filter適用後の各stayDate x roomGroupで最新event 1件だけを親行へ集計する。展開後は取得範囲内の全eventを標準room scope順、同一room内の新しい順で表示し、担当者、調整日時、正確なrank transition、3日 / 7日の前後ペースと状態を確認できるようにする。
-  - filterは担当者、宿泊月、曜日、room type、rank方向、観測状態、調整日、sortは比較可能優先 + 7日変化量絶対値順を既定とし、宿泊日、最終調整日、担当者、3日 / 7日変化量、対象room数へ切り替えられるようにする。
+  - 担当者coverageは親行へ採用された1 room 1 eventを分母とし、担当者filter候補件数は他filter後にその候補を選ぶと残る一意な`stayDate x roomGroup`数とする。展開履歴のevent coverageは親行coverageと別labelにする。
+  - filterは担当者、宿泊月、曜日、room type、rank方向、観測状態、調整日を持つ。`比較期間: 3日 / 7日`は初期7日とし、親行 / detail / bar / sortは選択中horizonだけを使い、未ready時に別horizonへfallbackしない。sortは比較可能優先 + 選択中horizonの変化量絶対値順を既定とし、宿泊日、最終調整日、担当者、変化量、対象room数へ切り替えられるようにする。
   - pure modelがevent正規化、filter、最新event選択、exact 3日 / 7日計算、pending / missing / censored / excluded分類、stayDate集計、sort keyを所有する。親行と展開行で同じ計算やrank方向判定を個別実装しない。
   - first sliceは現在の可視calendar range、既存rank status最大1 GET、保存済み`booking_curve_raw_source:v2`だけを再利用する。担当者名はpage memoryだけで使い、追加GET、新規storage、画面外半年prefetch、raw response / 氏名保存、Revenue Assistant writeを追加しない。
+  - 展開行の`Analyzeで確認`は、氏名を含まないstay date / room / timestamp / rank transition由来event keyを既存sessionStorage pending focusへ追加し、対象Analyzeで単発消費する。stale / missing eventでは対象room card focusへfallbackし、通常Analyzeを壊さない。
 - 合格条件:
-  - pure checkで、同一roomの複数eventから最新1件だけが親行へ入り二重計上されないこと、filter後の最新選択、filter外後続eventによるcensor、全eventの展開順、rank方向未確認、3日 / 7日のexact計算、負のpickup、pending / missing / censored / excludedを固定する。
-  - desktop / 390px fixtureで宿泊日親行、展開detail、担当者 / 宿泊月 / 曜日filter、sort、before gray / after blueのbar + 符号付き数値、keyboard / focus、accessible text、emptyとデータ不足の分離、Next root横overflow 0、duplicate root 0、console warning / error 0を確認する。
+  - pure checkで、同一roomの複数eventから最新1件だけが親行へ入り二重計上されないこと、filter後の最新選択、filter外後続eventによるcensor、全eventの展開順、rank方向未確認、3日 / 7日のexact計算、負のpickup、pending / missing / censored / excluded、JST調整日範囲、一意なevent timing数、担当者filter候補の一意scope数を固定する。
+  - 3日はready / 7日はpendingのcaseで、7日選択時に3日値へfallbackしない。horizon切替時に親行 / detail / bar / 表示値 / sortが同じhorizonへ切り替わる。
+  - desktop / 390px fixtureで宿泊日親行、展開detail、担当者 / 宿泊月 / 曜日filter、比較期間、sort、before gray / after blueのbar + 符号付き数値、keyboard / focus、accessible text、emptyとデータ不足の分離、Next root横overflow 0、duplicate root 0、console warning / error 0を確認する。
+  - Analyze focusは正しいstay date / room / eventへ到達し、stale / missing eventではroom cardへfallbackする。氏名をpending focusへ入れず、対象で消費後に削除する。
   - 可視range全eventを1回の同期Long Taskで再計算せず、bounded batchと該当行だけの更新にする。Top calendar cue、Analyze foreground、標準UIを止めず、rank status / rank sequence / booking curve追加GET 0、新規storage 0、氏名永続化0、Revenue Assistant write 0をfocused / full checksと通常Chromeで確認する。
   - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution smoke、`git diff --check`を通し、対象差分だけをcommit / pushする。実行内容を変えるため、`D-20260810-003`の通常closeoutに従いNext manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後の実画面QAまで同じBundleで行う。
 - metadata:
   - `spec-impact: yes`
   - `spec-checkpoint: before-impl; docs-first contract complete`
   - `target-spec: docs/spec_003_rank_recommendation_signal.md`
-  - `decision: D-20260828-001`
+  - `decision: D-20260828-001, D-20260828-002`
   - `depends-on: RAU-WC-35 visible-range rank-status contract; fresh installed-version and main-thread baseline before live comparison`
   - `risk: visible-range in-memory calculation and rendering only; request / storage / write contracts unchanged`
 
@@ -12363,6 +12367,7 @@ Later:
 
 統合判断:
 
+- 2026-08-28 に、Issue #27の実装前planを更新し、`RAU-RR-68`へ`D-20260828-002`の補強を追加した。親行の調整日範囲は採用eventのJST日付min / max、timing数は異なるevent timestamp数、担当者filter候補件数はraw event重複を除いた一意なstayDate x roomGroup数とする。3日 / 7日は初期7日の明示切替、選択中horizonだけの表示 / sort、別horizon fallbackなしへ変更した。Analyzeは氏名を含まないevent keyをsessionStorageで単発focusし、stale / missing時はroom cardへfallbackする。実装前gateとして`RAU-WC-35` live確認と`RAU-PERF-27` baselineを置いた。再開時の既存ChromeはCDP portなし、Chrome controlはlocal path errorで初期化できなかったため、Chromeを強制終了せずruntime変更を開始していない。
 - 2026-08-28 に、利用者が求めたTopのレート調整効果レビューを`RAU-RR-68`としてdocs-firstで正本化した。親行は宿泊日単位で各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。担当者、宿泊月、曜日等のfilter / sort、3日 / 7日の変更前後ペースと変化量、before gray / after blue、取得範囲内・保存済み根拠限定、担当者名非保存、追加GET / storage / writeなしを`D-20260828-001`と`docs/spec_003_rank_recommendation_signal.md`へ固定した。実装は`RAU-WC-35` live gateと`RAU-PERF-27` baselineの後のNext候補とし、`RAU-RR-67`の期待値UIとは独立させる。
 - 2026-06-11 に、`RAU-UX-134`、`RAU-UX-135`、`RAU-UX-136`、`RAU-RR-62`、`RAU-RR-63` を同じ料金調整候補 UX / recent rank change lifecycle Goal Bundle として完了した。`RAU-UX-134` は Product Design audit / plan first の no-op 判断で、competitor preview / graph / table の追加 rendering 変更を正当化する証拠はないため実装 task を追加しない。`RAU-UX-135` では料金調整候補、rank 変更 preview、競合価格 preview の宿泊日を `YYYY-MM-DD（曜）` 表示へ揃えた。`RAU-UX-136` では料金調整候補から開く競合価格 preview の初期 roomType filter を未指定にし、候補 roomType は note として残した。`RAU-RR-62` / `RAU-RR-63` では前回 rank 変更後 0〜3 日の同方向候補を soft cooldown として初期表示から抑え、view mode `直近変更`、前回変更補助表示、状態 badge、title diagnostics、list meta で確認できるようにした。request 件数、Revenue Assistant write API、rank change payload、保存 schema、candidate scoring、priority、confidence、reasonFingerprint は変更していない。Remaining Task Triage は Now / Next / After Next / Later すべて空である。
 - 2026-06-11 に、利用者が Tampermonkey installed version を最新版へ更新した後、`RAU-PERF-09` の一部観測を実施した。`npm run userscript:version-check -- --installed-version 0.1.0.424 --open-url https://ra.jalan.net/` で published / installed version が `0.1.0.424` に揃っていることを確認した。top smoke `npm run smoke:distribution -- --installed-version 0.1.0.424 --mode top --url https://ra.jalan.net/ --seconds 45 --version-policy fail --cdp-connection page` は pass し、top row 10、write API POST 0、console / page error 0、RAU warm cache request 0 件の cache 済み fallback を確認した。browser-level reload 後の top marker は `bookingCurve.preScanHitCount` 106、`candidateCurrentRawSkipped` 10、`candidateCurrentRawFetched` 0、`candidateCurrentRawErrored` 0 で、画面上の warm cache status summary も `pre-scan除外 106` を表示した。price-trends smoke `npm run smoke:distribution -- --installed-version 0.1.0.424 --mode price-trends --url https://ra.jalan.net/analyze/2026-06-20 --seconds 60 --version-policy fail` は pass し、price trends overview 1、panel 4、SVG 4、write API POST 0、console / page error 0 を確認した。price-trends marker は `visibleScopeCount` 16、`backgroundScopeCount` 112、`cacheReadCount` 6、`networkFetchCount` 20、`errorCount` 0 で、保存済み record 表示後も visible scope が revalidate されることを確認した。marker は `script[type="application/json"]` の textContent に count / timestamp だけを持ち、response body、価格詳細、施設実データ、予約・在庫・顧客情報、Cookie、token、credential は含まない。ただし competitor 関連 baseline、blocked 時の fixture + manual fallback、改善前後比較項目は未整理だったため、`RAU-PERF-09` は完了扱いにせず、`RAU-PERF-14` の後続整理対象にする。runtime code、`src/`、`dist/`、Revenue Assistant API request、Revenue Assistant write API、rank change payload、保存 schema、spec は変更していない。
