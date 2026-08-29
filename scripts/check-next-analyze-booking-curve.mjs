@@ -930,6 +930,7 @@ const priorityDataSource = dataSourceModule.createBookingCurveReferenceDataSourc
             acquisitionPriorityCalls.push({
                 kind: "current",
                 priority: options.priority,
+                repairInternalGaps: options.repairInternalGaps,
                 scopeKeys: options.scopeKeys,
                 waitForCompletion: options.waitForCompletion
             });
@@ -997,11 +998,11 @@ await new Promise((resolve) => setTimeout(resolve, 0));
 priorityDataSource.prioritize("20260812", "20260723", "room:single");
 await new Promise((resolve) => setTimeout(resolve, 0));
 assert.deepEqual(acquisitionPriorityCalls, [
-    { kind: "current", priority: "critical-current", scopeKeys: ["hotel"], waitForCompletion: false },
-    { kind: "current", priority: "visible-current", scopeKeys: ["room:single"], waitForCompletion: true },
-    { kind: "current", priority: "critical-current", scopeKeys: ["hotel"], waitForCompletion: undefined },
+    { kind: "current", priority: "critical-current", repairInternalGaps: true, scopeKeys: ["hotel"], waitForCompletion: false },
+    { kind: "current", priority: "visible-current", repairInternalGaps: true, scopeKeys: ["room:single"], waitForCompletion: true },
+    { kind: "current", priority: "critical-current", repairInternalGaps: true, scopeKeys: ["hotel"], waitForCompletion: undefined },
     { kind: "reference", priority: "visible-reference", scopeKey: "hotel" },
-    { kind: "current", priority: "critical-current", scopeKeys: ["room:single"], waitForCompletion: undefined },
+    { kind: "current", priority: "critical-current", repairInternalGaps: true, scopeKeys: ["room:single"], waitForCompletion: undefined },
     { kind: "reference", priority: "selected-reference", scopeKey: "room:single" }
 ], "Analyze foreground must use the five-level queue contract without starting background work or extra context reads");
 priorityDataSource.stop();

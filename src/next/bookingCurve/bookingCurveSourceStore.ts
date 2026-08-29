@@ -15,6 +15,9 @@ export const NEXT_BOOKING_CURVE_SOURCE_KEY_INDEX = "source-key";
 const NEXT_BOOKING_CURVE_FACILITY_INDEX = "facility";
 const NEXT_BOOKING_CURVE_FACILITY_READ_LIMIT =
     NEXT_BOOKING_CURVE_SOURCE_RETENTION_LIMIT + NEXT_BOOKING_CURVE_SOURCE_BATCH_LIMIT + 1;
+type StoredBookingCurvePoint = NonNullable<
+    BookingCurveRawSourceRecord["response"]["booking_curve"]
+>[number];
 
 export interface NextBookingCurveLandingObservation {
     all: number | null;
@@ -34,11 +37,17 @@ export interface NextBookingCurveSourceRecord extends BookingCurveRawSourceRecor
 export interface NextBookingCurveSourceStoreWriteResult {
     addedCount: number;
     deletedCount: number;
+    updatedCount?: number;
+}
+
+export interface NextBookingCurveSourceStoreWriteOptions {
+    mode?: "add" | "repair-internal-gaps";
 }
 
 export interface NextBookingCurveSourceStore {
     addAndPrune(
-        records: readonly NextBookingCurveSourceRecord[]
+        records: readonly NextBookingCurveSourceRecord[],
+        options?: NextBookingCurveSourceStoreWriteOptions
     ): Promise<NextBookingCurveSourceStoreWriteResult>;
     readLatestBySourceKeys(
         sourceKeys: readonly string[]
@@ -49,7 +58,7 @@ export function createBrowserNextBookingCurveSourceStore(
     windowHost: Window = window
 ): NextBookingCurveSourceStore {
     return {
-        async addAndPrune(records) {
+        async addAndPrune(records, writeOptions = {}) {
             if (records.length === 0) {
                 return { addedCount: 0, deletedCount: 0 };
             }
@@ -73,7 +82,13 @@ export function createBrowserNextBookingCurveSourceStore(
                 const completion = waitForTransaction(transaction);
                 try {
                     const store = transaction.objectStore(NEXT_BOOKING_CURVE_SOURCE_STORE_NAME);
-                    const added = await Promise.all(records.map((record) => addRecord(store, record)));
+                    const writeResults = await Promise.all(records.map((record) => (
+                        writeOptions.mode === "repair-internal-gaps"
+                            ? repairRecord(store, record)
+                            : addRecord(store, record).then((added) => (
+                                added ? "added" as const : "skipped" as const
+                            ))
+                    )));
                     const sourceIndex = store.index(NEXT_BOOKING_CURVE_SOURCE_KEY_INDEX);
                     const sourceRecords = (await Promise.all(Array.from(
                         new Set(records.map((record) => record.sourceKey)),
@@ -101,8 +116,9 @@ export function createBrowserNextBookingCurveSourceStore(
                     )));
                     await completion;
                     return {
-                        addedCount: added.filter(Boolean).length,
-                        deletedCount: deletedKeys.size
+                        addedCount: writeResults.filter((result) => result === "added").length,
+                        deletedCount: deletedKeys.size,
+                        updatedCount: writeResults.filter((result) => result === "updated").length
                     };
                 } catch (error: unknown) {
                     try {
@@ -161,6 +177,77 @@ export function buildNextBookingCurveSourceKey(options: {
 
 export function buildNextBookingCurveRecordKey(sourceKey: string, asOfDate: string): string {
     return `${sourceKey}|asOf:${asOfDate}|schema:${BOOKING_CURVE_RAW_SOURCE_SCHEMA_VERSION}`;
+}
+
+export function isNextBookingCurveGapRepairReplacement(
+    previous: NextBookingCurveSourceRecord,
+    candidate: NextBookingCurveSourceRecord
+): boolean {
+    if (!isNextBookingCurveSourceRecord(previous) || !isNextBookingCurveSourceRecord(candidate)) {
+        return false;
+    }
+    if (
+        previous.recordKey !== candidate.recordKey
+        || previous.sourceKey !== candidate.sourceKey
+        || previous.source !== candidate.source
+        || previous.firstObservedAsOfDate !== candidate.firstObservedAsOfDate
+        || previous.cacheKey !== candidate.cacheKey
+        || previous.facilityId !== candidate.facilityId
+        || previous.stayDate !== candidate.stayDate
+        || previous.asOfDate !== candidate.asOfDate
+        || previous.scope !== candidate.scope
+        || previous.roomGroupId !== candidate.roomGroupId
+        || previous.endpoint !== candidate.endpoint
+        || previous.query !== candidate.query
+        || previous.schemaVersion !== candidate.schemaVersion
+        || previous.response.stay_date !== candidate.response.stay_date
+        || !hasSameLanding(previous.landing, candidate.landing)
+        || Date.parse(candidate.fetchedAt) < Date.parse(previous.fetchedAt)
+    ) {
+        return false;
+    }
+    let improved = false;
+    const previousMaxRoomCount = toFiniteNonNegativeNumber(
+        previous.response.max_room_count
+    );
+    const candidateMaxRoomCount = toFiniteNonNegativeNumber(
+        candidate.response.max_room_count
+    );
+    if (candidateMaxRoomCount !== previousMaxRoomCount) {
+        return false;
+    }
+    const previousPoints = indexBookingCurvePoints(previous.response.booking_curve ?? []);
+    const candidatePoints = indexBookingCurvePoints(candidate.response.booking_curve ?? []);
+    if (
+        previousPoints === null
+        || candidatePoints === null
+        || previousPoints.size !== candidatePoints.size
+        || Array.from(previousPoints.keys()).some((date) => !candidatePoints.has(date))
+    ) {
+        return false;
+    }
+    for (const [date, previousPoint] of previousPoints) {
+        const candidatePoint = candidatePoints.get(date);
+        if (candidatePoint === undefined) {
+            return false;
+        }
+        for (const segment of ["all", "transient", "group"] as const) {
+            const previousRooms = toFiniteNonNegativeNumber(
+                previousPoint[segment]?.this_year_room_sum
+            );
+            const candidateRooms = toFiniteNonNegativeNumber(
+                candidatePoint[segment]?.this_year_room_sum
+            );
+            if (previousRooms !== null) {
+                if (candidateRooms !== previousRooms) {
+                    return false;
+                }
+            } else if (candidateRooms !== null) {
+                improved = true;
+            }
+        }
+    }
+    return improved;
 }
 
 export function selectNextBookingCurveSourcePruneKeys(
@@ -288,6 +375,37 @@ function isNextBookingCurveLandingObservation(
         ));
 }
 
+function hasSameLanding(
+    left: NextBookingCurveLandingObservation | null,
+    right: NextBookingCurveLandingObservation | null
+): boolean {
+    return left === null || right === null
+        ? left === right
+        : left.all === right.all
+            && left.group === right.group
+            && left.observedAsOfDate === right.observedAsOfDate
+            && left.transient === right.transient;
+}
+
+function indexBookingCurvePoints(
+    points: readonly StoredBookingCurvePoint[]
+): Map<string, StoredBookingCurvePoint> | null {
+    const indexed = new Map<string, StoredBookingCurvePoint>();
+    for (const point of points) {
+        if (indexed.has(point.date)) {
+            return null;
+        }
+        indexed.set(point.date, point);
+    }
+    return indexed;
+}
+
+function toFiniteNonNegativeNumber(value: unknown): number | null {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0
+        ? value
+        : null;
+}
+
 function isValidBookingCurvePoint(value: unknown): boolean {
     if (!isRecord(value) || typeof value.date !== "string") {
         return false;
@@ -388,6 +506,51 @@ function addRecord(
                 return;
             }
             reject(request.error ?? new Error("failed to add Next booking curve record"));
+        };
+    });
+}
+
+function repairRecord(
+    store: IDBObjectStore,
+    candidate: NextBookingCurveSourceRecord
+): Promise<"added" | "skipped" | "updated"> {
+    return readRecord(store, candidate.recordKey).then(async (previous) => {
+        if (previous === null) {
+            return "skipped";
+        }
+        if (!isNextBookingCurveGapRepairReplacement(previous, candidate)) {
+            return "skipped";
+        }
+        await putRecord(store, candidate);
+        return "updated";
+    });
+}
+
+function readRecord(
+    store: IDBObjectStore,
+    recordKey: string
+): Promise<NextBookingCurveSourceRecord | null> {
+    return new Promise((resolve, reject) => {
+        const request = store.get(recordKey);
+        request.onsuccess = () => {
+            const value: unknown = request.result;
+            resolve(isNextBookingCurveSourceRecord(value) ? value : null);
+        };
+        request.onerror = () => {
+            reject(request.error ?? new Error("failed to read Next booking curve record"));
+        };
+    });
+}
+
+function putRecord(
+    store: IDBObjectStore,
+    record: NextBookingCurveSourceRecord
+): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const request = store.put(record);
+        request.onsuccess = () => resolve();
+        request.onerror = () => {
+            reject(request.error ?? new Error("failed to repair Next booking curve record"));
         };
     });
 }

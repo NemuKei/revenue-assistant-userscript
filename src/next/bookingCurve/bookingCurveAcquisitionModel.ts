@@ -60,6 +60,8 @@ export interface NextBookingCurveAcquisitionTask {
     stayDate: string;
 }
 
+export type NextBookingCurveMergeMode = "append" | "repair-internal-gaps";
+
 export function createNextBookingCurveScopes(
     currentSettings: RankRecommendationCurrentSettingsResponse
 ): NextBookingCurveScope[] {
@@ -234,6 +236,44 @@ export function selectNextBookingCurveDueTasks(options: {
         .map((item) => item.task);
 }
 
+export function selectNextBookingCurveGapRepairTasks(options: {
+    asOfDate: string;
+    existingRecords: readonly NextBookingCurveSourceRecord[];
+    limit: number;
+    tasks: readonly NextBookingCurveAcquisitionTask[];
+}): NextBookingCurveAcquisitionTask[] {
+    const normalizedAsOfDate = toCompactDateKey(options.asOfDate);
+    if (normalizedAsOfDate === null) {
+        return [];
+    }
+    const latestBySource = new Map<string, NextBookingCurveSourceRecord>();
+    for (const record of options.existingRecords) {
+        const previous = latestBySource.get(record.sourceKey);
+        if (
+            previous === undefined
+            || record.asOfDate > previous.asOfDate
+            || (
+                record.asOfDate === previous.asOfDate
+                && record.fetchedAt > previous.fetchedAt
+            )
+        ) {
+            latestBySource.set(record.sourceKey, record);
+        }
+    }
+    return options.tasks
+        .filter((task) => {
+            if (task.role !== "current") {
+                return false;
+            }
+            const record = latestBySource.get(task.sourceKey);
+            return record !== undefined
+                && record.asOfDate === normalizedAsOfDate
+                && hasInternalExplicitNull(record, normalizedAsOfDate);
+        })
+        .sort(compareTaskOrder)
+        .slice(0, Math.max(0, Math.floor(options.limit)));
+}
+
 export function isNextBookingCurveRecordUsable(
     record: NextBookingCurveSourceRecord,
     asOfDate: string
@@ -326,6 +366,7 @@ export function createNextBookingCurveSourceRecord(options: {
     asOfDate: string;
     facilityId: string;
     fetchedAt: string;
+    mergeMode?: NextBookingCurveMergeMode;
     previousRecord?: NextBookingCurveSourceRecord;
     response: BookingCurveApiResponse;
     task: NextBookingCurveAcquisitionTask;
@@ -341,16 +382,19 @@ export function createNextBookingCurveSourceRecord(options: {
         : undefined;
     const response = mergeNextBookingCurveResponse({
         asOfDate,
+        mergeMode: options.mergeMode ?? "append",
         previousRecord,
         response: options.response,
         stayDate: options.task.stayDate
     });
-    const landing = previousRecord?.landing
-        ?? buildNextBookingCurveLandingObservation(
-            options.response,
-            options.task.stayDate,
-            asOfDate
-        );
+    const landing = options.mergeMode === "repair-internal-gaps"
+        ? previousRecord?.landing ?? null
+        : previousRecord?.landing
+            ?? buildNextBookingCurveLandingObservation(
+                options.response,
+                options.task.stayDate,
+                asOfDate
+            );
     const cacheKey = buildBookingCurveRawSourceCacheKey({
         facilityId: options.facilityId,
         stayDate: options.task.stayDate,
@@ -456,6 +500,7 @@ function normalizeCompactDates(values: readonly string[]): string[] {
 
 function mergeNextBookingCurveResponse(options: {
     asOfDate: string;
+    mergeMode: NextBookingCurveMergeMode;
     previousRecord: NextBookingCurveSourceRecord | undefined;
     response: BookingCurveApiResponse;
     stayDate: string;
@@ -470,6 +515,7 @@ function mergeNextBookingCurveResponse(options: {
     for (const point of options.response.booking_curve ?? []) {
         const pointDate = normalizeDateKey(point.date);
         const compactPointDate = pointDate === null ? null : toCompactDateKey(pointDate);
+        const previousPoint = pointDate === null ? undefined : pointByDate.get(pointDate);
         if (
             pointDate === null
             || compactPointDate === null
@@ -480,8 +526,20 @@ function mergeNextBookingCurveResponse(options: {
                 && options.asOfDate > options.stayDate
                 && !pointByDate.has(pointDate)
             )
-            || pointByDate.has(pointDate)
         ) {
+            continue;
+        }
+        if (previousPoint !== undefined) {
+            if (
+                compactPointDate === options.stayDate
+                && options.asOfDate > options.stayDate
+            ) {
+                continue;
+            }
+            pointByDate.set(pointDate, fillMissingBookingCurveSegments(previousPoint, point));
+            continue;
+        }
+        if (options.mergeMode === "repair-internal-gaps") {
             continue;
         }
         pointByDate.set(pointDate, point);
@@ -491,13 +549,113 @@ function mergeNextBookingCurveResponse(options: {
     if (bookingCurve.length > NEXT_BOOKING_CURVE_POINT_LIMIT) {
         throw new Error("Next booking curve merged point count exceeds the fixed limit");
     }
-    const maxRoomCount = normalizeNonNegativeNumber(options.response.max_room_count)
-        ?? normalizeNonNegativeNumber(options.previousRecord?.response.max_room_count);
+    const previousMaxRoomCount = normalizeNonNegativeNumber(
+        options.previousRecord?.response.max_room_count
+    );
+    const responseMaxRoomCount = normalizeNonNegativeNumber(options.response.max_room_count);
+    const maxRoomCount = options.mergeMode === "repair-internal-gaps"
+        ? previousMaxRoomCount
+        : responseMaxRoomCount ?? previousMaxRoomCount;
     return {
         stay_date: options.stayDate,
         ...(maxRoomCount === null ? {} : { max_room_count: maxRoomCount }),
         booking_curve: bookingCurve
     };
+}
+
+function hasInternalExplicitNull(
+    record: NextBookingCurveSourceRecord,
+    asOfDate: string
+): boolean {
+    const points = (record.response.booking_curve ?? [])
+        .flatMap((point): Array<{ compactDate: string; point: BookingCurveApiPoint }> => {
+            const compactDate = toCompactDateKey(point.date);
+            return compactDate === null
+                || compactDate > asOfDate
+                || compactDate > record.stayDate
+                ? []
+                : [{ compactDate, point }];
+        })
+        .sort((left, right) => left.compactDate.localeCompare(right.compactDate));
+    const normalizedStayDate = normalizeDateKey(record.stayDate);
+    if (normalizedStayDate === null) {
+        return false;
+    }
+    const observedTickDates = Array.from(new Set(LEAD_TIME_BUCKET_TICKS
+        .flatMap((tick): string[] => {
+            if (typeof tick !== "number") {
+                return [];
+            }
+            const observedDate = shiftDate(normalizedStayDate, -tick);
+            const compactObservedDate = observedDate === null
+                ? null
+                : toCompactDateKey(observedDate);
+            return compactObservedDate === null
+                || compactObservedDate > asOfDate
+                || compactObservedDate > record.stayDate
+                ? []
+                : [compactObservedDate];
+        }))).sort();
+    for (const segment of ["all", "transient", "group"] as const) {
+        const firstFiniteIndex = points.findIndex((candidate) => (
+            isFiniteNonNegativeNumber(candidate.point[segment]?.this_year_room_sum)
+        ));
+        let lastFiniteIndex = -1;
+        for (let index = points.length - 1; index >= 0; index -= 1) {
+            if (isFiniteNonNegativeNumber(
+                points[index]?.point[segment]?.this_year_room_sum
+            )) {
+                lastFiniteIndex = index;
+                break;
+            }
+        }
+        if (firstFiniteIndex < 0 || lastFiniteIndex <= firstFiniteIndex) {
+            continue;
+        }
+        let observedIndex = -1;
+        for (const observedDate of observedTickDates) {
+            while (
+                observedIndex + 1 < points.length
+                && (points[observedIndex + 1]?.compactDate ?? "") <= observedDate
+            ) {
+                observedIndex += 1;
+            }
+            if (observedIndex < 0) {
+                continue;
+            }
+            const value = points[observedIndex]?.point[segment]?.this_year_room_sum;
+            if (
+                value === null
+                && firstFiniteIndex < observedIndex
+                && observedIndex < lastFiniteIndex
+            ) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+function fillMissingBookingCurveSegments(
+    previous: BookingCurveApiPoint,
+    incoming: BookingCurveApiPoint
+): BookingCurveApiPoint {
+    let merged = previous;
+    for (const segment of ["all", "transient", "group"] as const) {
+        const previousRooms = previous[segment]?.this_year_room_sum;
+        const incomingRooms = incoming[segment]?.this_year_room_sum;
+        if (
+            isFiniteNonNegativeNumber(previousRooms)
+            || !isFiniteNonNegativeNumber(incomingRooms)
+        ) {
+            continue;
+        }
+        if (merged === previous) {
+            merged = { ...previous };
+        }
+        merged[segment] = { this_year_room_sum: incomingRooms };
+    }
+    return merged;
 }
 
 function buildNextBookingCurveLandingObservation(
@@ -591,7 +749,11 @@ function compactCounts(value: unknown): { this_year_room_sum?: number | null } |
 }
 
 function normalizeNonNegativeNumber(value: unknown): number | null {
-    return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : null;
+    return isFiniteNonNegativeNumber(value) ? value : null;
+}
+
+function isFiniteNonNegativeNumber(value: unknown): value is number {
+    return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

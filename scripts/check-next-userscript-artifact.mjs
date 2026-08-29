@@ -195,6 +195,21 @@ assert.match(artifactText, /readonly/u);
 assert.match(artifactText, /readwrite/u);
 assert.equal(countMatches(artifactText, /\.createObjectStore\s*\(/gu), 5);
 assert.equal(countMatches(artifactText, /\.createIndex\s*\(/gu), 6);
+assert.equal(
+    countMatches(artifactText, /\.put\s*\(/gu),
+    1,
+    "Next candidate must contain only the reviewed booking-curve gap-repair put"
+);
+assert.equal(
+    countMatches(artifactText, /failed to repair Next booking curve record/gu),
+    1,
+    "the bounded booking-curve repair path must remain present"
+);
+assert.match(
+    artifactText,
+    /\.put\s*\([^)]*\)[\s\S]{0,300}failed to repair Next booking curve record/u,
+    "the only IndexedDB put must remain scoped to the booking-curve repair helper"
+);
 assert.match(artifactText, /revenue-assistant-next-competitor-price-snapshots/u);
 assert.match(artifactText, /revenue-assistant-next-price-trends/u);
 assert.match(artifactText, /revenue-assistant-next-booking-curve-sources/u);
@@ -228,7 +243,6 @@ for (const forbiddenPattern of [
     /\bdeleteObjectStore\b/u,
     /\bdeleteDatabase\b/u,
     /\bdeleteIndex\b/u,
-    /\.put\s*\(/u,
     /["'](?:POST|PUT|PATCH|DELETE)["']/u,
     /\.requestSubmit\s*\(/u,
     /\.submit\s*\(/u,

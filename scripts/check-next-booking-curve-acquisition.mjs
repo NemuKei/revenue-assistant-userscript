@@ -1,6 +1,12 @@
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 import { readFile } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
+import { build } from "esbuild";
+import { chromium } from "playwright-core";
 import { importBundledTypeScript } from "./import-typescript-module.mjs";
+
+const projectRoot = fileURLToPath(new URL("../", import.meta.url));
 
 const coordinatorSource = await readFile(
     new URL("../src/next/bookingCurve/bookingCurveAcquisitionCoordinator.ts", import.meta.url),
@@ -505,6 +511,44 @@ assert.deepEqual(
 );
 assert.equal(appendedFutureRecord.firstObservedAsOfDate, "20260723");
 
+const stayDayNullRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: futureTask.stayDate,
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-25T01:00:00.000Z",
+    response: {
+        stay_date: futureTask.stayDate,
+        booking_curve: [{
+            date: "2026-07-25",
+            all: { this_year_room_sum: 8 },
+            transient: { this_year_room_sum: null },
+            group: { this_year_room_sum: 2 }
+        }]
+    },
+    task: futureTask
+});
+const postStayLandingRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: "20260726",
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-26T01:00:00.000Z",
+    previousRecord: stayDayNullRecord,
+    response: {
+        stay_date: futureTask.stayDate,
+        booking_curve: [{
+            date: "2026-07-25",
+            all: { this_year_room_sum: 10 },
+            transient: { this_year_room_sum: 7 },
+            group: { this_year_room_sum: 3 }
+        }]
+    },
+    task: futureTask
+});
+assert.equal(
+    postStayLandingRecord.response.booking_curve?.[0]?.transient?.this_year_room_sum,
+    null,
+    "post-stay landing data must not fill a missing exact zero-day segment"
+);
+assert.equal(postStayLandingRecord.landing?.transient, 7);
+
 const laggingFutureRecord = {
     ...firstFutureRecord,
     response: {
@@ -604,6 +648,358 @@ assert.deepEqual(
     ],
     "a later cumulative response fills an interior gap without overwriting stored observations"
 );
+
+const explicitNullTask = {
+    ...futureTask,
+    query: "date=20260804&rm_room_group_id=a",
+    sourceKey: storeModule.buildNextBookingCurveSourceKey({
+        facilityId: context.facilityId,
+        roomGroupId: "a",
+        scope: "roomGroup",
+        stayDate: "20260804"
+    }),
+    stayDate: "20260804"
+};
+const explicitNullGapRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-23T01:00:00.000Z",
+    response: {
+        stay_date: explicitNullTask.stayDate,
+        max_room_count: 10,
+        booking_curve: [
+            {
+                date: "2026-07-20",
+                all: { this_year_room_sum: 2 },
+                transient: { this_year_room_sum: 1 },
+                group: { this_year_room_sum: 1 }
+            },
+            {
+                date: "2026-07-21",
+                all: { this_year_room_sum: null },
+                transient: { this_year_room_sum: null },
+                group: { this_year_room_sum: 0 }
+            },
+            {
+                date: "2026-07-22",
+                all: { this_year_room_sum: 4 },
+                transient: { this_year_room_sum: 3 },
+                group: { this_year_room_sum: 1 }
+            },
+            {
+                date: "2026-07-23",
+                all: { this_year_room_sum: 5 },
+                transient: { this_year_room_sum: 4 },
+                group: { this_year_room_sum: 1 }
+            }
+        ]
+    },
+    task: explicitNullTask
+});
+assert.deepEqual(
+    model.selectNextBookingCurveGapRepairTasks({
+        asOfDate: "20260723",
+        existingRecords: [explicitNullGapRecord],
+        limit: 10,
+        tasks: [explicitNullTask]
+    }),
+    [explicitNullTask],
+    "a visible current source with an explicit null between finite observations needs one repair"
+);
+const offTickNullRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-23T01:00:00.000Z",
+    response: {
+        stay_date: explicitNullTask.stayDate,
+        booking_curve: [
+            {
+                date: "2026-07-19",
+                all: { this_year_room_sum: 2 },
+                transient: { this_year_room_sum: 1 },
+                group: { this_year_room_sum: 1 }
+            },
+            {
+                date: "2026-07-20",
+                all: { this_year_room_sum: null },
+                transient: { this_year_room_sum: null },
+                group: { this_year_room_sum: 0 }
+            },
+            {
+                date: "2026-07-21",
+                all: { this_year_room_sum: 4 },
+                transient: { this_year_room_sum: 3 },
+                group: { this_year_room_sum: 1 }
+            }
+        ]
+    },
+    task: explicitNullTask
+});
+assert.equal(
+    model.selectNextBookingCurveGapRepairTasks({
+        asOfDate: "20260723",
+        existingRecords: [offTickNullRecord],
+        limit: 10,
+        tasks: [explicitNullTask]
+    }).length,
+    0,
+    "an interior null that is not selected by a visible lead-time tick must not add a request"
+);
+const tailNullRecord = {
+    ...explicitNullGapRecord,
+    response: {
+        ...explicitNullGapRecord.response,
+        booking_curve: explicitNullGapRecord.response.booking_curve?.map((point) => (
+            point.date === "2026-07-23"
+                ? {
+                    ...point,
+                    all: { this_year_room_sum: null },
+                    transient: { this_year_room_sum: null }
+                }
+                : point.date === "2026-07-21"
+                    ? {
+                        ...point,
+                        all: { this_year_room_sum: 3 },
+                        transient: { this_year_room_sum: 2 }
+                    }
+                    : point
+        ))
+    }
+};
+assert.equal(
+    model.selectNextBookingCurveGapRepairTasks({
+        asOfDate: "20260723",
+        existingRecords: [tailNullRecord],
+        limit: 10,
+        tasks: [explicitNullTask]
+    }).length,
+    0,
+    "a null tail without a later finite observation must remain visible without a repair request"
+);
+assert.equal(
+    model.selectNextBookingCurveGapRepairTasks({
+        asOfDate: "20260723",
+        existingRecords: [explicitNullGapRecord],
+        limit: 10,
+        tasks: [{ ...explicitNullTask, role: "recent-reference" }]
+    }).length,
+    0,
+    "reference sources must not enter the current-only repair path"
+);
+const repairedExplicitNullRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-23T02:00:00.000Z",
+    mergeMode: "repair-internal-gaps",
+    previousRecord: explicitNullGapRecord,
+    response: {
+        stay_date: explicitNullTask.stayDate,
+        max_room_count: 99,
+        booking_curve: [
+            {
+                date: "2026-07-19",
+                all: { this_year_room_sum: 1 },
+                transient: { this_year_room_sum: 1 },
+                group: { this_year_room_sum: 0 }
+            },
+            {
+                date: "2026-07-20",
+                all: { this_year_room_sum: 99 },
+                transient: { this_year_room_sum: 99 },
+                group: { this_year_room_sum: 99 }
+            },
+            {
+                date: "2026-07-21",
+                all: { this_year_room_sum: 3 },
+                transient: { this_year_room_sum: 2 },
+                group: { this_year_room_sum: 99 }
+            },
+            {
+                date: "2026-07-22",
+                all: { this_year_room_sum: 98 },
+                transient: { this_year_room_sum: 98 },
+                group: { this_year_room_sum: 98 }
+            }
+        ]
+    },
+    task: explicitNullTask
+});
+assert.deepEqual(
+    repairedExplicitNullRecord.response.booking_curve?.map((point) => [
+        point.date,
+        point.all?.this_year_room_sum,
+        point.transient?.this_year_room_sum,
+        point.group?.this_year_room_sum
+    ]),
+    [
+        ["2026-07-20", 2, 1, 1],
+        ["2026-07-21", 3, 2, 0],
+        ["2026-07-22", 4, 3, 1],
+        ["2026-07-23", 5, 4, 1]
+    ],
+    "repair mode must fill only missing same-date segments and keep finite values and dates immutable"
+);
+assert.equal(repairedExplicitNullRecord.response.max_room_count, 10);
+const orphanRepairTask = {
+    ...explicitNullTask,
+    query: "date=20260804&rm_room_group_id=orphan",
+    roomGroupId: "orphan",
+    scopeKey: "room:orphan",
+    sourceKey: storeModule.buildNextBookingCurveSourceKey({
+        facilityId: context.facilityId,
+        roomGroupId: "orphan",
+        scope: "roomGroup",
+        stayDate: explicitNullTask.stayDate
+    })
+};
+const orphanGapRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-23T01:00:00.000Z",
+    response: explicitNullGapRecord.response,
+    task: orphanRepairTask
+});
+const orphanRepairRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    fetchedAt: "2026-07-23T02:00:00.000Z",
+    mergeMode: "repair-internal-gaps",
+    previousRecord: orphanGapRecord,
+    response: repairedExplicitNullRecord.response,
+    task: orphanRepairTask
+});
+assert.equal(
+    storeModule.isNextBookingCurveGapRepairReplacement(
+        explicitNullGapRecord,
+        repairedExplicitNullRecord
+    ),
+    true,
+    "the store must accept a monotonic same-record null-to-finite replacement"
+);
+const finiteOverwriteRepairRecord = {
+    ...repairedExplicitNullRecord,
+    fetchedAt: "2026-07-23T03:00:00.000Z",
+    response: {
+        ...repairedExplicitNullRecord.response,
+        booking_curve: repairedExplicitNullRecord.response.booking_curve?.map((point) => (
+            point.date === "2026-07-20"
+                ? { ...point, all: { this_year_room_sum: 999 } }
+                : point
+        ))
+    }
+};
+assert.equal(
+    storeModule.isNextBookingCurveGapRepairReplacement(
+        explicitNullGapRecord,
+        finiteOverwriteRepairRecord
+    ),
+    false,
+    "a repair replacement must reject any finite-value overwrite"
+);
+
+const storeBrowser = await launchStoreFixtureBrowser();
+try {
+    const page = await storeBrowser.newPage();
+    await page.route("http://booking-curve-store.test/", async (route) => {
+        await route.fulfill({
+            body: "<!doctype html><html><body></body></html>",
+            contentType: "text/html",
+            status: 200
+        });
+    });
+    await page.goto("http://booking-curve-store.test/");
+    const bundle = await build({
+        bundle: true,
+        format: "iife",
+        platform: "browser",
+        stdin: {
+            contents: `
+                import { createBrowserNextBookingCurveSourceStore } from "./src/next/bookingCurve/bookingCurveSourceStore.ts";
+                globalThis.__createBookingCurveStore = () => createBrowserNextBookingCurveSourceStore(window);
+            `,
+            loader: "ts",
+            resolveDir: projectRoot,
+            sourcefile: "booking-curve-store-browser-fixture.ts"
+        },
+        target: "chrome120",
+        write: false
+    });
+    const browserBundle = bundle.outputFiles[0]?.text;
+    assert.notEqual(browserBundle, undefined);
+    await page.addScriptTag({ content: browserBundle });
+    const browserStoreResult = await page.evaluate(async ({ invalid, orphan, previous, repaired }) => {
+        const store = globalThis.__createBookingCurveStore();
+        const skippedMissing = await store.addAndPrune(
+            [orphan],
+            { mode: "repair-internal-gaps" }
+        );
+        const missingAfterRepair = await store.readLatestBySourceKeys([orphan.sourceKey]);
+        const added = await store.addAndPrune([previous]);
+        const updated = await store.addAndPrune(
+            [repaired],
+            { mode: "repair-internal-gaps" }
+        );
+        const afterRepair = (await store.readLatestBySourceKeys([previous.sourceKey]))[0];
+        const rejected = await store.addAndPrune(
+            [invalid],
+            { mode: "repair-internal-gaps" }
+        );
+        const afterRejectedOverwrite = (
+            await store.readLatestBySourceKeys([previous.sourceKey])
+        )[0];
+        return {
+            added,
+            afterRejectedOverwrite,
+            afterRepair,
+            missingAfterRepair,
+            rejected,
+            skippedMissing,
+            updated
+        };
+    }, {
+        invalid: finiteOverwriteRepairRecord,
+        orphan: orphanRepairRecord,
+        previous: explicitNullGapRecord,
+        repaired: repairedExplicitNullRecord
+    });
+    assert.deepEqual(browserStoreResult.skippedMissing, {
+        addedCount: 0,
+        deletedCount: 0,
+        updatedCount: 0
+    });
+    assert.deepEqual(
+        browserStoreResult.missingAfterRepair,
+        [],
+        "repair mode must never create a record when the transaction has no existing target"
+    );
+    assert.deepEqual(browserStoreResult.added, {
+        addedCount: 1,
+        deletedCount: 0,
+        updatedCount: 0
+    });
+    assert.deepEqual(browserStoreResult.updated, {
+        addedCount: 0,
+        deletedCount: 0,
+        updatedCount: 1
+    });
+    assert.equal(
+        browserStoreResult.afterRepair.response.booking_curve
+            ?.find((point) => point.date === "2026-07-21")
+            ?.transient?.this_year_room_sum,
+        2,
+        "the real IndexedDB owner must persist the bounded null-to-finite replacement"
+    );
+    assert.equal(browserStoreResult.rejected.updatedCount, 0);
+    assert.equal(
+        browserStoreResult.afterRejectedOverwrite.response.booking_curve
+            ?.find((point) => point.date === "2026-07-20")
+            ?.all?.this_year_room_sum,
+        2,
+        "the real IndexedDB owner must reject a finite-value overwrite"
+    );
+} finally {
+    await storeBrowser.close();
+}
 
 const longLeadReferenceTask = model.buildNextBookingCurveReferenceTasks({
     context,
@@ -852,6 +1248,301 @@ assert.equal(
     "the first post-stay observation is stored as landing, not as a replacement for zero-day"
 );
 coordinator.stop();
+
+function createGapRepairMemoryStore(initialRecords) {
+    const records = initialRecords.map((record) => structuredClone(record));
+    return {
+        records,
+        async addAndPrune(candidates, options = {}) {
+            let addedCount = 0;
+            let updatedCount = 0;
+            for (const candidate of candidates) {
+                const index = records.findIndex((record) => record.recordKey === candidate.recordKey);
+                if (index < 0) {
+                    records.push(candidate);
+                    addedCount += 1;
+                    continue;
+                }
+                if (
+                    options.mode === "repair-internal-gaps"
+                    && storeModule.isNextBookingCurveGapRepairReplacement(
+                        records[index],
+                        candidate
+                    )
+                ) {
+                    records[index] = candidate;
+                    updatedCount += 1;
+                }
+            }
+            return { addedCount, deletedCount: 0, updatedCount };
+        },
+        async readLatestBySourceKeys(sourceKeys) {
+            return sourceKeys.flatMap((sourceKey) => {
+                const record = records
+                    .filter((candidate) => candidate.sourceKey === sourceKey)
+                    .sort((left, right) => (
+                        right.asOfDate.localeCompare(left.asOfDate)
+                        || right.fetchedAt.localeCompare(left.fetchedAt)
+                    ))[0];
+                return record === undefined ? [] : [record];
+            });
+        }
+    };
+}
+
+const analyzeRepairStore = createGapRepairMemoryStore([explicitNullGapRecord]);
+const analyzeRepairRequests = [];
+const analyzeRepairEvents = [];
+const analyzeRepairCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    now: () => new Date("2026-07-23T02:00:00.000Z"),
+    store: analyzeRepairStore,
+    transport: {
+        async read(request) {
+            analyzeRepairRequests.push(request);
+            return {
+                stay_date: request.stayDate,
+                booking_curve: [
+                    {
+                        date: "2026-07-20",
+                        all: { this_year_room_sum: 99 },
+                        transient: { this_year_room_sum: 99 },
+                        group: { this_year_room_sum: 99 }
+                    },
+                    {
+                        date: "2026-07-21",
+                        all: { this_year_room_sum: 3 },
+                        transient: { this_year_room_sum: 2 },
+                        group: { this_year_room_sum: 99 }
+                    },
+                    {
+                        date: "2026-07-22",
+                        all: { this_year_room_sum: 98 },
+                        transient: { this_year_room_sum: 98 },
+                        group: { this_year_room_sum: 98 }
+                    }
+                ]
+            };
+        }
+    },
+    windowHost: fakeWindow
+});
+const analyzeRepairContext = {
+    ...context,
+    roomScopes: [roomScopes[1]],
+    visibleStayDates: [explicitNullTask.stayDate]
+};
+const unsubscribeAnalyzeRepair = analyzeRepairCoordinator.subscribeStored((event) => {
+    analyzeRepairEvents.push(event);
+});
+const analyzeRepairFirst = await analyzeRepairCoordinator.ensureCurrent({
+    context: analyzeRepairContext,
+    repairInternalGaps: true,
+    scopeKeys: ["room:a"],
+    signal,
+    stayDate: explicitNullTask.stayDate
+});
+const analyzeRepairSecond = await analyzeRepairCoordinator.ensureCurrent({
+    context: analyzeRepairContext,
+    repairInternalGaps: true,
+    scopeKeys: ["room:a"],
+    signal,
+    stayDate: explicitNullTask.stayDate
+});
+assert.equal(analyzeRepairFirst.dueTaskCount, 1);
+assert.equal(analyzeRepairSecond.dueTaskCount, 0);
+assert.deepEqual(analyzeRepairRequests, [{
+    kind: "booking-curve",
+    roomGroupId: "a",
+    stayDate: explicitNullTask.stayDate
+}], "Analyze must repair the selected current source at most once per source and as-of");
+assert.deepEqual(analyzeRepairEvents, [{
+    scopeKey: "room:a",
+    stayDate: explicitNullTask.stayDate
+}], "a successful null-to-finite repair must refresh only the affected Analyze scope");
+assert.equal(
+    analyzeRepairStore.records[0].response.booking_curve
+        ?.find((point) => point.date === "2026-07-21")
+        ?.transient?.this_year_room_sum,
+    2
+);
+unsubscribeAnalyzeRepair();
+analyzeRepairCoordinator.stop();
+
+const unresolvedRepairStore = createGapRepairMemoryStore([explicitNullGapRecord]);
+const unresolvedRepairRequests = [];
+const unresolvedRepairEvents = [];
+const unresolvedRepairCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    now: () => new Date("2026-07-23T02:00:00.000Z"),
+    store: unresolvedRepairStore,
+    transport: {
+        async read(request) {
+            unresolvedRepairRequests.push(request);
+            return explicitNullGapRecord.response;
+        }
+    },
+    windowHost: fakeWindow
+});
+const unsubscribeUnresolvedRepair = unresolvedRepairCoordinator.subscribeStored((event) => {
+    unresolvedRepairEvents.push(event);
+});
+await unresolvedRepairCoordinator.ensureCurrent({
+    context: analyzeRepairContext,
+    repairInternalGaps: true,
+    scopeKeys: ["room:a"],
+    signal,
+    stayDate: explicitNullTask.stayDate
+});
+await unresolvedRepairCoordinator.ensureCurrent({
+    context: analyzeRepairContext,
+    repairInternalGaps: true,
+    scopeKeys: ["room:a"],
+    signal,
+    stayDate: explicitNullTask.stayDate
+});
+assert.equal(
+    unresolvedRepairRequests.length,
+    1,
+    "an unresolved internal null must remain visible without a same-session retry loop"
+);
+assert.deepEqual(unresolvedRepairEvents, []);
+assert.equal(
+    unresolvedRepairStore.records[0].response.booking_curve
+        ?.find((point) => point.date === "2026-07-21")
+        ?.transient?.this_year_room_sum,
+    null
+);
+unsubscribeUnresolvedRepair();
+unresolvedRepairCoordinator.stop();
+
+function createCompleteBackgroundRecord(task, asOfDate, facilityId) {
+    const isPast = task.stayDate < asOfDate;
+    return model.createNextBookingCurveSourceRecord({
+        asOfDate,
+        facilityId,
+        fetchedAt: "2026-07-23T00:00:00.000Z",
+        response: {
+            stay_date: task.stayDate,
+            booking_curve: isPast
+                ? [{
+                    date: task.stayDate,
+                    all: { this_year_room_sum: 3 },
+                    transient: { this_year_room_sum: 2 },
+                    group: { this_year_room_sum: 1 }
+                }]
+                : []
+        },
+        task
+    });
+}
+
+const topRepairContext = {
+    asOfDate: "20260723",
+    facilityId: context.facilityId,
+    roomScopes: [roomScopes[0]],
+    visibleStayDates: [explicitNullTask.stayDate]
+};
+const topRepairTasks = model.buildNextBookingCurveBackgroundTasks(topRepairContext);
+const topRepairCurrentTask = topRepairTasks.find((task) => task.role === "current");
+assert.notEqual(topRepairCurrentTask, undefined);
+const topRepairGapRecord = model.createNextBookingCurveSourceRecord({
+    asOfDate: topRepairContext.asOfDate,
+    facilityId: topRepairContext.facilityId,
+    fetchedAt: "2026-07-23T00:00:00.000Z",
+    response: explicitNullGapRecord.response,
+    task: topRepairCurrentTask
+});
+const topRepairExistingRecords = topRepairTasks.map((task) => (
+    task.sourceKey === topRepairCurrentTask.sourceKey
+        ? topRepairGapRecord
+        : createCompleteBackgroundRecord(
+            task,
+            topRepairContext.asOfDate,
+            topRepairContext.facilityId
+        )
+));
+const topRepairStore = createGapRepairMemoryStore(topRepairExistingRecords);
+const topRepairRequests = [];
+const topRepairCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    backgroundRequestLimits: { "daily-delta": 1 },
+    now: () => new Date("2026-07-23T02:00:00.000Z"),
+    store: topRepairStore,
+    transport: {
+        async read(request) {
+            topRepairRequests.push(request);
+            return {
+                stay_date: request.stayDate,
+                booking_curve: [{
+                    date: "2026-07-21",
+                    all: { this_year_room_sum: 3 },
+                    transient: { this_year_room_sum: 2 },
+                    group: { this_year_room_sum: 0 }
+                }]
+            };
+        }
+    },
+    windowHost: fakeWindow
+});
+await topRepairCoordinator.startBackground(topRepairContext);
+await new Promise((resolve) => setTimeout(resolve, 80));
+assert.deepEqual(topRepairRequests, [{
+    kind: "booking-curve",
+    roomGroupId: null,
+    stayDate: explicitNullTask.stayDate
+}], "Top background must repair a visible current internal null inside the existing daily budget");
+topRepairCoordinator.stop();
+
+const topPriorityContext = {
+    ...topRepairContext,
+    roomScopes: [roomScopes[0], roomScopes[1]]
+};
+const topPriorityTasks = model.buildNextBookingCurveBackgroundTasks(topPriorityContext);
+const missingRoomCurrentTask = topPriorityTasks.find((task) => (
+    task.role === "current" && task.roomGroupId === "a"
+));
+const gapHotelCurrentTask = topPriorityTasks.find((task) => (
+    task.role === "current" && task.roomGroupId === null
+));
+assert.notEqual(missingRoomCurrentTask, undefined);
+assert.notEqual(gapHotelCurrentTask, undefined);
+const topPriorityExistingRecords = topPriorityTasks.flatMap((task) => {
+    if (task.sourceKey === missingRoomCurrentTask.sourceKey) {
+        return [];
+    }
+    if (task.sourceKey === gapHotelCurrentTask.sourceKey) {
+        return [model.createNextBookingCurveSourceRecord({
+            asOfDate: topPriorityContext.asOfDate,
+            facilityId: topPriorityContext.facilityId,
+            fetchedAt: "2026-07-23T00:00:00.000Z",
+            response: explicitNullGapRecord.response,
+            task
+        })];
+    }
+    return [createCompleteBackgroundRecord(
+        task,
+        topPriorityContext.asOfDate,
+        topPriorityContext.facilityId
+    )];
+});
+const topPriorityRequests = [];
+const topPriorityCoordinator = coordinatorModule.createNextBookingCurveAcquisitionCoordinator({
+    backgroundRequestLimits: { "daily-delta": 1 },
+    store: createGapRepairMemoryStore(topPriorityExistingRecords),
+    transport: {
+        async read(request) {
+            topPriorityRequests.push(request);
+            return { stay_date: request.stayDate, booking_curve: [] };
+        }
+    },
+    windowHost: fakeWindow
+});
+await topPriorityCoordinator.startBackground(topPriorityContext);
+await new Promise((resolve) => setTimeout(resolve, 80));
+assert.deepEqual(topPriorityRequests, [{
+    kind: "booking-curve",
+    roomGroupId: "a",
+    stayDate: explicitNullTask.stayDate
+}], "Top must use its remaining budget for normal missing/tail work before gap repair");
+topPriorityCoordinator.stop();
 
 let releaseDeferredCurrent;
 const deferredCurrentGate = new Promise((resolve) => {
@@ -1680,6 +2371,30 @@ assert.equal(
     "HTTP-stopped background work must not be reported as settled"
 );
 rateLimitedCoordinator.stop();
+
+async function launchStoreFixtureBrowser() {
+    const executablePaths = [
+        process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+        chromium.executablePath(),
+        "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe",
+        "C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe",
+        "/usr/bin/google-chrome",
+        "/usr/bin/google-chrome-stable",
+        "/usr/bin/chromium",
+        "/usr/bin/chromium-browser",
+        "/opt/google/chrome/chrome"
+    ].filter((candidate) => typeof candidate === "string" && existsSync(candidate));
+    assert.notEqual(
+        executablePaths.length,
+        0,
+        "no Chromium or Chrome executable found for booking curve store fixture"
+    );
+    return chromium.launch({
+        args: ["--no-sandbox"],
+        executablePath: executablePaths[0],
+        headless: true
+    });
+}
 
 function buildClassicRawSourceRecord(options) {
     const roomGroupId = options.task.roomGroupId;

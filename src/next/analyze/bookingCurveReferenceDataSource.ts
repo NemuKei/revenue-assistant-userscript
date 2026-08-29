@@ -268,6 +268,7 @@ export function createBookingCurveReferenceDataSource(
             void acquisition.ensureCurrent({
                 context: acquisitionContext,
                 priority: currentPriority,
+                repairInternalGaps: true,
                 scopeKeys: [scopeKey],
                 signal,
                 stayDate: compactStayDate
@@ -379,6 +380,7 @@ async function loadBookingCurveReferenceData(options: {
             const current = await acquisition.ensureCurrent({
                 context: acquisitionContext,
                 priority: options.currentPriority,
+                repairInternalGaps: true,
                 scopeKeys: [scope.key],
                 signal: options.signal,
                 stayDate: options.stayDate,

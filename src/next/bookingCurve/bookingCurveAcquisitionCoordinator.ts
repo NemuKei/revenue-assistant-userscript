@@ -17,6 +17,7 @@ import {
     compactNextBookingCurveResponse,
     createNextBookingCurveSourceRecord,
     selectNextBookingCurveDueTasks,
+    selectNextBookingCurveGapRepairTasks,
     type NextBookingCurveAcquisitionContext,
     type NextBookingCurveAcquisitionTask
 } from "./bookingCurveAcquisitionModel";
@@ -84,6 +85,7 @@ export interface NextBookingCurveAcquisitionCoordinator {
     ensureCurrent(options: {
         context: NextBookingCurveAcquisitionContext;
         priority?: NextBookingCurveCurrentPriority;
+        repairInternalGaps?: boolean;
         scopeKeys?: readonly string[];
         signal: AbortSignal;
         stayDate: string;
@@ -126,6 +128,7 @@ interface QueuedTask {
     priority: NextBookingCurveTaskPriority;
     performanceGeneration: number | null;
     reject: (reason?: unknown) => void;
+    repairInternalGaps: boolean;
     resolve: () => void;
     task: NextBookingCurveAcquisitionTask;
     taskKey: string;
@@ -153,6 +156,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
     const listeners = new Set<(state: NextBookingCurveAcquisitionState) => void>();
     const storedSourceListeners = new Set<(event: NextBookingCurveStoredSourceEvent) => void>();
     const legacySeedBySourceKey = new Map<string, NextBookingCurveSourceRecord>();
+    const attemptedGapRepairTaskKeys = new Set<string>();
     const pendingByTaskKey = new Map<string, QueuedTask>();
     const pendingBackgroundCountByPerformanceGeneration = new Map<number, number>();
     const invalidBackgroundSettlementGenerations = new Set<number>();
@@ -174,6 +178,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         async ensureCurrent({
             context,
             priority = "critical-current",
+            repairInternalGaps = false,
             scopeKeys,
             signal,
             stayDate,
@@ -187,6 +192,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
             return planInteractiveTasks({
                 context,
                 priority,
+                repairInternalGaps,
                 signal,
                 tasks,
                 waitForCompletion
@@ -196,6 +202,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
             return planInteractiveTasks({
                 context,
                 priority: "visible-current",
+                repairInternalGaps: false,
                 signal,
                 tasks: buildNextBookingCurveVisibleHotelCurrentTasks(context),
                 waitForCompletion: false
@@ -258,25 +265,37 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 limit: backgroundLimit,
                 tasks
             });
+            const dueTaskSourceKeys = new Set(dueTasks.map((task) => task.sourceKey));
+            const repairTasks = selectGapRepairTasks({
+                asOfDate: context.asOfDate,
+                existingRecords: existing,
+                limit: Math.max(0, backgroundLimit - dueTasks.length),
+                tasks: tasks.filter((task) => !dueTaskSourceKeys.has(task.sourceKey))
+            });
+            const plannedTasks = [
+                ...dueTasks.map((task) => ({ repairInternalGaps: false, task })),
+                ...repairTasks.map((task) => ({ repairInternalGaps: true, task }))
+            ];
             state = {
                 ...state,
                 mode,
-                status: dueTasks.length === 0 && activeRequestCount === 0 && queue.length === 0
+                status: plannedTasks.length === 0 && activeRequestCount === 0 && queue.length === 0
                     ? "complete"
                     : "running",
                 stopReason: null,
-                totalCount: state.processedCount + queue.length + activeRequestCount + dueTasks.length
+                totalCount: state.processedCount + queue.length + activeRequestCount + plannedTasks.length
             };
-            for (const task of dueTasks) {
+            for (const { repairInternalGaps, task } of plannedTasks) {
                 void enqueueTask(
                     task,
                     task.role === "current" ? "visible-current" : "background",
                     "background",
-                    performanceGeneration
+                    performanceGeneration,
+                    repairInternalGaps
                 ).catch(() => undefined);
             }
             if (
-                dueTasks.length === 0
+                plannedTasks.length === 0
                 && (
                     performanceGeneration === null
                     || (
@@ -346,6 +365,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         stop() {
             stopped = true;
             suspendRun("stopped");
+            attemptedGapRepairTaskKeys.clear();
             legacySeedBySourceKey.clear();
             listeners.clear();
             storedSourceListeners.clear();
@@ -355,6 +375,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
     async function planInteractiveTasks(options: {
         context: NextBookingCurveAcquisitionContext;
         priority: NextBookingCurveCurrentPriority;
+        repairInternalGaps: boolean;
         signal: AbortSignal;
         tasks: readonly NextBookingCurveAcquisitionTask[];
         waitForCompletion: boolean;
@@ -376,9 +397,31 @@ export function createNextBookingCurveAcquisitionCoordinator(
             limit: options.tasks.length,
             tasks: options.tasks
         });
-        const pending = dueTasks.map((task) => (
-            enqueueTask(task, options.priority, "interactive")
-        ));
+        const dueTaskSourceKeys = new Set(dueTasks.map((task) => task.sourceKey));
+        const repairTasks = options.repairInternalGaps
+            ? selectGapRepairTasks({
+                asOfDate: options.context.asOfDate,
+                existingRecords: existing,
+                limit: Math.max(0, options.tasks.length - dueTasks.length),
+                tasks: options.tasks.filter((task) => !dueTaskSourceKeys.has(task.sourceKey))
+            })
+            : [];
+        const pending = [
+            ...dueTasks.map((task) => enqueueTask(
+                task,
+                options.priority,
+                "interactive",
+                undefined,
+                false
+            )),
+            ...repairTasks.map((task) => enqueueTask(
+                task,
+                options.priority,
+                "interactive",
+                undefined,
+                true
+            ))
+        ];
         const completion = Promise.all(pending.map((promise) => (
             raceWithAbort(promise, options.signal).catch(() => undefined)
         )));
@@ -389,7 +432,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
         }
         return createAcquisitionDiagnostics(
             options.tasks.length,
-            dueTasks.length,
+            dueTasks.length + repairTasks.length,
             options.signal.aborted ? "aborted" : "ready"
         );
     }
@@ -427,7 +470,8 @@ export function createNextBookingCurveAcquisitionCoordinator(
         task: NextBookingCurveAcquisitionTask,
         priority: QueuedTask["priority"],
         activity: NextBookingCurveTaskActivity,
-        performanceGenerationOverride?: number | null
+        performanceGenerationOverride?: number | null,
+        repairInternalGaps = false
     ): Promise<void> {
         const taskKey = `${task.sourceKey}|asOf:${currentContextKey?.split("|")[1] ?? ""}`;
         const pending = pendingByTaskKey.get(taskKey);
@@ -469,6 +513,7 @@ export function createNextBookingCurveAcquisitionCoordinator(
             performanceGeneration,
             priority,
             reject: rejectTask,
+            repairInternalGaps,
             resolve: resolveTask,
             task,
             taskKey
@@ -581,6 +626,9 @@ export function createNextBookingCurveAcquisitionCoordinator(
         const signal = activeController.signal;
         const performanceGeneration = getTaskActivityPerformanceGeneration(queued);
         try {
+            if (queued.repairInternalGaps) {
+                attemptedGapRepairTaskKeys.add(queued.taskKey);
+            }
             const transportRead = transport.read({
                 kind: "booking-curve",
                 roomGroupId: queued.task.roomGroupId,
@@ -621,6 +669,9 @@ export function createNextBookingCurveAcquisitionCoordinator(
                         asOfDate,
                         facilityId,
                         fetchedAt: now().toISOString(),
+                        mergeMode: queued.repairInternalGaps
+                            ? "repair-internal-gaps"
+                            : "append",
                         ...(previousRecord === undefined ? {} : { previousRecord }),
                         response,
                         task: queued.task
@@ -629,17 +680,23 @@ export function createNextBookingCurveAcquisitionCoordinator(
                 return measureAsyncPhaseForGeneration(
                     performanceGeneration,
                     "sourceWrite",
-                    () => store.addAndPrune([record])
+                    () => store.addAndPrune(
+                        [record],
+                        queued.repairInternalGaps
+                            ? { mode: "repair-internal-gaps" }
+                            : undefined
+                    )
                 );
             });
+            const storedWriteCount = result.addedCount + (result.updatedCount ?? 0);
             state = {
                 ...state,
                 errorCount: state.errorCount,
                 processedCount: state.processedCount + 1,
-                skippedCount: state.skippedCount + (result.addedCount === 0 ? 1 : 0),
-                storedCount: state.storedCount + result.addedCount
+                skippedCount: state.skippedCount + (storedWriteCount === 0 ? 1 : 0),
+                storedCount: state.storedCount + storedWriteCount
             };
-            if (result.addedCount > 0) {
+            if (storedWriteCount > 0) {
                 measurePhaseForGeneration(
                     performanceGeneration,
                     "storedNotify",
@@ -941,6 +998,22 @@ export function createNextBookingCurveAcquisitionCoordinator(
         return legacySeed === undefined ? [] : [legacySeed];
     }
 
+    function selectGapRepairTasks(options: {
+        asOfDate: string;
+        existingRecords: readonly NextBookingCurveSourceRecord[];
+        limit: number;
+        tasks: readonly NextBookingCurveAcquisitionTask[];
+    }): NextBookingCurveAcquisitionTask[] {
+        const eligibleTasks = options.tasks.filter((task) => (
+            !attemptedGapRepairTaskKeys.has(buildGapRepairAttemptKey(options.asOfDate, task))
+            && !pendingByTaskKey.has(buildGapRepairAttemptKey(options.asOfDate, task))
+        ));
+        return selectNextBookingCurveGapRepairTasks({
+            ...options,
+            tasks: eligibleTasks
+        });
+    }
+
     function withFacilityLock<T>(
         facilityId: string,
         signal: AbortSignal,
@@ -1051,6 +1124,13 @@ function buildContextKey(context: NextBookingCurveAcquisitionContext): string {
         context.visibleStayDates.join(","),
         context.roomScopes.map((scope) => scope.key).join(",")
     ].join("|");
+}
+
+function buildGapRepairAttemptKey(
+    asOfDate: string,
+    task: NextBookingCurveAcquisitionTask
+): string {
+    return `${task.sourceKey}|asOf:${asOfDate}`;
 }
 
 function raceWithAbort<T>(promise: Promise<T>, signal: AbortSignal): Promise<T> {

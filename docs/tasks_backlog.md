@@ -1236,6 +1236,29 @@
   - `target-spec: docs/spec_001_analyze_expansion.md`
   - `risk: in-memory curve calculation only; request / storage / write contracts unchanged`
 
+### RAU-WC-36 current booking curveの内部欠損を可視scopeで補修する
+
+- 状態:
+  - source / spec / focused・full local gateまで完了した。main同期、Next manual publication、Tampermonkey更新後の実画面gateを残す。実画面のホテル全体 / 個人curveでfiniteな点の間に白い欠損を確認した。保存済みcurrent recordは当日as-ofまでfreshでscheduler planned / started 0、HTTP / runtime error 0だったため、通信失敗ではなく同一日の`null`を再取得・再保存できない契約上の穴として対策する。利用者指示によりAnalyzeだけでなくTop calendarの可視current sourceも対象にする。
+- 実装scope:
+  - pure modelで、current lineの観測可能なlead-time pointが同一segmentのfinite観測に挟まれた明示`null`を選ぶ場合だけ検出する。どの表示pointにも選ばれないraw null、末尾null、未保存日、future、`0日前`推測、ACT、recent / seasonal referenceは対象外にする。
+  - Analyzeは選択中stay date / scope、Topは標準calendarの現在可視範囲のhotel / room currentだけを対象とし、同じfacility x source x as-ofはruntime session中最大1回にする。Topは通常due taskを先にしてbootstrap 800 / daily 200の残枠、Analyzeは既存finite foregroundを使う。
+  - 同一record keyの保存はtransaction内で旧新recordを比較し、日付集合、finite値、landing、scope / queryを変えず、missing / `null -> finite`が1件以上ある場合だけ更新する。取得しても埋まらなければchartの切れ目を残し、同じsessionでretryしない。
+  - endpoint、DB version / schema / retention、開始間隔 / concurrency、停止guard、新規storage、Classic、Revenue Assistant writeは変更しない。
+- 合格条件:
+  - pure checkで内部nullだけがrepair候補になり、tail / future / reference / gapなしを除外する。同一日mergeはnullだけをfiniteへ埋め、既存finiteの相違、新規日付、landingを採用しない。
+  - coordinator / store checkでAnalyzeの同一source最大1 GET、Topの通常due優先と800 / 200内、同一session再計画0、補修成功通知、補修不能時の欠損維持、401 / 403 / 429・abort・連続error停止を固定する。
+  - focused / full check、desktop / 390pxまたは実画面でTop / Analyzeの再描画、request上限、標準UI非干渉、Revenue Assistant write 0を確認する。実行内容を変えるため、main同期後のNext manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後live gateまで通常closeoutへ含める。
+- local verification:
+  - pure / coordinator checkで、表示pointが選ぶ内部`null`だけの検出、raw off-grid / tail / future / reference除外、Analyze同一source 1 GET、未解消時retry 0、Topの通常due優先と残枠補修を固定した。実ChromiumのIndexedDBで、同一recordの`null -> finite`更新、finite上書き拒否、対象record消失時の新規add拒否を確認した。
+  - `npm run check:next`、`npm run check`、`npm run check:classic-publication`、distribution / booking curve smoke fixture、`git diff --check`が通過した。read boundaryはsource 65 files、runtime graph 68 files、raw fetch 1か所、許可API path 8件を維持し、IndexedDB `put`はbooking curve補修ownerの1か所だけである。candidateは429,738 bytes、SHA-256 `E611B89E142B661EA048BBCF68C34FF0CAC4C75C7DBE6D66EB9CA0B73E896487`、source mapは1,703,780 bytes、SHA-256 `4AE0D1476FB3B79BF54E0FB111E6F016FF5792D4122B684DE51C408C0F057EF4`だった。synthetic publicationは429,942 bytes、SHA-256 `90AC4C2130113B7F5D2099B7EBB1838CAADDD672124DBC8B23CA65424F68D9D2`、source mapは1,703,974 bytes、SHA-256 `6B2F123921A57494D271B09853F0E5C64ACE74340419892435B26906A2EDDFD5`でruntime payloadはcandidateと一致した。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_001_analyze_expansion.md`
+  - `decision: D-20260829-002`
+  - `risk: one bounded existing-endpoint reread per visible current source/as-of; monotonic null-to-finite same-record update`
+
 ### RAU-WC-35 月送り後の可視Top cue取得を継続する
 
 - 状態:
@@ -1391,7 +1414,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triageは、完了した`RAU-RR-68`を外し、Nowを`RAU-WC-34`のcount-only live range gateとYellow zone decisionに進める。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、既存snapshotの更新・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、Nowを利用者が実画面欠損から明示した`RAU-WC-36`のAnalyze / Top限定補修、Nextを`RAU-WC-34`のcount-only live range gateとYellow zone decisionにする。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、保存済みfinite観測の上書き・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 

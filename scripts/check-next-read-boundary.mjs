@@ -105,7 +105,8 @@ const allowedBoundedStoreIndexedDbMethods = new Set([
 const allowedBookingCurveStoreIndexedDbMethods = new Set([
     ...allowedBoundedStoreIndexedDbMethods,
     "continue",
-    "openCursor"
+    "openCursor",
+    "put"
 ]);
 const allowedAppendOnlyStoreIndexedDbMethods = new Set([
     "abort",
@@ -384,6 +385,7 @@ function checkIndexedDbBoundary(sources) {
     const directReferences = [];
     const transactionCalls = [];
     const getAllCalls = [];
+    const gapRepairPutCalls = [];
     const forbiddenCalls = [];
     const readwriteLiterals = [];
     const indexedDbCalls = [];
@@ -441,9 +443,21 @@ function checkIndexedDbBoundary(sources) {
                 : sourcePath === bookingCurveStoreOwner
                     ? allowedBookingCurveStoreIndexedDbMethods
                     : allowedBoundedStoreIndexedDbMethods;
-            if (!allowedMethods.has(member.name) || alwaysForbiddenIndexedDbMethods.has(member.name)) {
+            const isReviewedGapRepairPut = sourcePath === bookingCurveStoreOwner
+                && member.name === "put"
+                && isWithinNamedFunction(node, "putRecord");
+            if (
+                !allowedMethods.has(member.name)
+                || (
+                    alwaysForbiddenIndexedDbMethods.has(member.name)
+                    && !isReviewedGapRepairPut
+                )
+            ) {
                 forbiddenCalls.push({ source, node, reason: `${member.name} outside owner allowlist` });
                 return;
+            }
+            if (isReviewedGapRepairPut) {
+                gapRepairPutCalls.push({ source, node });
             }
             if (member.name === "transaction") {
                 transactionCalls.push({ source, node });
@@ -487,6 +501,11 @@ function checkIndexedDbBoundary(sources) {
         "readwrite mode is restricted to the five reviewed Next stores"
     );
     assert.equal(forbiddenCalls.length, 0, formatReasonNodeList("forbidden IndexedDB mutation", forbiddenCalls));
+    assert.equal(
+        gapRepairPutCalls.length,
+        1,
+        "booking curve gap repair must retain exactly one reviewed IndexedDB put call"
+    );
     assert.equal(transactionCalls.length, 14, "reviewed IndexedDB owners must retain fourteen explicit transactions");
     for (const transaction of transactionCalls) {
         assert.equal(transaction.node.arguments.length, 2, "IndexedDB transaction must use an explicit two-argument call");
@@ -1097,6 +1116,20 @@ function isWithinTypePosition(node) {
     let current = node.parent;
     while (current !== undefined && !ts.isSourceFile(current)) {
         if (ts.isTypeNode(current)) {
+            return true;
+        }
+        current = current.parent;
+    }
+    return false;
+}
+
+function isWithinNamedFunction(node, functionName) {
+    let current = node.parent;
+    while (current !== undefined && !ts.isSourceFile(current)) {
+        if (
+            ts.isFunctionDeclaration(current)
+            && current.name?.text === functionName
+        ) {
             return true;
         }
         current = current.parent;
