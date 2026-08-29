@@ -653,6 +653,15 @@ Analyze試験表示の廃止 (`RAU-RR-64`, `RAU-UX-169`):
 - 最初のsanitized coverage reportは、独立decision cluster数、stay date member数、room group / transition別episode、3日 / 7日exact coverage、censor / exclusion内訳、no-change controlを有効化できない理由を返す。利用者向け期待値の件数guard、同room group不足時のfacility fallback、matching距離、確度、中央値 / 中央50%範囲は実分布を確認する後続`RAU-RR-67`で固定する。policy未確定時は期待値を出さず`判定材料不足`とする。
 - このsliceは過去のrank変更後に観測されたassociationを準備するもので、因果効果、成功率、価格弾力性、ADR / sales / RevPAR / 利益、推奨金額、どの1段も同じ効果とは主張しない。current-rank日次snapshot、backgroundでの過去rank取得、未確認API、Revenue Assistant write、自動 / 一括反映、`RAU-RR-65`のdry-runは含めない。
 
+開発用rank range capability probe (`RAU-WC-34A`):
+
+- 目的は`RAU-WC-34`の取得方式を実装前に判断することであり、通常画面の半年取得機能ではない。既存`NextReadTransport`の`rank-status`だけを使い、直接API navigation、CDP、別domain、独自header、未調査endpoint、安全制限の迂回を行わない。
+- Top routeでexact query `ra_next_live_check=rank_status_range`がある場合だけ開発harnessを表示する。queryだけでは通信せず、明示button操作後に1 page session 1回だけ起動する。JST当日をrange startとし、31 / 62 / 93 / 184日をstart含みで直列照会する。追加GETは最大4、同時通信0、各request timeoutは10秒とする。通常queryなし、Analyze、monthly routeではrootと追加GETを0にする。
+- document hidden、Top route離脱、明示abort、transport error、401 / 403 / 429 / 5xx、response root不一致、invalid event 1件以上、pagination evidence、event総数512件以上、2 window目以降のcoverage unchanged / contractedで停止し、残りwindowは`未実行`のまま扱う。ignoredは変更前後rankがともにnullの既存parser意味、valid / invalidは`RAU-RR-66` capture parserと同じdate、room group、timestamp、rank型、range、as-of、0〜360日前contractで数える。
+- count-only summaryはrequested days、request outcome / error classification、latency、response / valid / invalid / ignored件数、一意stay date数、requested startからのcoverage最小 / 最大offset、pagination evidence、truncation suspected、root validityだけを返す。長いwindowで最大coverage offsetが増えなければ、event件数だけ増えてもcoverage unchangedとして停止する。ただし512件またはpagination evidenceを伴わない限りserver truncationとは断定せず、判断は`INSUFFICIENT`とする。
+- summaryと結果一覧はharnessのpage memory / DOMだけに置き、reload、tab close、route離脱で破棄する。raw response、担当者名、施設ID、room group実値、価格、個別event、timestamp一覧、authorization / Cookie / headerを返却型、DOM、IndexedDB、localStorage、sessionStorage、repo、console、performance marker、通常diagnosticsへ含めない。Revenue Assistant writeは0とする。
+- probe未起動時のTop / Analyze request count、既存可視range rank status最大1 GET、表示、storage、writeを変更しない。live gate後は`GO_SINGLE_RANGE / GO_BATCHED / NEED_PAGINATION / INSUFFICIENT / STOP`の判断と実行済みwindowだけを正本へ残し、実件数はcommitしない。productionの単一range、分割、pagination、画面外prefetchは`RAU-WC-34`の別decision / 別変更集合とする。rollbackはentryからharness起動を外すだけで、migrationや既存data削除を必要としない。
+
 次回調整の期待反応UI target (`RAU-RR-67`):
 
 - `RAU-RR-66`の実分布から件数guard、matching距離、facility fallback、確度を固定できた場合だけ、Analyze上部へ選択中stay date / room groupの短い判断要約を置く。表示語は命令形の`上げるべき / 下げるべき`ではなく、`上げ検討 / 下げ注意 / 維持 / 判定材料不足`とする。

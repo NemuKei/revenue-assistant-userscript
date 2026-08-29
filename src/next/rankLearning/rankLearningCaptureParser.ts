@@ -45,6 +45,25 @@ interface NormalizedCaptureContext {
     sourceRangeTo: string;
 }
 
+export interface RankLearningCountOnlyContext {
+    asOfDate: string;
+    sourceRangeFrom: string;
+    sourceRangeTo: string;
+}
+
+export interface RankLearningCountOnlySummary {
+    coverageEndOffsetDays: number | null;
+    coverageStartOffsetDays: number | null;
+    ignoredEventCount: number;
+    invalidEventCount: number;
+    paginationEvidence: boolean;
+    responseEventCount: number;
+    rootValid: boolean;
+    truncationSuspected: boolean;
+    uniqueStayDateCount: number;
+    validEventCount: number;
+}
+
 type ParsedEvent =
     | { status: "ready"; record: RankLearningEventRecord }
     | { status: "ignored" }
@@ -97,6 +116,59 @@ export function parseRankLearningCapture(
 }
 
 export const parseRankLearningResponse = parseRankLearningCapture;
+
+export function summarizeRankLearningCapture(
+    payload: unknown,
+    context: RankLearningCountOnlyContext
+): RankLearningCountOnlySummary {
+    const normalizedContext = normalizeCaptureContext({
+        ...context,
+        capturedAt: "1970-01-01T00:00:00.000Z",
+        facilityId: "count-only-probe"
+    });
+    if (
+        normalizedContext === null
+        || !isRecord(payload)
+        || !Array.isArray(payload.suggest_statuses)
+    ) {
+        return emptyCountOnlySummary(false);
+    }
+    let ignoredEventCount = 0;
+    let invalidEventCount = 0;
+    let validEventCount = 0;
+    const stayDates = new Set<string>();
+    for (const value of payload.suggest_statuses) {
+        const parsed = parseEvent(value, normalizedContext);
+        if (parsed.status === "ignored") {
+            ignoredEventCount += 1;
+            continue;
+        }
+        if (parsed.status === "rejected") {
+            invalidEventCount += 1;
+            continue;
+        }
+        validEventCount += 1;
+        stayDates.add(parsed.record.stayDate);
+    }
+    const offsets = Array.from(stayDates, (stayDate) => (
+        getDaysBetweenDateKeys(stayDate, normalizedContext.sourceRangeFrom)
+    )).filter((value): value is number => value !== null);
+    const responseEventCount = payload.suggest_statuses.length;
+    const paginationEvidence = hasPaginationEvidence(payload, responseEventCount);
+    return {
+        coverageEndOffsetDays: offsets.length === 0 ? null : Math.max(...offsets),
+        coverageStartOffsetDays: offsets.length === 0 ? null : Math.min(...offsets),
+        ignoredEventCount,
+        invalidEventCount,
+        paginationEvidence,
+        responseEventCount,
+        rootValid: true,
+        truncationSuspected:
+            responseEventCount >= RANK_LEARNING_EVENT_BATCH_LIMIT || paginationEvidence,
+        uniqueStayDateCount: stayDates.size,
+        validEventCount
+    };
+}
 
 export function buildRankLearningEventRecordKey(options: {
     afterRankName: string | null;
@@ -309,6 +381,40 @@ function parseEvent(
         recordKey: buildRankLearningEventRecordKey(recordWithoutKey)
     };
     return { status: "ready", record };
+}
+
+function emptyCountOnlySummary(rootValid: boolean): RankLearningCountOnlySummary {
+    return {
+        coverageEndOffsetDays: null,
+        coverageStartOffsetDays: null,
+        ignoredEventCount: 0,
+        invalidEventCount: 0,
+        paginationEvidence: false,
+        responseEventCount: 0,
+        rootValid,
+        truncationSuspected: false,
+        uniqueStayDateCount: 0,
+        validEventCount: 0
+    };
+}
+
+function hasPaginationEvidence(payload: Record<string, unknown>, eventCount: number): boolean {
+    if (payload.has_next === true || payload.hasNext === true) {
+        return true;
+    }
+    for (const key of ["next", "next_cursor", "nextCursor"] as const) {
+        const value = payload[key];
+        if (value !== null && value !== undefined && value !== false && value !== "") {
+            return true;
+        }
+    }
+    for (const key of ["total", "total_count", "totalCount"] as const) {
+        const value = payload[key];
+        if (typeof value === "number" && Number.isFinite(value) && value > eventCount) {
+            return true;
+        }
+    }
+    return false;
 }
 
 function normalizeCaptureContext(

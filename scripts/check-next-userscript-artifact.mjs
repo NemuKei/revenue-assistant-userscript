@@ -87,6 +87,8 @@ const expectedSources = [
     "src/next/rankLearning/rankLearningCaptureWriter.ts",
     "src/next/rankLearning/rankLearningStore.ts",
     "src/next/rankLearning/rankLearningTypes.ts",
+    "src/next/rankLearning/rankStatusRangeProbeHarness.ts",
+    "src/next/rankLearning/rankStatusRangeProbeRunner.ts",
     "src/next/runtimeDomMutation.ts",
     "src/next/runtimeLease.ts",
     "src/next/runtimeMarker.ts",

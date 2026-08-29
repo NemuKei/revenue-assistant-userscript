@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link rel="icon" href="data:," />
+    <title>Next rank range probe fixture</title>
+    <style>
+        body { margin: 0; min-height: 100vh; background: #f4f7fa; color: #263a4d; font-family: "Segoe UI", "Yu Gothic UI", sans-serif; }
+        main { box-sizing: border-box; width: min(1100px, calc(100% - 24px)); margin: 12px auto; padding: 16px; background: #fff; border: 1px solid #d7e0e8; }
+        [data-testid="monthly-calendar"] { min-height: 180px; padding: 12px; border: 1px solid #ccd8e2; }
+    </style>
+</head>
+<body data-mock-rank-probe-requests="0" data-mock-rank-probe-max-concurrency="0" data-mock-storage-writes="0" data-mock-revenue-assistant-writes="0">
+    <main>
+        <h1>標準calendar fixture</h1>
+        <section data-testid="monthly-calendar">標準UIは変更しません</section>
+    </main>
+    <script type="module" src="/src/next/dev/rankStatusRangeProbeFixtureEntry.ts"></script>
+</body>
+</html>

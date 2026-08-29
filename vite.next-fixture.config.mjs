@@ -21,7 +21,8 @@ export default defineConfig({
                 path.join(__dirname, "dev", "fixtures", "next-analyze-booking-curve", "index.html"),
                 path.join(__dirname, "dev", "fixtures", "next-analyze-sales-setting", "index.html"),
                 path.join(__dirname, "dev", "fixtures", "next-analyze-price-trend", "index.html"),
-                path.join(__dirname, "dev", "fixtures", "next-monthly-progress", "index.html")
+                path.join(__dirname, "dev", "fixtures", "next-monthly-progress", "index.html"),
+                path.join(__dirname, "dev", "fixtures", "next-rank-range-probe", "index.html")
             ]
         }
     }

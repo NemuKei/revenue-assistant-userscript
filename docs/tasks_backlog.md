@@ -1360,10 +1360,31 @@
   - `decision: D-20260824-001`
   - `risk: yellow-zone user-driven visible-range reads; bounded to hotel current plus one rank-status range GET`
 
+### RAU-WC-34A 正規のread-only経路でrank履歴rangeをcount-only計測する
+
+- 状態:
+  - GitHub Issue #28で実装契約を確定したcapability probe。直接API navigationの`net::ERR_BLOCKED_BY_CLIENT`はendpoint能力の証拠にせず、通常runtimeの既存rank status transportへ測定経路を移す。`RAU-WC-34`本体は未着手のまま維持する。
+  - 2026-08-29にpure summary、bounded runner、Topのexact development flag、合成fixture、通常回帰まで実装し、focused check、typecheck、lint、Next全体check、publication contract、Classic boundaryをlocal通過した。`main`同期、manual Next公開、Tampermonkey更新後のlive gateと5分類判断は未完である。
+- 最初のscope:
+  - Topのexact development flagでだけharnessを表示し、明示button後にJST当日から31 / 62 / 93 / 184日inclusiveを最大4 GET・直列・同一page session 1回だけ照会する。通常queryなし、Analyze、monthlyではroot / 追加GET 0とする。
+  - 既存rank parserと同じvalid / invalid / ignored意味でcount-only summaryを作り、latency、event件数、一意stay date数、coverage offset、pagination / truncation / root validityだけをpage memoryへ置く。raw response、担当者、施設 / room ID、価格、個別event、timestamp一覧、認証情報をDOM、storage、console、performance marker、通常diagnostics、repoへ残さない。
+  - timeout / abort / hidden / route離脱、transport / auth / rate-limit / 5xx、root不一致、invalid、pagination、512件以上、2 window目以降のcoverage unchanged / contractedで残りwindowを未実行のまま停止する。Revenue Assistant write 0を維持する。
+- 合格条件:
+  - pure / runner testで正常拡張、JST inclusive境界、最大4 GET、直列、session重複防止、timeout / abort / 429 / 5xx / root / invalid / pagination / 512境界、coverage unchanged、未実行維持、summary allowlistを確認する。
+  - probe未起動時のTop / Analyze request、表示、storage、writeが既存baselineと同一である。通常Topの明示入口から安全条件を満たす範囲まで一度だけlive実行し、`GO_SINGLE_RANGE / GO_BATCHED / NEED_PAGINATION / INSUFFICIENT / STOP`のいずれかを判断する。
+  - live後の正本にはruntime version、実行window、5分類判断だけを残し、実件数や実data由来の詳細値をcommitしない。production取得方式は`RAU-WC-34`の別判断とする。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: before-impl`
+  - `target-spec: docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260829-005`
+  - `external-issue: https://github.com/NemuKei/revenue-assistant-userscript/issues/28`
+  - `risk: yellow-zone explicit development-only read; max four sequential existing rank-status GETs`
+
 ### RAU-WC-34 Topの半年取得を段階差分へ分離する
 
 - 状態:
-  - 設計候補。runtime未変更。表示外background prefetchはYellow zoneであり、期間rangeと負荷のcount-only live gate、spec / decision確定前に実装しない。
+  - 設計候補。runtime未変更。表示外background prefetchはYellow zoneであり、`RAU-WC-34A`のcount-only live gateと結果判断、production用spec / decision確定前に実装しない。
   - 2026-08-29に利用者承認後、通常ChromeのTop表示と標準calendar 92日、Next単一rootまではfresh確認した。31日rank-statusのcount-only probeはbrowser controlのnavigation layerで`net::ERR_BLOCKED_BY_CLIENT`となり、画面内実行への切替もbrowser security policyが禁止したため停止した。response件数は未取得で、62 / 93 / 184日のprobe、storage write、Revenue Assistant writeは0である。Chrome / Codex設定変更や別browser surfaceへの切替は行っていない。gate未通過のためruntime / spec / decisionは変更せず、利用者判断待ちとする。
 - 解決する問題:
   - Topの可視範囲だけを取得し続けると、将来ある時点で半年分を必要とした際にcold startが集中する。一方、半年分を現行daily-deltaへそのまま混ぜると、通常利用1sessionでは差分が収束しない。
@@ -1380,7 +1401,7 @@
   - `spec-checkpoint: before-impl`
   - `target-spec: docs/spec_003_rank_recommendation_signal.md; booking curve cadenceを変える場合はdocs/spec_001_analyze_expansion.md`
   - `risk: yellow-zone background prefetch`
-  - `depends-on: RAU-PERF-20 baseline, RAU-PERF-21 foreground gate, RAU-PERF-21B first-stage pace gate, count-only live range gate and explicit decision`
+  - `depends-on: RAU-PERF-20 baseline, RAU-PERF-21 foreground gate, RAU-PERF-21B first-stage pace gate, RAU-WC-34A live result and explicit production decision`
 
 ### RAU-RR-66 次回調整の期待値へ向けたrank学習coverageを作る
 
@@ -1491,7 +1512,7 @@
   - `target-spec: docs/spec_001_analyze_expansion.md, docs/spec_003_rank_recommendation_signal.md`
   - `depends-on: RAU-RR-67 expectation guard accepted`
 
-Remaining Task Triageは、Nowを利用者が実画面欠損から明示した`RAU-WC-36`のAnalyze / Top限定補修、Nextを`RAU-WC-34`のcount-only live range gateとYellow zone decisionにする。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、保存済みfinite観測の上書き・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
+Remaining Task Triageは、NowをGitHub Issue #28の`RAU-WC-34A` default-off count-only capability probe、Nextをそのlive結果に基づく`RAU-WC-34`のproduction判断にする。通常利用によるdata蓄積後の`RAU-RR-67` fresh再集計・policy確定・backtest / fixed scenario testは独立のAfter Nextとし、現時点のUI実装no-goを維持する。`RAU-MP-09`の次回runtime gateでは月次routeのrequest count / Revenue Assistant write 0も再確認する。Classic再公開、未調査endpoint、current-rank日次snapshot、据え置きcontrol、保存済みfinite観測の上書き・削除・一括移行、Revenue Assistant writeは別gateのまま残す。
 
 ## 2026-06-29 Docs Governance Profile
 

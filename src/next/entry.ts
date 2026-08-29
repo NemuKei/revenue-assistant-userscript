@@ -19,6 +19,7 @@ import { createRankLearningCaptureWriter } from "./rankLearning/rankLearningCapt
 import { createNextPerformanceRecorder } from "./performance/nextPerformanceRecorder";
 import { createAdjustmentReviewDataSource } from "./adjustmentReview/adjustmentReviewDataSource";
 import { startAdjustmentReviewRuntime } from "./adjustmentReview/adjustmentReviewRuntime";
+import { startRankStatusRangeProbeHarness } from "./rankLearning/rankStatusRangeProbeHarness";
 
 const SCRIPT_NAME = typeof GM_info === "undefined"
     ? "Revenue Assistant Next (Candidate)"
@@ -107,6 +108,7 @@ function startNextCandidateRuntime(): void {
         coordinator: bookingCurveAcquisition
     });
     startNextMonthlyProgressRuntime(document, window);
+    startRankStatusRangeProbeHarness(document, window);
     console.info(`[${SCRIPT_NAME}] candidate runtime ready`, {
         href: window.location.href,
         mode: "server-read-only/local-bounded-history",
