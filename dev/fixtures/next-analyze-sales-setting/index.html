@@ -46,6 +46,7 @@
         <button type="button" data-mock-detach-sales>販売設定DOMを一時除去</button>
         <button type="button" data-mock-restore-sales>販売設定DOMを復元</button>
         <button type="button" data-mock-stay-next>翌日のAnalyzeへ</button>
+        <button type="button" data-mock-resolve-rank-status>ランク履歴取得を完了</button>
         <button type="button" data-mock-route-away>別画面へ</button>
         <button type="button" data-mock-route-back>Analyzeへ戻る</button>
     </header>
@@ -114,6 +115,9 @@
             document.querySelector("[data-mock-stay-next]").addEventListener("click", () => {
                 history.pushState({}, "", "/dev/fixtures/next-analyze-sales-setting/2026-08-13");
                 dispatchEvent(new PopStateEvent("popstate"));
+            });
+            document.querySelector("[data-mock-resolve-rank-status]").addEventListener("click", () => {
+                document.dispatchEvent(new Event("mock-resolve-rank-status"));
             });
             document.querySelector("[data-mock-route-away]").addEventListener("click", () => {
                 history.pushState({}, "", "/monthly-progress/2026-08");

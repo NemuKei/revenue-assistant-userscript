@@ -1034,6 +1034,30 @@
   - `depends-on: RAU-UX-179, RAU-WC-36 source/publication`
   - `risk: shared display interpretation and in-memory event evaluation only; no request, storage, write, recommended rank, or amount change`
 
+### RAU-UX-181 Analyze上部の遅延ランク判定を未展開のまま確定表示へ進める
+
+- 状態:
+  - source実装、spec、focused / full local gate、合成Browser確認まで完了した。main同期、Next manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後の通常Chrome live gateを残す。
+- 解決する問題:
+  - Analyze初期表示でroom current summaryがrank statusより先に完了すると、上部`ランク変更履歴`のtagは描画されても、全件が`判定材料待ち`の古いassessmentに留まる。room cardを展開するとfull hydrationに伴って更新されるため、履歴取得自体の失敗に見え、初期表示だけでは判断を完了できない。
+- 実装境界:
+  - rank statusの遅延完了時だけ、activeな全roomのcurrent-only curve modelを保存済みrecordから再構築し、上部の最新event assessmentを更新する。取得失敗時は既存どおり開いているroomだけをerror表示へ更新する。
+  - room cardの自動展開、full reference hydration、booking curve再取得、追加GET、新規storage、Revenue Assistant write、具体的な推奨rank / 金額を追加しない。
+- 合格条件:
+  - room summary batch完了後までrank statusを遅延させるfocused fixtureで、初期tag 0件、room展開0件から、履歴完了後にtag 4件、`判定材料待ち`0件へ進む。
+  - 履歴完了の前後でroom load countを増やさず、未展開roomは`current-only`のまま、desktop / 390px、console warning / error 0を維持する。
+  - typecheck、repo全lint、Next全focused check / fixture build / candidate・synthetic publication、Classic build / publication boundary、`git diff --check`を通す。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl; delayed completion order exposed the missing convergence contract`
+  - `target-spec: docs/spec_003_rank_recommendation_signal.md`
+  - `depends-on: RAU-UX-180`
+  - `risk: one bounded in-memory rebuild after rank status settles; no request, storage, write, or automatic expansion change`
+- local validation:
+  - 修正前の遅延fixtureでは、rank status完了後にtag 4件が描画されても4件すべて`unavailable`のままになることを再現した。修正後は未展開のままtag 4件、`unavailable` 0件へ進み、room load countは各1回、read profileは`current-only`を維持した。
+  - Chromeの合成Analyzeでは、room展開0件のままtag 0件から4件へ進み、stateは`opposed` 2件 / `unchanged` 2件、console warning / error 0だった。既存focused Browser testでdesktop / 390pxのtag contrast、横overflow、runtime error 0を維持した。
+  - `npm run check:next`、`npm run check`、Classic publication boundary、`git diff --check`が通過した。
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る
@@ -12433,10 +12457,11 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-WC-34` Topの半年取得をcount-only gate後に再判断する
+- `RAU-UX-181` Analyze上部の遅延ランク判定を未展開のまま確定表示へ進める
 
 Next:
 
+- `RAU-WC-34` Topの半年取得をcount-only gate後に再判断する
 - `RAU-RR-67` 通常利用でdata蓄積後に隣接rankの期待反応を再評価する
 
 After Next:
@@ -12447,6 +12472,7 @@ Later:
 
 統合判断:
 
+- 2026-08-29 に、利用者がAnalyze上部`ランク変更履歴`の`意図 / 次アクション`が計算から表示反映へ進まないように見えると報告したため、`RAU-UX-180`を未完了へ戻さず、遅延rank statusと未展開room summaryの収束を`RAU-UX-181`としてaddした。修正前fixtureでは履歴完了後もtag 4件すべてが`判定材料待ち`に留まり、原因は完了後の再構築対象を開いているroomだけに限定していたことだった。afterは保存済みcurrent-only recordからactiveな全roomを一度だけ再評価し、room展開、full hydration、追加GET / storage / writeを増やさない。source / spec / focused・full local gate / 合成Browserまで完了し、main同期とNext publication / live gateを残す。
 - 2026-08-29 に、`RAU-UX-180`のsource `7e361b78c3655e013d9a7d415aa534f707eebc7a`をValidate Main run `33230686346`通過後、manual workflow run `33230768323`、run number 51、attempt 1でNext `0.2.0.51`へ配信した。公開Nextは435,789 bytes、SHA-256 `C5DD08FE84CBF48F5E7037FA7C49E4DE45A2C4EA39371AC0DC94EE46D9A10544`、source mapは1,722,286 bytes、SHA-256 `842A1C49962BBDE4AE52464885C705F7755C14AF37DB3756A40CD79530E312CD`でrun identityと一致し、Classic固定baselineも不変だった。Tampermonkey更新後の通常Chromeでは、Analyze上部 / 展開curve / event履歴の`意図 / 次アクション`、同方向 / 逆方向 / 変化なし、内部欠損0、Topのfilter順 / 4分類 / focus復元をfresh確認した。色だけでなく矢印・符号・文字を併記し、contrast 6.83:1以上、横overflow、追加request / write、console warning / errorは0だった。Top backgroundは200 / 200、保存200、エラー0で完了し、Long Task 197 / 最大1,717msは既存performance残課題として`RAU-PERF-27`の観測境界へ残す。`RAU-UX-180`を完了し、Nowを`RAU-WC-34`へ戻す。
 - 2026-08-29 に、利用者が公開Next `0.2.0.50`へ更新した通常ChromeでTop runtime `ready-read-only`、取得処理`4/4`、保存4、重複回避0、エラー0をfresh確認した。追加要件は公開済み`RAU-UX-179`を未完了へ戻さず、同じ判定をAnalyze上部一覧・room展開curve・Topのintent filterへ再利用する`RAU-UX-180`としてaddした。`RAU-WC-34`はこの利用者向けsliceの後へ移し、追加GET / storage / writeを広げない。
 - 2026-08-29 に、`RAU-UX-179`のsource、spec、focused / full gate、desktop / 390px合成Browser QA、main同期、Next `0.2.0.49` manual publication、公開artifact / Classic baseline照合まで完了した。上げ / ペース増はblue、下げ / ペース減はorange、0 / 未確認はgrayとし、矢印・符号・文言を併記する。選択中horizonの観測変化を`意図と同方向 / 逆方向 / 変化なし / 判定材料待ち`へ分類し、親行は最新eventだけを集計、detailでは`様子見 / 追加調整余地を確認 / 反応確認 / 材料確認`を示す。因果、成功 / 失敗、具体的な推奨rank / 金額、追加GET、新規storage、Revenue Assistant writeは追加していない。通常Chromeは`0.2.0.48`のため、`0.2.0.49`へのTampermonkey更新とfresh live gateを残し、その後にNowの`RAU-WC-34`へ戻る。

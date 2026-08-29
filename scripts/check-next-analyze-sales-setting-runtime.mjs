@@ -27,6 +27,7 @@ try {
     await verifyDeferredReferenceDoesNotPrematurelySettle(origin);
     await verifyDeferredReferenceRefreshUsesTrailingDebounce(origin);
     await verifyStoredScopeRefreshIsBounded(origin);
+    await verifyDelayedRankStatusUpdatesClosedRoomOverview(origin);
     await verifyRankStatusSurvivesTransientRemount(origin);
     await verifyAdjustmentReviewFocus(origin);
     await verifyDecisionTagsAndResponsiveLayout(origin);
@@ -408,7 +409,7 @@ async function verifyRankStatusSurvivesTransientRemount(origin) {
         await page.locator("[data-mock-detach-sales]").click();
         await waitForMarker(page, "waiting-native-sales-setting");
         await waitForRootCount(page, 0);
-        await resolveFixtureRead(page, "rank-status");
+        await page.locator("[data-mock-resolve-rank-status]").click();
         await drainFixtureTasks(page);
         await page.locator("[data-mock-restore-sales]").click();
         await waitForRoot(page, "ready");
@@ -420,6 +421,59 @@ async function verifyRankStatusSurvivesTransientRemount(origin) {
             "rank status resolved while absent must clear loading and be reused after remount"
         );
         assert.equal(await page.locator(rootSelector).count(), 1);
+    });
+}
+
+async function verifyDelayedRankStatusUpdatesClosedRoomOverview(origin) {
+    await withFixturePage(origin, "?rank=deferred-once", async (page) => {
+        await waitForRoot(page, "ready");
+        await waitForCount(page, "rank-load", 1);
+        await waitForMarker(page, "mounted-classic-ui");
+        const before = await readScopeLoadCounts(page);
+        assert.equal(
+            await page.locator("[data-ra-next-sales-setting-decision-tag]").count(),
+            0,
+            "the rank overview must wait while the shared rank-status read is pending"
+        );
+        assert.equal(
+            await page.locator(`${toggleSelector}[aria-expanded="true"]`).count(),
+            0,
+            "the delayed-rank regression must keep every room curve closed"
+        );
+
+        await resolveFixtureRead(page, "rank-status");
+        await page.waitForFunction(() => (
+            globalThis.document.querySelectorAll(
+                "[data-ra-next-sales-setting-decision-tag]"
+            ).length === 4
+        ));
+        await drainFixtureTasks(page);
+
+        assert.equal(
+            await page.locator(
+                '[data-ra-next-sales-setting-decision-tag][data-state="unavailable"]'
+            ).count(),
+            0,
+            "settling rank status must replace evidence-waiting tags with evaluated intent and action"
+        );
+
+        assert.deepEqual(
+            await readScopeLoadCounts(page),
+            before,
+            "settling rank status must not add booking-curve reads"
+        );
+        assert.equal(
+            await page.locator("html").getAttribute(
+                "data-mock-sales-setting-read-room-single-profile"
+            ),
+            "current-only",
+            "settling rank status must keep unopened rooms on the bounded current-only profile"
+        );
+        assert.equal(
+            await page.locator(`${toggleSelector}[aria-expanded="true"]`).count(),
+            0,
+            "the rank overview must settle without opening a room curve"
+        );
     });
 }
 

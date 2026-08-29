@@ -455,10 +455,23 @@ export function startSalesSettingClassicRuntime(
                 rankLoadError = result.reason;
             }
             if (!scopeBatchLoading) {
-                rebuildOpenRoomCurves();
+                if (activeRankSnapshot !== null) {
+                    rebuildAllRoomCurves();
+                } else {
+                    rebuildOpenRoomCurves();
+                }
                 renderCurrentState();
             }
         });
+    }
+
+    function rebuildAllRoomCurves(): void {
+        const scopeKeys = new Set(activeScopes
+            .filter((scope) => scope.kind === "roomGroup")
+            .map((scope) => scope.key));
+        if (scopeKeys.size > 0) {
+            rebuildCurves(scopeKeys);
+        }
     }
 
     function rebuildOpenRoomCurves(): void {
