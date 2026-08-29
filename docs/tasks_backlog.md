@@ -1364,6 +1364,7 @@
 
 - 状態:
   - 設計候補。runtime未変更。表示外background prefetchはYellow zoneであり、期間rangeと負荷のcount-only live gate、spec / decision確定前に実装しない。
+  - 2026-08-29に利用者承認後、通常ChromeのTop表示と標準calendar 92日、Next単一rootまではfresh確認した。31日rank-statusのcount-only probeはbrowser controlのnavigation layerで`net::ERR_BLOCKED_BY_CLIENT`となり、画面内実行への切替もbrowser security policyが禁止したため停止した。response件数は未取得で、62 / 93 / 184日のprobe、storage write、Revenue Assistant writeは0である。Chrome / Codex設定変更や別browser surfaceへの切替は行っていない。gate未通過のためruntime / spec / decisionは変更せず、利用者判断待ちとする。
 - 解決する問題:
   - Topの可視範囲だけを取得し続けると、将来ある時点で半年分を必要とした際にcold startが集中する。一方、半年分を現行daily-deltaへそのまま混ぜると、通常利用1sessionでは差分が収束しない。
 - 設計方向:
