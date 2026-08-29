@@ -229,6 +229,8 @@ assert.match(viewSource, /"ランク変更履歴"/u);
 assert.match(viewSource, /"意図（7日）"/u);
 assert.match(viewSource, /"次アクション"/u);
 assert.match(viewSource, /data-ra-next-sales-setting-decision-tag/u);
+assert.match(viewSource, /data-ra-next-sales-setting-card-decision/u);
+assert.match(viewSource, /createDecisionTag\(documentHost, assessment, kind, "card"\)/u);
 const rankOverviewSource = viewSource.match(/function createRankOverview[\s\S]*?\n\}\n\nfunction renderNativeCard/u)?.[0] ?? "";
 assert.notEqual(rankOverviewSource, "", "rank overview renderer must remain independently checkable");
 assert.doesNotMatch(

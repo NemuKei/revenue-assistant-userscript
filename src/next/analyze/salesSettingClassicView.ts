@@ -37,6 +37,10 @@ const SUMMARY_TONE_ATTRIBUTE = "data-ra-next-sales-setting-summary-tone";
 const PREPARING_ATTRIBUTE = "data-ra-next-sales-setting-comparison-preparing";
 const REVALIDATING_ATTRIBUTE = "data-ra-next-sales-setting-revalidating";
 const CURVE_SECTION_ATTRIBUTE = "data-ra-next-sales-setting-curve-section";
+const CARD_SUMMARY_ROW_ATTRIBUTE = "data-ra-next-sales-setting-card-summary-row";
+const CARD_DECISION_ATTRIBUTE = "data-ra-next-sales-setting-card-decision";
+const CARD_DECISION_ITEM_ATTRIBUTE = "data-ra-next-sales-setting-card-decision-item";
+const CARD_DECISION_LABEL_ATTRIBUTE = "data-ra-next-sales-setting-card-decision-label";
 
 export interface SalesSettingClassicNativeCard {
     cardElement: HTMLElement;
@@ -272,14 +276,46 @@ function createDecisionTagCell(
     kind: "action" | "intent"
 ): HTMLTableCellElement {
     const cell = documentHost.createElement("td");
+    cell.append(createDecisionTag(documentHost, assessment, kind, "overview"));
+    return cell;
+}
+
+function createDecisionTag(
+    documentHost: Document,
+    assessment: AdjustmentReviewIntentAssessment,
+    kind: "action" | "intent",
+    location: "card" | "overview"
+): HTMLSpanElement {
     const tag = documentHost.createElement("span");
     tag.setAttribute("data-ra-next-sales-setting-decision-tag", kind);
+    tag.setAttribute("data-location", location);
     tag.setAttribute("data-state", assessment.state);
     tag.textContent = kind === "intent"
         ? `${getAdjustmentReviewIntentIcon(assessment.state)} ${formatAdjustmentReviewIntentSummary(assessment.state)}`
         : formatAdjustmentReviewNextAction(assessment);
-    cell.append(tag);
-    return cell;
+    return tag;
+}
+
+function createCardDecisionSummary(
+    documentHost: Document,
+    assessment: AdjustmentReviewIntentAssessment
+): HTMLElement {
+    const summary = documentHost.createElement("div");
+    summary.setAttribute(CARD_DECISION_ATTRIBUTE, "");
+    summary.setAttribute("aria-label", "この部屋の意図と次アクション");
+    for (const [label, kind] of [
+        ["意図（7日）", "intent"],
+        ["次アクション", "action"]
+    ] as const) {
+        const item = documentHost.createElement("div");
+        item.setAttribute(CARD_DECISION_ITEM_ATTRIBUTE, kind);
+        const labelElement = documentHost.createElement("span");
+        labelElement.setAttribute(CARD_DECISION_LABEL_ATTRIBUTE, kind);
+        labelElement.textContent = label;
+        item.append(labelElement, createDecisionTag(documentHost, assessment, kind, "card"));
+        summary.append(item);
+    }
+    return summary;
 }
 
 function renderNativeCard(
@@ -299,7 +335,16 @@ function renderNativeCard(
     if (isRevalidating) {
         children.push(createRevalidatingMessage(supplement.ownerDocument));
     }
-    children.push(createSummaryTable(supplement.ownerDocument, card.curve.currentSummary));
+    const summaryRow = supplement.ownerDocument.createElement("div");
+    summaryRow.setAttribute(CARD_SUMMARY_ROW_ATTRIBUTE, "");
+    summaryRow.append(createSummaryTable(supplement.ownerDocument, card.curve.currentSummary));
+    if (card.rankSummary !== null) {
+        summaryRow.append(createCardDecisionSummary(
+            supplement.ownerDocument,
+            card.rankSummary.intentAssessment
+        ));
+    }
+    children.push(summaryRow);
     if (hasMissingSummaryValue(card.curve.currentSummary)) {
         children.push(createPreparingMessage(supplement.ownerDocument));
     }
@@ -586,6 +631,24 @@ function getSalesSettingClassicStyles(): string {
 [data-ra-next-sales-setting-decision-tag][data-state="unavailable"] {
     color: #475569; background: #f8fafc; border-color: #cbd5e1; border-style: dashed;
 }
+[${CARD_SUMMARY_ROW_ATTRIBUTE}] {
+    display: grid; grid-template-columns: max-content minmax(0, 1fr); align-items: start; gap: 8px 20px;
+    min-width: 0;
+}
+[${CARD_DECISION_ATTRIBUTE}] {
+    display: grid; gap: 5px; justify-self: end; width: min(100%, 440px); min-width: 0;
+    padding: 7px 9px; border: 1px solid #dbe5f2; border-radius: 8px; background: #f8fbff;
+}
+[${CARD_DECISION_ITEM_ATTRIBUTE}] {
+    display: grid; grid-template-columns: 76px minmax(0, 1fr); align-items: start; gap: 6px;
+    min-width: 0;
+}
+[${CARD_DECISION_LABEL_ATTRIBUTE}] {
+    padding-top: 3px; color: #50627a; font-size: 11px; font-weight: 700; line-height: 1.35;
+}
+[${CARD_DECISION_ATTRIBUTE}] [data-ra-next-sales-setting-decision-tag] {
+    max-width: 100%;
+}
 [${SUMMARY_TONE_ATTRIBUTE}="positive"] { color: #24734b !important; }
 [${SUMMARY_TONE_ATTRIBUTE}="negative"] { color: #b34040 !important; }
 [${PREPARING_ATTRIBUTE}] {
@@ -626,6 +689,9 @@ function getSalesSettingClassicStyles(): string {
     [${SUMMARY_TABLE_ATTRIBUTE}], [data-ra-next-sales-setting-rank-overview-table] {
         display: block; max-width: 100%; overflow-x: auto;
     }
+    [${CARD_SUMMARY_ROW_ATTRIBUTE}] { grid-template-columns: minmax(0, 1fr); }
+    [${CARD_DECISION_ATTRIBUTE}] { justify-self: stretch; width: 100%; }
+    [${CARD_DECISION_ITEM_ATTRIBUTE}] { grid-template-columns: 72px minmax(0, 1fr); }
     [${SALES_SETTING_CLASSIC_CURVE_TOGGLE_ATTRIBUTE}] { min-height: 44px; }
 }
 `;

@@ -119,20 +119,59 @@ async function verifyDecisionTagsAndResponsiveLayout(origin) {
             await waitForRoot(page, "ready");
             await page.waitForSelector("[data-ra-next-sales-setting-decision-tag]");
             assert.equal(
-                await page.locator("[data-ra-next-sales-setting-decision-tag]").count(),
+                await page.locator(
+                    "[data-ra-next-sales-setting-rank-overview] [data-ra-next-sales-setting-decision-tag]"
+                ).count(),
                 4,
                 `${viewport.name} rank overview must show intent and next action for both room types`
+            );
+            assert.equal(
+                await page.locator("[data-ra-next-sales-setting-card-decision]").count(),
+                2,
+                `${viewport.name} room cards must show decisions before opening their curves`
+            );
+            assert.equal(
+                await page.locator(
+                    '[data-ra-next-sales-setting-decision-tag][data-location="card"]'
+                ).count(),
+                4,
+                `${viewport.name} room cards must show intent and next action for both room types`
+            );
+            assert.equal(
+                await page.locator(`${toggleSelector}[aria-expanded="true"]`).count(),
+                0,
+                `${viewport.name} room decisions must be visible while every curve remains closed`
+            );
+            assert.equal(
+                await page.locator('[data-ra-next-sales-setting-curve-section="card"]').count(),
+                0,
+                `${viewport.name} room decisions must not require hidden curve content`
             );
             assert.match(
                 await page.locator("[data-ra-next-sales-setting-rank-overview-table]").innerText(),
                 /意図（7日）[\s\S]*次アクション/u
             );
+            assert.match(
+                await page.locator("[data-ra-next-sales-setting-card-decision]").first().innerText(),
+                /意図（7日）[\s\S]*次アクション/u
+            );
             const overviewTagStyle = await readElementToneStyle(
-                page.locator("[data-ra-next-sales-setting-decision-tag]").first()
+                page.locator(
+                    "[data-ra-next-sales-setting-rank-overview] [data-ra-next-sales-setting-decision-tag]"
+                ).first()
             );
             assert.ok(
                 contrastRatio(overviewTagStyle.color, overviewTagStyle.backgroundColor) >= 4.5,
                 `${viewport.name} rank-overview decision tag must keep 4.5:1 text contrast`
+            );
+            const cardTagStyle = await readElementToneStyle(
+                page.locator(
+                    '[data-ra-next-sales-setting-decision-tag][data-location="card"]'
+                ).first()
+            );
+            assert.ok(
+                contrastRatio(cardTagStyle.color, cardTagStyle.backgroundColor) >= 4.5,
+                `${viewport.name} collapsed-card decision tag must keep 4.5:1 text contrast`
             );
             await page.locator(toggleSelector).first().click();
             await page.waitForSelector("[data-ra-next-booking-curve-adjustment-review]");
@@ -445,9 +484,17 @@ async function verifyDelayedRankStatusUpdatesClosedRoomOverview(origin) {
         await page.waitForFunction(() => (
             globalThis.document.querySelectorAll(
                 "[data-ra-next-sales-setting-decision-tag]"
-            ).length === 4
+            ).length === 8
         ));
         await drainFixtureTasks(page);
+
+        assert.equal(
+            await page.locator(
+                '[data-ra-next-sales-setting-decision-tag][data-location="card"]'
+            ).count(),
+            4,
+            "settling rank status must add decisions to closed room cards"
+        );
 
         assert.equal(
             await page.locator(
