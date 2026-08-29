@@ -987,7 +987,7 @@
 ### RAU-UX-179 調整前後レビューで調整意図と次アクションを色分けする
 
 - 状態:
-  - 実装・検証中。利用者は、正負とrank上げ / 下げの色分けに加え、上げは個人予約ペースを下げる、下げはペースを上げるという主な意図に対して観測変化が合うか、追加調整の確認余地があるかまでPDCAのCheck / Actとして示すよう明示した。
+  - source / spec / local gate / main同期 / Next `0.2.0.49` manual publication / 公開artifact・Classic baseline照合まで完了した。通常Chromeは旧版`0.2.0.48`のため、Tampermonkey更新後の実画面gateを残す。利用者は、正負とrank上げ / 下げの色分けに加え、上げは個人予約ペースを下げる、下げはペースを上げるという主な意図に対して観測変化が合うか、追加調整の確認余地があるかまでPDCAのCheck / Actとして示すよう明示した。
 - 解決する問題:
   - 変更前後の符号とrank方向を別々に読み、利用者が頭の中で意図との対応と次の確認を組み立てる必要がある。単純な成功 / 失敗表示では、因果効果や調整の正解を断定したように誤読される。
 - 実装境界:
@@ -1007,6 +1007,9 @@
   - pure / focused testで上げ + ペース減、下げ + ペース増、逆方向、0、未ready、方向未確認、選択中horizonごとの分類、親行の最新event集計を固定した。親行とdetailは同じassessmentを使い、別horizonへfallbackしない。
   - desktop 1280px / 390 x 844の合成Browserで、上げblue / 下げorange、ペース増blue / 減orange、同方向teal / 逆方向purple / 材料待ちgray、矢印・符号・状態文、親行・展開detail、44px control、keyboard focus、root 1、横overflow 0、console error 0を確認した。上げ / 下げ、正 / 負、同方向 / 逆方向の各文字contrastは4.5:1以上だった。
   - typecheck、repo全eslint、Next全focused check、runtime fixture、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker / scheduler、distribution / booking curve smoke、`git diff --check`が通過した。read boundaryはsource 65 files、runtime graph 68 files、raw fetch 1か所、許可API path 8件の既存集合、review用storage追加0、Revenue Assistant write追加0を維持した。candidateは425,101 bytes、SHA-256 `B11B1C212C374567643B128E3C7078A259983894767DEF4281CBC5448962C32D`、source mapは1,682,148 bytes、SHA-256 `B14CEDC628D0CF7D14D3A74240AA26CE7FD7DEC2A22AFED3CB8B3C1171C0C57B`だった。synthetic publicationは425,305 bytes、SHA-256 `2A4B26D9BAD6C4D02102944670F3DB6FB1F8235B460A06B0A4CC4F7B5753F29D`、source mapは1,682,342 bytes、SHA-256 `8E6C97D2F4046E552EF41FE4925A11D5FC28F4C7BB26D70EDDEF9DE5A0AF39CB`で、runtime payloadはcandidateと一致した。
+- publication / live verification:
+  - source `bcac74cf171b129f81d38427047ca5b65dcdc868`はValidate Main run `33224449454`を通過し、manual workflow run `33224756470`、run number 49、attempt 1でNext `0.2.0.49`へ配信した。公開Nextは425,306 bytes、SHA-256 `E72F3922A0ECBEF0217F6CE2BA5E0CA0841C9DBBE093FC255F860F0E75F84CD0`、source mapは1,682,342 bytes、SHA-256 `8E6C97D2F4046E552EF41FE4925A11D5FC28F4C7BB26D70EDDEF9DE5A0AF39CB`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。
+  - 2026-08-29の通常Chrome fresh接続ではruntime `ready-read-only`とinstalled version `0.2.0.48`を確認した。公開版`0.2.0.49`の更新確認画面は開いたが、Tampermonkeyの拡張機能内確定画面はbrowser security policyの対象のため利用者操作へ戻した。`0.2.0.49`更新後のroot / horizon / direction / intent / next action / request / storage / write実画面gateは未実施である。
 
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
@@ -12398,6 +12401,7 @@ Later:
 
 統合判断:
 
+- 2026-08-29 に、`RAU-UX-179`のsource、spec、focused / full gate、desktop / 390px合成Browser QA、main同期、Next `0.2.0.49` manual publication、公開artifact / Classic baseline照合まで完了した。上げ / ペース増はblue、下げ / ペース減はorange、0 / 未確認はgrayとし、矢印・符号・文言を併記する。選択中horizonの観測変化を`意図と同方向 / 逆方向 / 変化なし / 判定材料待ち`へ分類し、親行は最新eventだけを集計、detailでは`様子見 / 追加調整余地を確認 / 反応確認 / 材料確認`を示す。因果、成功 / 失敗、具体的な推奨rank / 金額、追加GET、新規storage、Revenue Assistant writeは追加していない。通常Chromeは`0.2.0.48`のため、`0.2.0.49`へのTampermonkey更新とfresh live gateを残し、その後にNowの`RAU-WC-34`へ戻る。
 - 2026-08-28 に、`RAU-RR-68`を公開Next `0.2.0.48`とTampermonkey installed runtimeで完了した。初回`0.2.0.46`のlive gateで見つけた同期再計算による約1秒操作をbounded incremental cacheへ狭め、`0.2.0.47`で31.4〜85.9msへ短縮した。続くAnalyze遷移の日付表現差を共通正規化し、`0.2.0.48`ではTopから対象eventへ正確にfocusしてpending stateを単発消費した。最終観測の3日 / 7日切替は88.4ms / 93.6ms、対象GET、Revenue Assistant write、HTTP / loading / runtime / console errorは0だった。公開artifact / source mapはrelease manifestと一致し、Classic固定baselineを維持した。因果、成功率、推奨rank / 金額、追加GET、新規storage、半年prefetch、Revenue Assistant writeは追加していない。
 - 2026-08-28 に、Issue #27の実装前planを更新し、`RAU-RR-68`へ`D-20260828-002`の補強を追加した。親行の調整日範囲は採用eventのJST日付min / max、timing数は異なるevent timestamp数、担当者filter候補件数はraw event重複を除いた一意なstayDate x roomGroup数とする。3日 / 7日は初期7日の明示切替、選択中horizonだけの表示 / sort、別horizon fallbackなしへ変更した。Analyzeは氏名を含まないevent keyをsessionStorageで単発focusし、stale / missing時はroom cardへfallbackする。実装前gateとして`RAU-WC-35` live確認と`RAU-PERF-27` baselineを置いた。fresh再開ではChrome control bootstrap、Chrome family選択、既存Revenue Assistant tab discovery、Chrome / extension / native host診断までは成功したが、同tabのcontrol claimが2回とも`js execution timed out; kernel reset, rerun your request`で停止した。DOM、Tampermonkey installed version、performance markerには未到達のため、Chromeを強制終了・設定変更・別surfaceへ切り替えずruntime変更を開始していない。
 - 2026-08-28 に、利用者が求めたTopのレート調整効果レビューを`RAU-RR-68`としてdocs-firstで正本化した。親行は宿泊日単位で各room typeの最新調整1件だけを集計し、過去eventは展開後に残す。担当者、宿泊月、曜日等のfilter / sort、3日 / 7日の変更前後ペースと変化量、before gray / after blue、取得範囲内・保存済み根拠限定、担当者名非保存、追加GET / storage / writeなしを`D-20260828-001`と`docs/spec_003_rank_recommendation_signal.md`へ固定した。実装は`RAU-WC-35` live gateと`RAU-PERF-27` baselineの後のNext候補とし、`RAU-RR-67`の期待値UIとは独立させる。
