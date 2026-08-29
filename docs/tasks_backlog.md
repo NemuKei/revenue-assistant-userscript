@@ -1037,7 +1037,7 @@
 ### RAU-UX-181 Analyze上部の遅延ランク判定を未展開のまま確定表示へ進める
 
 - 状態:
-  - source実装、spec、focused / full local gate、合成Browser確認、main同期、Next `0.2.0.52` manual publication、公開artifact / Classic baseline照合まで完了した。Tampermonkey更新後の通常Chrome live gateを残す。sourceは`8ef3bf65ac7c45dc5084a3e9d6399080a20a31a6`、Validate Main runは`33234667550`、publication runは`33234738933`である。
+  - source実装、spec、focused / full local gate、合成Browser確認、main同期、Next `0.2.0.52` manual publication、公開artifact / Classic baseline照合まで完了した。Tampermonkey更新後の通常Chrome live gateは、後続`RAU-UX-182`を含む公開Next `0.2.0.53`で統合確認する。sourceは`8ef3bf65ac7c45dc5084a3e9d6399080a20a31a6`、Validate Main runは`33234667550`、publication runは`33234738933`である。
 - 解決する問題:
   - Analyze初期表示でroom current summaryがrank statusより先に完了すると、上部`ランク変更履歴`のtagは描画されても、全件が`判定材料待ち`の古いassessmentに留まる。room cardを展開するとfull hydrationに伴って更新されるため、履歴取得自体の失敗に見え、初期表示だけでは判断を完了できない。
 - 実装境界:
@@ -1058,12 +1058,12 @@
   - Chromeの合成Analyzeでは、room展開0件のままtag 0件から4件へ進み、stateは`opposed` 2件 / `unchanged` 2件、console warning / error 0だった。既存focused Browser testでdesktop / 390pxのtag contrast、横overflow、runtime error 0を維持した。
   - `npm run check:next`、`npm run check`、Classic publication boundary、`git diff --check`が通過した。
 - publication / live verification:
-  - source `8ef3bf65ac7c45dc5084a3e9d6399080a20a31a6`はValidate Main run `33234667550`を通過し、manual workflow run `33234738933`、run number 52、attempt 1でNext `0.2.0.52`へ配信した。公開Nextは435,909 bytes、SHA-256 `709A2B8F0B47659F000F30241C5D5558C999B6C768BE3BF79E190D01F1B5DBF8`、source mapは1,722,894 bytes、SHA-256 `E7A16A2690FA64B11A1EB74806FB1A00C3AD2CA39CE7BFBA8336E716B1E631E8`でrun identityと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。Tampermonkey更新後の通常Chrome live gateは未実施である。
+  - source `8ef3bf65ac7c45dc5084a3e9d6399080a20a31a6`はValidate Main run `33234667550`を通過し、manual workflow run `33234738933`、run number 52、attempt 1でNext `0.2.0.52`へ配信した。公開Nextは435,909 bytes、SHA-256 `709A2B8F0B47659F000F30241C5D5558C999B6C768BE3BF79E190D01F1B5DBF8`、source mapは1,722,894 bytes、SHA-256 `E7A16A2690FA64B11A1EB74806FB1A00C3AD2CA39CE7BFBA8336E716B1E631E8`でrun identityと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。Tampermonkey更新後の通常Chrome live gateは未実施で、後続公開Next `0.2.0.53`で統合確認する。
 
 ### RAU-UX-182 Analyzeの閉じたroom cardへ意図・次アクションを常時表示する
 
 - 状態:
-  - source / specを実装し、focused / Next全local gate、Classic build / publication boundary、candidate / synthetic publication、合成Chromeのdesktop表示・展開操作まで通した。main同期、manual publication、Tampermonkey更新後の通常Chrome live gateを残す。
+  - source / spec、focused / Next全local gate、Classic build / publication boundary、candidate / synthetic publication、合成Chromeのdesktop表示・展開操作、main同期、Next `0.2.0.53` manual publication、公開artifact / Classic baseline照合まで完了した。Tampermonkey更新後の通常Chrome live gateを残す。sourceは`d65612594c99175e765b8b15c976fa38a8e443af`、Validate Main runは`33236156523`、publication runは`33236224685`である。
 - 解決する問題:
   - 上部`ランク変更履歴`またはbooking curve展開後には`意図 / 次アクション`があるが、個別room cardではcurveを開く前にそのroomの判断を読めず、販売室数summaryと最新rankを見た後に別の一覧へ視線を戻す必要がある。
 - 実装境界:
@@ -1084,6 +1084,8 @@
   - focused runtime fixtureでdesktop / 390pxとも、curveを開かずdecision region 2件・card tag 4件を表示し、tag contrast 4.5:1以上、page-level横overflow 0、runtime error 0を確認した。遅延rank fixtureでは未展開のまま全tag 8件へ進み、card tag 4件、`unavailable` 0件、追加booking curve read 0、`current-only`を維持した。
   - 合成Chromeのdesktopでは販売室数summary左・decision右・開閉button下の配置を目視確認し、button展開後もdecision region 2件を維持した。console warning / errorは0だった。
   - typecheck、repo全lint、Next全check / fixture build、Classic build / publication boundary、candidate artifact、synthetic publication payload一致、`git diff --check`が通過した。
+- publication / live verification:
+  - source `d65612594c99175e765b8b15c976fa38a8e443af`はValidate Main run `33236156523`を通過し、manual workflow run `33236224685`、run number 53、attempt 1でNext `0.2.0.53`へ配信した。公開Nextは437,537 bytes、SHA-256 `FDEB72C11E4E3D0725BC56718CCA0C958AC631FC98D5D4B3ABEE83DD1BAFCA56`、source mapは1,726,750 bytes、SHA-256 `CEE7A85B595CB4265179148250F0668D9EFC5950B48CA6573C6C83673B687379`でrun identityと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。Tampermonkey更新後の通常Chromeで、閉じたroom card表示と`RAU-UX-181`の遅延収束を同時に確認する。
 
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
@@ -12500,7 +12502,7 @@ Later:
 
 統合判断:
 
-- 2026-08-29 に、利用者がAnalyze room cardの最新変更履歴・rank下の余白へ`意図 / 次アクション`を置き、booking curveを開かず判断できるようにする案を明示したため、`RAU-UX-182`としてaddした。上部一覧は横断比較、閉じたcardは当該roomの最新7日判定、展開curveは根拠確認に分け、同じpure assessmentとpresentationを再利用する。desktopは販売室数summary左・decision右、390pxは縦積みとし、追加GET / storage / write、自動展開、full reference hydrationは増やさない。`RAU-UX-181`のlive gateは次の公開Nextで同時確認する。
+- 2026-08-29 に、利用者がAnalyze room cardの最新変更履歴・rank下の余白へ`意図 / 次アクション`を置き、booking curveを開かず判断できるようにする案を明示したため、`RAU-UX-182`としてaddした。上部一覧は横断比較、閉じたcardは当該roomの最新7日判定、展開curveは根拠確認に分け、同じpure assessmentとpresentationを再利用する。desktopは販売室数summary左・decision右、390pxは縦積みとし、追加GET / storage / write、自動展開、full reference hydrationは増やしていない。source `d65612594c99175e765b8b15c976fa38a8e443af`はValidate Main run `33236156523`を通過し、manual workflow run `33236224685`でNext `0.2.0.53`へ配信した。公開artifact / Classic baseline照合まで完了し、Tampermonkey更新後に`RAU-UX-181 / 182`を同時確認する。
 - 2026-08-29 に、利用者がAnalyze上部`ランク変更履歴`の`意図 / 次アクション`が計算から表示反映へ進まないように見えると報告したため、`RAU-UX-180`を未完了へ戻さず、遅延rank statusと未展開room summaryの収束を`RAU-UX-181`としてaddした。修正前fixtureでは履歴完了後もtag 4件すべてが`判定材料待ち`に留まり、原因は完了後の再構築対象を開いているroomだけに限定していたことだった。afterは保存済みcurrent-only recordからactiveな全roomを一度だけ再評価し、room展開、full hydration、追加GET / storage / writeを増やさない。source `8ef3bf65ac7c45dc5084a3e9d6399080a20a31a6`はValidate Main run `33234667550`を通過し、manual workflow run `33234738933`でNext `0.2.0.52`へ配信した。公開artifact / Classic baseline照合まで完了し、Tampermonkey更新後の通常Chrome live gateを残す。
 - 2026-08-29 に、`RAU-UX-180`のsource `7e361b78c3655e013d9a7d415aa534f707eebc7a`をValidate Main run `33230686346`通過後、manual workflow run `33230768323`、run number 51、attempt 1でNext `0.2.0.51`へ配信した。公開Nextは435,789 bytes、SHA-256 `C5DD08FE84CBF48F5E7037FA7C49E4DE45A2C4EA39371AC0DC94EE46D9A10544`、source mapは1,722,286 bytes、SHA-256 `842A1C49962BBDE4AE52464885C705F7755C14AF37DB3756A40CD79530E312CD`でrun identityと一致し、Classic固定baselineも不変だった。Tampermonkey更新後の通常Chromeでは、Analyze上部 / 展開curve / event履歴の`意図 / 次アクション`、同方向 / 逆方向 / 変化なし、内部欠損0、Topのfilter順 / 4分類 / focus復元をfresh確認した。色だけでなく矢印・符号・文字を併記し、contrast 6.83:1以上、横overflow、追加request / write、console warning / errorは0だった。Top backgroundは200 / 200、保存200、エラー0で完了し、Long Task 197 / 最大1,717msは既存performance残課題として`RAU-PERF-27`の観測境界へ残す。`RAU-UX-180`を完了し、Nowを`RAU-WC-34`へ戻す。
 - 2026-08-29 に、利用者が公開Next `0.2.0.50`へ更新した通常ChromeでTop runtime `ready-read-only`、取得処理`4/4`、保存4、重複回避0、エラー0をfresh確認した。追加要件は公開済み`RAU-UX-179`を未完了へ戻さず、同じ判定をAnalyze上部一覧・room展開curve・Topのintent filterへ再利用する`RAU-UX-180`としてaddした。`RAU-WC-34`はこの利用者向けsliceの後へ移し、追加GET / storage / writeを広げない。
