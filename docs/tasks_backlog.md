@@ -1364,7 +1364,7 @@
 
 - 状態:
   - GitHub Issue #28で実装契約を確定したcapability probe。直接API navigationの`net::ERR_BLOCKED_BY_CLIENT`はendpoint能力の証拠にせず、通常runtimeの既存rank status transportへ測定経路を移す。`RAU-WC-34`本体は未着手のまま維持する。
-  - 2026-08-29にpure summary、bounded runner、Topのexact development flag、合成fixture、通常回帰まで実装し、focused check、typecheck、lint、Next全体check、publication contract、Classic boundaryをlocal通過した。`main`同期、manual Next公開、Tampermonkey更新後のlive gateと5分類判断は未完である。
+  - 2026-08-29にpure summary、bounded runner、Topのexact development flag、合成fixture、通常回帰まで実装し、focused check、typecheck、lint、Next全体check、publication contract、Classic boundaryをlocal通過した。source `f56cae4`を`main`へ同期し、Validate Mainとmanual run `33239258167`を成功、Next `0.2.0.54`のremote byte / run identityとClassic固定byteを照合した。通常Chromeは`0.2.0.53`のため、Tampermonkey更新後のlive gateと5分類判断は未完である。
 - 最初のscope:
   - Topのexact development flagでだけharnessを表示し、明示button後にJST当日から31 / 62 / 93 / 184日inclusiveを最大4 GET・直列・同一page session 1回だけ照会する。通常queryなし、Analyze、monthlyではroot / 追加GET 0とする。
   - 既存rank parserと同じvalid / invalid / ignored意味でcount-only summaryを作り、latency、event件数、一意stay date数、coverage offset、pagination / truncation / root validityだけをpage memoryへ置く。raw response、担当者、施設 / room ID、価格、個別event、timestamp一覧、認証情報をDOM、storage、console、performance marker、通常diagnostics、repoへ残さない。
