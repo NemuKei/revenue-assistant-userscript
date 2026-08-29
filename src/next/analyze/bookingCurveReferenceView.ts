@@ -11,7 +11,17 @@ import {
     ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE,
     ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE
 } from "../adjustmentReview/adjustmentReviewFocus";
-import { buildAdjustmentReviewEventKey } from "../adjustmentReview/adjustmentReviewModel";
+import {
+    buildAdjustmentReviewEventKey,
+    type AdjustmentReviewIntentAssessment,
+    type EvaluatedAdjustmentReviewEvent
+} from "../adjustmentReview/adjustmentReviewModel";
+import {
+    formatAdjustmentReviewIntentSummary,
+    formatAdjustmentReviewNextAction,
+    formatAdjustmentReviewObservation,
+    getAdjustmentReviewIntentIcon
+} from "../adjustmentReview/adjustmentReviewPresentation";
 
 export const BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE = "data-ra-next-booking-curve-reference-root";
 export const BOOKING_CURVE_REFERENCE_STYLE_ATTRIBUTE = "data-ra-next-booking-curve-reference-style";
@@ -30,6 +40,8 @@ export const BOOKING_CURVE_REFERENCE_ACTIVE_GUIDE_ATTRIBUTE = "data-ra-next-book
 export const BOOKING_CURVE_REFERENCE_ACTIVE_POINT_ATTRIBUTE = "data-ra-next-booking-curve-reference-active-point";
 export const BOOKING_CURVE_RANK_MARKER_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker";
 export const BOOKING_CURVE_RANK_MARKER_HITBOX_ATTRIBUTE = "data-ra-next-booking-curve-rank-marker-hitbox";
+export const BOOKING_CURVE_ADJUSTMENT_REVIEW_ATTRIBUTE = "data-ra-next-booking-curve-adjustment-review";
+export const BOOKING_CURVE_ADJUSTMENT_REVIEW_TAG_ATTRIBUTE = "data-ra-next-booking-curve-adjustment-review-tag";
 let bookingCurveChartDescriptionSequence = 0;
 
 export type BookingCurveReferenceRenderState =
@@ -178,8 +190,10 @@ export function renderBookingCurveReference(
     const rankHistory = createRankHistorySummary(
         root.ownerDocument,
         state.rankHistory,
-        viewModel.scope.label
+        viewModel.scope.label,
+        viewModel.adjustmentReviewEvents
     );
+    const adjustmentReview = createAdjustmentReviewSummary(root.ownerDocument, viewModel.adjustmentReviewEvents);
     const grid = root.ownerDocument.createElement("div");
     grid.setAttribute("data-ra-next-booking-curve-reference-grid", "");
     const domain = resolveSharedDomain(viewModel);
@@ -188,7 +202,7 @@ export function renderBookingCurveReference(
     }
     const diagnostics = createSeriesDiagnostics(root.ownerDocument, viewModel.panels);
     const details = createReferenceDetails(root.ownerDocument, meta, note, diagnostics, rankHistory);
-    root.replaceChildren(header, legend, grid, details);
+    root.replaceChildren(header, legend, ...(adjustmentReview === null ? [] : [adjustmentReview]), grid, details);
 }
 
 export function createEmbeddedBookingCurveReference(
@@ -213,6 +227,7 @@ export function createEmbeddedBookingCurveReference(
     note.setAttribute("data-ra-next-booking-curve-reference-note", "");
     note.textContent = "欠損位置は推測せず、保存済みsourceと不足tailだけで描画します。";
     const legend = createLegend(documentHost, viewModel);
+    const adjustmentReview = createAdjustmentReviewSummary(documentHost, viewModel.adjustmentReviewEvents);
     const grid = documentHost.createElement("div");
     grid.setAttribute("data-ra-next-booking-curve-reference-grid", "");
     const domain = resolveSharedDomain(viewModel);
@@ -223,9 +238,16 @@ export function createEmbeddedBookingCurveReference(
     const details = createReferenceDetails(documentHost, meta, note, diagnostics, createRankHistorySummary(
         documentHost,
         rankHistory,
-        viewModel.scope.label
+        viewModel.scope.label,
+        viewModel.adjustmentReviewEvents
     ));
-    component.replaceChildren(header, legend, grid, details);
+    component.replaceChildren(
+        header,
+        legend,
+        ...(adjustmentReview === null ? [] : [adjustmentReview]),
+        grid,
+        details
+    );
     return component;
 }
 
@@ -645,7 +667,8 @@ function createChart(
 function createRankHistorySummary(
     documentHost: Document,
     state: BookingCurveRankHistoryViewState,
-    scopeLabel: string
+    scopeLabel: string,
+    adjustmentReviewEvents: readonly EvaluatedAdjustmentReviewEvent[] = []
 ): HTMLElement {
     const section = documentHost.createElement("section");
     section.setAttribute("data-ra-next-booking-curve-rank-history", state.status);
@@ -692,7 +715,7 @@ function createRankHistorySummary(
     const table = documentHost.createElement("table");
     const thead = documentHost.createElement("thead");
     const header = documentHost.createElement("tr");
-    for (const label of ["反映日", "LT", "変更前", "変更後"]) {
+    for (const label of ["反映日", "LT", "変更前", "変更後", "意図（7日）", "次アクション"]) {
         const cell = documentHost.createElement("th");
         cell.scope = "col";
         cell.textContent = label;
@@ -700,16 +723,18 @@ function createRankHistorySummary(
     }
     thead.append(header);
     const tbody = documentHost.createElement("tbody");
+    const reviewByEventKey = new Map(adjustmentReviewEvents.map((event) => [event.eventKey, event]));
     for (const event of state.events) {
         const row = documentHost.createElement("tr");
         row.tabIndex = -1;
-        row.setAttribute(ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE, buildAdjustmentReviewEventKey({
+        const eventKey = buildAdjustmentReviewEventKey({
             afterRankName: event.afterRankName,
             beforeRankName: event.beforeRankName,
             reflectedAt: event.reflectedAt,
             roomGroupId: event.roomGroupId,
             stayDate: event.stayDate
-        }));
+        });
+        row.setAttribute(ADJUSTMENT_REVIEW_EVENT_KEY_ATTRIBUTE, eventKey);
         for (const value of [
             formatDate(event.reflectedDate),
             `${event.daysBeforeStay}日前`,
@@ -720,12 +745,70 @@ function createRankHistorySummary(
             cell.textContent = value;
             row.append(cell);
         }
+        const review = reviewByEventKey.get(eventKey);
+        row.append(
+            createAdjustmentReviewTableCell(documentHost, review?.intentAssessments[7] ?? null, "intent"),
+            createAdjustmentReviewTableCell(documentHost, review?.intentAssessments[7] ?? null, "action")
+        );
         tbody.append(row);
     }
     table.append(thead, tbody);
     details.append(summary, table);
     section.append(message, details);
     return section;
+}
+
+function createAdjustmentReviewSummary(
+    documentHost: Document,
+    events: readonly EvaluatedAdjustmentReviewEvent[]
+): HTMLElement | null {
+    const latest = [...events].sort((left, right) => right.reflectedAt.localeCompare(left.reflectedAt))[0];
+    if (latest === undefined) {
+        return null;
+    }
+    const assessment = latest.intentAssessments[7];
+    const section = documentHost.createElement("section");
+    section.setAttribute(BOOKING_CURVE_ADJUSTMENT_REVIEW_ATTRIBUTE, assessment.state);
+    const label = documentHost.createElement("strong");
+    label.textContent = "7日比較 / 最新調整";
+    const tags = documentHost.createElement("span");
+    tags.setAttribute("data-ra-next-booking-curve-adjustment-review-tags", "");
+    tags.append(
+        createAdjustmentReviewTag(documentHost, assessment, "intent"),
+        createAdjustmentReviewTag(documentHost, assessment, "action")
+    );
+    const observation = documentHost.createElement("small");
+    observation.textContent = `観測: ${formatAdjustmentReviewObservation(latest.observations[7])}`;
+    section.append(label, tags, observation);
+    return section;
+}
+
+function createAdjustmentReviewTableCell(
+    documentHost: Document,
+    assessment: AdjustmentReviewIntentAssessment | null,
+    kind: "action" | "intent"
+): HTMLTableCellElement {
+    const cell = documentHost.createElement("td");
+    if (assessment === null) {
+        cell.textContent = "—";
+        return cell;
+    }
+    cell.append(createAdjustmentReviewTag(documentHost, assessment, kind));
+    return cell;
+}
+
+function createAdjustmentReviewTag(
+    documentHost: Document,
+    assessment: AdjustmentReviewIntentAssessment,
+    kind: "action" | "intent"
+): HTMLElement {
+    const tag = documentHost.createElement("span");
+    tag.setAttribute(BOOKING_CURVE_ADJUSTMENT_REVIEW_TAG_ATTRIBUTE, kind);
+    tag.setAttribute("data-state", assessment.state);
+    tag.textContent = kind === "intent"
+        ? `${getAdjustmentReviewIntentIcon(assessment.state)} ${formatAdjustmentReviewIntentSummary(assessment.state)}`
+        : formatAdjustmentReviewNextAction(assessment);
+    return tag;
 }
 
 function createAccessibleTable(
@@ -1319,6 +1402,37 @@ export function getBookingCurveReferenceStyles(): string {
     width: 18px; height: 3px; border-radius: 2px;
 }
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-series-visible="false"] { opacity: .48; }
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_ATTRIBUTE}] {
+    display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px 10px;
+    padding: 9px 10px; border: 1px solid #d8e2f1; border-radius: 9px; background: #fff;
+    color: #496174; font-size: 12px; line-height: 1.45;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_ATTRIBUTE}] > strong {
+    color: #243447; font-size: 12px;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_ATTRIBUTE}] > small {
+    grid-column: 2; color: #5c7081;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-adjustment-review-tags] {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_TAG_ATTRIBUTE}] {
+    display: inline-flex; align-items: center; width: fit-content; max-width: 100%;
+    padding: 2px 7px; border: 1px solid; border-radius: 999px;
+    font-size: 11px; font-weight: 700; line-height: 1.35; white-space: normal;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_TAG_ATTRIBUTE}][data-state="aligned"] {
+    color: #155e75; background: #ecfeff; border-color: #67e8f9;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_TAG_ATTRIBUTE}][data-state="opposed"] {
+    color: #6b21a8; background: #faf5ff; border-color: #d8b4fe;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_TAG_ATTRIBUTE}][data-state="unchanged"] {
+    color: #92400e; background: #fffbeb; border-color: #fcd34d;
+}
+[${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_TAG_ATTRIBUTE}][data-state="unavailable"] {
+    color: #475569; background: #f8fafc; border-color: #cbd5e1; border-style: dashed;
+}
 [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-rank-history] {
     margin-top: 9px; padding: 9px 10px; border: 1px solid #d8e1e8; border-radius: 7px;
     background: #f8fafb; color: #496174;
@@ -1417,6 +1531,12 @@ export function getBookingCurveReferenceStyles(): string {
     }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-control-group] { width: 100%; }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] button { min-height: 44px; }
+    [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_ATTRIBUTE}] {
+        grid-template-columns: 1fr;
+    }
+    [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [${BOOKING_CURVE_ADJUSTMENT_REVIEW_ATTRIBUTE}] > small {
+        grid-column: 1;
+    }
     [${BOOKING_CURVE_REFERENCE_ROOT_ATTRIBUTE}] [data-ra-next-booking-curve-reference-grid] { grid-template-columns: 1fr; }
 }
 `;

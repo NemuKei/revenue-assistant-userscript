@@ -23,10 +23,17 @@ import {
 } from "../../curveCore";
 import type { ExistingIndexedDbReadResult } from "../../indexedDbReadOnly";
 import { LEAD_TIME_BUCKET_TICKS } from "../../leadTimeBuckets";
+import { resolveRankRecommendationRankChangeDirection } from "../../rankOrder";
 import type {
     NextBookingCurveLandingObservation,
     NextBookingCurveSourceRecord
 } from "../bookingCurve/bookingCurveSourceStore";
+import {
+    buildAdjustmentReviewEventKey,
+    evaluateAdjustmentReviewEvents,
+    type AdjustmentReviewEvent,
+    type EvaluatedAdjustmentReviewEvent
+} from "../adjustmentReview/adjustmentReviewModel";
 import type { BookingCurveReferenceScope } from "./bookingCurveReferenceDataSource";
 import type {
     BookingCurveRankHistoryViewState,
@@ -97,6 +104,7 @@ export interface BookingCurveReferenceCurrentSummary {
 }
 
 export interface BookingCurveReferenceViewModel {
+    adjustmentReviewEvents: readonly EvaluatedAdjustmentReviewEvent[];
     asOfDate: string;
     capacityRooms: number | null;
     currentSummary: BookingCurveReferenceCurrentSummary;
@@ -131,6 +139,7 @@ export function buildBookingCurveReferenceViewModel(options: {
     facilityId: string;
     readStatus: ExistingIndexedDbReadResult<BookingCurveRawSourceRecord>;
     records: readonly unknown[];
+    rankAssessmentEvents?: readonly BookingCurveRankStatusEvent[];
     rankEvents?: readonly BookingCurveRankStatusEvent[];
     rankHistory?: BookingCurveRankHistoryViewState;
     scope: BookingCurveReferenceScope;
@@ -259,6 +268,13 @@ export function buildBookingCurveReferenceViewModel(options: {
     const rankEvents = options.scope.kind === "roomGroup" && rankHistory.status === "ready"
         ? rankHistory.events
         : [];
+    const adjustmentReviewEvents = buildBookingCurveAdjustmentReviewEvents({
+        asOfDate,
+        events: options.rankAssessmentEvents ?? rankEvents,
+        records,
+        scope: options.scope,
+        stayDate
+    });
     const panels = (["all", secondarySegment] as const).map((segment): BookingCurveReferencePanel => {
         const current = buildCurrentSeries(currentRecord, normalizedStayDate, normalizedAsOfDate, segment);
         const recentZeroDay = buildRecentZeroDayReference(
@@ -330,6 +346,7 @@ export function buildBookingCurveReferenceViewModel(options: {
     return {
         status: "ready",
         viewModel: {
+            adjustmentReviewEvents,
             asOfDate,
             capacityRooms: normalizeNonNegativeNumber(currentRecord?.response.max_room_count),
             currentSummary,
@@ -345,6 +362,63 @@ export function buildBookingCurveReferenceViewModel(options: {
             visibility
         }
     };
+}
+
+export function buildBookingCurveAdjustmentReviewEvents(options: {
+    asOfDate: string;
+    events: readonly BookingCurveRankStatusEvent[];
+    records: readonly BookingCurveRawSourceRecord[];
+    scope: BookingCurveReferenceScope;
+    stayDate: string;
+}): EvaluatedAdjustmentReviewEvent[] {
+    if (options.scope.kind !== "roomGroup" || options.scope.roomGroupId === null) {
+        return [];
+    }
+    const stayDate = toCompactDateKey(options.stayDate);
+    if (stayDate === null) {
+        return [];
+    }
+    const roomGroupId = options.scope.roomGroupId;
+    const events = options.events
+        .filter((event) => (
+            event.roomGroupId === roomGroupId
+            && toCompactDateKey(event.stayDate) === stayDate
+        ))
+        .map((event): AdjustmentReviewEvent => {
+            const direction = resolveRankRecommendationRankChangeDirection({
+                afterRankName: event.afterRankName,
+                beforeRankName: event.beforeRankName
+            });
+            return {
+                actorName: event.reflectorName?.trim() || null,
+                afterRankName: event.afterRankName,
+                beforeRankName: event.beforeRankName,
+                daysBeforeStay: event.daysBeforeStay,
+                direction: direction.direction,
+                directionSource: direction.source,
+                eventKey: buildAdjustmentReviewEventKey({
+                    afterRankName: event.afterRankName,
+                    beforeRankName: event.beforeRankName,
+                    reflectedAt: event.reflectedAt,
+                    roomGroupId,
+                    stayDate
+                }),
+                reflectedAt: event.reflectedAt,
+                reflectedDate: toCompactDateKey(event.reflectedDate) ?? event.reflectedDate,
+                roomGroupId,
+                stayDate
+            };
+        });
+    return evaluateAdjustmentReviewEvents({
+        asOfDate: options.asOfDate,
+        events,
+        records: options.records,
+        rooms: [{
+            order: 0,
+            roomGroupId,
+            roomGroupName: options.scope.label
+        }]
+    });
 }
 
 function resolveRankHistory(options: {

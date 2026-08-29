@@ -23,6 +23,7 @@ import {
     type AdjustmentReviewDirection,
     type AdjustmentReviewFilters,
     type AdjustmentReviewHorizon,
+    type AdjustmentReviewIntentState,
     type AdjustmentReviewObservationState,
     type AdjustmentReviewSort,
     type AdjustmentReviewViewModel,
@@ -289,6 +290,7 @@ export function startAdjustmentReviewRuntime(
             filters.adjustmentDateFrom,
             filters.adjustmentDateTo,
             filters.direction,
+            filters.intent,
             filters.observation,
             filters.roomGroupId,
             filters.stayMonth,
@@ -642,6 +644,10 @@ function updateFilters(
             ...current,
             direction: isDirection(value) ? value : null
         };
+        case "intent": return {
+            ...current,
+            intent: isIntentState(value) ? value : null
+        };
         case "observation": return {
             ...current,
             observation: isObservation(value) ? value : null
@@ -675,6 +681,13 @@ function isObservation(value: string): value is AdjustmentReviewObservationState
         || value === "pending"
         || value === "censored"
         || value === "excluded";
+}
+
+function isIntentState(value: string): value is AdjustmentReviewIntentState {
+    return value === "aligned"
+        || value === "opposed"
+        || value === "unchanged"
+        || value === "unavailable";
 }
 
 function normalizeInputDate(value: string): string | null {

@@ -203,6 +203,11 @@ const parsedRankSnapshot = rankModel.parseBookingCurveRankStatusResponse({
 }, "20260812");
 assert.notEqual(parsedRankSnapshot, null);
 assert.equal(parsedRankSnapshot.events.length, 2);
+assert.equal(
+    parsedRankSnapshot.assessmentEvents.length,
+    3,
+    "validated same-day events must remain available for adjustment assessment before display dedupe"
+);
 assert.equal(parsedRankSnapshot.invalidEventCount, 3);
 assert.equal(parsedRankSnapshot.events[0].roomGroupId, "single");
 assert.equal(parsedRankSnapshot.events[0].beforeRankName, "11", "same room/day keeps the latest event");
@@ -470,6 +475,7 @@ const roomRankBuilt = model.buildBookingCurveReferenceViewModel({
     facilityId: "yad:fixture",
     readStatus: { status: "ready", records: [roomRankRecord] },
     records: [roomRankRecord],
+    rankAssessmentEvents: parsedRankSnapshot.assessmentEvents,
     rankEvents: singleRankHistory.events,
     scope: roomScope,
     scopes,
@@ -480,6 +486,15 @@ assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers.length, 1);
 assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers[0].value, 4);
 assert.equal(roomRankBuilt.viewModel.panels[0].rankMarkers[0].reflectorName, "latest-person");
 assert.equal(roomRankBuilt.viewModel.panels[1].rankMarkers[0].value, 3);
+assert.equal(roomRankBuilt.viewModel.adjustmentReviewEvents.length, 2);
+assert.equal(
+    roomRankBuilt.viewModel.adjustmentReviewEvents.every((event) => (
+        event.observations[7].state === "excluded"
+        && event.intentAssessments[7].state === "unavailable"
+    )),
+    true,
+    "same-day adjustments must not become actionable after the marker history is deduped"
+);
 assert.equal(built.viewModel.panels.every((panel) => panel.rankMarkers.length === 0), true);
 assert.equal("adjustmentResponse" in roomRankBuilt.viewModel, false);
 assert.equal("adjustmentResponse" in built.viewModel, false);
@@ -495,6 +510,24 @@ const embeddedRoomSvgs = findVirtualElementsByAttribute(
     embeddedRoomCurve,
     "data-ra-next-booking-curve-reference-svg"
 );
+assert.equal(
+    findVirtualElementsByAttribute(
+        embeddedRoomCurve,
+        "data-ra-next-booking-curve-adjustment-review"
+    ).length,
+    1,
+    "an expanded room curve must show its latest seven-day decision summary"
+);
+assert.equal(
+    findVirtualElementsByAttribute(
+        embeddedRoomCurve,
+        "data-ra-next-booking-curve-adjustment-review-tag"
+    ).length,
+    4,
+    "the latest summary and event history must each expose intent and next-action text tags"
+);
+assert.match(collectVirtualText(embeddedRoomCurve), /7日比較 \/ 最新調整/u);
+assert.match(collectVirtualText(embeddedRoomCurve), /判定材料待ち/u);
 assert.equal(embeddedRoomSvgs.length, 2);
 assert.equal(findVirtualElementsByTagName(embeddedRoomCurve, "title").length, 0);
 for (const svg of embeddedRoomSvgs) {
@@ -535,6 +568,56 @@ assert.equal(
     findVirtualElementsByAttribute(embeddedRoomCurve, "data-ra-next-booking-curve-adjustment-response").length,
     0,
     "embedded room booking curve must not duplicate the rank history in an adjustment-response block"
+);
+
+const sevenDayAssessmentEvent = {
+    afterRankName: "11",
+    beforeRankName: "12",
+    daysBeforeStay: 23,
+    reflectedAt: "2026-07-20T03:30:00.000Z",
+    reflectedDate: "2026-07-20",
+    roomGroupId: "single",
+    signature: "2026-07-20:12:11",
+    stayDate: "20260812"
+};
+for (const [label, points, expectedState] of [
+    ["aligned", [["2026-07-13", 1, 1, 0], ["2026-07-20", 4, 4, 0], ["2026-07-27", 5, 5, 0]], "aligned"],
+    ["opposed", [["2026-07-13", 1, 1, 0], ["2026-07-20", 2, 2, 0], ["2026-07-27", 5, 5, 0]], "opposed"],
+    ["unchanged", [["2026-07-13", 1, 1, 0], ["2026-07-20", 3, 3, 0], ["2026-07-27", 5, 5, 0]], "unchanged"]
+]) {
+    const record = createRecord({ asOfDate: "20260730", points, scope: roomScope, stayDate: "20260812" });
+    const assessed = model.buildBookingCurveAdjustmentReviewEvents({
+        asOfDate: "20260730",
+        events: [sevenDayAssessmentEvent],
+        records: [record],
+        scope: roomScope,
+        stayDate: "20260812"
+    });
+    assert.equal(assessed[0].intentAssessments[7].state, expectedState, `Analyze must reuse the ${label} intent state`);
+}
+const threeDayOnlyRecord = createRecord({
+    asOfDate: "20260730",
+    points: [
+        ["2026-07-17", 1, 1, 0],
+        ["2026-07-20", 3, 3, 0],
+        ["2026-07-23", 4, 4, 0]
+    ],
+    scope: roomScope,
+    stayDate: "20260812"
+});
+const threeDayOnlyAssessment = model.buildBookingCurveAdjustmentReviewEvents({
+    asOfDate: "20260730",
+    events: [sevenDayAssessmentEvent],
+    records: [threeDayOnlyRecord],
+    scope: roomScope,
+    stayDate: "20260812"
+})[0];
+assert.equal(threeDayOnlyAssessment.observations[3].state, "ready");
+assert.equal(threeDayOnlyAssessment.observations[7].state, "missing");
+assert.equal(
+    threeDayOnlyAssessment.intentAssessments[7].state,
+    "unavailable",
+    "Analyze must not fall back to a ready three-day comparison when the explicit seven-day view is missing"
 );
 const rankMarkerHitboxes = findVirtualElementsByAttribute(
     embeddedRoomCurve,
@@ -1253,6 +1336,7 @@ assert.match(styles, /@media \(max-width: 680px\)/u);
 assert.match(styles, /max-width: calc\(100vw - 48px\)/u);
 assert.match(styles, /min-height: 44px/u);
 assert.match(styles, /data-ra-next-booking-curve-rank-marker-hitbox/u);
+assert.match(styles, /data-ra-next-booking-curve-adjustment-review-tag/u);
 assert.match(styles, /font-size: 14px/u);
 assert.match(styles, /data-ra-next-booking-curve-reference-control-label/u);
 assert.match(styles, /data-ra-next-booking-curve-reference-active-guide/u);
@@ -1263,7 +1347,10 @@ assert.match(styles, /grid-template-columns: repeat\(2, minmax\(0, 1fr\)\)/u);
 assert.match(viewSource, /header\.append\(createControls\(root\.ownerDocument, viewModel\)\)/u);
 assert.match(viewSource, /export function createEmbeddedBookingCurveReference/u);
 assert.match(viewSource, /createControls\(documentHost, viewModel, false\)/u);
-assert.match(viewSource, /root\.replaceChildren\(header, legend, grid, details\)/u);
+assert.match(
+    viewSource,
+    /root\.replaceChildren\(header, legend,[\s\S]*adjustmentReview[\s\S]*grid, details\)/u
+);
 assert.doesNotMatch(viewSource, /調整後のペース|adjustment-response/u);
 assert.match(viewSource, /body\.append\(meta, note, diagnostics, rankHistory\)/u);
 assert.match(viewSource, /（補間）/u);
@@ -1505,7 +1592,7 @@ function findVirtualElementsByTagName(root, tagName) {
 function collectVirtualText(root) {
     return [
         root.textContent,
-        ...root.childNodes.map((child) => collectVirtualText(child))
+        ...(root.childNodes ?? []).map((child) => collectVirtualText(child))
     ].join(" ");
 }
 
@@ -1593,6 +1680,7 @@ function createReadyRankStatusResult(facilityId, stayDate) {
         contextKey: `${facilityId}|${compactStayDate}`,
         facilityId,
         snapshot: {
+            assessmentEvents: [],
             events: [],
             invalidEventCount: 0,
             stayDate: compactStayDate

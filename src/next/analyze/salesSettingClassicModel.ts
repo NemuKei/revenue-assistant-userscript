@@ -1,4 +1,9 @@
 import { getDaysBetweenDateKeys, normalizeDateKey } from "../../curveCore";
+import {
+    buildAdjustmentReviewEventKey,
+    type AdjustmentReviewIntentAssessment,
+    type AdjustmentReviewObservation
+} from "../adjustmentReview/adjustmentReviewModel";
 import type { BookingCurveReferenceScope } from "./bookingCurveReferenceDataSource";
 import type {
     BookingCurveReferenceCurrentSummary,
@@ -16,6 +21,8 @@ export interface SalesSettingClassicRankSummary {
     afterRankName: string | null;
     beforeRankName: string | null;
     daysAgo: number | null;
+    intentAssessment: AdjustmentReviewIntentAssessment;
+    observation: AdjustmentReviewObservation | null;
     reflectedAt: string;
     roomDelta: number | null;
 }
@@ -69,6 +76,15 @@ export function buildSalesSettingClassicViewModel(options: {
                 .find((panel) => panel.segment === "all")
                 ?.rankMarkers.find((marker) => marker.signature === latestEvent.signature)?.value ?? null;
         const currentValue = curve?.currentSummary.all.currentValue ?? null;
+        const evaluatedEvent = latestEvent === null || curve === null
+            ? null
+            : curve.adjustmentReviewEvents.find((event) => event.eventKey === buildAdjustmentReviewEventKey({
+                afterRankName: latestEvent.afterRankName,
+                beforeRankName: latestEvent.beforeRankName,
+                reflectedAt: latestEvent.reflectedAt,
+                roomGroupId: latestEvent.roomGroupId,
+                stayDate: latestEvent.stayDate
+            })) ?? null;
         return {
             curve,
             rankHistory,
@@ -78,6 +94,12 @@ export function buildSalesSettingClassicViewModel(options: {
                     afterRankName: latestEvent.afterRankName,
                     beforeRankName: latestEvent.beforeRankName,
                     daysAgo: resolveDaysAgo(options.todayDate, latestEvent.reflectedDate),
+                    intentAssessment: evaluatedEvent?.intentAssessments[7] ?? {
+                        followUpDirection: null,
+                        nextAction: "needs-evidence",
+                        state: "unavailable"
+                    },
+                    observation: evaluatedEvent?.observations[7] ?? null,
                     reflectedAt: latestEvent.reflectedAt,
                     roomDelta: currentValue === null || markerValue === null
                         ? null

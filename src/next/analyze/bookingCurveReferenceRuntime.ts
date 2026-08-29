@@ -270,6 +270,7 @@ export function startBookingCurveReferenceRuntime(
             facilityId: activeData.facilityId,
             readStatus: activeData.readStatus,
             records: activeData.records,
+            rankAssessmentEvents: activeRankSnapshot?.assessmentEvents ?? [],
             rankEvents: rankHistory.status === "ready" ? rankHistory.events : [],
             rankHistory,
             scope: activeData.scope,

@@ -1,4 +1,7 @@
 import {
+    type BookingCurveRawSourceRecord
+} from "../../bookingCurveRawSourceContract";
+import {
     getDaysBetweenDateKeys,
     getUtcWeekday,
     normalizeDateKey,
@@ -11,7 +14,6 @@ import {
     type RankRecommendationRankOrderResolution,
     type RankRecommendationRankOrderSource
 } from "../../rankOrder";
-import type { NextBookingCurveSourceRecord } from "../bookingCurve/bookingCurveSourceStore";
 
 const JST_DATE_FORMATTER = new Intl.DateTimeFormat("en-CA", {
     day: "2-digit",
@@ -107,6 +109,7 @@ export interface AdjustmentReviewFilters {
     adjustmentDateFrom: string | null;
     adjustmentDateTo: string | null;
     direction: AdjustmentReviewDirection | null;
+    intent: AdjustmentReviewIntentState | null;
     observation: AdjustmentReviewObservationState | null;
     roomGroupId: string | null;
     stayMonth: string | null;
@@ -159,6 +162,7 @@ export function createInitialAdjustmentReviewFilters(): AdjustmentReviewFilters 
         adjustmentDateFrom: null,
         adjustmentDateTo: null,
         direction: null,
+        intent: null,
         observation: null,
         roomGroupId: null,
         stayMonth: null,
@@ -275,7 +279,7 @@ export function buildAdjustmentReviewViewModel(options: {
     events: readonly AdjustmentReviewEvent[];
     filters: AdjustmentReviewFilters;
     horizon: AdjustmentReviewHorizon;
-    records: readonly NextBookingCurveSourceRecord[];
+    records: readonly BookingCurveRawSourceRecord[];
     rooms: readonly AdjustmentReviewRoom[];
     sort: AdjustmentReviewSort;
 }): AdjustmentReviewViewModel {
@@ -308,11 +312,10 @@ export function buildAdjustmentReviewViewModelFromEvaluatedEvents(options: {
         passesPreFilters(event, options.filters)
     ));
     const latestEvents = selectLatestEvents(prefilteredEvents)
-        .filter((event) => passesObservationFilter(event, options.filters, options.horizon));
+        .filter((event) => passesOutcomeFilters(event, options.filters, options.horizon));
     const selectedKeys = new Set(latestEvents.map((event) => buildAdjustmentReviewScopeKey(event)));
     const detailEvents = prefilteredEvents.filter((event) => (
         selectedKeys.has(buildAdjustmentReviewScopeKey(event))
-        && passesObservationFilter(event, options.filters, options.horizon)
     ));
     const parentRows = buildParentRows(latestEvents, detailEvents, options.horizon)
         .sort((left, right) => compareParentRows(left, right, options.sort));
@@ -384,7 +387,7 @@ export function assessAdjustmentReviewIntent(
 export function evaluateAdjustmentReviewEvents(options: {
     asOfDate: string;
     events: readonly AdjustmentReviewEvent[];
-    records: readonly NextBookingCurveSourceRecord[];
+    records: readonly BookingCurveRawSourceRecord[];
     rooms: readonly AdjustmentReviewRoom[];
 }): EvaluatedAdjustmentReviewEvent[] {
     const asOfDate = toCompactDateKey(options.asOfDate) ?? "";
@@ -467,7 +470,7 @@ function evaluateHorizon(
 }
 
 function buildCurveIndex(
-    records: readonly NextBookingCurveSourceRecord[]
+    records: readonly BookingCurveRawSourceRecord[]
 ): Map<string, Map<string, number>> {
     const result = new Map<string, Map<string, number>>();
     for (const record of records) {
@@ -581,7 +584,7 @@ function buildActorOptions(
     }
     return Array.from(candidatesByActor, ([value, scoped]) => ({
         count: selectLatestEvents(scoped)
-            .filter((event) => passesObservationFilter(event, filters, horizon))
+            .filter((event) => passesOutcomeFilters(event, filters, horizon))
             .length,
         label: value === "__unknown__" ? "担当者不明" : value,
         value
@@ -612,7 +615,7 @@ function buildRoomOptions(
     }
     return Array.from(candidatesByRoom, ([value, scoped]) => ({
         count: selectLatestEvents(scoped)
-            .filter((event) => passesObservationFilter(event, filters, horizon))
+            .filter((event) => passesOutcomeFilters(event, filters, horizon))
             .length,
         label: labels.get(value) ?? "部屋タイプ不明",
         value
@@ -648,13 +651,15 @@ function passesPreFilters(
         );
 }
 
-function passesObservationFilter(
+function passesOutcomeFilters(
     event: EvaluatedAdjustmentReviewEvent,
     filters: AdjustmentReviewFilters,
     horizon: AdjustmentReviewHorizon
 ): boolean {
-    return filters.observation === null
-        || event.observations[horizon].state === filters.observation;
+    return (filters.intent === null
+            || event.intentAssessments[horizon].state === filters.intent)
+        && (filters.observation === null
+            || event.observations[horizon].state === filters.observation);
 }
 
 function compareParentRows(

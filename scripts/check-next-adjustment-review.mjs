@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { importBundledTypeScript } from "./import-typescript-module.mjs";
 
 const review = await importBundledTypeScript(
@@ -12,6 +13,10 @@ const dataSourceApi = await importBundledTypeScript(
 const focusApi = await importBundledTypeScript(
     "../src/next/adjustmentReview/adjustmentReviewFocus.ts",
     import.meta.url
+);
+const adjustmentReviewViewSource = await readFile(
+    new URL("../src/next/adjustmentReview/adjustmentReviewView.ts", import.meta.url),
+    "utf8"
 );
 
 const parsed = review.parseAdjustmentReviewEvents({
@@ -265,6 +270,7 @@ assert.equal(findEvent(evaluated, "room-f", "20260818").observations[7].state, "
 assert.equal(byKey.size, evaluated.length);
 
 const baseFilters = review.createInitialAdjustmentReviewFilters();
+assert.equal(baseFilters.intent, null);
 assert.equal(review.isSameAdjustmentReviewStayDate("2026-08-30", "20260830"), true);
 assert.equal(review.isSameAdjustmentReviewStayDate("2026-08-30", "20260831"), false);
 assert.equal(review.isSameAdjustmentReviewStayDate("invalid", "20260830"), false);
@@ -346,6 +352,46 @@ assert.equal(
     readyOnly.roomOptions.some((option) => option.value === "room-f"),
     false,
     "room option counts must apply observation state after selecting that room's latest event"
+);
+
+const opposedOnly = review.buildAdjustmentReviewViewModel({
+    asOfDate: "20260825",
+    events,
+    filters: { ...baseFilters, intent: "opposed" },
+    horizon: 7,
+    records,
+    rooms,
+    sort: "default"
+});
+assert.deepEqual(
+    opposedOnly.parentRows[0].latestEvents.map((item) => item.roomGroupId),
+    ["room-a"],
+    "intent filtering must use the selected horizon after choosing each stay-room's latest event"
+);
+assert.equal(
+    opposedOnly.parentRows[0].detailEvents.some((item) => item.roomGroupId === "room-a"),
+    true,
+    "older events for an adopted stay-room remain available in detail"
+);
+const readyAndOpposed = review.buildAdjustmentReviewViewModel({
+    asOfDate: "20260825",
+    events,
+    filters: { ...baseFilters, intent: "opposed", observation: "ready" },
+    horizon: 7,
+    records,
+    rooms,
+    sort: "default"
+});
+assert.deepEqual(
+    readyAndOpposed.parentRows[0].latestEvents.map((item) => item.roomGroupId),
+    ["room-a"],
+    "intent and observation filters must compose on the same latest event"
+);
+assert.equal(
+    adjustmentReviewViewSource.indexOf('"意図 / 次アクション", "intent"')
+        < adjustmentReviewViewSource.indexOf('"観測状態", "observation"'),
+    true,
+    "the decision filter must appear before the lower-level observation-state filter"
 );
 
 const threeDay = review.buildAdjustmentReviewViewModel({

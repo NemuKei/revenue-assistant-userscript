@@ -31,6 +31,7 @@ const expectedSources = [
     "src/next/adjustmentReview/adjustmentReviewDataSource.ts",
     "src/next/adjustmentReview/adjustmentReviewFocus.ts",
     "src/next/adjustmentReview/adjustmentReviewModel.ts",
+    "src/next/adjustmentReview/adjustmentReviewPresentation.ts",
     "src/next/adjustmentReview/adjustmentReviewRuntime.ts",
     "src/next/adjustmentReview/adjustmentReviewView.ts",
     "src/next/analyze/bookingCurveRankReadCoordinator.ts",

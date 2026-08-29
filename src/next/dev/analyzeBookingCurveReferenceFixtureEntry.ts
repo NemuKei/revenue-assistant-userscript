@@ -90,51 +90,53 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
                 reason: rankFixtureMode === "aborted" ? "aborted" : "request-failed"
             };
         }
+        const events = rankFixtureMode === "empty"
+            ? []
+            : [
+                {
+                    afterRankName: "12",
+                    beforeRankName: "11",
+                    daysBeforeStay: 30,
+                    reflectedAt: "2026-07-13T03:30:00.000Z",
+                    reflectedDate: "2026-07-13",
+                    reflectorName: "fixture-person",
+                    roomGroupId: "single",
+                    signature: "2026-07-13:11:12",
+                    stayDate
+                },
+                {
+                    afterRankName: "11",
+                    beforeRankName: "12",
+                    daysBeforeStay: 21,
+                    reflectedAt: "2026-07-22T03:30:00.000Z",
+                    reflectedDate: "2026-07-22",
+                    reflectorName: null,
+                    roomGroupId: "single",
+                    signature: "2026-07-22:12:11",
+                    stayDate
+                },
+                {
+                    afterRankName: "9",
+                    beforeRankName: "10",
+                    daysBeforeStay: 14,
+                    reflectedAt: "2026-07-29T02:00:00.000Z",
+                    reflectedDate: "2026-07-29",
+                    reflectorName: null,
+                    roomGroupId: "twin",
+                    signature: "2026-07-29:10:9",
+                    stayDate
+                }
+            ];
         return {
             status: "ready",
             contextKey,
             facilityId,
             stayDate,
             snapshot: {
+                assessmentEvents: events,
                 stayDate,
                 invalidEventCount: 0,
-                events: rankFixtureMode === "empty"
-                    ? []
-                    : [
-                        {
-                            afterRankName: "12",
-                            beforeRankName: "11",
-                            daysBeforeStay: 30,
-                            reflectedAt: "2026-07-13T03:30:00.000Z",
-                            reflectedDate: "2026-07-13",
-                            reflectorName: "fixture-person",
-                            roomGroupId: "single",
-                            signature: "2026-07-13:11:12",
-                            stayDate
-                        },
-                        {
-                            afterRankName: "11",
-                            beforeRankName: "12",
-                            daysBeforeStay: 21,
-                            reflectedAt: "2026-07-22T03:30:00.000Z",
-                            reflectedDate: "2026-07-22",
-                            reflectorName: null,
-                            roomGroupId: "single",
-                            signature: "2026-07-22:12:11",
-                            stayDate
-                        },
-                        {
-                            afterRankName: "9",
-                            beforeRankName: "10",
-                            daysBeforeStay: 14,
-                            reflectedAt: "2026-07-29T02:00:00.000Z",
-                            reflectedDate: "2026-07-29",
-                            reflectorName: null,
-                            roomGroupId: "twin",
-                            signature: "2026-07-29:10:9",
-                            stayDate
-                        }
-                    ]
+                events
             }
         };
     },

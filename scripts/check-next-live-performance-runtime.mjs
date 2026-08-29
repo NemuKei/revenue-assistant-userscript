@@ -281,6 +281,30 @@ async function verifyAdjustmentReviewUi(activeBrowser, origin) {
             3,
             "unfiltered actor options must expose all plus two unique candidate actors"
         );
+        const filterOrder = await desktop.locator(
+            "[data-ra-next-adjustment-review-filter-grid] label"
+        ).evaluateAll((labels) => labels.map((label) => (
+            label.querySelector("span")?.textContent?.trim() ?? ""
+        )));
+        assert.equal(
+            filterOrder.indexOf("意図 / 次アクション") < filterOrder.indexOf("観測状態"),
+            true,
+            "intent and next action must precede the lower-level observation-state filter"
+        );
+        const intentFilter = desktop.locator('[data-ra-next-adjustment-review-filter="intent"]');
+        await intentFilter.focus();
+        await intentFilter.selectOption("aligned");
+        assert.equal(
+            await intentFilter.evaluate((element) => globalThis.document.activeElement === element),
+            true,
+            "intent filtering must restore focus after the bounded review rerender"
+        );
+        assert.equal(
+            await desktop.locator(`${parentSelector} [data-ra-next-adjustment-review-intent="opposed"]`).count(),
+            0,
+            "intent filtering must apply to each stay-room's selected latest event"
+        );
+        await intentFilter.selectOption("");
         await desktop.locator('[data-ra-next-adjustment-review-filter="observation"]').selectOption("ready");
         await desktop.locator("[data-ra-next-adjustment-review-expand]").first().click();
         assert.equal(

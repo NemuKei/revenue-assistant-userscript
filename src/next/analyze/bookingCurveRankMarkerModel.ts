@@ -18,6 +18,7 @@ export interface BookingCurveRankStatusEvent {
 }
 
 export interface BookingCurveRankStatusSnapshot {
+    assessmentEvents: readonly BookingCurveRankStatusEvent[];
     events: readonly BookingCurveRankStatusEvent[];
     invalidEventCount: number;
     stayDate: string;
@@ -78,6 +79,7 @@ export function parseBookingCurveRankStatusResponse(
     }
 
     parsedEvents.sort((left, right) => right.sortValue - left.sortValue);
+    const assessmentEvents = parsedEvents.map(toRankStatusEvent);
     const seenRoomDay = new Set<string>();
     const events: BookingCurveRankStatusEvent[] = [];
     for (const parsed of parsedEvents) {
@@ -86,17 +88,7 @@ export function parseBookingCurveRankStatusResponse(
             continue;
         }
         seenRoomDay.add(dailyKey);
-        events.push({
-            afterRankName: parsed.afterRankName,
-            beforeRankName: parsed.beforeRankName,
-            daysBeforeStay: parsed.daysBeforeStay,
-            reflectedAt: parsed.reflectedAt,
-            reflectedDate: parsed.reflectedDate,
-            reflectorName: parsed.reflectorName ?? null,
-            roomGroupId: parsed.roomGroupId,
-            signature: parsed.signature,
-            stayDate: parsed.stayDate
-        });
+        events.push(toRankStatusEvent(parsed));
     }
     events.sort((left, right) => (
         right.daysBeforeStay - left.daysBeforeStay
@@ -105,9 +97,24 @@ export function parseBookingCurveRankStatusResponse(
     ));
 
     return {
+        assessmentEvents,
         events,
         invalidEventCount,
         stayDate: compactStayDate
+    };
+}
+
+function toRankStatusEvent(parsed: ParsedRankEvent): BookingCurveRankStatusEvent {
+    return {
+        afterRankName: parsed.afterRankName,
+        beforeRankName: parsed.beforeRankName,
+        daysBeforeStay: parsed.daysBeforeStay,
+        reflectedAt: parsed.reflectedAt,
+        reflectedDate: parsed.reflectedDate,
+        reflectorName: parsed.reflectorName ?? null,
+        roomGroupId: parsed.roomGroupId,
+        signature: parsed.signature,
+        stayDate: parsed.stayDate
     };
 }
 

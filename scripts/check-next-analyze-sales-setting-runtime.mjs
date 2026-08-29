@@ -29,6 +29,7 @@ try {
     await verifyStoredScopeRefreshIsBounded(origin);
     await verifyRankStatusSurvivesTransientRemount(origin);
     await verifyAdjustmentReviewFocus(origin);
+    await verifyDecisionTagsAndResponsiveLayout(origin);
     await verifyInitialBatchStopsWithoutNativeSurface(origin);
     await verifyHiddenAndRouteTransitions(origin);
     await verifyAbsentSurfaceStayDateReset(origin);
@@ -98,6 +99,65 @@ async function verifyAdjustmentReviewFocus(origin) {
                 );
             }
             assert.deepEqual(pageErrors, [], `${name} review focus must not emit runtime errors`);
+        } finally {
+            await page.close();
+        }
+    }
+}
+
+async function verifyDecisionTagsAndResponsiveLayout(origin) {
+    for (const viewport of [
+        { height: 900, name: "desktop", width: 1280 },
+        { height: 844, name: "mobile", width: 390 }
+    ]) {
+        const page = await browser.newPage({ viewport: { height: viewport.height, width: viewport.width } });
+        const pageErrors = [];
+        page.on("pageerror", (error) => pageErrors.push(error.message));
+        try {
+            await page.goto(new URL(`${fixturePath}?rank=ready`, origin).href, { waitUntil: "networkidle" });
+            await waitForRoot(page, "ready");
+            await page.waitForSelector("[data-ra-next-sales-setting-decision-tag]");
+            assert.equal(
+                await page.locator("[data-ra-next-sales-setting-decision-tag]").count(),
+                4,
+                `${viewport.name} rank overview must show intent and next action for both room types`
+            );
+            assert.match(
+                await page.locator("[data-ra-next-sales-setting-rank-overview-table]").innerText(),
+                /意図（7日）[\s\S]*次アクション/u
+            );
+            const overviewTagStyle = await readElementToneStyle(
+                page.locator("[data-ra-next-sales-setting-decision-tag]").first()
+            );
+            assert.ok(
+                contrastRatio(overviewTagStyle.color, overviewTagStyle.backgroundColor) >= 4.5,
+                `${viewport.name} rank-overview decision tag must keep 4.5:1 text contrast`
+            );
+            await page.locator(toggleSelector).first().click();
+            await page.waitForSelector("[data-ra-next-booking-curve-adjustment-review]");
+            const curveText = await page.locator(
+                '[data-ra-next-sales-setting-curve-section="card"]'
+            ).first().innerText();
+            assert.match(curveText, /7日比較 \/ 最新調整/u);
+            assert.match(curveText, /観測:/u);
+            assert.doesNotMatch(curveText, /成功|失敗|正解/u);
+            const curveTagStyle = await readElementToneStyle(
+                page.locator(
+                    "[data-ra-next-booking-curve-adjustment-review] [data-ra-next-booking-curve-adjustment-review-tag]"
+                ).first()
+            );
+            assert.ok(
+                contrastRatio(curveTagStyle.color, curveTagStyle.backgroundColor) >= 4.5,
+                `${viewport.name} expanded-curve decision tag must keep 4.5:1 text contrast`
+            );
+            assert.equal(
+                await page.evaluate(() => (
+                    globalThis.document.documentElement.scrollWidth <= globalThis.window.innerWidth
+                )),
+                true,
+                `${viewport.name} decision tags must not create page-level horizontal overflow`
+            );
+            assert.deepEqual(pageErrors, [], `${viewport.name} decision-tag view must not emit runtime errors`);
         } finally {
             await page.close();
         }
@@ -519,6 +579,39 @@ async function readPerformanceSummary(page) {
         )?.textContent ?? "";
         return JSON.parse(text);
     });
+}
+
+async function readElementToneStyle(locator) {
+    return locator.evaluate((element) => {
+        const style = globalThis.getComputedStyle(element);
+        return {
+            backgroundColor: style.backgroundColor,
+            color: style.color
+        };
+    });
+}
+
+function contrastRatio(foreground, background) {
+    const foregroundLuminance = relativeLuminance(parseRgb(foreground));
+    const backgroundLuminance = relativeLuminance(parseRgb(background));
+    return (Math.max(foregroundLuminance, backgroundLuminance) + 0.05)
+        / (Math.min(foregroundLuminance, backgroundLuminance) + 0.05);
+}
+
+function parseRgb(value) {
+    const match = value.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/u);
+    assert.notEqual(match, null, `expected computed rgb color, received ${value}`);
+    return match.slice(1, 4).map(Number);
+}
+
+function relativeLuminance(rgb) {
+    const [red, green, blue] = rgb.map((channel) => {
+        const normalized = channel / 255;
+        return normalized <= 0.03928
+            ? normalized / 12.92
+            : ((normalized + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * red + 0.7152 * green + 0.0722 * blue;
 }
 
 function countAttribute(name) {

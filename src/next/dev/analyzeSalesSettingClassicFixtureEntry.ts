@@ -138,38 +138,40 @@ const rankStatusDataSource: BookingCurveRankStatusDataSource = {
         if (rankMode === "error") {
             return { status: "error", contextKey, reason: "request-failed" };
         }
+        const events = rankMode === "empty"
+            ? []
+            : [
+                {
+                    afterRankName: "11",
+                    beforeRankName: "12",
+                    daysBeforeStay: 23,
+                    reflectedAt: "2026-07-20T03:30:00.000Z",
+                    reflectedDate: "2026-07-20",
+                    roomGroupId: "single",
+                    signature: "2026-07-20:12:11",
+                    stayDate
+                },
+                {
+                    afterRankName: "9",
+                    beforeRankName: "10",
+                    daysBeforeStay: 14,
+                    reflectedAt: "2026-07-29T02:00:00.000Z",
+                    reflectedDate: "2026-07-29",
+                    roomGroupId: "twin",
+                    signature: "2026-07-29:10:9",
+                    stayDate
+                }
+            ];
         return {
             status: "ready",
             contextKey,
             facilityId,
             stayDate,
             snapshot: {
+                assessmentEvents: events,
                 stayDate,
                 invalidEventCount: 0,
-                events: rankMode === "empty"
-                    ? []
-                    : [
-                        {
-                            afterRankName: "11",
-                            beforeRankName: "12",
-                            daysBeforeStay: 23,
-                            reflectedAt: "2026-07-20T03:30:00.000Z",
-                            reflectedDate: "2026-07-20",
-                            roomGroupId: "single",
-                            signature: "2026-07-20:12:11",
-                            stayDate
-                        },
-                        {
-                            afterRankName: "9",
-                            beforeRankName: "10",
-                            daysBeforeStay: 14,
-                            reflectedAt: "2026-07-29T02:00:00.000Z",
-                            reflectedDate: "2026-07-29",
-                            roomGroupId: "twin",
-                            signature: "2026-07-29:10:9",
-                            stayDate
-                        }
-                    ]
+                events
             }
         };
     },

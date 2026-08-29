@@ -395,6 +395,7 @@ export function startSalesSettingClassicRuntime(
                 facilityId: data.facilityId,
                 readStatus: data.readStatus,
                 records: data.records,
+                rankAssessmentEvents: activeRankSnapshot?.assessmentEvents ?? [],
                 rankEvents: rankHistory.status === "ready" ? rankHistory.events : [],
                 rankHistory,
                 scope: data.scope,

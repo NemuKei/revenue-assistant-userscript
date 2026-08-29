@@ -26,6 +26,10 @@ const reviewRuntimeSource = await readFile(
     new URL("../src/next/adjustmentReview/adjustmentReviewRuntime.ts", import.meta.url),
     "utf8"
 );
+const reviewPresentationSource = await readFile(
+    new URL("../src/next/adjustmentReview/adjustmentReviewPresentation.ts", import.meta.url),
+    "utf8"
+);
 
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-08-12"), "2026-08-12");
 assert.equal(adapter.parseStayDateFromCalendarTestId("calendar-date-2026-02-29"), null);
@@ -231,7 +235,7 @@ assert.match(reviewViewSource, /上げはペース減、下げはペース増を
 assert.match(reviewViewSource, /因果効果、正解・失敗、具体的なランクや金額の判定ではありません/u);
 assert.match(reviewViewSource, /data-ra-next-adjustment-review-pace-bar/u);
 assert.match(reviewViewSource, /data-ra-next-adjustment-review-intent-assessment/u);
-assert.match(reviewViewSource, /様子見・追加調整の緊急度低/u);
+assert.match(reviewPresentationSource, /様子見・追加調整の緊急度低/u);
 assert.match(reviewViewSource, /max-width: 720px/u);
 assert.match(
     fixture,

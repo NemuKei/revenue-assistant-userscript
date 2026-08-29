@@ -40,6 +40,11 @@ const twinSummary = summary([10, 9, 8, 5], [8, 7, 6, 4], [2, 2, 2, 1]);
 const rankSnapshot = {
     stayDate: "20260812",
     invalidEventCount: 0,
+    assessmentEvents: [
+        rankEvent("single", "2026-07-10", "13", "12", "single-old-event"),
+        rankEvent("single", "2026-07-20", "12", "11", "single-event"),
+        rankEvent("twin", "2026-07-29", "10", "9", "twin-event")
+    ],
     events: [
         rankEvent("single", "2026-07-10", "13", "12", "single-old-event"),
         rankEvent("single", "2026-07-20", "12", "11", "single-event"),
@@ -49,7 +54,13 @@ const rankSnapshot = {
 const built = model.buildSalesSettingClassicViewModel({
     curves: [
         curve(hotelScope, 42, hotelSummary, null),
-        curve(singleScope, 18, singleSummary, { signature: "single-event", value: 4 }),
+        curve(
+            singleScope,
+            18,
+            singleSummary,
+            { signature: "single-event", value: 4 },
+            adjustmentReviewEvent("single", "2026-07-20", "12", "11", "aligned")
+        ),
         curve(twinScope, 24, twinSummary, { signature: "twin-event", value: 6 })
     ],
     rankState: { error: null, loading: false, snapshot: rankSnapshot },
@@ -77,7 +88,10 @@ assert.equal(built.cards[0].rankSummary.daysAgo, 19);
 assert.equal(built.cards[0].rankSummary.beforeRankName, "12");
 assert.equal(built.cards[0].rankSummary.afterRankName, "11");
 assert.equal(built.cards[0].rankSummary.roomDelta, 4);
+assert.equal(built.cards[0].rankSummary.intentAssessment.state, "aligned");
+assert.equal(built.cards[0].rankSummary.intentAssessment.nextAction, "monitor");
 assert.equal(built.cards[1].rankSummary.roomDelta, 4);
+assert.equal(built.cards[1].rankSummary.intentAssessment.state, "unavailable");
 
 const incomplete = model.buildSalesSettingClassicViewModel({
     curves: [
@@ -212,6 +226,9 @@ assert.match(runtimeSource, /rankFacilityId !== facilityId/u);
 assert.doesNotMatch(runtimeSource, /rankOrder|rank-order|rank_sequences/u);
 assert.doesNotMatch(runtimeSource, /\bfetch\s*\(|XMLHttpRequest|POST|PUT|PATCH|DELETE/u);
 assert.match(viewSource, /"ランク変更履歴"/u);
+assert.match(viewSource, /"意図（7日）"/u);
+assert.match(viewSource, /"次アクション"/u);
+assert.match(viewSource, /data-ra-next-sales-setting-decision-tag/u);
 const rankOverviewSource = viewSource.match(/function createRankOverview[\s\S]*?\n\}\n\nfunction renderNativeCard/u)?.[0] ?? "";
 assert.notEqual(rankOverviewSource, "", "rank overview renderer must remain independently checkable");
 assert.doesNotMatch(
@@ -285,8 +302,9 @@ function rankEvent(roomGroupId, reflectedDate, beforeRankName, afterRankName, si
     };
 }
 
-function curve(scope, capacityRooms, currentSummary, marker) {
+function curve(scope, capacityRooms, currentSummary, marker, adjustmentReview = null) {
     return {
+        adjustmentReviewEvents: adjustmentReview === null ? [] : [adjustmentReview],
         asOfDate: "20260808",
         capacityRooms,
         currentSummary,
@@ -309,5 +327,33 @@ function curve(scope, capacityRooms, currentSummary, marker) {
         futureRecordCount: 0,
         stayDate: "20260812",
         visibility: { recent: true, seasonal: true }
+    };
+}
+
+function adjustmentReviewEvent(roomGroupId, reflectedDate, beforeRankName, afterRankName, state) {
+    const reflectedAt = `${reflectedDate}T03:00:00.000Z`;
+    const nextAction = state === "aligned" ? "monitor" : "needs-evidence";
+    return {
+        actorName: null,
+        afterRankName,
+        beforeRankName,
+        daysBeforeStay: 1,
+        direction: "raise",
+        directionSource: "numeric_rank_name",
+        eventKey: JSON.stringify(["20260812", roomGroupId, reflectedAt, beforeRankName, afterRankName]),
+        intentAssessments: {
+            3: { followUpDirection: null, nextAction, state },
+            7: { followUpDirection: null, nextAction, state }
+        },
+        observations: {
+            3: { afterPace: 1, beforePace: 2, delta: -1, state: "ready" },
+            7: { afterPace: 1, beforePace: 2, delta: -1, state: "ready" }
+        },
+        reflectedAt,
+        reflectedDate,
+        roomGroupId,
+        roomGroupName: roomGroupId,
+        roomOrder: 0,
+        stayDate: "20260812"
     };
 }

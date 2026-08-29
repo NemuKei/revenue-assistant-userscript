@@ -16,6 +16,13 @@ import {
     type EvaluatedAdjustmentReviewEvent,
     isSameAdjustmentReviewStayDate
 } from "./adjustmentReviewModel";
+import {
+    formatAdjustmentReviewDirection,
+    formatAdjustmentReviewIntentSummary,
+    formatAdjustmentReviewNextAction,
+    formatAdjustmentReviewObservation,
+    getAdjustmentReviewIntentIcon
+} from "./adjustmentReviewPresentation";
 
 export const ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE = "data-ra-next-adjustment-review-root";
 export const ADJUSTMENT_REVIEW_STYLE_ID = "revenue-assistant-next-adjustment-review-style";
@@ -180,6 +187,15 @@ function createFilters(
             { label: "下げ", value: "lower" },
             { label: "方向未確認", value: "unknown" }
         ]),
+        createSelect(documentHost, "意図 / 次アクション", "intent", state.filters.intent ?? "", [
+            { label: "すべて", value: "" },
+            { label: "意図と同方向・様子見", value: "aligned" },
+            { label: "意図と逆方向・追加確認", value: "opposed" },
+            { label: "変化なし・反応確認", value: "unchanged" },
+            { label: "判定材料待ち", value: "unavailable" }
+        ]),
+        createDateInput(documentHost, "調整日（開始）", "adjustmentDateFrom", state.filters.adjustmentDateFrom),
+        createDateInput(documentHost, "調整日（終了）", "adjustmentDateTo", state.filters.adjustmentDateTo),
         createSelect(documentHost, "観測状態", "observation", state.filters.observation ?? "", [
             { label: "すべて", value: "" },
             { label: "比較可", value: "ready" },
@@ -188,8 +204,6 @@ function createFilters(
             { label: "再調整あり", value: "censored" },
             { label: "比較対象外", value: "excluded" }
         ]),
-        createDateInput(documentHost, "調整日（開始）", "adjustmentDateFrom", state.filters.adjustmentDateFrom),
-        createDateInput(documentHost, "調整日（終了）", "adjustmentDateTo", state.filters.adjustmentDateTo),
         createSelect(documentHost, "並び替え", "sort", state.sort, [
             { label: "比較可・変化量順", value: "default" },
             { label: "宿泊日順", value: "stay-date" },
@@ -451,13 +465,9 @@ function createIntentBadge(
     badge.setAttribute("data-ra-next-adjustment-review-intent", state);
     const icon = documentHost.createElement("span");
     icon.setAttribute("aria-hidden", "true");
-    icon.textContent = state === "aligned"
-        ? "↔"
-        : state === "opposed"
-            ? "⇄"
-            : state === "unchanged" ? "0" : "?";
+    icon.textContent = getAdjustmentReviewIntentIcon(state);
     const label = documentHost.createElement("span");
-    label.textContent = `${formatIntentSummary(state)}${count === undefined ? "" : ` ${count}`}`;
+    label.textContent = `${formatAdjustmentReviewIntentSummary(state)}${count === undefined ? "" : ` ${count}`}`;
     badge.append(icon, label);
     return badge;
 }
@@ -471,7 +481,7 @@ function createIntentAssessment(
     wrap.append(createIntentBadge(documentHost, assessment.state));
     const action = documentHost.createElement("small");
     action.setAttribute("data-ra-next-adjustment-review-next-action", assessment.nextAction);
-    action.textContent = formatNextAction(assessment);
+    action.textContent = formatAdjustmentReviewNextAction(assessment);
     wrap.append(action);
     return wrap;
 }
@@ -598,7 +608,7 @@ function createEventRow(
         rank.append(fallback);
     }
     const status = documentHost.createElement("span");
-    status.textContent = formatObservation(observation);
+    status.textContent = formatAdjustmentReviewObservation(observation);
     const intent = createIntentAssessment(documentHost, event.intentAssessments[horizon]);
     const pace = createEventPace(documentHost, observation);
     const action = createAnalyzeAction(documentHost, event, calendar);
@@ -658,44 +668,8 @@ function createMessage(documentHost: Document, text: string, tone: "error" | "st
     return message;
 }
 
-function formatObservation(observation: AdjustmentReviewObservation): string {
-    switch (observation.state) {
-        case "ready": return "比較可";
-        case "missing": return "観測不足（exact pointなし）";
-        case "pending": return "観測待ち";
-        case "censored": return "再調整あり";
-        case "excluded": return observation.reason === "same-day-multiple"
-            ? "比較対象外（同日複数調整）"
-            : "比較対象外（宿泊日を越える期間）";
-    }
-}
-
-function formatIntentSummary(state: AdjustmentReviewIntentState): string {
-    switch (state) {
-        case "aligned": return "同方向・様子見";
-        case "opposed": return "逆方向・追加確認";
-        case "unchanged": return "変化なし・反応確認";
-        case "unavailable": return "判定材料待ち";
-    }
-}
-
-function formatNextAction(assessment: AdjustmentReviewIntentAssessment): string {
-    switch (assessment.nextAction) {
-        case "monitor": return "様子見・追加調整の緊急度低";
-        case "review-adjustment": return `${formatFollowUpDirection(assessment)}方向の追加調整余地を確認`;
-        case "review-response": return `${formatFollowUpDirection(assessment)}方向の反応と追加調整余地を確認`;
-        case "needs-evidence": return "観測状態またはランク方向を確認";
-    }
-}
-
-function formatFollowUpDirection(assessment: AdjustmentReviewIntentAssessment): string {
-    return assessment.followUpDirection === null
-        ? "同じ"
-        : formatDirection(assessment.followUpDirection);
-}
-
 function formatDirection(value: EvaluatedAdjustmentReviewEvent["direction"]): string {
-    return value === "raise" ? "上げ" : value === "lower" ? "下げ" : "方向未確認";
+    return formatAdjustmentReviewDirection(value);
 }
 
 function formatRank(value: string | null): string {

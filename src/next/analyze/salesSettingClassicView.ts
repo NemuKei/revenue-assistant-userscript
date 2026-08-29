@@ -15,6 +15,12 @@ import type {
     SalesSettingClassicViewModel
 } from "./salesSettingClassicModel";
 import { ADJUSTMENT_REVIEW_FOCUS_HIGHLIGHT_ATTRIBUTE } from "../adjustmentReview/adjustmentReviewFocus";
+import type { AdjustmentReviewIntentAssessment } from "../adjustmentReview/adjustmentReviewModel";
+import {
+    formatAdjustmentReviewIntentSummary,
+    formatAdjustmentReviewNextAction,
+    getAdjustmentReviewIntentIcon
+} from "../adjustmentReview/adjustmentReviewPresentation";
 
 export const SALES_SETTING_CLASSIC_ROOT_ATTRIBUTE = "data-ra-next-sales-setting-classic-root";
 export const SALES_SETTING_CLASSIC_STYLE_ATTRIBUTE = "data-ra-next-sales-setting-classic-style";
@@ -230,7 +236,14 @@ function createRankOverview(
     title.textContent = "ランク変更履歴";
     const table = documentHost.createElement("table");
     table.setAttribute("data-ra-next-sales-setting-rank-overview-table", "");
-    table.append(createTableHead(documentHost, ["部屋タイプ", "最終変更", "ランク", "増減"]));
+    table.append(createTableHead(documentHost, [
+        "部屋タイプ",
+        "最終変更",
+        "ランク",
+        "増減",
+        "意図（7日）",
+        "次アクション"
+    ]));
     const body = documentHost.createElement("tbody");
     for (const card of rankedCards) {
         const summary = card.rankSummary;
@@ -242,13 +255,31 @@ function createRankOverview(
             createCell(documentHost, "td", card.scope.label),
             createCell(documentHost, "td", formatDaysAgo(summary.daysAgo)),
             createCell(documentHost, "td", formatRankTransition(summary.beforeRankName, summary.afterRankName)),
-            createToneCell(documentHost, formatSigned(summary.roomDelta), toneFromDelta(summary.roomDelta))
+            createToneCell(documentHost, formatSigned(summary.roomDelta), toneFromDelta(summary.roomDelta)),
+            createDecisionTagCell(documentHost, summary.intentAssessment, "intent"),
+            createDecisionTagCell(documentHost, summary.intentAssessment, "action")
         );
         body.append(row);
     }
     table.append(body);
     section.append(title, table);
     return section;
+}
+
+function createDecisionTagCell(
+    documentHost: Document,
+    assessment: AdjustmentReviewIntentAssessment,
+    kind: "action" | "intent"
+): HTMLTableCellElement {
+    const cell = documentHost.createElement("td");
+    const tag = documentHost.createElement("span");
+    tag.setAttribute("data-ra-next-sales-setting-decision-tag", kind);
+    tag.setAttribute("data-state", assessment.state);
+    tag.textContent = kind === "intent"
+        ? `${getAdjustmentReviewIntentIcon(assessment.state)} ${formatAdjustmentReviewIntentSummary(assessment.state)}`
+        : formatAdjustmentReviewNextAction(assessment);
+    cell.append(tag);
+    return cell;
 }
 
 function renderNativeCard(
@@ -521,7 +552,7 @@ function getSalesSettingClassicStyles(): string {
     padding: 1px 16px 1px 0; text-align: left; vertical-align: top; white-space: nowrap;
 }
 [${SUMMARY_TABLE_ATTRIBUTE}] tr > :not(:first-child),
-[data-ra-next-sales-setting-rank-overview-table] tr > :last-child { text-align: right; }
+[data-ra-next-sales-setting-rank-overview-table] tr > :nth-child(4) { text-align: right; }
 [${SUMMARY_TABLE_ATTRIBUTE}] th:last-child,
 [${SUMMARY_TABLE_ATTRIBUTE}] td:last-child,
 [data-ra-next-sales-setting-rank-overview-table] th:last-child,
@@ -537,6 +568,23 @@ function getSalesSettingClassicStyles(): string {
 [${SUMMARY_ROW_ATTRIBUTE}][data-emphasis="true"] { color: #243447; }
 [data-ra-next-sales-setting-rank-overview-table] td {
     color: #243447; font-size: 14px; font-weight: 600; line-height: 1.4;
+}
+[data-ra-next-sales-setting-decision-tag] {
+    display: inline-flex; align-items: center; width: fit-content; max-width: 260px;
+    padding: 2px 7px; border: 1px solid; border-radius: 999px;
+    font-size: 12px; font-weight: 700; line-height: 1.35; white-space: normal;
+}
+[data-ra-next-sales-setting-decision-tag][data-state="aligned"] {
+    color: #155e75; background: #ecfeff; border-color: #67e8f9;
+}
+[data-ra-next-sales-setting-decision-tag][data-state="opposed"] {
+    color: #6b21a8; background: #faf5ff; border-color: #d8b4fe;
+}
+[data-ra-next-sales-setting-decision-tag][data-state="unchanged"] {
+    color: #92400e; background: #fffbeb; border-color: #fcd34d;
+}
+[data-ra-next-sales-setting-decision-tag][data-state="unavailable"] {
+    color: #475569; background: #f8fafc; border-color: #cbd5e1; border-style: dashed;
 }
 [${SUMMARY_TONE_ATTRIBUTE}="positive"] { color: #24734b !important; }
 [${SUMMARY_TONE_ATTRIBUTE}="negative"] { color: #b34040 !important; }
