@@ -133,6 +133,48 @@ assert.equal(
 );
 assert.equal(numericFallback[0].directionSource, "numeric_rank_name");
 
+const readyDecrease = { afterPace: 1, beforePace: 2, delta: -1, state: "ready" };
+const readyIncrease = { afterPace: 3, beforePace: 1, delta: 2, state: "ready" };
+const readyUnchanged = { afterPace: 2, beforePace: 2, delta: 0, state: "ready" };
+assert.deepEqual(review.assessAdjustmentReviewIntent("raise", readyDecrease), {
+    followUpDirection: null,
+    nextAction: "monitor",
+    state: "aligned"
+}, "raising rank intends a lower booking pace and may be monitored when that direction is observed");
+assert.deepEqual(review.assessAdjustmentReviewIntent("lower", readyIncrease), {
+    followUpDirection: null,
+    nextAction: "monitor",
+    state: "aligned"
+}, "lowering rank intends a higher booking pace and may be monitored when that direction is observed");
+assert.deepEqual(review.assessAdjustmentReviewIntent("raise", readyIncrease), {
+    followUpDirection: "raise",
+    nextAction: "review-adjustment",
+    state: "opposed"
+}, "an observed increase after raising rank must prompt a same-direction follow-up review without claiming failure");
+assert.deepEqual(review.assessAdjustmentReviewIntent("lower", readyDecrease), {
+    followUpDirection: "lower",
+    nextAction: "review-adjustment",
+    state: "opposed"
+}, "an observed decrease after lowering rank must prompt a same-direction follow-up review");
+assert.deepEqual(review.assessAdjustmentReviewIntent("lower", readyUnchanged), {
+    followUpDirection: "lower",
+    nextAction: "review-response",
+    state: "unchanged"
+}, "zero change stays separate from both aligned and opposed observations");
+assert.deepEqual(review.assessAdjustmentReviewIntent("unknown", readyIncrease), {
+    followUpDirection: null,
+    nextAction: "needs-evidence",
+    state: "unavailable"
+}, "a ready pace comparison cannot invent intent when rank direction is unknown");
+assert.deepEqual(review.assessAdjustmentReviewIntent("raise", {
+    reason: "future-window",
+    state: "pending"
+}), {
+    followUpDirection: null,
+    nextAction: "needs-evidence",
+    state: "unavailable"
+}, "non-ready observations must never fall back to another horizon or an action recommendation");
+
 const events = [
     event("room-a", "20260810", "2026-08-10T09:00:00+09:00", "担当 A"),
     event("room-b", "20260822", "2026-08-22T09:00:00+09:00", "担当 B"),
@@ -203,6 +245,10 @@ assert.deepEqual(findEvent(evaluated, "room-a", "20260810").observations, {
     3: { afterPace: 1, beforePace: 2, delta: -1, state: "ready" },
     7: { afterPace: 5, beforePace: 3, delta: 2, state: "ready" }
 }, "3-day and 7-day windows must use their own exact points without fallback");
+assert.deepEqual(findEvent(evaluated, "room-a", "20260810").intentAssessments, {
+    3: { followUpDirection: null, nextAction: "monitor", state: "aligned" },
+    7: { followUpDirection: "raise", nextAction: "review-adjustment", state: "opposed" }
+}, "intent assessment must follow the selected horizon's exact pace instead of a shared fallback");
 assert.deepEqual(findEvent(evaluated, "room-b", "20260822").observations[3], {
     afterPace: 2,
     beforePace: -1,
@@ -249,6 +295,12 @@ assert.deepEqual(
     [parent.beforePaceTotal, parent.afterPaceTotal, parent.deltaTotal],
     [3, 5, 2]
 );
+assert.deepEqual(parent.intentCounts, {
+    aligned: 0,
+    opposed: 1,
+    unavailable: 5,
+    unchanged: 0
+}, "parent intent counts must use only each filtered stay-room's latest event at the selected horizon");
 assert.equal(parent.detailEvents.length, events.length, "older events must remain in detail");
 
 const actorFiltered = review.buildAdjustmentReviewViewModel({

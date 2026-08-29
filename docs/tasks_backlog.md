@@ -984,6 +984,30 @@
 - publication / live verification:
   - source `fd0371f9810169453715437e7e4f37a624b8c4e4`はValidate Main run `32440534472`を通過し、manual workflow run `32440618893`、run number 44、attempt 1でNext `0.2.0.44`へ配信した。公開Nextは373,945 bytes、SHA-256 `DDD9CEC110CB8223E65A89B2FA2D07D4B9FB6D07B60F227BCADB5ED2B30D2111`、source mapは1,502,592 bytes、SHA-256 `D5EED4B539CB4DD2A2D90DD1F4C375D5901CA90F8C0549226EFEABDBBD2083E1`でmanifestと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。Tampermonkey更新後の実画面確認は未実施である。
 
+### RAU-UX-179 調整前後レビューで調整意図と次アクションを色分けする
+
+- 状態:
+  - 実装・検証中。利用者は、正負とrank上げ / 下げの色分けに加え、上げは個人予約ペースを下げる、下げはペースを上げるという主な意図に対して観測変化が合うか、追加調整の確認余地があるかまでPDCAのCheck / Actとして示すよう明示した。
+- 解決する問題:
+  - 変更前後の符号とrank方向を別々に読み、利用者が頭の中で意図との対応と次の確認を組み立てる必要がある。単純な成功 / 失敗表示では、因果効果や調整の正解を断定したように誤読される。
+- 実装境界:
+  - pure modelが選択中horizonのexact変化量とrank方向から`意図と同方向 / 意図と逆方向 / 変化なし / 判定材料待ち`を分類し、親行はfilter後の各stayDate x roomGroupの最新eventだけを状態別件数へ集計する。展開後は各eventの判定と`様子見 / 同方向の追加調整余地を確認 / 反応を確認 / 材料確認`を表示する。
+  - rank上げ / ペース増はblue系、rank下げ / ペース減はorange系、0 / 未確認はgray系とし、矢印、符号、文言を併記する。意図との対応はgreen / redや`成功 / 失敗 / 正解`を使わず、具体的な推奨rank / 金額、API request、storage、Revenue Assistant write 0を変更しない。
+- 合格条件:
+  - focused testで上げ + ペース減、下げ + ペース増、逆方向、0、未ready、方向未確認、親行の最新event集計を固定する。
+  - desktop / 390pxの合成Topで、上げ / 下げ、正 / 負、意図と同方向 / 逆方向が異なる非green / red toneと文字で読め、4.5:1以上の文字contrast、horizon切替、detail、keyboard、overflow、console error 0が回帰しない。
+  - typecheck、repo全lint、Next全focused check、Next fixture / candidate / synthetic publication、Classic build / publication boundary、distribution smoke、`git diff --check`を通す。main同期後にNextをmanual publicationし、公開artifact / source map / Classic baseline、Tampermonkey更新後の実画面でrequest / storage / write境界を確認する。
+- metadata:
+  - `spec-impact: yes`
+  - `spec-checkpoint: during-impl; user expanded the semantic requirement during implementation`
+  - `target-spec: docs/spec_003_rank_recommendation_signal.md`
+  - `decision: D-20260829-001`
+  - `risk: display interpretation and bounded follow-up action only; no request, storage, write, recommended rank, or amount change`
+- local validation:
+  - pure / focused testで上げ + ペース減、下げ + ペース増、逆方向、0、未ready、方向未確認、選択中horizonごとの分類、親行の最新event集計を固定した。親行とdetailは同じassessmentを使い、別horizonへfallbackしない。
+  - desktop 1280px / 390 x 844の合成Browserで、上げblue / 下げorange、ペース増blue / 減orange、同方向teal / 逆方向purple / 材料待ちgray、矢印・符号・状態文、親行・展開detail、44px control、keyboard focus、root 1、横overflow 0、console error 0を確認した。上げ / 下げ、正 / 負、同方向 / 逆方向の各文字contrastは4.5:1以上だった。
+  - typecheck、repo全eslint、Next全focused check、runtime fixture、Next fixture / candidate / synthetic publication、Classic build / publication boundary、fixture marker / scheduler、distribution / booking curve smoke、`git diff --check`が通過した。read boundaryはsource 65 files、runtime graph 68 files、raw fetch 1か所、許可API path 8件の既存集合、review用storage追加0、Revenue Assistant write追加0を維持した。candidateは425,101 bytes、SHA-256 `B11B1C212C374567643B128E3C7078A259983894767DEF4281CBC5448962C32D`、source mapは1,682,148 bytes、SHA-256 `B14CEDC628D0CF7D14D3A74240AA26CE7FD7DEC2A22AFED3CB8B3C1171C0C57B`だった。synthetic publicationは425,305 bytes、SHA-256 `2A4B26D9BAD6C4D02102944670F3DB6FB1F8235B460A06B0A4CC4F7B5753F29D`、source mapは1,682,342 bytes、SHA-256 `8E6C97D2F4046E552EF41FE4925A11D5FC28F4C7BB26D70EDDEF9DE5A0AF39CB`で、runtime payloadはcandidateと一致した。
+
 ### RAU-PERF-20〜26 Top / Analyzeを判断可能時間SLOで最適化する
 
 #### RAU-PERF-20 Nextの段階latencyを計測しbaselineを取る

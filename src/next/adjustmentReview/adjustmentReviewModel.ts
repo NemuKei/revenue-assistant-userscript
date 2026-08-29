@@ -25,6 +25,12 @@ export const ADJUSTMENT_REVIEW_INITIAL_HORIZON = 7 as const;
 
 export type AdjustmentReviewHorizon = typeof ADJUSTMENT_REVIEW_HORIZONS[number];
 export type AdjustmentReviewDirection = "lower" | "raise" | "unknown";
+export type AdjustmentReviewIntentState = "aligned" | "opposed" | "unavailable" | "unchanged";
+export type AdjustmentReviewNextAction =
+    | "monitor"
+    | "needs-evidence"
+    | "review-adjustment"
+    | "review-response";
 export type AdjustmentReviewObservationState =
     | "censored"
     | "excluded"
@@ -83,7 +89,14 @@ export type AdjustmentReviewObservation =
         state: "excluded";
     };
 
+export interface AdjustmentReviewIntentAssessment {
+    followUpDirection: Exclude<AdjustmentReviewDirection, "unknown"> | null;
+    nextAction: AdjustmentReviewNextAction;
+    state: AdjustmentReviewIntentState;
+}
+
 export interface EvaluatedAdjustmentReviewEvent extends AdjustmentReviewEvent {
+    intentAssessments: Record<AdjustmentReviewHorizon, AdjustmentReviewIntentAssessment>;
     observations: Record<AdjustmentReviewHorizon, AdjustmentReviewObservation>;
     roomOrder: number;
     roomGroupName: string | null;
@@ -116,6 +129,7 @@ export interface AdjustmentReviewParentRow {
     deltaTotal: number;
     detailEvents: readonly EvaluatedAdjustmentReviewEvent[];
     directionCounts: Record<AdjustmentReviewDirection, number>;
+    intentCounts: Record<AdjustmentReviewIntentState, number>;
     latestEvents: readonly EvaluatedAdjustmentReviewEvent[];
     latestReflectedAt: string;
     leadTimeFrom: number;
@@ -334,6 +348,39 @@ export function isSameAdjustmentReviewStayDate(left: string, right: string): boo
     return leftKey !== null && leftKey === toCompactDateKey(right);
 }
 
+export function assessAdjustmentReviewIntent(
+    direction: AdjustmentReviewDirection,
+    observation: AdjustmentReviewObservation
+): AdjustmentReviewIntentAssessment {
+    if (observation.state !== "ready" || direction === "unknown") {
+        return {
+            followUpDirection: null,
+            nextAction: "needs-evidence",
+            state: "unavailable"
+        };
+    }
+    if (observation.delta === 0) {
+        return {
+            followUpDirection: direction,
+            nextAction: "review-response",
+            state: "unchanged"
+        };
+    }
+    const aligned = (direction === "raise" && observation.delta < 0)
+        || (direction === "lower" && observation.delta > 0);
+    return aligned
+        ? {
+            followUpDirection: null,
+            nextAction: "monitor",
+            state: "aligned"
+        }
+        : {
+            followUpDirection: direction,
+            nextAction: "review-adjustment",
+            state: "opposed"
+        };
+}
+
 export function evaluateAdjustmentReviewEvents(options: {
     asOfDate: string;
     events: readonly AdjustmentReviewEvent[];
@@ -360,12 +407,17 @@ export function evaluateAdjustmentReviewEvents(options: {
         const sameDayCount = sameDayCounts.get(
             `${buildAdjustmentReviewScopeKey(event)}|${event.reflectedDate}`
         ) ?? 0;
+        const observations = {
+            3: evaluateHorizon(event, 3, asOfDate, curve, scopedEvents, sameDayCount),
+            7: evaluateHorizon(event, 7, asOfDate, curve, scopedEvents, sameDayCount)
+        };
         return {
             ...event,
-            observations: {
-                3: evaluateHorizon(event, 3, asOfDate, curve, scopedEvents, sameDayCount),
-                7: evaluateHorizon(event, 7, asOfDate, curve, scopedEvents, sameDayCount)
+            intentAssessments: {
+                3: assessAdjustmentReviewIntent(event.direction, observations[3]),
+                7: assessAdjustmentReviewIntent(event.direction, observations[7])
             },
+            observations,
             roomGroupName: room?.roomGroupName ?? null,
             roomOrder: room?.order ?? Number.MAX_SAFE_INTEGER
         };
@@ -464,6 +516,7 @@ function buildParentRows(
     const detailsByStay = groupByStayDate(detailEvents);
     return Array.from(latestByStay, ([stayDate, scopedLatest]) => {
         const observations = scopedLatest.map((event) => event.observations[horizon]);
+        const intentAssessments = scopedLatest.map((event) => event.intentAssessments[horizon]);
         const ready = observations.filter((value): value is Extract<AdjustmentReviewObservation, { state: "ready" }> => (
             value.state === "ready"
         ));
@@ -488,6 +541,9 @@ function buildParentRows(
             detailEvents: (detailsByStay.get(stayDate) ?? []).sort(compareEvaluatedEventDetailOrder),
             directionCounts: countValues(scopedLatest.map((event) => event.direction), [
                 "raise", "lower", "unknown"
+            ]),
+            intentCounts: countValues(intentAssessments.map((value) => value.state), [
+                "aligned", "opposed", "unchanged", "unavailable"
             ]),
             latestEvents: scopedLatest.sort(compareEvaluatedEventDetailOrder),
             latestReflectedAt,

@@ -4,8 +4,11 @@ import {
     ADJUSTMENT_REVIEW_ANALYZE_TRIGGER_ATTRIBUTE
 } from "./adjustmentReviewFocus";
 import {
+    type AdjustmentReviewDirection,
     type AdjustmentReviewFilters,
     type AdjustmentReviewHorizon,
+    type AdjustmentReviewIntentAssessment,
+    type AdjustmentReviewIntentState,
     type AdjustmentReviewObservation,
     type AdjustmentReviewParentRow,
     type AdjustmentReviewSort,
@@ -34,6 +37,7 @@ export interface AdjustmentReviewRenderState {
 }
 
 const WEEKDAY_LABELS = ["日", "月", "火", "水", "木", "金", "土"] as const;
+type PaceTone = "decrease" | "increase" | "neutral" | "unavailable";
 
 export function createAdjustmentReviewRoot(documentHost: Document): HTMLElement {
     const root = documentHost.createElement("section");
@@ -115,7 +119,7 @@ function createHeader(documentHost: Document, horizon: AdjustmentReviewHorizon):
     title.id = "ra-next-adjustment-review-title";
     title.textContent = "調整前後レビュー";
     const note = documentHost.createElement("p");
-    note.textContent = "レート調整の前後で個人予約ペースがどう変わったかを比較します。因果効果、成功・失敗、推奨ランクの判定ではありません。";
+    note.textContent = "上げはペース減、下げはペース増を意図として、観測変化と次の確認優先度を示します。因果効果、正解・失敗、具体的なランクや金額の判定ではありません。";
     copy.append(title, note);
     const switcher = documentHost.createElement("div");
     switcher.setAttribute("role", "group");
@@ -261,7 +265,7 @@ function createParentTable(
     caption.textContent = `宿泊日別の調整前後${state.horizon}日ペース比較`;
     const thead = documentHost.createElement("thead");
     const header = documentHost.createElement("tr");
-    for (const label of ["宿泊日", "調整", "担当者", "ランク方向", "観測", "個人予約ペース"]) {
+    for (const label of ["宿泊日", "調整", "担当者", "ランク方向", "意図 / 次アクション", "観測", "個人予約ペース"]) {
         const cell = documentHost.createElement("th");
         cell.scope = "col";
         cell.textContent = label;
@@ -294,6 +298,7 @@ function createParentSummaryRow(
         createDataCell(documentHost, "調整", createAdjustmentSummary(documentHost, row)),
         createDataCell(documentHost, "担当者", createActorSummary(documentHost, row)),
         createDataCell(documentHost, "ランク方向", createDirectionSummary(documentHost, row)),
+        createDataCell(documentHost, "意図 / 次アクション", createIntentSummary(documentHost, row)),
         createDataCell(documentHost, "観測", createObservationSummary(documentHost, row)),
         createDataCell(documentHost, "個人予約ペース", createPaceSummary(documentHost, row, maxAbsPace))
     );
@@ -342,11 +347,27 @@ function createActorSummary(documentHost: Document, row: AdjustmentReviewParentR
 
 function createDirectionSummary(documentHost: Document, row: AdjustmentReviewParentRow): HTMLElement {
     const wrap = documentHost.createElement("span");
-    wrap.append(`上げ ${row.directionCounts.raise} / 下げ ${row.directionCounts.lower} / 方向未確認 ${row.directionCounts.unknown}`);
+    wrap.setAttribute("data-ra-next-adjustment-review-direction-summary", "");
+    for (const direction of ["raise", "lower", "unknown"] as const) {
+        if (row.directionCounts[direction] > 0) {
+            wrap.append(createDirectionBadge(documentHost, direction, row.directionCounts[direction]));
+        }
+    }
     if (row.numericDirectionCount > 0) {
         const fallback = documentHost.createElement("small");
         fallback.textContent = `数値名から仮判定 ${row.numericDirectionCount}`;
         wrap.append(fallback);
+    }
+    return wrap;
+}
+
+function createIntentSummary(documentHost: Document, row: AdjustmentReviewParentRow): HTMLElement {
+    const wrap = documentHost.createElement("span");
+    wrap.setAttribute("data-ra-next-adjustment-review-intent-summary", "");
+    for (const state of ["aligned", "opposed", "unchanged", "unavailable"] as const) {
+        if (row.intentCounts[state] > 0) {
+            wrap.append(createIntentBadge(documentHost, state, row.intentCounts[state]));
+        }
     }
     return wrap;
 }
@@ -377,9 +398,7 @@ function createPaceSummary(
         createPaceLine(documentHost, "調整前", row.beforePaceTotal, "before", maxAbsPace),
         createPaceLine(documentHost, "調整後", row.afterPaceTotal, "after", maxAbsPace)
     );
-    const delta = documentHost.createElement("strong");
-    delta.textContent = `変化量 ${formatSigned(row.deltaTotal)}`;
-    wrap.append(delta);
+    wrap.append(createPaceDelta(documentHost, row.deltaTotal, row.readyCount > 0));
     return wrap;
 }
 
@@ -401,9 +420,103 @@ function createPaceLine(
     bar.style.width = `${Math.min(100, Math.abs(value) / maxAbsPace * 100).toFixed(1)}%`;
     track.append(bar);
     const number = documentHost.createElement("span");
+    number.setAttribute("data-ra-next-adjustment-review-value-tone", getPaceTone(value));
     number.textContent = formatSigned(value);
     line.append(name, track, number);
     return line;
+}
+
+function createDirectionBadge(
+    documentHost: Document,
+    direction: AdjustmentReviewDirection,
+    count?: number
+): HTMLElement {
+    const badge = documentHost.createElement("span");
+    badge.setAttribute("data-ra-next-adjustment-review-direction", direction);
+    const icon = documentHost.createElement("span");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = direction === "raise" ? "↑" : direction === "lower" ? "↓" : "?";
+    const label = documentHost.createElement("span");
+    label.textContent = `${formatDirection(direction)}${count === undefined ? "" : ` ${count}`}`;
+    badge.append(icon, label);
+    return badge;
+}
+
+function createIntentBadge(
+    documentHost: Document,
+    state: AdjustmentReviewIntentState,
+    count?: number
+): HTMLElement {
+    const badge = documentHost.createElement("span");
+    badge.setAttribute("data-ra-next-adjustment-review-intent", state);
+    const icon = documentHost.createElement("span");
+    icon.setAttribute("aria-hidden", "true");
+    icon.textContent = state === "aligned"
+        ? "↔"
+        : state === "opposed"
+            ? "⇄"
+            : state === "unchanged" ? "0" : "?";
+    const label = documentHost.createElement("span");
+    label.textContent = `${formatIntentSummary(state)}${count === undefined ? "" : ` ${count}`}`;
+    badge.append(icon, label);
+    return badge;
+}
+
+function createIntentAssessment(
+    documentHost: Document,
+    assessment: AdjustmentReviewIntentAssessment
+): HTMLElement {
+    const wrap = documentHost.createElement("span");
+    wrap.setAttribute("data-ra-next-adjustment-review-intent-assessment", assessment.state);
+    wrap.append(createIntentBadge(documentHost, assessment.state));
+    const action = documentHost.createElement("small");
+    action.setAttribute("data-ra-next-adjustment-review-next-action", assessment.nextAction);
+    action.textContent = formatNextAction(assessment);
+    wrap.append(action);
+    return wrap;
+}
+
+function createEventPace(
+    documentHost: Document,
+    observation: AdjustmentReviewObservation
+): HTMLElement {
+    const wrap = documentHost.createElement("span");
+    wrap.setAttribute("data-ra-next-adjustment-review-event-pace", "");
+    if (observation.state !== "ready") {
+        wrap.textContent = "—";
+        return wrap;
+    }
+    const values = documentHost.createElement("span");
+    values.append(
+        "前 ",
+        createSignedValue(documentHost, observation.beforePace),
+        " / 後 ",
+        createSignedValue(documentHost, observation.afterPace)
+    );
+    wrap.append(values, createPaceDelta(documentHost, observation.delta, true, "変化"));
+    return wrap;
+}
+
+function createSignedValue(documentHost: Document, value: number): HTMLElement {
+    const span = documentHost.createElement("span");
+    span.setAttribute("data-ra-next-adjustment-review-value-tone", getPaceTone(value));
+    span.textContent = formatSigned(value);
+    return span;
+}
+
+function createPaceDelta(
+    documentHost: Document,
+    value: number,
+    ready: boolean,
+    label = "変化量"
+): HTMLElement {
+    const tone: PaceTone = ready ? getPaceTone(value) : "unavailable";
+    const delta = documentHost.createElement("strong");
+    delta.setAttribute("data-ra-next-adjustment-review-pace-tone", tone);
+    delta.textContent = ready
+        ? `${label} ${formatSigned(value)}（${formatPaceTone(tone)}）`
+        : `${label} —（比較可データなし）`;
+    return delta;
 }
 
 function createParentDetailRow(
@@ -418,7 +531,7 @@ function createParentDetailRow(
     tr.hidden = !expanded;
     tr.setAttribute("data-ra-next-adjustment-review-detail", row.stayDate);
     const cell = documentHost.createElement("td");
-    cell.colSpan = 6;
+    cell.colSpan = 7;
     if (!expanded) {
         tr.append(cell);
         return tr;
@@ -429,7 +542,7 @@ function createParentDetailRow(
     caption.textContent = `${formatDate(row.stayDate)}の部屋タイプ別調整履歴`;
     const thead = documentHost.createElement("thead");
     const header = documentHost.createElement("tr");
-    for (const label of ["部屋タイプ", "調整", "担当者", "ランク", "観測", "ペース", "確認"]) {
+    for (const label of ["部屋タイプ", "調整", "担当者", "ランク", "意図 / 次アクション", "観測", "ペース", "確認"]) {
         const th = documentHost.createElement("th");
         th.scope = "col";
         th.textContent = label;
@@ -475,7 +588,10 @@ function createEventRow(
     const actor = documentHost.createElement("span");
     actor.textContent = event.actorName ?? "担当者不明";
     const rank = documentHost.createElement("span");
-    rank.textContent = `${formatRank(event.beforeRankName)} → ${formatRank(event.afterRankName)}（${formatDirection(event.direction)}）`;
+    rank.setAttribute("data-ra-next-adjustment-review-rank", "");
+    const transition = documentHost.createElement("span");
+    transition.textContent = `${formatRank(event.beforeRankName)} → ${formatRank(event.afterRankName)}`;
+    rank.append(transition, createDirectionBadge(documentHost, event.direction));
     if (event.direction !== "unknown" && event.directionSource === "numeric_rank_name") {
         const fallback = documentHost.createElement("small");
         fallback.textContent = "数値名から仮判定";
@@ -483,16 +599,15 @@ function createEventRow(
     }
     const status = documentHost.createElement("span");
     status.textContent = formatObservation(observation);
-    const pace = documentHost.createElement("span");
-    pace.textContent = observation.state === "ready"
-        ? `前 ${formatSigned(observation.beforePace)} / 後 ${formatSigned(observation.afterPace)} / 変化 ${formatSigned(observation.delta)}`
-        : "—";
+    const intent = createIntentAssessment(documentHost, event.intentAssessments[horizon]);
+    const pace = createEventPace(documentHost, observation);
     const action = createAnalyzeAction(documentHost, event, calendar);
     tr.append(
         createDataCell(documentHost, "部屋タイプ", room),
         createDataCell(documentHost, "調整", adjustment),
         createDataCell(documentHost, "担当者", actor),
         createDataCell(documentHost, "ランク", rank),
+        createDataCell(documentHost, "意図 / 次アクション", intent),
         createDataCell(documentHost, "観測", status),
         createDataCell(documentHost, "ペース", pace),
         createDataCell(documentHost, "確認", action)
@@ -555,6 +670,30 @@ function formatObservation(observation: AdjustmentReviewObservation): string {
     }
 }
 
+function formatIntentSummary(state: AdjustmentReviewIntentState): string {
+    switch (state) {
+        case "aligned": return "同方向・様子見";
+        case "opposed": return "逆方向・追加確認";
+        case "unchanged": return "変化なし・反応確認";
+        case "unavailable": return "判定材料待ち";
+    }
+}
+
+function formatNextAction(assessment: AdjustmentReviewIntentAssessment): string {
+    switch (assessment.nextAction) {
+        case "monitor": return "様子見・追加調整の緊急度低";
+        case "review-adjustment": return `${formatFollowUpDirection(assessment)}方向の追加調整余地を確認`;
+        case "review-response": return `${formatFollowUpDirection(assessment)}方向の反応と追加調整余地を確認`;
+        case "needs-evidence": return "観測状態またはランク方向を確認";
+    }
+}
+
+function formatFollowUpDirection(assessment: AdjustmentReviewIntentAssessment): string {
+    return assessment.followUpDirection === null
+        ? "同じ"
+        : formatDirection(assessment.followUpDirection);
+}
+
 function formatDirection(value: EvaluatedAdjustmentReviewEvent["direction"]): string {
     return value === "raise" ? "上げ" : value === "lower" ? "下げ" : "方向未確認";
 }
@@ -565,6 +704,19 @@ function formatRank(value: string | null): string {
 
 function formatSigned(value: number): string {
     return value > 0 ? `+${formatNumber(value)}` : formatNumber(value);
+}
+
+function getPaceTone(value: number): Exclude<PaceTone, "unavailable"> {
+    return value > 0 ? "increase" : value < 0 ? "decrease" : "neutral";
+}
+
+function formatPaceTone(value: PaceTone): string {
+    switch (value) {
+        case "increase": return "増加";
+        case "decrease": return "減少";
+        case "neutral": return "変化なし";
+        case "unavailable": return "比較不可";
+    }
 }
 
 function formatNumber(value: number): string {
@@ -589,6 +741,15 @@ function getAdjustmentReviewStyles(): string {
     --ra-review-border: #d8e0e8;
     --ra-review-ink: #1f2a37;
     --ra-review-muted: #5f6b78;
+    --ra-review-increase-ink: #075985;
+    --ra-review-increase-bg: #e0f2fe;
+    --ra-review-increase-border: #7dd3fc;
+    --ra-review-decrease-ink: #9a3412;
+    --ra-review-decrease-bg: #fff7ed;
+    --ra-review-decrease-border: #fdba74;
+    --ra-review-neutral-ink: #475569;
+    --ra-review-neutral-bg: #f1f5f9;
+    --ra-review-neutral-border: #cbd5e1;
     box-sizing: border-box;
     width: 100%;
     min-width: 0;
@@ -663,6 +824,46 @@ function getAdjustmentReviewStyles(): string {
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] td small { display: block; margin-top: 3px; color: var(--ra-review-muted); }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-detail] > td { padding: 10px 14px 18px; background: #fbfcfd; }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-event-table] { background: #fff; border: 1px solid var(--ra-review-border); }
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-direction-summary],
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-intent-summary] {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 4px; min-width: 132px;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-direction-summary] > small { flex-basis: 100%; }
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-direction],
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-intent] {
+    display: inline-flex; align-items: center; gap: 4px; width: fit-content;
+    padding: 2px 7px; border: 1px solid; border-radius: 999px;
+    font-size: 12px; font-weight: 700; line-height: 1.35; white-space: nowrap;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-direction="raise"] {
+    color: var(--ra-review-increase-ink); background: var(--ra-review-increase-bg); border-color: var(--ra-review-increase-border);
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-direction="lower"] {
+    color: var(--ra-review-decrease-ink); background: var(--ra-review-decrease-bg); border-color: var(--ra-review-decrease-border);
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-direction="unknown"] {
+    color: var(--ra-review-neutral-ink); background: var(--ra-review-neutral-bg); border-color: var(--ra-review-neutral-border);
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-intent="aligned"] {
+    color: #155e75; background: #ecfeff; border-color: #67e8f9;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-intent="opposed"] {
+    color: #6b21a8; background: #faf5ff; border-color: #d8b4fe;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-intent="unchanged"] {
+    color: #92400e; background: #fffbeb; border-color: #fcd34d;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-intent="unavailable"] {
+    color: var(--ra-review-neutral-ink); background: #f8fafc; border-color: var(--ra-review-neutral-border); border-style: dashed;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-rank] {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 5px;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-rank] > small { flex-basis: 100%; }
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-intent-assessment] {
+    display: grid; align-items: start; gap: 3px; min-width: 150px;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-intent-assessment] > small { margin-top: 0; }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace] { min-width: 180px; }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-line] {
     display: grid; grid-template-columns: 42px minmax(52px, 1fr) 34px; gap: 6px; align-items: center;
@@ -671,7 +872,27 @@ function getAdjustmentReviewStyles(): string {
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-bar] { display: block; height: 100%; min-width: 1px; }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-bar="before"] { background: #8a949e; }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-bar="after"] { background: #2879bd; }
-[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace] strong { display: block; margin-top: 4px; font-size: 12px; }
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-value-tone] { font-weight: 700; }
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-value-tone="increase"] { color: var(--ra-review-increase-ink); }
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-value-tone="decrease"] { color: var(--ra-review-decrease-ink); }
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-value-tone="neutral"] { color: var(--ra-review-neutral-ink); }
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-tone] {
+    display: inline-flex; width: fit-content; margin-top: 4px; padding: 2px 7px;
+    border: 1px solid; border-radius: 999px; font-size: 12px; line-height: 1.35;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-tone="increase"] {
+    color: var(--ra-review-increase-ink); background: var(--ra-review-increase-bg); border-color: var(--ra-review-increase-border);
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-tone="decrease"] {
+    color: var(--ra-review-decrease-ink); background: var(--ra-review-decrease-bg); border-color: var(--ra-review-decrease-border);
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-tone="neutral"] {
+    color: var(--ra-review-neutral-ink); background: var(--ra-review-neutral-bg); border-color: var(--ra-review-neutral-border);
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-pace-tone="unavailable"] {
+    color: var(--ra-review-neutral-ink); background: #f8fafc; border-color: var(--ra-review-neutral-border); border-style: dashed;
+}
+[${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-event-pace] { display: grid; gap: 2px; min-width: 150px; }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [${ADJUSTMENT_REVIEW_MORE_ATTRIBUTE}] { width: 100%; margin-top: 12px; }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-message] { margin-top: 16px; padding: 14px; background: #f7f9fb; border-radius: 8px; }
 [${ADJUSTMENT_REVIEW_ROOT_ATTRIBUTE}] [data-ra-next-adjustment-review-message="error"] { border-left: 4px solid #8b6670; }

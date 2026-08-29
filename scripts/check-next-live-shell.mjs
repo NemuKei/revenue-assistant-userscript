@@ -227,8 +227,11 @@ assert.match(fixture, /moveToRoute\("\/analyze\/2026-08-12"\)/);
 assert.match(fixture, /data-mock-analyze-content hidden/);
 assert.match(fixture, /data-ra-next-similarity-lens-root/);
 assert.match(reviewViewSource, /調整前後レビュー/u);
-assert.match(reviewViewSource, /因果効果、成功・失敗、推奨ランクの判定ではありません/u);
+assert.match(reviewViewSource, /上げはペース減、下げはペース増を意図/u);
+assert.match(reviewViewSource, /因果効果、正解・失敗、具体的なランクや金額の判定ではありません/u);
 assert.match(reviewViewSource, /data-ra-next-adjustment-review-pace-bar/u);
+assert.match(reviewViewSource, /data-ra-next-adjustment-review-intent-assessment/u);
+assert.match(reviewViewSource, /様子見・追加調整の緊急度低/u);
 assert.match(reviewViewSource, /max-width: 720px/u);
 assert.match(
     fixture,
