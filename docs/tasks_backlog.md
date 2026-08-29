@@ -1014,8 +1014,9 @@
 ### RAU-UX-180 AnalyzeとTop絞り込みへ意図・次アクションを展開する
 
 - 状態:
-  - source / spec / focused・full local gate、main同期、Next `0.2.0.51` manual publication、公開artifact / Classic baseline照合まで完了し、Tampermonkey更新後live gateを残す。sourceは`7e361b78c3655e013d9a7d415aa534f707eebc7a`、Validate Main runは`33230686346`、publication runは`33230768323`である。利用者がTampermonkeyを公開Next `0.2.0.50`へ更新し、通常ChromeのTopでruntime `ready-read-only`、取得処理`4/4`、保存4、重複回避0、エラー0をfresh確認した。そのうえでAnalyze上部の`ランク変更履歴`と各room typeの展開booking curveへ同じ`意図 / 次アクション`tagを追加し、Topの絞り込みでは`観測状態`を下げて`意図 / 次アクション`を追加するよう明示した。
+  - 完了。source / spec / focused・full local gate、main同期、Next `0.2.0.51` manual publication、公開artifact / Classic baseline照合、Tampermonkey更新後live gateまで通した。sourceは`7e361b78c3655e013d9a7d415aa534f707eebc7a`、Validate Main runは`33230686346`、publication runは`33230768323`である。利用者がTampermonkeyを公開Next `0.2.0.50`へ更新し、通常ChromeのTopでruntime `ready-read-only`、取得処理`4/4`、保存4、重複回避0、エラー0をfresh確認した。そのうえでAnalyze上部の`ランク変更履歴`と各room typeの展開booking curveへ同じ`意図 / 次アクション`tagを追加し、Topの絞り込みでは`観測状態`を下げて`意図 / 次アクション`を追加するよう明示した。
   - Topのintent filter、filter後のfocus復元、Analyze上部一覧 / 展開curve / event履歴tag、同日複数event除外、7日未ready時のfallbackなしをfocused testで固定した。`npm run check:next`、Classic build / publication boundary、`git diff --check`を通し、read boundaryは既存endpoint集合、storage owner / mode / retentionを維持した。desktop / 390px合成Analyzeは文字contrast 4.5:1以上、横overflow 0、runtime error 0だった。
+  - 通常Chromeのinstalled runtime `0.2.0.51`では、Analyze上部6 room / 12 tag、展開curveの最新要約2 tag、履歴2 event / 4 tag、同方向 / 逆方向 / 変化なし、2 panel各45 pointの内部欠損0を確認した。Topはroot 1、初期7日、filter順、4分類option、focus復元、対象stateだけの表示を確認した。tag contrastは6.83:1以上、上げ / 下げとペース増 / 減は色・矢印・符号・文字を併記し、横overflow、filter / horizon操作の追加request / write、console warning / errorは0だった。標準calendar link 92 / 92は操作可能だった。
 - 解決する問題:
   - Topで確認できるPDCAのCheck / ActをAnalyzeへ移動した後に再び頭の中で組み立てる必要があり、room別の判断コストが戻る。Topでも観測状態を先に読むため、追加確認の優先度で絞る入口がない。
 - 実装境界:
@@ -12432,15 +12433,13 @@ Publish Userscript run `26920935454` は success で、GitHub Pages published ve
 
 Now:
 
-- `RAU-UX-180` AnalyzeとTop絞り込みへ意図・次アクションを展開する
+- `RAU-WC-34` Topの半年取得をcount-only gate後に再判断する
 
 Next:
 
-- `RAU-WC-34` Topの半年取得をcount-only gate後に再判断する
+- `RAU-RR-67` 通常利用でdata蓄積後に隣接rankの期待反応を再評価する
 
 After Next:
-
-- `RAU-RR-67` 通常利用でdata蓄積後に隣接rankの期待反応を再評価する
 
 Later:
 
@@ -12448,7 +12447,7 @@ Later:
 
 統合判断:
 
-- 2026-08-29 に、`RAU-UX-180`のsource `7e361b78c3655e013d9a7d415aa534f707eebc7a`をValidate Main run `33230686346`通過後、manual workflow run `33230768323`、run number 51、attempt 1でNext `0.2.0.51`へ配信した。公開Nextは435,789 bytes、SHA-256 `C5DD08FE84CBF48F5E7037FA7C49E4DE45A2C4EA39371AC0DC94EE46D9A10544`、source mapは1,722,286 bytes、SHA-256 `842A1C49962BBDE4AE52464885C705F7755C14AF37DB3756A40CD79530E312CD`でrun identityと一致した。Classicはversion `0.1.0.442`、662,626 bytes、SHA-256 `6C4635639376A6ECA2259FC9EA7916141CFE1A40BD3AE1364E49F577030802EB`、source map 2,707,961 bytes、SHA-256 `AB8CFAF3CBA55F80DABC83F111CF62E194683437CBF21A68AE4A2ACDE891D3BD`の固定baselineと同一だった。通常Chrome installed runtimeは`0.2.0.50`のため、更新画面を開いて利用者操作へ戻し、`0.2.0.51`更新後のTop / Analyze live gateを残す。
+- 2026-08-29 に、`RAU-UX-180`のsource `7e361b78c3655e013d9a7d415aa534f707eebc7a`をValidate Main run `33230686346`通過後、manual workflow run `33230768323`、run number 51、attempt 1でNext `0.2.0.51`へ配信した。公開Nextは435,789 bytes、SHA-256 `C5DD08FE84CBF48F5E7037FA7C49E4DE45A2C4EA39371AC0DC94EE46D9A10544`、source mapは1,722,286 bytes、SHA-256 `842A1C49962BBDE4AE52464885C705F7755C14AF37DB3756A40CD79530E312CD`でrun identityと一致し、Classic固定baselineも不変だった。Tampermonkey更新後の通常Chromeでは、Analyze上部 / 展開curve / event履歴の`意図 / 次アクション`、同方向 / 逆方向 / 変化なし、内部欠損0、Topのfilter順 / 4分類 / focus復元をfresh確認した。色だけでなく矢印・符号・文字を併記し、contrast 6.83:1以上、横overflow、追加request / write、console warning / errorは0だった。Top backgroundは200 / 200、保存200、エラー0で完了し、Long Task 197 / 最大1,717msは既存performance残課題として`RAU-PERF-27`の観測境界へ残す。`RAU-UX-180`を完了し、Nowを`RAU-WC-34`へ戻す。
 - 2026-08-29 に、利用者が公開Next `0.2.0.50`へ更新した通常ChromeでTop runtime `ready-read-only`、取得処理`4/4`、保存4、重複回避0、エラー0をfresh確認した。追加要件は公開済み`RAU-UX-179`を未完了へ戻さず、同じ判定をAnalyze上部一覧・room展開curve・Topのintent filterへ再利用する`RAU-UX-180`としてaddした。`RAU-WC-34`はこの利用者向けsliceの後へ移し、追加GET / storage / writeを広げない。
 - 2026-08-29 に、`RAU-UX-179`のsource、spec、focused / full gate、desktop / 390px合成Browser QA、main同期、Next `0.2.0.49` manual publication、公開artifact / Classic baseline照合まで完了した。上げ / ペース増はblue、下げ / ペース減はorange、0 / 未確認はgrayとし、矢印・符号・文言を併記する。選択中horizonの観測変化を`意図と同方向 / 逆方向 / 変化なし / 判定材料待ち`へ分類し、親行は最新eventだけを集計、detailでは`様子見 / 追加調整余地を確認 / 反応確認 / 材料確認`を示す。因果、成功 / 失敗、具体的な推奨rank / 金額、追加GET、新規storage、Revenue Assistant writeは追加していない。通常Chromeは`0.2.0.48`のため、`0.2.0.49`へのTampermonkey更新とfresh live gateを残し、その後にNowの`RAU-WC-34`へ戻る。
 - 2026-08-28 に、`RAU-RR-68`を公開Next `0.2.0.48`とTampermonkey installed runtimeで完了した。初回`0.2.0.46`のlive gateで見つけた同期再計算による約1秒操作をbounded incremental cacheへ狭め、`0.2.0.47`で31.4〜85.9msへ短縮した。続くAnalyze遷移の日付表現差を共通正規化し、`0.2.0.48`ではTopから対象eventへ正確にfocusしてpending stateを単発消費した。最終観測の3日 / 7日切替は88.4ms / 93.6ms、対象GET、Revenue Assistant write、HTTP / loading / runtime / console errorは0だった。公開artifact / source mapはrelease manifestと一致し、Classic固定baselineを維持した。因果、成功率、推奨rank / 金額、追加GET、新規storage、半年prefetch、Revenue Assistant writeは追加していない。
