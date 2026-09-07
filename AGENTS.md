@@ -18,7 +18,7 @@ RAU は、Revenue Assistant 上で RM のレート調整判断を軽くする Ta
 - `README.md` はsetup、build、verify、distribution手順、`docs/context/PRODUCT_DESIGN_AUDIT.md` はUI / UX audit evidenceを所有する。auditから正本を変える場合はspec、STATUS、backlogの該当ownerへ戻す。
 - code、test、CI、設定fileはlive behaviorとmechanical proofを所有する。安全・法令・公開・認証情報の境界を最優先し、その後は問いに最も近いactive ownerとfresh evidenceを使う。
 - 会話だけを正本にせず、同じruleを複数layerへ複製しない。新規docは既存ownerへ統合できず、反復参照され、ownerとupdate triggerを定義できる場合だけ作る。
-- materialなdurable context候補、陳腐化、矛盾、責務ずれは、明示依頼がなくても`context-lifecycle`で検出してよい。ただし検出はtaskのwrite権限を拡張しない。read-onlyでは候補提示に留め、許可済みrepo変更ではsemantic ownerが採用した内容だけを既存surfaceへ反映する。
+- 現行の説明に古い記述や矛盾が見つかったら、関連する仕様・実装・確認結果と照合する。許可済みrepo変更では該当文書を直接更新し、後で必要な理由は近くに添える。read-onlyでは修正案の提示に留め、調査だけを理由に書込み範囲を拡張しない。
 - routine closeoutをcapture ceremonyにしない。Memory、SecondBrain、別repo、runtime、外部serviceへの書込みは、それぞれのownerと明示権限がある場合だけ行う。
 - `docs/spec_000_overview.md` はspec mapと更新規則に限定する。`docs/ai/`の未確認生成物やuser-owned artifactは自動採用せず、secret / PII / raw traceを除去した今回scopeのfileだけを扱う。
 
