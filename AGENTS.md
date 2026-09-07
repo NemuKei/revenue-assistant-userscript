@@ -22,11 +22,9 @@ RAU は、Revenue Assistant 上で RM のレート調整判断を軽くする Ta
 - routine closeoutをcapture ceremonyにしない。Memory、SecondBrain、別repo、runtime、外部serviceへの書込みは、それぞれのownerと明示権限がある場合だけ行う。
 - `docs/spec_000_overview.md` はspec mapと更新規則に限定する。`docs/ai/`の未確認生成物やuser-owned artifactは自動採用せず、secret / PII / raw traceを除去した今回scopeのfileだけを扱う。
 
-## Project Compass
+## ローカルの補助ファイル
 
-- この repo は `maintain-project-compass` に明示opt-inする。目的、優先順位、固定判断、作業仮説、未解決事項、停止条件、次の検証入口、正本とのgapがmaterialに変わった場合だけ更新し、routine progress、文言修正、test rerun、通常closeoutでは更新しない。
-- stateは`.chatgpt/context-dashboard/state.json`、生成HTMLは`.tmp/context-dashboard/index.html`に置く。どちらもignored / untrackedなlocal-only派生物とし、Git追跡、commit、push、release、deploy、外部公開を行わない。
-- 入力はrepo内正本、Git metadata、利用者が明示した安全な判断単位に限定する。Compassは正本ではなく、PII、credential、raw log、browser history、session data、価格・在庫などの非公開実データを保存せず、正本との差は`alignment.gaps`へ残す。
+- 旧運用の`.chatgpt/context-dashboard/`と`.tmp/context-dashboard/`はlocal-onlyの保管物として扱い、通常作業で生成・更新しない。Git追跡、commit、push、release、deploy、外部公開の対象にしない。
 
 ## Product And Distribution Boundary
 
