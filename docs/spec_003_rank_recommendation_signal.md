@@ -1073,7 +1073,7 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 
 ## Implementation Order Candidate
 
-現在の実装順は次の通りとする。Task IDと詳細は`docs/tasks_backlog.md`を正とする。旧`RAU-RR-*`順序はClassic候補listを前提にした履歴であり、Nextの実行queueには使わない。
+現在の実装順は次の通りとする。Task IDと詳細は[現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29)を正とする。旧`RAU-RR-*`順序はClassic候補listを前提にした履歴であり、Nextの実行queueには使わない。
 
 1. 保存済みbooking curveを起点に全件再取得を差分取得へ置き換え、Classic互換sourceもreadonly seedとして再利用する。
 2. Classicの可視UIをbaselineに、route遷移、tab切替、filter / toggle、再描画で生じる重複・消失・stale表示を個別に修正する。
@@ -1099,7 +1099,7 @@ bulk apply は将来候補として残すが、first phase では非目標とす
 - Overview: `docs/spec_000_overview.md`
 - Analyze 画面仕様: `docs/spec_001_analyze_expansion.md`
 - Booking curve core logic: `docs/spec_002_curve_core.md`
-- 判断原則: `docs/context/INTENT.md`
-- 判断記録: `docs/context/DECISIONS.md`
-- 現在地: `docs/context/STATUS.md`
-- 実行順: `docs/tasks_backlog.md`
+- 判断原則: [現行仕様/課題](spec_000_overview.md)
+- 判断記録: [現行仕様/課題](spec_000_overview.md)
+- 現在地: [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29)
+- 実行順: [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29)

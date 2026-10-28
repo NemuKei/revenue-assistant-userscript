@@ -641,6 +641,6 @@ false negative proxy は、初期 dataset では直接確定しない。候補�
 ## References
 
 - Analyze 画面への接続仕様: `docs/spec_001_analyze_expansion.md`
-- 判断原則: `docs/context/INTENT.md`
-- 判断記録: `docs/context/DECISIONS.md`
-- 実行順: `docs/tasks_backlog.md`
+- 判断原則: [現行仕様/課題](spec_000_overview.md)
+- 判断記録: [現行仕様/課題](spec_000_overview.md)
+- 実行順: [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29)

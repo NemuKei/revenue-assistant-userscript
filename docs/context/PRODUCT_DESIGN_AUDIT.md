@@ -5,7 +5,7 @@
 ## Purpose
 
 この文書は、Revenue Assistant Userscript の既存画面を Product Design 観点で確認した結果を残す。
-仕様本文は `docs/spec_*.md`、現在地は `docs/context/STATUS.md`、実行順は `docs/tasks_backlog.md` を正本とする。
+仕様本文は `docs/spec_*.md`、現在地は [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29)、実行順は [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29) を正本とする。
 この文書は、画面証跡、UX findings、accessibility risk、次に実装する候補をまとめる補助正本である。
 
 ## Ownership And Update Trigger
@@ -297,7 +297,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API、rank change
 - `候補データ優先取得`:
   - 先 6 か月カードは、表示中カレンダーだけに縛られず、先行月を先に取得したい実務に合っている。
   - button、status summary、progress bar が分離され、直近の問題だった button 内 indicator の邪魔さは解消済みである。
-  - これ以上の高速化入口を増やすと、`INTENT.md` の request 数より安定性を優先する原則に反するため、現時点では新しい request 増加 UI を追加しない。
+  - これ以上の高速化入口を増やすと、[現行仕様/課題](../spec_000_overview.md) の request 数より安定性を優先する原則に反するため、現時点では新しい request 増加 UI を追加しない。
 - 補助操作 `その他`:
   - primary action と secondary action が分離され、誤押下防止と表示密度のバランスは現行維持でよい。
   - 実利用で `様子見`、`対応不要`、`要点` を見つけられず候補処理が止まる観測が出るまでは、row footer や popover への移設 task は作らない。
@@ -319,7 +319,7 @@ Revenue Assistant API request 範囲、Revenue Assistant write API、rank change
 - `その他` details を今すぐ row footer / popover へ移す案:
   - 現行 smoke と fixture では重なりや横 overflow がなく、補助操作を常時露出すると誤押下と高さ増加のリスクがあるため不採用。
 - 先行月向けの新しい高速取得 button や request concurrency 増加:
-  - request 数より安定性を優先する `INTENT.md` の原則に反するため不採用。
+  - request 数より安定性を優先する [現行仕様/課題](../spec_000_overview.md) の原則に反するため不採用。
 
 ### Result
 
@@ -546,7 +546,7 @@ raw trace、HAR、request body、response body、Cookie、token、credential、�
 
 維持する点:
 
-- `INTENT.md` の優先順位に従い、月次実績画面は top 画面と Analyze 画面より後に扱う。
+- [現行仕様/課題](../spec_000_overview.md) の優先順位に従い、月次実績画面は top 画面と Analyze 画面より後に扱う。
 - compact view の fixture は、主 table と details を分ける方向で表示密度を抑えている。
 
 修正した点:
@@ -566,8 +566,8 @@ raw trace、HAR、request body、response body、Cookie、token、credential、�
 
 ## Completed Follow-up Candidates
 
-この節の候補は、2026-06-04 の後続 task 化で `docs/tasks_backlog.md` の未着手 task 本体と Remaining Task Triage へ反映し、同日の実装 bundle で完了した。
-完了状態の正本は `docs/tasks_backlog.md` の `Completed / Product Design And Warm Cache UX Follow-ups` と `docs/context/STATUS.md` の最新項目とする。
+この節の候補は、2026-06-04 の後続 task 化で [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29) の未着手 task 本体と Remaining Task Triage へ反映し、同日の実装 bundle で完了した。
+完了状態の正本は [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29) の `Completed / Product Design And Warm Cache UX Follow-ups` と [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29) の最新項目とする。
 
 - `RAU-UX-116`: 右下 warm cache indicator を廃止し、必要な状態表示を画面内の文脈へ移した。
 - `RAU-UX-117`: `候補データ優先取得` strip の初期表示位置を料金調整候補 list 予定位置へ固定した。

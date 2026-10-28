@@ -22,7 +22,7 @@
 - 現在のNext公開版`0.2.0.45`は、Topの標準月送りで可視3か月が変わった場合も、保存済みの団体cueを先に返し、不足する可視hotel currentだけを有限foregroundで継続取得する。初回表示は従来のTop background内、月送り後はTop 800 / 200の残枠外で35ms / concurrency 20とし、次の月送りでは古いrangeを止めて最新rangeへ追従する。room group、reference、画面外日、半年prefetchは追加しない。`基準日から似た日を探す`を標準カレンダー後へ下げた配置、90日価格推移の部屋タイプ / 食事filter、競合価格と価格推移Tooltipの共通正負色、Analyze販売設定のroom scope順ランク変更履歴、保存済み表示先行、停止guard、Revenue Assistant write 0を維持する。20 sample未満のSLOは引き続きprovisionalとする。
 
 現在のNext導入リンク: [Revenue Assistant NextをTampermonkeyでインストール / 更新](https://nemukei.github.io/revenue-assistant-userscript/next/revenue-assistant-next.user.js)
-- `RAU-RR-66`のTop calendar live gateも完了した。通常Chromeの次月表示 / 今月復帰でrank status各1 GET、rank sequences 0、Revenue Assistant write 0を確認し、値を出さないreadonly probeでrank-learning DBのschema、件数、field allowlistを照合した。実分布は`RAU-RR-67`の停止条件に達していないため、上下判断UIはまだ実装しない。詳細なlive snapshotは`docs/context/STATUS.md`を正とする。
+- `RAU-RR-66`のTop calendar live gateも完了した。通常Chromeの次月表示 / 今月復帰でrank status各1 GET、rank sequences 0、Revenue Assistant write 0を確認し、値を出さないreadonly probeでrank-learning DBのschema、件数、field allowlistを照合した。実分布は`RAU-RR-67`の停止条件に達していないため、上下判断UIはまだ実装しない。詳細なlive snapshotは[現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29)を正とする。
 
 ## 前提
 
@@ -242,7 +242,7 @@ version の扱いは `--version-policy warn | fail` で指定します。既定�
 
 ### 月次実績画面
 
-ClassicとNextは別runtimeとして月次実績拡張を持ちます。NextはClassicの見出し、panel順、月別色、現年実線 / 比較年破線、比較切替、metric切替、Tooltip、日次差分という表示・操作契約だけを引き継ぎ、Classicの`src/main.ts`、DOM root、通信、保存処理はimportしません。公開版の現在地は`docs/context/STATUS.md`を正とします。
+ClassicとNextは別runtimeとして月次実績拡張を持ちます。NextはClassicの見出し、panel順、月別色、現年実線 / 比較年破線、比較切替、metric切替、Tooltip、日次差分という表示・操作契約だけを引き継ぎ、Classicの`src/main.ts`、DOM root、通信、保存処理はimportしません。公開版の現在地は[現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29)を正とします。
 
 Nextは`/monthly-progress/YYYY-MM`だけで起動し、既存top / analyzeの同期系とは分離します。標準の予約日基準chartを残し、その直下にNextの独立sectionを1件だけ追加します。可視な施設名がfacility responseと一致した後、batch dateは画面上の`最終データ更新`を優先し、そのラベルがない場合だけ現在月responseのruntime validation済み`updated_at`を使います。施設や更新日を確認できない場合は値を推測せず、未来月GETと保存を開始しません。
 
@@ -254,12 +254,12 @@ Nextは`/monthly-progress/YYYY-MM`だけで起動し、既存top / analyzeの同
 
 - `AGENTS.md`: リポジトリ全体の常設ルール
 - `docs/spec_000_overview.md`: リポジトリ全体の仕様概要
-- `docs/context/PROJECT_CONTEXT.md`: RAU の上位前提と profile
+- [現行仕様/課題](docs/spec_000_overview.md): RAU の上位前提と profile
 - `docs/spec_001_analyze_expansion.md`: analyze 画面拡張の現行仕様
 - `docs/spec_004_next_distribution.md`: Next公開、Tampermonkey更新、Classic保全、rollbackの仕様
-- `docs/context/STATUS.md`: 現況の正本
-- `docs/context/DECISIONS.md`: 判断理由の正本
-- `docs/tasks_backlog.md`: 未実装タスクの管理
+- [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29): 現況の正本
+- [現行仕様/課題](docs/spec_000_overview.md): 判断理由の正本
+- [現行仕様/課題](https://github.com/NemuKei/revenue-assistant-userscript/issues/29): 未実装タスクの管理
 
 ## 配布
 
